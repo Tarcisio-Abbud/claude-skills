@@ -5,7 +5,7 @@ disable-model-invocation: true
 ---
 
 Uma **auditoria** varre o codebase INTEIRO e garante que cada documento reflete a implementação
-atual — é mais pesada que o [[wrap-up]] (que cobre só a sessão), feita de tempos em tempos, e
+atual — é mais pesada que o `/wrap-up` (que cobre só a sessão), feita de tempos em tempos, e
 boa de rodar sob `/loop`. Cada passo termina num critério **exaustivo**: "toda afirmação
 verificada", não "uma lista de mudanças".
 
@@ -50,7 +50,8 @@ aberto** e atravessa a fronteira da sessão. Inclua o merge na frase de abertura
 a próxima conversa (ex.: "faz merge do PR #N e vamos para a próxima pendência") — ou ofereça
 mergear ainda nesta sessão, se o usuário quiser fechar tudo antes do clear. Recomende
 **`/compact`** apenas se a auditoria rodou no MEIO de outra tarefa ainda incompleta (fio vivo
-que o clear perderia). Siga os mesmos critérios do passo 6 do [[wrap-up]].
+que o clear perderia). Siga os mesmos critérios do passo 6 da skill wrap-up
+(`/root/.claude/skills/wrap-up/SKILL.md`).
 **Concluído quando:** o usuário recebeu UMA recomendação clara com justificativa e a frase de
 abertura da próxima conversa.
 

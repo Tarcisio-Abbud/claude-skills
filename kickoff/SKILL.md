@@ -63,15 +63,20 @@ e EXTERNA nunca são opções: são relatório.
 
 O check no menu É a autorização — execute na sequência, sem reconfirmar. Paleta:
 
-| Situação do item marcado | Despacho |
-|---|---|
-| Precisa de conversa/contexto desta sessão | inline, agora (plan mode se for grande) |
-| Fila de fatias bem-especificadas, autônoma | `/loop` dinâmico (self-paced), uma fatia por iteração |
-| Espera/poll de estado externo (CI, terceiro) | `/loop` com intervalo |
-| RECORRENTE | `/schedule` (nuvem) ou cron local — propor a rotina |
-| Independente do contexto e paralelizável | subagente em background (worktree isolado) |
+| Situação do item marcado | Despacho | Quem dispara |
+|---|---|---|
+| Precisa de conversa/contexto desta sessão | inline, agora (plan mode se for grande) | a skill |
+| Estado final verificável (testes verdes, fila zerada, tudo compila) | `/goal <condição>` — um avaliador fecha quando a condição vale | o usuário |
+| Fila de fatias autônomas SEM condição única de término | `/loop` dinâmico (self-paced), uma fatia por iteração | a skill |
+| Espera/poll de estado externo (CI, terceiro) | `/loop` com intervalo | a skill |
+| Mesma operação sobre MUITOS itens (varredura, migração em massa) | dynamic workflow (`ultracode` / "use a workflow") | o usuário |
+| RECORRENTE | `/schedule` (nuvem) ou cron local — propor a rotina | a skill |
+| Independente do contexto e paralelizável | subagente em background (worktree isolado) | a skill |
 
-Se um mecanismo da tabela não existir na sessão, use o vizinho mais próximo.
+Os despachos "o usuário" são comandos nativos que a skill não consegue invocar: não travam o
+fluxo — entregue no relato final a linha pronta para colar, com a condição do `/goal` ou o
+prompt do workflow já escritos. Se um mecanismo da tabela não existir na sessão, use o
+vizinho mais próximo.
 Feche com: (a) o que ficou rodando/agendado, (b) BLOQUEADAS com o que falta do usuário,
 (c) EXTERNAS com quem cobrar — e regrave a fila resultante em `next-steps.md`.
 **Concluído quando:** todo item marcado está em execução ou agendado, o relatório cobre (b) e
