@@ -52,12 +52,16 @@ paleta do passo 5.
 
 ## 4. Montar o menu
 
-Um `AskUserQuestion` multiSelect com os itens acionáveis (AUTÔNOMA + RECORRENTE) priorizados
-por impacto/urgência, recomendação em primeiro com "(Recomendado)". Itens DECISÃO viram
-perguntas próprias — as opções são as escolhas em si, não "sim/não". Limite da ferramenta:
-4 perguntas × 4 opções; o que não couber vira linha do relatório final, não opção. BLOQUEADA
-e EXTERNA nunca são opções: são relatório.
-**Concluído quando:** a seleção do usuário está capturada.
+Antes de perguntar, mostre a **pauta completa triada** — TODOS os itens, uma linha cada, com
+classe — para o usuário ver que nada se perdeu antes de marcar (BLOQUEADA/EXTERNA aparecem
+aqui; o detalhe delas fica para o relatório final).
+
+Então um `AskUserQuestion` multiSelect com os itens acionáveis (AUTÔNOMA + RECORRENTE)
+priorizados por impacto/urgência, recomendação em primeiro com "(Recomendado)". Itens DECISÃO
+viram perguntas próprias — as opções são as escolhas em si, não "sim/não". Limite da
+ferramenta: 4 perguntas × 4 opções; o que não couber vira linha do relatório final, não opção.
+BLOQUEADA e EXTERNA nunca são opções.
+**Concluído quando:** a pauta inteira foi exibida e a seleção do usuário está capturada.
 
 ## 5. Despachar
 
