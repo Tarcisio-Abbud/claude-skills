@@ -1,0 +1,8 @@
+# Allowlist: só as skills de autoria própria são versionadas.
+# Skills de terceiros (matt-pocock via `npx skills`, etc.) ficam fora.
+/*
+!/.gitignore
+!/README.md
+!/wrap-up
+!/docs-audit
+!/kickoff
