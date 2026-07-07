@@ -12,7 +12,9 @@ terceiros fora do versionamento).
 
 O par `/kickoff` ↔ `/wrap-up` compartilha o contrato da fila canônica `next-steps.md`
 (definido em `kickoff/SKILL.md`): um arquivo por projeto na auto-memória com os próximos
-passos — o wrap-up grava, o kickoff verifica e despacha.
+passos — o wrap-up grava, o kickoff verifica e despacha. Para filas de fatias autônomas, o
+kickoff também gera o `.claude/loop.md` do projeto (contrato idem em `kickoff/SKILL.md`),
+que transforma `/loop` puro no despachador da fila.
 
 Projetos podem ter variantes locais tunadas em `.claude/skills/` (versionadas no repo do
 próprio projeto); a local sobrescreve a global de mesmo nome.

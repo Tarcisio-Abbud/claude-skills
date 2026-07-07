@@ -29,9 +29,13 @@ apague o que se provou errado. Converta datas relativas em absolutas. Ligue com 
 projeto — itens novos entram, resolvidos saem (contrato e formato:
 `/root/.claude/skills/kickoff/SKILL.md`). É essa fila que o `/kickoff` despacha na abertura
 da sessão seguinte.
+**Codifique no sistema:** correção que o usuário repetiu ou verificação que ele fez à mão é
+sinal de sistema, não de instância — proponha encodá-la (skill do projeto, regra hookify,
+teste) para valer em toda iteração futura.
 **Concluído quando:** todo fato durável da sessão tem arquivo de memória (com ponteiro no
 `MEMORY.md`), `next-steps.md` reflete as pendências pós-sessão — ou o fato foi
-conscientemente descartado por já estar no repo/ser efêmero.
+conscientemente descartado por já estar no repo/ser efêmero — e toda correção recorrente tem
+encoding proposto ou descartado.
 
 ## 3. Atualizar a documentação do repo
 Faça a documentação refletir a implementação atual: `README`, o arquivo de instruções do projeto
@@ -48,7 +52,9 @@ nenhuma afirmação ficou desatualizada — ou nada canônico mudou e isso foi d
 ## 4. Verificar
 Rode a suíte de testes do projeto. **Detecte o runner** pelo manifesto/arquivos: `pytest`/
 `python3 -m pytest`, `npm test`/`pnpm test`/`yarn test`, `cargo test`, `go test ./...`,
-`make test`, etc. Se houve mudança de código, ela tem de estar verde.
+`make test`, etc. Se houve mudança de código, ela tem de estar verde. Mudou comportamento de
+runtime e o projeto tem skill de verificação end-to-end (ex. `verify`)? Rode-a também — teste
+verde não prova que o fluxo real funciona.
 **Concluído quando:** os testes passam — ou as falhas estão reportadas ao usuário com a saída
 (ou, se o projeto não tiver suíte, isso é dito explicitamente).
 
