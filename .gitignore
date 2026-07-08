@@ -1,9 +1,9 @@
-# Allowlist: só as skills de autoria própria são versionadas.
-# Skills de terceiros (matt-pocock via `npx skills`, etc.) ficam fora.
+# Allowlist: only own-authored skills are versioned.
+# Third-party skills (matt-pocock via `npx skills`, etc.) stay out.
 /*
 !/.gitignore
 !/README.md
 !/wrap-up
 !/docs-audit
 !/kickoff
-!/despachar
+!/dispatch

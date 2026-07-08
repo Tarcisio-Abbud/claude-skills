@@ -1,24 +1,27 @@
 # claude-skills
 
-Skills globais de autoria própria para o Claude Code, instaladas em `/root/.claude/skills/`
-(o próprio diretório é o clone deste repo; um `.gitignore` allowlist deixa as skills de
-terceiros fora do versionamento).
+Own-authored global skills for Claude Code, installed at `/root/.claude/skills/` (that
+directory IS the clone of this repo; an allowlist `.gitignore` keeps third-party skills out
+of version control).
 
-| Skill | O que faz |
+| Skill | What it does |
 |---|---|
-| `/wrap-up` | Fechamento de sessão: memória + docs + testes + resumo + recomendação (/clear, /compact, /docs-audit) |
-| `/kickoff` | Abertura de sessão (espelho do /wrap-up): pauta de pendências verificada contra a realidade, triada e despachada via menu |
-| `/despachar` | Casa uma tarefa com o mecanismo de execução (/goal, /loop, Monitor, workflow, /schedule, subagente) e entrega a linha pronta — model-invoked, dispara sozinha em conversa |
-| `/docs-audit` | Auditoria de documentação contra o código: acha doc velha, corrige, verifica, abre PR |
+| `/wrap-up` | Session close: memory + docs + tests + summary + recommendation (/clear, /compact, /docs-audit) |
+| `/kickoff` | Session open (mirror of /wrap-up): pending-items agenda verified against reality, triaged and dispatched via menu |
+| `/dispatch` | Matches a task to its execution mechanism (/goal, /loop, /implement, Monitor, workflow, /schedule, /wayfinder, /research, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
+| `/docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR |
 
-O par `/kickoff` ↔ `/wrap-up` compartilha o contrato da fila canônica `next-steps.md`
-(definido em `kickoff/SKILL.md`): um arquivo por projeto na auto-memória com os próximos
-passos — o wrap-up grava, o kickoff verifica e despacha. A paleta de despacho (mecanismo
-certo por tipo de tarefa, receita do `/goal`, contrato do `.claude/loop.md` que transforma
-`/loop` puro no despachador da fila) é fonte única em `despachar/SKILL.md` — o kickoff a
-consome no passo 5.
+The `/kickoff` ↔ `/wrap-up` pair shares the canonical `next-steps.md` queue contract
+(defined in `kickoff/SKILL.md`): one file per project in auto-memory holding the next
+steps — wrap-up writes it, kickoff verifies and dispatches it. The dispatch palette (right
+mechanism per task type, the `/goal` recipe, the `.claude/loop.md` contract that turns plain
+`/loop` into the queue dispatcher) is single-sourced in `dispatch/SKILL.md` — kickoff
+consumes it in step 5.
 
-Projetos podem ter variantes locais tunadas em `.claude/skills/` (versionadas no repo do
-próprio projeto); a local sobrescreve a global de mesmo nome.
+Skills are written in English (the model's strongest register and the ecosystem's
+standard); conversation with the user stays in Portuguese.
 
-Nova skill própria: criar o diretório aqui e **adicionar a exceção no `.gitignore`**.
+Projects may carry tuned local variants in `.claude/skills/` (versioned in the project's own
+repo); a local skill overrides the global one of the same name.
+
+New own-authored skill: create the directory here and **add the exception to `.gitignore`**.
