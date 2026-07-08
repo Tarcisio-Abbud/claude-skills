@@ -1,6 +1,6 @@
 ---
 name: wrap-up
-description: "Fechamento de sessão antes do /compact ou /clear: atualiza memória e docs, roda os testes, resume o que ficou pendente e recomenda o próximo passo"
+description: "Fechamento de sessão antes do /compact ou /clear: atualiza memória, docs e artefatos de status, roda os testes, resume o que ficou pendente e recomenda o próximo passo"
 disable-model-invocation: true
 ---
 
@@ -46,8 +46,17 @@ pode ficar velho.
 canônico (decisões, arquitetura, entidades, empresas, pessoas, visão estável de um projeto),
 reflita nas páginas afetadas — ver `_wiki/README.md` para a fronteira canônico × volátil.
 Estado volátil fica na memória (passo 2), não na wiki.
-**Concluído quando:** todo comportamento alterado na sessão está refletido na doc e na wiki, e
-nenhuma afirmação ficou desatualizada — ou nada canônico mudou e isso foi dito.
+**Atualize o(s) artefato(s) de status do projeto**, se existirem: verifique o registro da
+skill `/project-artifact` (`$CLAUDE_PLUGIN_DATA/artifacts/<slug>/config.md` — em geral
+`/root/.claude/plugins/data/project-artifact-claude-plugins-official/artifacts/`) e a memória
+do projeto (referência tipo `reference` com URL `claude.ai/code/artifact/...`). Se a sessão
+mudou algo que a página espelha (frentes, PRs, próximos passos, decisões), refresque pelo
+fluxo da própria skill: re-gather, editar o HTML existente no lugar, republicar o MESMO
+caminho/URL e reportar só o delta. Sessão sem impacto no que a página mostra = diga isso e
+não republique.
+**Concluído quando:** todo comportamento alterado na sessão está refletido na doc e na wiki,
+nenhuma afirmação ficou desatualizada — ou nada canônico mudou e isso foi dito — e o artefato
+de status (se houver) reflete a sessão ou foi declarado sem delta.
 
 ## 4. Verificar
 Rode a suíte de testes do projeto. **Detecte o runner** pelo manifesto/arquivos: `pytest`/
