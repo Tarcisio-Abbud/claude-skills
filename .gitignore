@@ -1,9 +1,8 @@
-# Allowlist: only own-authored skills are versioned.
-# Third-party skills (matt-pocock via `npx skills`, etc.) stay out.
+# Allowlist: only own-authored content is versioned.
+# Third-party skills (matt-pocock via `npx skills`, etc.) live in this same
+# directory and stay out of version control.
 /*
 !/.gitignore
 !/README.md
-!/wrap-up
-!/docs-audit
-!/kickoff
-!/dispatch
+!/.claude-plugin
+!/tk

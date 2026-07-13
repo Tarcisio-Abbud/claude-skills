@@ -28,7 +28,7 @@ duplicating; delete what proved wrong. Convert relative dates to absolute. Link 
 `[[slug]]`.
 **Pending items go to the canonical queue:** also update the project's `next-steps.md` in
 memory — new items enter, resolved ones leave (contract and format:
-`/root/.claude/skills/kickoff/SKILL.md`). That queue is what `/kickoff` dispatches at the
+`/root/.claude/skills/tk/skills/kickoff/SKILL.md`). That queue is what `/tk:kickoff` dispatches at the
 next session's open.
 **Encode into the system:** a correction the user repeated or a check they did by hand is a
 system signal, not an instance signal — propose encoding it (project skill, hookify rule,
@@ -75,7 +75,7 @@ e.g. required `Co-Authored-By` line); if on the default branch, create a branch 
 **Done when:** the user has the summary and no external effect (commit/push) happened
 without an explicit request.
 
-## 6. Recommend the next step: /docs-audit, /clear or /compact
+## 6. Recommend the next step: /tk:docs-audit, /clear or /compact
 ALWAYS close by explicitly recommending ONE path, with the why in 1–2 sentences. Criteria:
 
 - **`/clear`** — the default when the wrap-up ended clean: state 100% externalized (memory +
@@ -90,7 +90,7 @@ ALWAYS close by explicitly recommending ONE path, with the why in 1–2 sentence
   incomplete task mid-flight, debugging with open hypotheses, a half-made
   negotiation/decision, or conversation nuances the next stage still needs that don't make
   sense as a memory file. Compact preserves the thread; clear would lose it.
-- **`/docs-audit` (before the clear)** — when there's *drift* beyond the session's scope:
+- **`/tk:docs-audit` (before the clear)** — when there's *drift* beyond the session's scope:
   step 3 hit stale statements this session did NOT cause, or a lot of code piled up since
   the last audit (several sessions/loops without a `docs-audit`). Audit first, then
   `/clear`.

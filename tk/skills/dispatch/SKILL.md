@@ -38,7 +38,7 @@ constraints ("without touching other tests") and a cap ("or stop after 20 turns"
 `/loop` dies with the session and expires in 7 days — a queue that must survive goes to
 `/schedule`. Scheduled fires only execute model-invocable skills: to schedule work from a
 `disable-model-invocation: true` skill (kickoff, wrap-up), point the prompt at its file
-("follow `/root/.claude/skills/wrap-up/SKILL.md`").
+("follow `/root/.claude/skills/tk/skills/wrap-up/SKILL.md`").
 
 Two queues, two dispatchers: the `next-steps.md` queue is dispatched by `/loop` over
 `loop.md`; tickets published on the issue tracker are dispatched by `/implement`, one ticket
@@ -48,7 +48,7 @@ per fresh session.
 
 `.claude/loop.md` at the project root replaces plain `/loop`'s default prompt — it turns
 `/loop` (5 keystrokes) into the dispatcher of the `next-steps.md` queue (queue contract in
-`/root/.claude/skills/kickoff/SKILL.md`). When dispatching a queue of slices for the first
+`/root/.claude/skills/tk/skills/kickoff/SKILL.md`). When dispatching a queue of slices for the first
 time in a project, create the file; on later runs, check it still matches the contract:
 
 ```markdown

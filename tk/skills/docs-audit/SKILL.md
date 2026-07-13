@@ -5,7 +5,7 @@ disable-model-invocation: true
 ---
 
 An **audit** sweeps the ENTIRE codebase and guarantees every document reflects the current
-implementation — heavier than `/wrap-up` (which covers only the session), done from time to
+implementation — heavier than `/tk:wrap-up` (which covers only the session), done from time to
 time, and good to run under `/loop`. Each step ends on an **exhaustive** criterion: "every
 claim verified", not "a list of changes".
 
@@ -51,7 +51,7 @@ next conversation (e.g. "merge PR #N and let's take the next pending item") — 
 merge still in this session if the user wants everything closed before the clear. Recommend
 **`/compact`** only if the audit ran in the MIDDLE of another still-incomplete task (a live
 thread the clear would lose). Follow the same criteria as step 6 of the wrap-up skill
-(`/root/.claude/skills/wrap-up/SKILL.md`).
+(`/root/.claude/skills/tk/skills/wrap-up/SKILL.md`).
 **Done when:** the user received ONE clear recommendation with justification and the next
 conversation's opening sentence.
 

@@ -1,0 +1,8 @@
+{
+  "name": "tk",
+  "version": "1.0.0",
+  "description": "Session and engineering flow: kickoff (session open, dispatches the next-steps queue), wrap-up (session close), dispatch (task → execution mechanism), docs-audit (docs vs. code).",
+  "author": {
+    "name": "Tarcisio-Abbud"
+  }
+}

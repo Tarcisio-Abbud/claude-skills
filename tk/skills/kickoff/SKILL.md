@@ -1,10 +1,10 @@
 ---
 name: kickoff
-description: "Session opening — mirror of /wrap-up: gathers the project's pending items, verifies each against reality, triages and dispatches the ones the user checks in the menu"
+description: "Session opening — mirror of /tk:wrap-up: gathers the project's pending items, verifies each against reality, triages and dispatches the ones the user checks in the menu"
 disable-model-invocation: true
 ---
 
-A **kickoff** opens the session that `/wrap-up` closed: it builds the **agenda** of the
+A **kickoff** opens the session that `/tk:wrap-up` closed: it builds the **agenda** of the
 project's pending items, checks what is still real, triages item by item and **dispatches**
 what the user checks. Execute the steps in order; each ends on a checkable criterion.
 
@@ -75,7 +75,7 @@ option. BLOCKED and EXTERNAL are never options.
 The menu check IS the authorization — execute in sequence, without re-confirming. The
 task→mechanism matching (palette), the `/goal` recipe, the mechanism boundaries and the
 `loop.md` contract live in the `dispatch` skill: read
-`/root/.claude/skills/dispatch/SKILL.md` before the first dispatch. Dispatches that are
+`/root/.claude/skills/tk/skills/dispatch/SKILL.md` before the first dispatch. Dispatches that are
 user-native commands (`/goal`, `/implement`, `/wayfinder`, workflow) don't block the flow —
 they enter the final report as ready-to-paste lines.
 Close with: (a) what is running/scheduled, (b) BLOCKED items with what's missing from the
@@ -88,13 +88,13 @@ and `next-steps.md` reflects the post-kickoff queue.
 
 Single source for a project's queue of pending items. Lives in the project's auto-memory
 (`/root/.claude/projects/<cwd-slug>/memory/next-steps.md`, with a pointer in `MEMORY.md`)
-and is updated by ANY session where a pending item is born or dies — `/wrap-up` guarantees
-it at close; `/kickoff` rewrites the verified queue at open.
+and is updated by ANY session where a pending item is born or dies — `/tk:wrap-up` guarantees
+it at close; `/tk:kickoff` rewrites the verified queue at open.
 
 ```markdown
 ---
 name: next-steps
-description: canonical queue of the project's next steps — consumed by /kickoff
+description: canonical queue of the project's next steps — consumed by /tk:kickoff
 metadata:
   type: project
 ---
