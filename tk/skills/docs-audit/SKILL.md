@@ -51,7 +51,7 @@ next conversation (e.g. "merge PR #N and let's take the next pending item") — 
 merge still in this session if the user wants everything closed before the clear. Recommend
 **`/compact`** only if the audit ran in the MIDDLE of another still-incomplete task (a live
 thread the clear would lose). Follow the same criteria as step 6 of the wrap-up skill
-(`/root/.claude/skills/tk/skills/wrap-up/SKILL.md`).
+(`../wrap-up/SKILL.md`, relative to this file).
 **Done when:** the user received ONE clear recommendation with justification and the next
 conversation's opening sentence.
 
