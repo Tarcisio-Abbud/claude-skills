@@ -84,7 +84,8 @@ Then ONE multiSelect `AskUserQuestion` with the actions, recommended first — t
 the authorization (this is how "commit/push only when the user asks" is satisfied). Execute
 what was checked, following the project's conventions (required trailer lines; on the
 default branch, branch first). Every unchecked action enters `next-steps.md` as a DECISION
-item carrying a pointer to its digest — deferred by choice, not by omission.
+item — a merge carries its digest reference (forge link + review status), any other action
+carries the branch/paths involved — deferred by choice, not by omission.
 **Done when:** every pending version-control action was executed or recorded as an explicit
 DECISION — none merely implied — and the user has the summary: what changed, what was
 verified, what was deferred.
@@ -126,11 +127,11 @@ justification, and the next conversation's opening sentences when the path is `/
 - The gate (step 5) runs autonomously under a hard ceiling: **commit local work to a
   branch — never the default branch, never push, never merge.** Invoking `afk` IS the
   commit request, and a local branch commit stays reversible. Code changed → run the
-  project's review flow and fix its findings BEFORE committing. **Concurrent-session guard**
-  first: check `git worktree list` (session ids appear in worktree paths) and the `+` marks
-  in `git branch -v`; another live session in the repo → leave the tree untouched and
-  report it. Push/merge/PR decisions enter `next-steps.md` as DECISION with the digest
-  ready.
+  project's review flow and fix its findings BEFORE committing. **Concurrent-session
+  guard** first (defined in `../kickoff/AFK.md`): `git worktree list` + the `+` marks in
+  `git branch -v`; another live session in the repo → leave the tree untouched and report
+  it. Push/merge/PR decisions enter `next-steps.md` as DECISION — merges with their digest
+  reference ready.
 - The step-6 report ends with the ready pair for the user's return: `/clear` +
   `/tk:kickoff afk`.
 
