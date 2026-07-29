@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: "Dispatch a task to the right execution mechanism — /goal, /loop, /implement, Monitor, dynamic workflow, /schedule, /wayfinder, /research or a subagent — delivering the ready-to-paste line. Use when the user wants to delegate, schedule, or automate something and the mechanism is in doubt, or when another skill needs the dispatch palette."
+description: "Dispatch a task to the right execution mechanism — /goal, /loop, Monitor, /schedule, a ticket flow or a subagent — delivering the ready-to-paste line. Use when the user wants to delegate, schedule, or automate something and the mechanism is in doubt, or when another skill needs the dispatch palette."
 ---
 
 **Dispatching** is matching a task to the mechanism that executes it without the user — and
@@ -8,18 +8,22 @@ delivering the ready-to-paste line, never just the mechanism's name. Diagnose th
 against the palette, pick ONE line (when torn between two, the cheaper one) and write the
 complete command/prompt.
 
+**Site extensions:** read `~/.claude/tk/dispatch.md` and `.claude/tk/dispatch.md` (project
+root) if they exist — they name the site's concrete commands for the palette rows marked
+"(site extensions name it)".
+
 ## The palette
 
 | Task situation | Dispatch | Who fires it |
 |---|---|---|
 | Needs conversation/context from this session | inline, now (plan mode if large) | the agent |
 | Verifiable end state (tests green, queue empty, everything compiles) | `/goal` — ready line per the recipe below | the user |
-| Agent-ready ticket on the tracker (from `/to-tickets`, `/triage`, or a wayfinder frontier) | `/implement` — one ticket per session, `/clear` between tickets | the user |
+| Agent-ready ticket on the tracker | the site's per-ticket implementation flow (site extensions name it) — one ticket per fresh session | the user |
 | Queue of autonomous slices WITHOUT a single termination condition | plain `/loop` over the project's `loop.md` (contract below), one slice per iteration | the agent |
-| Big, foggy effort — the way to the destination isn't visible, too big for one session | `/wayfinder` — chart the map; then one map ticket per session | the user |
-| Reading/investigation legwork against external sources (docs, APIs, knowledge bases) | `/research` — background agent leaves a cited markdown file in the repo | the user |
+| Big, foggy effort — the way to the destination isn't visible, too big for one session | a charting flow that maps it into tickets (site extensions name it); then one map ticket per session | the user |
+| Reading/investigation legwork against external sources (docs, APIs, knowledge bases) | a background research agent that leaves a cited markdown file in the repo (site extensions may name a command; fallback: a background subagent with that same contract) | the user |
 | Waiting on external state (CI, third party) | Monitor — background script streaming the state (no polling); `/loop` with an interval only if there is no observable command | the agent |
-| Same operation over MANY items (sweep, mass migration) | dynamic workflow (`ultracode` / "use a workflow") — pilot on a small slice before the full sweep | the user |
+| Same operation over MANY items (sweep, mass migration) | dynamic workflow (site extensions name it) — pilot on a small slice before the full sweep | the user |
 | Recurring (routine, not a one-off item) | `/schedule` (cloud) or local cron — draft the COMPLETE routine: it runs without a human and without permission prompts, so the prompt is self-contained, with the done criterion embedded and a recommended model (mechanical routine → smaller model) | the agent |
 | Context-independent and parallelizable | background subagent (isolated worktree) | the agent |
 
@@ -37,22 +41,30 @@ constraints ("without touching other tests") and a cap ("or stop after 20 turns"
 
 `/loop` dies with the session and expires in 7 days — a queue that must survive goes to
 `/schedule`. Scheduled fires only execute model-invocable skills: to schedule work from a
-`disable-model-invocation: true` skill (kickoff, wrap-up), point the prompt at its file
-("follow `/root/.claude/skills/tk/skills/wrap-up/SKILL.md`").
+`disable-model-invocation: true` skill (kickoff, wrap-up), point the prompt at the skill's
+file in the plugin's install folder ("follow `skills/wrap-up/SKILL.md` of the `tk`
+plugin").
 
-Two queues, two dispatchers: the `next-steps.md` queue is dispatched by `/loop` over
-`loop.md`; tickets published on the issue tracker are dispatched by `/implement`, one ticket
-per fresh session.
+The `next-steps.md` queue (contract: `../kickoff/SKILL.md`, relative to this file) has
+three dispatchers, by presence and scope:
+
+- **interactive kickoff menu** — the user is present and chooses;
+- **`/tk:kickoff afk` / `pack`** — one-shot package run by an orchestrator + background
+  subagents, context-isolated (`../kickoff/AFK.md`);
+- **`/loop` over `loop.md`** — same-session slices, context accumulates across iterations.
+
+Tickets published on the issue tracker are dispatched by the site's per-ticket flow, one
+ticket per fresh session — the tracker is their source of truth.
 
 ## The `loop.md` contract
 
 `.claude/loop.md` at the project root replaces plain `/loop`'s default prompt — it turns
-`/loop` (5 keystrokes) into the dispatcher of the `next-steps.md` queue (queue contract in
-`/root/.claude/skills/tk/skills/kickoff/SKILL.md`). When dispatching a queue of slices for the first
-time in a project, create the file; on later runs, check it still matches the contract:
+`/loop` (5 keystrokes) into the dispatcher of the `next-steps.md` queue. When dispatching a
+queue of slices for the first time in a project, create the file; on later runs, check it
+still matches the contract:
 
 ```markdown
-Read the queue at /root/.claude/projects/<cwd-slug>/memory/next-steps.md. Execute ONLY the
+Read the queue at ~/.claude/projects/<cwd-slug>/memory/next-steps.md. Execute ONLY the
 top AUTONOMOUS item — one slice per iteration — and verify the result. Update the queue
 (resolved items leave). No AUTONOMOUS item left: end the loop and summarize what remains.
 ```

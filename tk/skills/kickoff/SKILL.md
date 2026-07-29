@@ -1,6 +1,6 @@
 ---
 name: kickoff
-description: "Session opening — mirror of /tk:wrap-up: gathers the project's pending items, verifies each against reality, triages and dispatches the ones the user checks in the menu"
+description: "Session opening — mirror of /tk:wrap-up: gathers the project's pending items, verifies each against reality, triages and dispatches what the user checks. Args: afk (auto-dispatch, zero menus), pack (same package, one confirmation)"
 disable-model-invocation: true
 ---
 
@@ -8,8 +8,12 @@ A **kickoff** opens the session that `/tk:wrap-up` closed: it builds the **agend
 project's pending items, checks what is still real, triages item by item and **dispatches**
 what the user checks. Execute the steps in order; each ends on a checkable criterion.
 
-(Global version — applies to any project. If a project has its own `.claude/skills/kickoff`,
-that one overrides this.)
+**Arguments:** `afk` and `pack` replace steps 4–5 with the autonomous package flow — after
+step 3, switch to `AFK.md` in this skill's folder.
+
+**Site extensions:** read `~/.claude/tk/kickoff.md` and `.claude/tk/kickoff.md` (project
+root) if they exist — they add site-specific agenda sources and dispatch commands. (A
+project's own `.claude/skills/kickoff` overrides this skill entirely.)
 
 ## 1. Gather the agenda
 
@@ -20,8 +24,8 @@ Sources, in this order:
   exist yet (project's first kickoff), fall back to the memory files the index flags as
   having pending/NEXT/waiting/idea items.
 - **Open issues and PRs** on the repo (`gh issue list`, `gh pr list`), when there's a
-  tracker — including any open **wayfinder map** (label `wayfinder:map`): its frontier
-  tickets (open, unblocked, unclaimed) are agenda items.
+  tracker.
+- Any additional sources the site extensions name.
 
 Wiki and repo docs are NOT agenda sources — volatile state doesn't live there; a pending
 item found there is stale doc, not queue.
@@ -49,13 +53,16 @@ Each item gets exactly ONE class:
 | **EXTERNAL** | waiting on a third party; at most chase/remind |
 | **RECURRING** | not a one-off item — should become a scheduled routine |
 
-An AUTONOMOUS item that is already an agent-ready ticket on the tracker (from `/to-tickets`,
-`/triage`, or a wayfinder frontier) has its dispatch pre-made: `/implement`, one ticket per
-fresh session. An item too big and foggy to triage cleanly — a whole effort, not a slice —
-isn't forced into a class: propose charting it with `/wayfinder`.
+While triaging, fill or refresh each item's **Effort** and **Risk** (contract below) — the
+package modes (`AFK.md`) and the dispatch choice read them.
 
-**Done when:** every pending item has a class and, if actionable, a recommended dispatch
-from the `dispatch` skill's palette (step 5).
+An AUTONOMOUS item that already lives as an agent-ready ticket on the tracker has its
+dispatch pre-made by the site's per-ticket flow (site extensions name it). An item too big
+and foggy to triage cleanly — a whole effort, not a slice — isn't forced into a class:
+propose charting it first (site extensions may name a mapping flow).
+
+**Done when:** every pending item has a class, Effort, Risk where due and, if actionable, a
+recommended dispatch from the `dispatch` skill's palette (step 5).
 
 ## 4. Build the menu
 
@@ -74,10 +81,9 @@ option. BLOCKED and EXTERNAL are never options.
 
 The menu check IS the authorization — execute in sequence, without re-confirming. The
 task→mechanism matching (palette), the `/goal` recipe, the mechanism boundaries and the
-`loop.md` contract live in the `dispatch` skill: read
-`/root/.claude/skills/tk/skills/dispatch/SKILL.md` before the first dispatch. Dispatches that are
-user-native commands (`/goal`, `/implement`, `/wayfinder`, workflow) don't block the flow —
-they enter the final report as ready-to-paste lines.
+`loop.md` contract live in the `dispatch` skill: read `../dispatch/SKILL.md` (relative to
+this file) before the first dispatch. Dispatches that are user-native commands don't block
+the flow — they enter the final report as ready-to-paste lines.
 Close with: (a) what is running/scheduled, (b) BLOCKED items with what's missing from the
 user, (c) EXTERNAL items with who to chase — and rewrite the resulting queue to
 `next-steps.md`.
@@ -87,9 +93,9 @@ and `next-steps.md` reflects the post-kickoff queue.
 ## The `next-steps.md` contract
 
 Single source for a project's queue of pending items. Lives in the project's auto-memory
-(`/root/.claude/projects/<cwd-slug>/memory/next-steps.md`, with a pointer in `MEMORY.md`)
-and is updated by ANY session where a pending item is born or dies — `/tk:wrap-up` guarantees
-it at close; `/tk:kickoff` rewrites the verified queue at open.
+(`~/.claude/projects/<cwd-slug>/memory/next-steps.md`, with a pointer in `MEMORY.md`) and is
+updated by ANY session where a pending item is born or dies — `/tk:wrap-up` guarantees it at
+close; `/tk:kickoff` rewrites the verified queue at open.
 
 ```markdown
 ---
@@ -101,10 +107,21 @@ metadata:
 
 # Next steps
 
-- [ ] <concrete action> — one-line context. **Class:** AUTONOMOUS. **Source:** PR #12, 2026-07-01
+- [ ] <concrete action> — one-line context. **Class:** AUTONOMOUS. **Effort:** M (~30min). **Source:** PR #12, 2026-07-01
+- [ ] <risky action> — one-line context. **Class:** AUTONOMOUS. **Effort:** S (~10min). **Risk:** pushes to a shared branch. **Source:** 2026-07-20
 ```
 
 Rules: one item per line; absolute dates; a resolved item LEAVES the file (no
-strikethrough); the recorded class is the writer's guess — kickoff always re-verifies and
-re-triages. Tickets already published on the issue tracker are referenced, not mirrored —
-the tracker is their source of truth.
+strikethrough). Fields:
+
+- **Class** — one of the five triage classes above.
+- **Effort** — S/M/L plus a rough wall-clock estimate; the package modes use it to size a
+  session.
+- **Risk** — present ONLY when running the item unsupervised can do damage (production
+  data, irreversible effects, anything externally visible): one line naming the damage. No
+  Risk line = safe to run unattended; an item carrying a Risk line never enters an afk
+  package.
+
+Every recorded field is the writer's guess — kickoff always re-verifies and re-triages.
+Tickets already published on the issue tracker are referenced, not mirrored — the tracker is
+their source of truth.
