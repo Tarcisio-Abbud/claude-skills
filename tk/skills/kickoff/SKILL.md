@@ -36,8 +36,9 @@ item found there is stale doc, not queue.
 Memory reflects the moment it was written. Before any item enters the agenda, check the
 current state: is the PR still open? did a commit/merge already resolve it? did the issue
 close? does the cited file/flag/script still exist? (`gh pr list`, `gh issue view`,
-`git log`, read the code). An already-resolved item leaves the agenda AND the memory citing
-it is fixed ON THE SPOT — don't leave it for the next wrap-up.
+`git log`, read the code). An already-resolved item leaves the agenda via
+`tk-queue done <id> --how "<what resolved it>"` ON THE SPOT — don't leave it for the next
+wrap-up — and the memory citing it is fixed in the same breath.
 **Done when:** every remaining item is confirmed genuinely open and no known-stale memory is
 left uncorrected.
 
@@ -85,34 +86,42 @@ task→mechanism matching (palette), the `/goal` recipe, the mechanism boundarie
 this file) before the first dispatch. Dispatches that are user-native commands don't block
 the flow — they enter the final report as ready-to-paste lines.
 Close with: (a) what is running/scheduled, (b) BLOCKED items with what's missing from the
-user, (c) EXTERNAL items with who to chase — and rewrite the resulting queue to
-`next-steps.md`.
+user, (c) EXTERNAL items with who to chase — and settle the resulting queue through
+`tk-queue` (`done`/`cancel`/`edit`/`add`; contract below).
 **Done when:** every checked item is running or scheduled, the report covers (b) and (c),
 and `next-steps.md` reflects the post-kickoff queue.
 
-## The `next-steps.md` contract
+## The queue contract: `next-steps.md` + `done-log.md`, written only by `tk-queue`
 
-Single source for a project's queue of pending items. Lives in the project's auto-memory
-(`~/.claude/projects/<cwd-slug>/memory/next-steps.md`, with a pointer in `MEMORY.md`) and is
-updated by ANY session where a pending item is born or dies — `/tk:wrap-up` guarantees it at
-close; `/tk:kickoff` rewrites the verified queue at open.
+Single source for a project's queue of pending items. Two sibling files in the project's
+auto-memory (`~/.claude/projects/<cwd-slug>/memory/`, each with a pointer in `MEMORY.md`):
 
-```markdown
----
-name: next-steps
-description: canonical queue of the project's next steps — consumed by /tk:kickoff
-metadata:
-  type: project
----
+- **`next-steps.md`** — OPEN items only, the queue this skill dispatches.
+- **`done-log.md`** — what left the queue (FEITO or DESCARTADO), when, and how. Feeds
+  progress reports; consult it when a queue item touches ground already worked.
 
-# Next steps
+Both are written ONLY through the deterministic script **`tk-queue`**
+(`../../bin/tk-queue` relative to this file) — never by hand-editing. The script is what
+guarantees a resolved item actually LEAVES the queue: `done`/`cancel` move it to the log
+in one command (log written first, so a crash between the two writes can duplicate a line
+but never lose the item), and finished work cannot silently accumulate as `[x]` lines
+again (25 of them had, before 2026-08-03). Any session where an item is born or dies
+calls the script on the spot — `/tk:wrap-up` guarantees it at close; `/tk:kickoff`
+verifies the queue at open.
 
-- [ ] <concrete action> — one-line context. **Class:** AUTONOMOUS. **Effort:** M (~30min). **Source:** PR #12, 2026-07-01
-- [ ] <risky action> — one-line context. **Class:** AUTONOMOUS. **Effort:** S (~10min). **Risk:** pushes to a shared branch. **Source:** 2026-07-20
+```
+tk-queue list                                  # open items with IDs (T001…)
+tk-queue add "<action>" --class DECISION --effort "M (~30min)" \
+         [--risk "..."] [--criterion "A: <command that proves it> | B: user verdict"] [--source "..."]
+tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
+tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."]
+tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...] [--criterion ...] [--force]
+tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries; --all sweeps every project
+tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
 ```
 
-Rules: one item per line; absolute dates; a resolved item LEAVES the file (no
-strikethrough). Fields:
+Item fields (every recorded field is the writer's guess — kickoff always re-verifies and
+re-triages; tracker tickets are referenced, not mirrored):
 
 - **Class** — one of the five triage classes above.
 - **Effort** — S/M/L plus a rough wall-clock estimate; the package modes use it to size a
@@ -121,7 +130,15 @@ strikethrough). Fields:
   data, irreversible effects, anything externally visible): one line naming the damage. No
   Risk line = safe to run unattended; an item carrying a Risk line never enters an afk
   package.
+- **Criterion** — acceptance criterion, optional for now: `A:` a deterministic check (a
+  command whose pass proves the item done) or `B:` the user's verdict. Without it, "done"
+  is the closer's self-report.
 
-Every recorded field is the writer's guess — kickoff always re-verifies and re-triages.
-Tickets already published on the issue tracker are referenced, not mirrored — the tracker is
-their source of truth.
+An item is a pending action, not an essay — the script enforces a size ceiling. Durable
+context goes to a memory file or wiki page, linked from the item with `[[slug]]`.
+
+**The done-log pointer rule:** `--how` points at the most durable address available —
+commit/PR (immutable) > wiki page or repo doc (versioned) > memory file (prunable). The
+line must make sense on its own even if the pointer dies; when the work left no artifact
+at all (conversation-only), `--note` carries the substance, because the line IS the only
+record.

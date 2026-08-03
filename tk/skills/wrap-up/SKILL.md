@@ -36,11 +36,12 @@ project's auto-memory (dir `memory/`, index `MEMORY.md`), with the right frontma
 type (`user`/`feedback`/`project`/`reference`). Prefer updating an existing file over
 duplicating; delete what proved wrong. Convert relative dates to absolute. Link with
 `[[slug]]`.
-**Pending items go to the canonical queue:** update the project's `next-steps.md` — new
-items enter with **Class**, **Effort** and (only when unsupervised damage is possible)
-**Risk** estimated; resolved ones leave. Contract and format: `../kickoff/SKILL.md`
-(relative to this file). That queue is what `/tk:kickoff` dispatches at the next session's
-open.
+**Pending items go through `tk-queue`** (`../../bin/tk-queue` relative to this file) — the
+only writer of the queue files: new items enter via `add` (with **Class**, **Effort**,
+optionally **Risk**/**Criterion**); resolved ones leave via `done --how "<pointer>"` and
+discarded ones via `cancel --why`, which move them to `done-log.md`. Never hand-edit the
+two files. Contract, commands and the pointer rule: `../kickoff/SKILL.md`.
+That queue is what `/tk:kickoff` dispatches at the next session's open.
 **Encode into the system:** a correction the user repeated or a check they did by hand is a
 system signal, not an instance signal — propose encoding it (project skill, hook rule,
 test) so it holds in every future iteration.

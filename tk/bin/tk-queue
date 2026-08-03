@@ -1,0 +1,457 @@
+#!/usr/bin/env python3
+"""tk-queue — deterministic gate for a project's pending-items queue.
+
+The ONLY writer of the two auto-memory queue files:
+
+  next-steps.md   open items only (the queue /tk:kickoff dispatches)
+  done-log.md     what left the queue, when, and how (feeds progress reports)
+
+An item leaves next-steps.md the moment it is resolved or discarded — `done`
+and `cancel` move it to done-log.md atomically, so the queue can never silently
+accumulate finished work again.
+
+Items are identified by sequential IDs (**T001**, **T002**, ...) unique within
+a project (both files scanned). Items predating this script may lack IDs;
+`migrate` assigns them.
+
+Size ceiling: an item is a PENDING ACTION, not an essay. Durable context
+belongs in a memory file or the wiki, linked from the item. `add`/`edit`
+reject items over the ceiling (--force raises it for the rare exception).
+"""
+
+import argparse
+import datetime
+import os
+import re
+import sys
+
+CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
+CEILING = 700          # chars per item; enough for title + fields + 1 link
+CEILING_FORCED = 2000
+PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
+
+DONE_LOG_TEMPLATE = """---
+name: done-log
+description: log de execução — itens que saíram da fila next-steps, com data e ponteiro
+metadata:
+  type: project
+---
+
+# Done log
+
+Escrito somente pelo `tk-queue` (done/cancel/migrate). Uma linha por item;
+o ponteiro aponta para o endereço mais durável (PR/commit > wiki/doc >
+arquivo de memória). A linha deve fazer sentido sozinha se o ponteiro morrer.
+"""
+
+
+def fail(msg):
+    sys.exit(f"tk-queue: {msg}")
+
+
+def memory_dir(explicit):
+    if explicit:
+        d = os.path.abspath(os.path.expanduser(explicit))
+    else:
+        slug = re.sub(r"[^A-Za-z0-9-]", "-", os.getcwd())
+        d = os.path.join(PROJECTS_ROOT, slug, "memory")
+    if not os.path.isdir(d):
+        fail(f"memory dir not found: {d}\n(use --dir, or run from the project's directory)")
+    return d
+
+
+def read(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def write_atomic(path, text):
+    tmp = path + ".tk-queue.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+# --- item parsing ---------------------------------------------------------
+# An item block starts at a top-level "- [ ]" / "- [x]" line and runs until
+# the first blank line, next item, or heading. Everything else in the file
+# (frontmatter, headings, prose) is preserved verbatim.
+
+ITEM_START = re.compile(r"^- \[( |x)\] ", re.M)
+ID_RE = re.compile(r"\*\*T(\d{3,})\*\*")
+# broad form for ID allocation: done-log lines carry plain "T012", and an ID that
+# appears ANYWHERE in either file must never be reused
+ANY_ID_RE = re.compile(r"\bT(\d{3,})\b")
+
+
+def split_blocks(body):
+    """Return a list of (kind, text) where kind is 'item-open'/'item-done'/'other'."""
+    blocks, buf, kind = [], [], "other"
+    for line in body.splitlines(keepends=True):
+        m = ITEM_START.match(line)
+        if m:
+            if buf:
+                blocks.append((kind, "".join(buf)))
+            buf, kind = [line], ("item-done" if m.group(1) == "x" else "item-open")
+        elif kind.startswith("item") and (line.strip() == "" or line.startswith("#")):
+            blocks.append((kind, "".join(buf)))
+            buf, kind = [line], "other"
+        else:
+            buf.append(line)
+    if buf:
+        blocks.append((kind, "".join(buf)))
+    return blocks
+
+
+def item_id(text):
+    m = ID_RE.search(text)
+    return int(m.group(1)) if m else None
+
+
+def max_id(memdir):
+    top = 0
+    for name in ("next-steps.md", "done-log.md"):
+        content = read(os.path.join(memdir, name)) or ""
+        for m in ANY_ID_RE.finditer(content):
+            top = max(top, int(m.group(1)))
+    return top
+
+
+def ensure_single_line(**fields):
+    for name, val in fields.items():
+        if val and "\n" in val:
+            fail(f"--{name} must be single-line — a newline would break the queue's block format")
+
+
+FIELD_VARIANTS = {
+    "Class": r"Class(?:e)?",
+    "Effort": r"(?:Effort|Esforço)",
+    "Risk": r"(?:Risk|Risco)",
+    "Criterion": r"(?:Criteri(?:on|o)|Critério)",
+    "Source": r"(?:Source|Fonte)",
+}
+ANY_FIELD = "|".join(FIELD_VARIANTS.values())
+
+
+def item_title(text, limit=100):
+    t = re.sub(r"^- \[[ x]\] ", "", text.strip())
+    t = ID_RE.sub("", t)
+    t = re.sub(r"\*\*(" + ANY_FIELD + r"):\*\*.*", "", t, flags=re.S)
+    t = re.sub(r"\s+", " ", t).strip(" —-~*")
+    return t if len(t) <= limit else t[: limit - 1] + "…"
+
+
+# --- done-log writing -----------------------------------------------------
+
+def append_done_line(memdir, line, today):
+    path = os.path.join(memdir, "done-log.md")
+    content = read(path)
+    if content is None:
+        content = DONE_LOG_TEMPLATE
+    month_header = f"## {today[:7]}"
+    if month_header not in content:
+        content = content.rstrip("\n") + f"\n\n{month_header}\n"
+    # insert right after the month header so newest month stays where created
+    idx = content.index(month_header) + len(month_header)
+    nl = content.find("\n", idx)
+    if nl == -1:  # header is the last line, no trailing newline
+        content += "\n"
+        nl = len(content) - 1
+    content = content[: nl + 1] + line.rstrip("\n") + "\n" + content[nl + 1 :]
+    write_atomic(path, content)
+
+
+def excise(content, block):
+    """Remove block, collapsing surplus blank lines ONLY at the removal site —
+    spacing elsewhere in the file is not ours to touch."""
+    idx = content.index(block)
+    before, after = content[:idx], content[idx + len(block):]
+    if not after.strip():
+        return before.rstrip("\n") + "\n"
+    nb = len(before) - len(before.rstrip("\n"))
+    na = len(after) - len(after.lstrip("\n"))
+    if nb + na > 2:
+        return before.rstrip("\n") + "\n\n" + after.lstrip("\n")
+    return before + after
+
+
+def remove_block(memdir, block_text):
+    path = os.path.join(memdir, "next-steps.md")
+    content = read(path)
+    if block_text not in content:
+        fail("internal error: block vanished from next-steps.md mid-operation")
+    write_atomic(path, excise(content, block_text))
+
+
+def find_open_item(memdir, wanted_id):
+    content = read(os.path.join(memdir, "next-steps.md"))
+    if content is None:
+        fail("next-steps.md not found in " + memdir)
+    for kind, text in split_blocks(content):
+        if kind == "item-open" and item_id(text) == wanted_id:
+            return text
+    fail(f"no open item **T{wanted_id:03d}** in next-steps.md (see `tk-queue list`)")
+
+
+# --- commands -------------------------------------------------------------
+
+def cmd_list(args):
+    memdir = memory_dir(args.dir)
+    content = read(os.path.join(memdir, "next-steps.md"))
+    if content is None:
+        fail("next-steps.md not found in " + memdir)
+    rows = []
+    for kind, text in split_blocks(content):
+        if kind != "item-open":
+            continue
+        iid = item_id(text)
+        label = f"T{iid:03d}" if iid else "----"
+        m = re.search(r"\*\*Class(?:e)?:\*\*\s*([A-Za-zÀ-ÿ]+)", text)
+        rows.append((label, m.group(1) if m else "?", item_title(text)))
+    if not rows:
+        print("(fila vazia)")
+        return
+    for label, cls, title in rows:
+        print(f"{label}  {cls:<10}  {title}")
+    if any(r[0] == "----" for r in rows):
+        print("\nitens sem ID: rode `tk-queue migrate` para atribuir.")
+
+
+def compose_item(args, iid):
+    fields = [f"**Class:** {args.classe}.", f"**Effort:** {args.effort}."]
+    if args.risk:
+        fields.append(f"**Risk:** {args.risk}.")
+    if args.criterion:
+        fields.append(f"**Criterion:** {args.criterion}.")
+    fields.append(f"**Source:** {args.source or datetime.date.today().isoformat()}")
+    return f"- [ ] **T{iid:03d}** — {args.text.strip()} " + " ".join(fields) + "\n"
+
+
+def check_ceiling(item, force):
+    limit = CEILING_FORCED if force else CEILING
+    if len(item) > limit:
+        fail(
+            f"item has {len(item)} chars (ceiling {limit}). An item is a pending "
+            "action, not an essay: move the context to a memory file or wiki page "
+            "and link it ([[slug]])." + ("" if force else " --force raises the ceiling to "
+            f"{CEILING_FORCED} for the rare exception.")
+        )
+
+
+def cmd_add(args):
+    memdir = memory_dir(args.dir)
+    if args.classe not in CLASSES:
+        fail(f"--class must be one of {', '.join(CLASSES)}")
+    ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
+                       criterion=args.criterion, source=args.source)
+    path = os.path.join(memdir, "next-steps.md")
+    content = read(path)
+    if content is None:
+        fail("next-steps.md not found in " + memdir + " (first kickoff creates it)")
+    iid = max_id(memdir) + 1
+    item = compose_item(args, iid)
+    check_ceiling(item, args.force)
+    # insert after the last open/done item; else append at EOF
+    blocks = split_blocks(content)
+    last = max((i for i, (k, _) in enumerate(blocks) if k.startswith("item")), default=None)
+    if last is None:
+        content = content.rstrip("\n") + "\n\n" + item
+    else:
+        out = []
+        for i, (_, text) in enumerate(blocks):
+            out.append(text)
+            if i == last:
+                out.append(("" if text.endswith("\n\n") else "\n") + item)
+        content = "".join(out)
+    write_atomic(path, content)
+    print(f"adicionado T{iid:03d}: {item_title(item)}")
+
+
+def close_item(args, marker, outcome):
+    memdir = memory_dir(args.dir)
+    block = find_open_item(memdir, args.id)
+    ensure_single_line(outcome=outcome, summary=args.summary)
+    today = datetime.date.today().isoformat()
+    text = args.summary or item_title(block, limit=400)
+    line = f"- {today} — {marker} — T{args.id:03d} {text} — {outcome}"
+    if args.note:
+        line += "\n  " + args.note.replace("\n", "\n  ")
+    append_done_line(memdir, line, today)
+    remove_block(memdir, block)
+    print(f"T{args.id:03d} → done-log como {marker} ({today})")
+
+
+def cmd_done(args):
+    close_item(args, "FEITO", args.how)
+
+
+def cmd_cancel(args):
+    close_item(args, "DESCARTADO", args.why)
+
+
+def cmd_edit(args):
+    memdir = memory_dir(args.dir)
+    block = find_open_item(memdir, args.id)
+    ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
+                       criterion=args.criterion)
+    new = block
+    if args.text:
+        head_m = re.match(r"- \[ \] \*\*T\d{3,}\*\* — ", block)
+        if not head_m:
+            fail(f"T{args.id:03d} has a non-canonical head — use cancel + add instead of --text")
+        tail_m = re.search(r"\*\*(?:" + FIELD_VARIANTS["Class"] + r"):\*\*.*", block, re.S)
+        tail = tail_m.group(0) if tail_m else ""
+        new = head_m.group(0) + args.text.strip() + (" " + tail if tail else "\n")
+    for flag, field in ((args.classe, "Class"), (args.effort, "Effort"),
+                        (args.risk, "Risk"), (args.criterion, "Criterion")):
+        if not flag:
+            continue
+        if field == "Class" and flag not in CLASSES:
+            fail(f"--class must be one of {', '.join(CLASSES)}")
+        pat = re.compile(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*[^*\n]*\.?")
+        if pat.search(new):
+            new = pat.sub(f"**{field}:** {flag}.", new, count=1)
+        else:
+            new = new.rstrip("\n") + f" **{field}:** {flag}.\n"
+    if not new.endswith("\n"):
+        new += "\n"
+    if len(new) > len(block):  # the ceiling blocks growth, not edits of legacy oversized items
+        check_ceiling(new, args.force)
+    path = os.path.join(memdir, "next-steps.md")
+    write_atomic(path, read(path).replace(block, new, 1))
+    print(f"T{args.id:03d} atualizado")
+
+
+def cmd_report(args):
+    dirs = (
+        sorted(
+            d
+            for d in (os.path.join(PROJECTS_ROOT, p, "memory") for p in os.listdir(PROJECTS_ROOT))
+            if os.path.exists(os.path.join(d, "done-log.md"))
+        )
+        if args.all
+        else [memory_dir(args.dir)]
+    )
+    entry = re.compile(r"^- (\d{4}-\d{2}-\d{2}) — .*(?:\n  .*)*", re.M)
+    for d in dirs:
+        content = read(os.path.join(d, "done-log.md"))
+        if content is None:
+            continue
+        lines = [
+            m.group(0).rstrip("\n")
+            for m in entry.finditer(content)
+            if not args.since or m.group(1) >= args.since
+        ]
+        if lines:
+            proj = os.path.basename(os.path.dirname(d))
+            print(f"\n### {proj}")
+            print("\n".join(lines))
+
+
+def cmd_migrate(args):
+    memdir = memory_dir(args.dir)
+    path = os.path.join(memdir, "next-steps.md")
+    content = read(path)
+    if content is None:
+        fail("next-steps.md not found in " + memdir)
+    blocks = split_blocks(content)
+    done = [t for k, t in blocks if k == "item-done"]
+    nid = max_id(memdir)
+    if done:
+        log_path = os.path.join(memdir, "done-log.md")
+        log = read(log_path) or DONE_LOG_TEMPLATE
+        header = "## Migrado do next-steps (histórico pré-log)"
+        migrated = "\n".join(t.rstrip("\n") for t in done)
+        if header in log:
+            log = log.replace(header, header + "\n\n" + migrated + "\n", 1)
+        else:
+            log = log.rstrip("\n") + f"\n\n{header}\n\nMovidos verbatim em {datetime.date.today().isoformat()}; itens carregam as próprias datas.\n\n{migrated}\n"
+        write_atomic(log_path, log)
+    out, dropped_prev = [], False
+    for kind, text in blocks:
+        if kind == "item-done":
+            dropped_prev = True
+            continue
+        if kind == "item-open" and item_id(text) is None:
+            nid += 1
+            text = text.replace("- [ ] ", f"- [ ] **T{nid:03d}** — ", 1)
+        if dropped_prev and out:
+            # collapse surplus blank lines only at the junction left by the removal
+            prev = out.pop()
+            nb = len(prev) - len(prev.rstrip("\n"))
+            na = len(text) - len(text.lstrip("\n"))
+            if nb + na > 2:
+                prev, text = prev.rstrip("\n") + "\n\n", text.lstrip("\n")
+            out.append(prev)
+        dropped_prev = False
+        out.append(text)
+    new_content = "".join(out)
+    if dropped_prev:  # file ended on a removed block
+        new_content = new_content.rstrip("\n") + "\n"
+    write_atomic(path, new_content)
+    print(f"{len(done)} item(ns) [x] → done-log; IDs atribuídos até T{nid:03d}")
+
+
+def main():
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--dir", default=argparse.SUPPRESS,
+                        help="memory dir override (default: resolved from cwd)")
+    p = argparse.ArgumentParser(prog="tk-queue", description=__doc__.splitlines()[0])
+    p.add_argument("--dir", default=None, help=argparse.SUPPRESS)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("list", parents=[common], help="open items with IDs")
+
+    a = sub.add_parser("add", parents=[common], help="new item in the queue")
+    a.add_argument("text")
+    a.add_argument("--class", dest="classe", required=True, help="|".join(CLASSES))
+    a.add_argument("--effort", required=True, help="S/M/L + wall-clock guess, e.g. 'M (~30min)'")
+    a.add_argument("--risk", help="only when unsupervised execution can do damage")
+    a.add_argument("--criterion", help="acceptance: 'A: <command that proves it>' or 'B: veredito do usuário'")
+    a.add_argument("--source", help="origin (default: today's date)")
+    a.add_argument("--force", action="store_true")
+
+    d = sub.add_parser("done", parents=[common], help="conclude: move the item to the done-log")
+    d.add_argument("id", type=int)
+    d.add_argument("--how", required=True, help="outcome + pointer: 'PR #82', 'commit abc123', '[[slug]]'")
+    d.add_argument("--summary", help="replaces the item text on the log line")
+    d.add_argument("--note", help="extra substance when there is NO pointer (the line is the only record)")
+
+    c = sub.add_parser("cancel", parents=[common], help="discard: move the item to the done-log as DESCARTADO")
+    c.add_argument("id", type=int)
+    c.add_argument("--why", required=True)
+    c.add_argument("--summary")
+    c.add_argument("--note")
+
+    e = sub.add_parser("edit", parents=[common], help="edit fields of an open item")
+    e.add_argument("id", type=int)
+    e.add_argument("--text")
+    e.add_argument("--class", dest="classe")
+    e.add_argument("--effort")
+    e.add_argument("--risk")
+    e.add_argument("--criterion")
+    e.add_argument("--force", action="store_true")
+
+    r = sub.add_parser("report", parents=[common], help="done-log entries")
+    r.add_argument("--since", help="YYYY-MM-DD")
+    r.add_argument("--all", action="store_true", help="sweeps every project")
+
+    sub.add_parser("migrate", parents=[common],
+                   help="move legacy [x] items to the done-log and assign IDs to open ones")
+
+    args = p.parse_args()
+    {
+        "list": cmd_list,
+        "add": cmd_add,
+        "done": cmd_done,
+        "cancel": cmd_cancel,
+        "edit": cmd_edit,
+        "report": cmd_report,
+        "migrate": cmd_migrate,
+    }[args.cmd](args)
+
+
+if __name__ == "__main__":
+    main()

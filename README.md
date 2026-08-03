@@ -21,12 +21,17 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR |
 
-The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical `next-steps.md` queue contract
-(defined in `tk/skills/kickoff/SKILL.md`): one file per project in auto-memory holding the
-next steps, each item carrying **Class** (AUTONOMOUS / DECISION / BLOCKED / EXTERNAL /
-RECURRING), **Effort** (S/M/L + rough wall-clock time) and an optional **Risk** line naming
-what unsupervised execution could damage — an item with a Risk line never enters an afk
-package. Wrap-up writes the queue; kickoff verifies and dispatches it. The queue has three
+The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (defined in
+`tk/skills/kickoff/SKILL.md`): two files per project in auto-memory — `next-steps.md`
+(open items only) and `done-log.md` (what left the queue, when, and how) — written ONLY
+through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / list /
+report / migrate), which moves a resolved item to the log in one command and enforces a
+size ceiling on entry. Each item carries an ID (T001…), **Class** (AUTONOMOUS / DECISION /
+BLOCKED / EXTERNAL / RECURRING), **Effort** (S/M/L + rough wall-clock time), an optional
+**Risk** line naming what unsupervised execution could damage — an item with a Risk line
+never enters an afk package — and an optional **Criterion** (acceptance: `A:` a
+deterministic check, `B:` the user's verdict). Wrap-up settles the queue at close;
+kickoff verifies and dispatches it at open. The queue has three
 dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, and `/loop` over the
 project's `loop.md` — spelled out in `tk/skills/dispatch/SKILL.md`, which also single-sources
 the dispatch palette, the `/goal` recipe and the `loop.md` contract.
@@ -56,6 +61,7 @@ tk/
   .claude-plugin/plugin.json      the plugin manifest
   skills/<name>/SKILL.md          one directory per skill
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
+  bin/tk-queue                    deterministic CLI: only writer of the queue files
 ```
 
 On the authoring machine this repo is cloned **as** `~/.claude/skills/`, so `tk/` sits
