@@ -84,9 +84,10 @@ summary of the change, the open findings, and the forge link. Show a small diff 
 Then ONE multiSelect `AskUserQuestion` with the actions, recommended first — the check IS
 the authorization (this is how "commit/push only when the user asks" is satisfied). Execute
 what was checked, following the project's conventions (required trailer lines; on the
-default branch, branch first). Every unchecked action enters `next-steps.md` as a DECISION
-item — a merge carries its digest reference (forge link + review status), any other action
-carries the branch/paths involved — deferred by choice, not by omission.
+default branch, branch first). Every unchecked action enters the queue as a DECISION item
+via `tk-queue add --class DECISION` — a merge carries its digest reference (forge link +
+review status), any other action carries the branch/paths involved — deferred by choice,
+not by omission.
 **Done when:** every pending version-control action was executed or recorded as an explicit
 DECISION — none merely implied — and the user has the summary: what changed, what was
 verified, what was deferred.
@@ -131,8 +132,8 @@ justification, and the next conversation's opening sentences when the path is `/
   project's review flow and fix its findings BEFORE committing. **Concurrent-session
   guard** first (defined in `../kickoff/AFK.md`): `git worktree list` + the `+` marks in
   `git branch -v`; another live session in the repo → leave the tree untouched and report
-  it. Push/merge/PR decisions enter `next-steps.md` as DECISION — merges with their digest
-  reference ready.
+  it. Push/merge/PR decisions enter the queue as DECISION via `tk-queue add` — merges with
+  their digest reference ready.
 - The step-6 report ends with the ready pair for the user's return: `/clear` +
   `/tk:kickoff afk`.
 

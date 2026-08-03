@@ -65,8 +65,9 @@ still matches the contract:
 
 ```markdown
 Read the queue at ~/.claude/projects/<cwd-slug>/memory/next-steps.md. Execute ONLY the
-top AUTONOMOUS item — one slice per iteration — and verify the result. Update the queue
-(resolved items leave). No AUTONOMOUS item left: end the loop and summarize what remains.
+top AUTONOMOUS item — one slice per iteration — and verify the result. Resolve it via
+`tk-queue done <id> --how "<pointer>"` (the script is the queue's only writer; contract
+in the tk kickoff skill). No AUTONOMOUS item left: end the loop and summarize what remains.
 ```
 
 Edits to `loop.md` take effect on the next iteration; the file belongs to the project

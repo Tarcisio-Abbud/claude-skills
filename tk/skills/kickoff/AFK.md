@@ -37,8 +37,9 @@ nothing inline.
 - Pick each subagent's model by the task's nature: mechanical, well-specified work → a
   cheaper model; judgment work → the parent's model; in doubt, the stronger one.
 - **Verify by artifact, not by summary:** read the diff / run the tests / check the output
-  before marking an item done and dispatching the next. Update `next-steps.md` as items
-  resolve.
+  before marking an item done and dispatching the next. Resolve each item on the spot via
+  `tk-queue done <id> --how "<pointer>"` (never hand-edit the queue files — contract in
+  `SKILL.md`).
 
 **Done when:** every package item is verified-done or reported-skipped, and the queue
 reflects it.
@@ -47,6 +48,6 @@ reflects it.
 
 The user returns to ONE message: (a) what was done, with the verifying evidence; (b)
 eligible items left out for size — the ready line to run them is another `/tk:kickoff afk`;
-(c) DECISION/BLOCKED/EXTERNAL items untouched, as in a normal kickoff close. Rewrite
-`next-steps.md` last.
+(c) DECISION/BLOCKED/EXTERNAL items untouched, as in a normal kickoff close. Settle any
+remaining queue changes through `tk-queue` (`add`/`edit`/`done`/`cancel`) last.
 **Done when:** the report covers (a)–(c) and `next-steps.md` matches the post-run queue.

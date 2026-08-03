@@ -7,16 +7,21 @@ The ONLY writer of the two auto-memory queue files:
   done-log.md     what left the queue, when, and how (feeds progress reports)
 
 An item leaves next-steps.md the moment it is resolved or discarded — `done`
-and `cancel` move it to done-log.md atomically, so the queue can never silently
-accumulate finished work again.
+and `cancel` move it to done-log.md in one command, log written first: a crash
+between the two writes can leave the item in both files (rerun-visible), never
+lost. That is what keeps finished work from silently accumulating in the queue.
 
 Items are identified by sequential IDs (**T001**, **T002**, ...) unique within
-a project (both files scanned). Items predating this script may lack IDs;
-`migrate` assigns them.
+a project (both files scanned, so a closed item's ID is never reused). Open
+items predating this script may lack IDs; `migrate` assigns them (legacy [x]
+items move to the log verbatim, ID-less, and — carrying no `- YYYY-MM-DD —`
+prefix — stay outside `report`'s scope; read the log itself for that history).
 
 Size ceiling: an item is a PENDING ACTION, not an essay. Durable context
-belongs in a memory file or the wiki, linked from the item. `add`/`edit`
-reject items over the ceiling (--force raises it for the rare exception).
+belongs in a memory file or the wiki, linked from the item. `add` rejects
+items over the ceiling; `edit` rejects growth beyond it (legacy oversized
+items can still have fields edited). --force raises the ceiling for the rare
+exception.
 """
 
 import argparse
@@ -211,12 +216,12 @@ def cmd_list(args):
         m = re.search(r"\*\*Class(?:e)?:\*\*\s*([A-Za-zÀ-ÿ]+)", text)
         rows.append((label, m.group(1) if m else "?", item_title(text)))
     if not rows:
-        print("(fila vazia)")
+        print("(queue empty)")
         return
     for label, cls, title in rows:
         print(f"{label}  {cls:<10}  {title}")
     if any(r[0] == "----" for r in rows):
-        print("\nitens sem ID: rode `tk-queue migrate` para atribuir.")
+        print("\nitems without ID: run `tk-queue migrate` to assign them.")
 
 
 def compose_item(args, iid):
@@ -266,7 +271,7 @@ def cmd_add(args):
                 out.append(("" if text.endswith("\n\n") else "\n") + item)
         content = "".join(out)
     write_atomic(path, content)
-    print(f"adicionado T{iid:03d}: {item_title(item)}")
+    print(f"added T{iid:03d}: {item_title(item)}")
 
 
 def close_item(args, marker, outcome):
@@ -280,7 +285,7 @@ def close_item(args, marker, outcome):
         line += "\n  " + args.note.replace("\n", "\n  ")
     append_done_line(memdir, line, today)
     remove_block(memdir, block)
-    print(f"T{args.id:03d} → done-log como {marker} ({today})")
+    print(f"T{args.id:03d} → done-log as {marker} ({today})")
 
 
 def cmd_done(args):
@@ -301,7 +306,10 @@ def cmd_edit(args):
         head_m = re.match(r"- \[ \] \*\*T\d{3,}\*\* — ", block)
         if not head_m:
             fail(f"T{args.id:03d} has a non-canonical head — use cancel + add instead of --text")
-        tail_m = re.search(r"\*\*(?:" + FIELD_VARIANTS["Class"] + r"):\*\*.*", block, re.S)
+        # keep everything from the FIRST field marker on, whichever field that is —
+        # anchoring on Class alone would silently drop Effort/Risk/Source of items
+        # that never carried a Class field
+        tail_m = re.search(r"\*\*(?:" + ANY_FIELD + r"):\*\*.*", block, re.S)
         tail = tail_m.group(0) if tail_m else ""
         new = head_m.group(0) + args.text.strip() + (" " + tail if tail else "\n")
     for flag, field in ((args.classe, "Class"), (args.effort, "Effort"),
@@ -321,7 +329,7 @@ def cmd_edit(args):
         check_ceiling(new, args.force)
     path = os.path.join(memdir, "next-steps.md")
     write_atomic(path, read(path).replace(block, new, 1))
-    print(f"T{args.id:03d} atualizado")
+    print(f"T{args.id:03d} updated")
 
 
 def cmd_report(args):
@@ -391,7 +399,7 @@ def cmd_migrate(args):
     if dropped_prev:  # file ended on a removed block
         new_content = new_content.rstrip("\n") + "\n"
     write_atomic(path, new_content)
-    print(f"{len(done)} item(ns) [x] → done-log; IDs atribuídos até T{nid:03d}")
+    print(f"{len(done)} [x] item(s) → done-log; IDs assigned up to T{nid:03d}")
 
 
 def main():
@@ -409,7 +417,7 @@ def main():
     a.add_argument("--class", dest="classe", required=True, help="|".join(CLASSES))
     a.add_argument("--effort", required=True, help="S/M/L + wall-clock guess, e.g. 'M (~30min)'")
     a.add_argument("--risk", help="only when unsupervised execution can do damage")
-    a.add_argument("--criterion", help="acceptance: 'A: <command that proves it>' or 'B: veredito do usuário'")
+    a.add_argument("--criterion", help="acceptance: 'A: <command that proves it>' or 'B: user verdict'")
     a.add_argument("--source", help="origin (default: today's date)")
     a.add_argument("--force", action="store_true")
 
