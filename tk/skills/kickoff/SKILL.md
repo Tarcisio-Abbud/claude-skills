@@ -112,7 +112,7 @@ verifies the queue at open.
 ```
 tk-queue list                                  # open items with IDs (T001…)
 tk-queue add "<action>" --class DECISION --effort "M (~30min)" \
-         [--risk "..."] [--criterion "A: <command that proves it> | B: user verdict"] [--source "..."]
+         --criterion "A: <command that proves it> | B: user verdict" [--risk "..."] [--source "..."]
 tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."]
 tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...] [--criterion ...] [--force]
@@ -130,9 +130,9 @@ re-triages; tracker tickets are referenced, not mirrored):
   data, irreversible effects, anything externally visible): one line naming the damage. No
   Risk line = safe to run unattended; an item carrying a Risk line never enters an afk
   package.
-- **Criterion** — acceptance criterion, optional for now: `A:` a deterministic check (a
-  command whose pass proves the item done) or `B:` the user's verdict. Without it, "done"
-  is the closer's self-report.
+- **Criterion** — acceptance criterion, required on `add`: `A:` a deterministic check (a
+  command whose pass proves the item done) or `B:` the user's verdict. `edit` still allows
+  clearing/leaving it out on legacy items created before the field was mandatory.
 
 An item is a pending action, not an essay — the script enforces a size ceiling. Durable
 context goes to a memory file or wiki page, linked from the item with `[[slug]]`.
