@@ -40,6 +40,22 @@ dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, and `/loop
 project's `loop.md` — spelled out in `tk/skills/dispatch/SKILL.md`, which also single-sources
 the dispatch palette, the `/goal` recipe and the `loop.md` contract.
 
+## The `tk-cowork` plugin
+
+The same pair rebuilt for **Claude Cowork**, where there is no repo and no test suite. What
+changed: the versioning gate became a gate over **irreversible** actions (send, share,
+schedule, post), the queue is a plain `next-steps.md` at the **project folder's root**
+(edited by the agent — `tk-queue` stays on the Claude Code side), and both skills are
+model-invoked, so the agent fires the wrap-up when the user says they are closing. `afk`
+survives in both, with the ceiling "every irreversible action becomes a `DECISION` item".
+
+Measured constraints behind that design (2026-08-04, probed with a throwaway skill): a
+script bundled in a skill **does** run in the Cowork sandbox (python3, git available), but
+state written there dies with the session, and `CLAUDE_PLUGIN_ROOT`/`CLAUDE_PLUGIN_DATA` are
+unset for a standalone uploaded skill — so the queue lives in the project folder, never in
+the sandbox. The personal upload path wants a zip with `SKILL.md` at the top level; the
+plugin form here is for marketplace/organization sync.
+
 ## Site extensions
 
 The skills are generic and standalone. Site-specific integrations — a wiki to update at
@@ -66,6 +82,10 @@ tk/
   skills/<name>/SKILL.md          one directory per skill
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   bin/tk-queue                    deterministic CLI: only writer of the queue files
+tk-cowork/
+  .claude-plugin/plugin.json      the Cowork plugin manifest
+  CONTRACT.md                     the queue contract, shared by both skills
+  skills/<name>/SKILL.md          wrap-up and kickoff, rebuilt for knowledge work
 ```
 
 On the authoring machine this repo is cloned **as** `~/.claude/skills/`, so `tk/` sits
