@@ -37,8 +37,10 @@ type (`user`/`feedback`/`project`/`reference`). Prefer updating an existing file
 duplicating; delete what proved wrong. Convert relative dates to absolute. Link with
 `[[slug]]`.
 **Pending items go through `tk-queue`** (`../../bin/tk-queue` relative to this file) — the
-only writer of the queue files: new items enter via `add` (with **Class**, **Effort**,
-optionally **Risk**/**Criterion**); resolved ones leave via `done --how "<pointer>"` and
+only writer of the queue files: new items enter via `add` (with **Class**, **Effort** and
+**Criterion**, plus **Risk** and **Project** where they apply — the criterion is required,
+so decide it here rather than leaving "done" as the next closer's self-report); resolved
+ones leave via `done --how "<pointer>"` and
 discarded ones via `cancel --why`, which move them to `done-log.md`. Never hand-edit the
 two files. Contract, commands and the pointer rule: `../kickoff/SKILL.md`.
 That queue is what `/tk:kickoff` dispatches at the next session's open.
