@@ -112,10 +112,11 @@ verifies the queue at open.
 ```
 tk-queue list                                  # open items with IDs (T001…)
 tk-queue add "<action>" --class DECISION --effort "M (~30min)" \
-         --criterion "A: <command that proves it> | B: user verdict" [--risk "..."] [--source "..."]
+         --criterion "A: <command that proves it> | B: user verdict" \
+         [--risk "..."] [--project slug] [--source "..."]
 tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."]
-tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...] [--criterion ...] [--force]
+tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...] [--criterion ...] [--project slug] [--force]
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries; --all sweeps every project
 tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
 ```
@@ -133,6 +134,15 @@ re-triages; tracker tickets are referenced, not mirrored):
 - **Criterion** — acceptance criterion, required on `add`: `A:` a deterministic check (a
   command whose pass proves the item done) or `B:` the user's verdict. `edit` still allows
   clearing/leaving it out on legacy items created before the field was mandatory.
+- **Project** — optional short lowercase slug (letters, digits, `-`/`_`) tagging which
+  project the item belongs to, for a workspace-root queue that mixes several projects'
+  items in one file. `add` warns on stderr (not an error — the item still enters) when the
+  tag doesn't match any currently-open item's tag, naming the tags already in use, to catch
+  a typo or a variant spelling (`ambiente` vs `.ambiente`) before it splinters the grouping.
+  `tk-queue list` groups items by this tag once any item carries one (untagged items land
+  in a final "no project" group); with no tagged items at all, `list` is unchanged from the
+  flat format. There is no `list --project X` filter and no per-project file — a single
+  project-scoped queue (like this project's own) simply never sets the tag.
 
 An item is a pending action, not an essay — the script enforces a size ceiling. Durable
 context goes to a memory file or wiki page, linked from the item with `[[slug]]`.

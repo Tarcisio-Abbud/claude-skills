@@ -135,9 +135,31 @@ FIELD_VARIANTS = {
     "Effort": r"(?:Effort|Esforço)",
     "Risk": r"(?:Risk|Risco)",
     "Criterion": r"(?:Criteri(?:on|o)|Critério)",
+    "Project": r"(?:Project|Projeto)",
     "Source": r"(?:Source|Fonte)",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
+PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+def validate_project(tag):
+    if not PROJECT_RE.match(tag):
+        fail(f"--project must be a short lowercase slug (letters, digits, '-'/'_', "
+             f"no spaces or dots): {tag!r}")
+
+
+def open_project_tags(memdir):
+    """Project tags carried by currently-open items in next-steps.md."""
+    content = read(os.path.join(memdir, "next-steps.md")) or ""
+    pat = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)")
+    tags = set()
+    for kind, text in split_blocks(content):
+        if kind != "item-open":
+            continue
+        m = pat.search(text)
+        if m:
+            tags.add(m.group(1))
+    return tags
 
 
 def item_title(text, limit=100):
@@ -207,6 +229,7 @@ def cmd_list(args):
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
         fail("next-steps.md not found in " + memdir)
+    proj_re = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)")
     rows = []
     for kind, text in split_blocks(content):
         if kind != "item-open":
@@ -214,12 +237,27 @@ def cmd_list(args):
         iid = item_id(text)
         label = f"T{iid:03d}" if iid else "----"
         m = re.search(r"\*\*Class(?:e)?:\*\*\s*([A-Za-zÀ-ÿ]+)", text)
-        rows.append((label, m.group(1) if m else "?", item_title(text)))
+        pm = proj_re.search(text)
+        rows.append((label, m.group(1) if m else "?", item_title(text), pm.group(1) if pm else None))
     if not rows:
         print("(queue empty)")
         return
-    for label, cls, title in rows:
-        print(f"{label}  {cls:<10}  {title}")
+    if any(r[3] for r in rows):
+        groups = {}
+        for label, cls, title, project in rows:
+            groups.setdefault(project, []).append((label, cls, title))
+        for project in sorted(k for k in groups if k is not None):
+            print(f"## {project}")
+            for label, cls, title in groups[project]:
+                print(f"{label}  {cls:<10}  {title}")
+            print()
+        if None in groups:
+            print("## no project")
+            for label, cls, title in groups[None]:
+                print(f"{label}  {cls:<10}  {title}")
+    else:
+        for label, cls, title, _ in rows:
+            print(f"{label}  {cls:<10}  {title}")
     if any(r[0] == "----" for r in rows):
         print("\nitems without ID: run `tk-queue migrate` to assign them.")
 
@@ -230,6 +268,8 @@ def compose_item(args, iid):
         fields.append(f"**Risk:** {args.risk}.")
     if args.criterion:
         fields.append(f"**Criterion:** {args.criterion}.")
+    if args.project:
+        fields.append(f"**Project:** {args.project}.")
     fields.append(f"**Source:** {args.source or datetime.date.today().isoformat()}")
     return f"- [ ] **T{iid:03d}** — {args.text.strip()} " + " ".join(fields) + "\n"
 
@@ -250,11 +290,19 @@ def cmd_add(args):
     if args.classe not in CLASSES:
         fail(f"--class must be one of {', '.join(CLASSES)}")
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
-                       criterion=args.criterion, source=args.source)
+                       criterion=args.criterion, source=args.source, project=args.project)
+    if args.project:
+        validate_project(args.project)
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:
         fail("next-steps.md not found in " + memdir + " (first kickoff creates it)")
+    if args.project:
+        existing = open_project_tags(memdir)
+        if args.project not in existing:
+            used = ", ".join(sorted(existing)) if existing else "(none yet)"
+            print(f"tk-queue: warning: new project tag '{args.project}' — "
+                  f"tags already in use: {used}", file=sys.stderr)
     iid = max_id(memdir) + 1
     item = compose_item(args, iid)
     check_ceiling(item, args.force)
@@ -300,7 +348,9 @@ def cmd_edit(args):
     memdir = memory_dir(args.dir)
     block = find_open_item(memdir, args.id)
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
-                       criterion=args.criterion)
+                       criterion=args.criterion, project=args.project)
+    if args.project:
+        validate_project(args.project)
     new = block
     if args.text:
         head_m = re.match(r"- \[ \] \*\*T\d{3,}\*\* — ", block)
@@ -313,14 +363,20 @@ def cmd_edit(args):
         tail = tail_m.group(0) if tail_m else ""
         new = head_m.group(0) + args.text.strip() + (" " + tail if tail else "\n")
     for flag, field in ((args.classe, "Class"), (args.effort, "Effort"),
-                        (args.risk, "Risk"), (args.criterion, "Criterion")):
+                        (args.risk, "Risk"), (args.criterion, "Criterion"),
+                        (args.project, "Project")):
         if not flag:
             continue
         if field == "Class" and flag not in CLASSES:
             fail(f"--class must be one of {', '.join(CLASSES)}")
         pat = re.compile(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*[^*\n]*\.?")
         if pat.search(new):
-            new = pat.sub(f"**{field}:** {flag}.", new, count=1)
+            # the body is greedy, so the match swallows the blank that separated this
+            # field from the next one — hand it back, or the two fields come out glued
+            def repl(m, _field=field, _flag=flag):
+                matched = m.group(0)
+                return f"**{_field}:** {_flag}." + matched[len(matched.rstrip()):]
+            new = pat.sub(repl, new, count=1)
         else:
             new = new.rstrip("\n") + f" **{field}:** {flag}.\n"
     if not new.endswith("\n"):
@@ -419,6 +475,8 @@ def main():
     a.add_argument("--risk", help="only when unsupervised execution can do damage")
     a.add_argument("--criterion", required=True,
                    help="acceptance: 'A: <command that proves it>' or 'B: user verdict'")
+    a.add_argument("--project", help="optional short slug tagging which project this item "
+                   "belongs to, e.g. 'ambiente', 'tk' (warns on stderr if unseen in this queue)")
     a.add_argument("--source", help="origin (default: today's date)")
     a.add_argument("--force", action="store_true")
 
@@ -441,6 +499,7 @@ def main():
     e.add_argument("--effort")
     e.add_argument("--risk")
     e.add_argument("--criterion")
+    e.add_argument("--project", help="assign/change the project tag")
     e.add_argument("--force", action="store_true")
 
     r = sub.add_parser("report", parents=[common], help="done-log entries")
