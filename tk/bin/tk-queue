@@ -130,6 +130,15 @@ def ensure_single_line(**fields):
             fail(f"--{name} must be single-line — a newline would break the queue's block format")
 
 
+def ensure_filled(**fields):
+    """argparse's required=True only proves the flag was typed. An empty string
+    satisfies it and would write a field-less item — the exact gap a mandatory
+    field exists to close."""
+    for name, val in fields.items():
+        if not (val or "").strip():
+            fail(f"--{name} cannot be blank")
+
+
 FIELD_VARIANTS = {
     "Class": r"Class(?:e)?",
     "Effort": r"(?:Effort|Esforço)",
@@ -139,7 +148,10 @@ FIELD_VARIANTS = {
     "Source": r"(?:Source|Fonte)",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
-PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+PROJECT_RE = re.compile(r"\A[a-z0-9][a-z0-9_-]*\Z")
+# single source for reading a tag back out: the warning and the grouping must
+# see the same tag, or an item warns as unprecedented and then groups elsewhere
+PROJECT_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)")
 
 
 def validate_project(tag):
@@ -148,15 +160,13 @@ def validate_project(tag):
              f"no spaces or dots): {tag!r}")
 
 
-def open_project_tags(memdir):
-    """Project tags carried by currently-open items in next-steps.md."""
-    content = read(os.path.join(memdir, "next-steps.md")) or ""
-    pat = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)")
+def open_project_tags(content):
+    """Project tags carried by currently-open items of a next-steps.md body."""
     tags = set()
-    for kind, text in split_blocks(content):
+    for kind, text in split_blocks(content or ""):
         if kind != "item-open":
             continue
-        m = pat.search(text)
+        m = PROJECT_TAG_RE.search(text)
         if m:
             tags.add(m.group(1))
     return tags
@@ -229,7 +239,6 @@ def cmd_list(args):
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
         fail("next-steps.md not found in " + memdir)
-    proj_re = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)")
     rows = []
     for kind, text in split_blocks(content):
         if kind != "item-open":
@@ -237,23 +246,22 @@ def cmd_list(args):
         iid = item_id(text)
         label = f"T{iid:03d}" if iid else "----"
         m = re.search(r"\*\*Class(?:e)?:\*\*\s*([A-Za-zÀ-ÿ]+)", text)
-        pm = proj_re.search(text)
+        pm = PROJECT_TAG_RE.search(text)
         rows.append((label, m.group(1) if m else "?", item_title(text), pm.group(1) if pm else None))
     if not rows:
         print("(queue empty)")
         return
-    if any(r[3] for r in rows):
+    if any(project for *_, project in rows):
         groups = {}
         for label, cls, title, project in rows:
             groups.setdefault(project, []).append((label, cls, title))
-        for project in sorted(k for k in groups if k is not None):
-            print(f"## {project}")
+        # untagged last: that group is a residue, not a project
+        order = sorted(k for k in groups if k is not None) + ([None] if None in groups else [])
+        for n, project in enumerate(order):
+            if n:
+                print()
+            print(f"## {project or 'no project'}")
             for label, cls, title in groups[project]:
-                print(f"{label}  {cls:<10}  {title}")
-            print()
-        if None in groups:
-            print("## no project")
-            for label, cls, title in groups[None]:
                 print(f"{label}  {cls:<10}  {title}")
     else:
         for label, cls, title, _ in rows:
@@ -266,8 +274,7 @@ def compose_item(args, iid):
     fields = [f"**Class:** {args.classe}.", f"**Effort:** {args.effort}."]
     if args.risk:
         fields.append(f"**Risk:** {args.risk}.")
-    if args.criterion:
-        fields.append(f"**Criterion:** {args.criterion}.")
+    fields.append(f"**Criterion:** {args.criterion}.")
     if args.project:
         fields.append(f"**Project:** {args.project}.")
     fields.append(f"**Source:** {args.source or datetime.date.today().isoformat()}")
@@ -291,21 +298,24 @@ def cmd_add(args):
         fail(f"--class must be one of {', '.join(CLASSES)}")
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
                        criterion=args.criterion, source=args.source, project=args.project)
+    ensure_filled(text=args.text, effort=args.effort, criterion=args.criterion)
     if args.project:
         validate_project(args.project)
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:
         fail("next-steps.md not found in " + memdir + " (first kickoff creates it)")
+    iid = max_id(memdir) + 1
+    item = compose_item(args, iid)
+    check_ceiling(item, args.force)
+    # after every rejection path: a warning about a tag the queue then refuses
+    # announces an adoption that never happened
     if args.project:
-        existing = open_project_tags(memdir)
+        existing = open_project_tags(content)
         if args.project not in existing:
             used = ", ".join(sorted(existing)) if existing else "(none yet)"
             print(f"tk-queue: warning: new project tag '{args.project}' — "
                   f"tags already in use: {used}", file=sys.stderr)
-    iid = max_id(memdir) + 1
-    item = compose_item(args, iid)
-    check_ceiling(item, args.force)
     # insert after the last open/done item; else append at EOF
     blocks = split_blocks(content)
     last = max((i for i, (k, _) in enumerate(blocks) if k.startswith("item")), default=None)
