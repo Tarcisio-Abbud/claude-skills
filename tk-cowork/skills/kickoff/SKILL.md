@@ -51,6 +51,11 @@ Execute what was checked, one item at a time, finishing each before opening the 
 item that turns out bigger than its Effort said gets reported as such and its Effort
 corrected in the file.
 
+Handing an item to a subagent is allowed; handing it the queue is not. Under the contract's
+**one writer** rule, subagents execute and report back — you verify each result against the
+thing itself, not against the report, and then make **one** pass over the queue and the
+project's shared documents knowing every outcome. Confirm that pass per the contract.
+
 A `DECISION` item is dispatched by asking the decision itself. Irreversible actions — send,
 share, schedule, post — happen only on an explicit go-ahead in this session, the same rule
 the wrap-up gate applies.

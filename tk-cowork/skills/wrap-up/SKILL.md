@@ -65,12 +65,14 @@ check or written into the queue.
 
 ## 5. Write the queue
 
-Rewrite `next-steps.md` per `CONTRACT.md`: open items only, resolved ones moved to
+The wrap-up writes last, and from a fresh read — never from what the conversation remembers
+the file holding, and never assuming a subagent's write landed. Rewrite `next-steps.md` per
+`CONTRACT.md`: open items only, resolved ones moved to
 `## Concluídos` with the date and what resolved them, new pendings from steps 1–4 entered
 with Class, Effort and Criterion filled. An item with no criterion is an item nobody can
 close, so decide it here rather than leaving "done" to the next session's judgement.
-**Done when:** every open item carries its three fields and no resolved item is still
-listed as open.
+**Done when:** every open item carries its three fields, no resolved item is still listed as
+open, and the file was read back per the contract to confirm the write landed.
 
 ## 6. Recommend the next step
 

@@ -49,6 +49,12 @@ schedule, post), the queue is a plain `next-steps.md` at the **project folder's 
 model-invoked, so the agent fires the wrap-up when the user says they are closing. `afk`
 survives in both, with the ceiling "every irreversible action becomes a `DECISION` item".
 
+Since v1.1.0 the contract also names **one writer** per shared document — the session
+holding the conversation — because two agents doing read-modify-write on the same file lose
+the first write silently, and a tool reporting success does not prove which base version it
+started from. Subagents execute and report back; the orchestrator writes once and reads the
+file back to confirm.
+
 Measured constraints behind that design (2026-08-04, probed with a throwaway skill): a
 script bundled in a skill **does** run in the Cowork sandbox (python3, git available), but
 state written there dies with the session, and `CLAUDE_PLUGIN_ROOT`/`CLAUDE_PLUGIN_DATA` are

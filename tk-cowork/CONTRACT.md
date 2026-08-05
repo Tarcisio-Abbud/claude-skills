@@ -37,6 +37,20 @@ document, reached from the Contexto line.
 **Leaving the queue** — a resolved item moves to `## Concluídos` with the date and what
 resolved it, in the same edit that resolves it.
 
+**One writer** — this file and the project's shared state documents have exactly one writer
+per batch of work: the session holding the conversation. Subagents execute their item and
+**report back what changed**; they never edit the queue or a shared document. Two
+read-modify-write cycles on the same file lose the first one silently — the second agent
+starts from a copy taken before the first wrote, and its save restores that copy. A
+subagent may own a whole document only when it is the sole writer of that file in the batch.
+
+**Confirming a write** — a tool returning success proves a write happened, not which base
+version it used, and a subagent reporting success proves even less. Confirm by reading the
+file back through a path that does not pass through the session's staging cache — where a
+device shell exists, that is reading the mount directly — and match a string that could
+only exist if this edit landed: an exact figure, an ID, a phrase just written. A grep for a
+generic word finds it elsewhere in the file and confirms nothing.
+
 **Legacy queue** — a project may carry an older file (`PROXIMOS-PASSOS.md`, or one buried
 in a subfolder). Adopt it once: merge into `next-steps.md` at the root, delete the old
 file, and say so.
