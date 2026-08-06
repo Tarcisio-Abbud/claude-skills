@@ -1,6 +1,6 @@
 {
   "name": "tk-cowork",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Session flow for Claude Cowork: wrap-up (close a session — inventory, project documents, deliverables, a gate over irreversible actions, the queue) and kickoff (open a session from the queue — verify, triage, dispatch). Both take `afk`. The queue is next-steps.md at the project folder's root; contract in CONTRACT.md.",
   "author": {
     "name": "Tarcisio-Abbud"

@@ -1,6 +1,7 @@
 ---
 name: kickoff
-description: "Kickoff — open a Cowork session from the project's queue: verify, triage, dispatch. Use when a session opens without a defined task, the user asks what is pending in this project, wants to pick up where the last session stopped, or when another skill needs the agenda built. Arg: afk (runs the autonomous items alone)."
+compatibility: "Designed for Claude Cowork. In Claude Code the `tk` plugin's own kickoff covers this instead: there the queue is a different file, owned by a script rather than written by hand."
+description: "Kickoff — open a Claude Cowork session from the project's queue: verify, triage, dispatch. Use when a session opens without a defined task, the user asks what is pending in this project, wants to pick up where the last session stopped, or when another skill needs the agenda built. Arg: afk (runs the autonomous items alone). COWORK ONLY — in Claude Code this is the wrong skill: there the queue is a different file, written by a script rather than by hand, and the `tk` plugin's own kickoff dispatches it. Do not fire this skill in a session that has a repository."
 ---
 
 A **kickoff** opens the session that `wrap-up` closed: it builds the **agenda** from the
@@ -8,6 +9,13 @@ project's queue, checks what is still real, triages item by item and dispatches 
 user picks. Execute the steps in order; each ends on a checkable criterion.
 
 **Argument:** `afk` — the session runs alone; see the last section.
+
+**Wrong surface?** One plugin list can serve both Claude Cowork and Claude Code, so this
+skill can load where it does not belong. Before step 1: a version-controlled repository in
+the working folder, or a sibling `tk` kickoff reachable as a command, means this is a Claude
+Code session — **stop here**, say which skill covers it, and let the user fire that one.
+Its queue is a different file, and hand-writing this one's format over it corrupts the
+queue a script owns.
 
 **The queue** is `next-steps.md` at the project folder's root. Read `CONTRACT.md` — beside
 this file, or at the plugin root (`${CLAUDE_PLUGIN_ROOT}/CONTRACT.md`) when this skill ships

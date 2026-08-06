@@ -1,6 +1,7 @@
 ---
 name: wrap-up
-description: "Wrap-up — close a Cowork session so nothing lives only in the conversation. Use when the user is closing, wrapping up or leaving a session, says they are done for now, asks what is still pending before stopping, or when another skill needs the session closed. Arg: afk (runs alone, no irreversible actions)."
+compatibility: "Designed for Claude Cowork. In Claude Code the `tk` plugin's own wrap-up covers this instead: this skill deliberately drops the repository, the test suite and the versioning gate a code session needs."
+description: "Wrap-up — close a Claude Cowork session so nothing lives only in the conversation. Use when the user is closing, wrapping up or leaving a session, says they are done for now, asks what is still pending before stopping, or when another skill needs the session closed. Arg: afk (runs alone, no irreversible actions). COWORK ONLY — in Claude Code this is the wrong skill: there the close runs through the `tk` plugin's own wrap-up, which covers the repo, the test suite and the versioning gate that this one deliberately drops. Do not fire this skill in a session that has a repository."
 ---
 
 A **wrap-up** leaves the project folder reflecting what this session did, so the next
@@ -8,6 +9,12 @@ session starts aligned. A close that leaves silent pendings is not a close. Exec
 steps in order; each ends on a checkable criterion, and every skip is stated.
 
 **Argument:** `afk` — the user left; see the last section.
+
+**Wrong surface?** One plugin list can serve both Claude Cowork and Claude Code, so this
+skill can load where it does not belong. Before step 1: a version-controlled repository in
+the working folder, or a sibling `tk` wrap-up reachable as a command, means this is a Claude
+Code session — **stop here**, say which skill covers it, and let the user fire that one. A
+close that skips the test suite and the versioning gate is worse than no close at all.
 
 **The queue** is `next-steps.md` at the project folder's root. Read `CONTRACT.md` before
 writing it — beside this file, or at the plugin root (`${CLAUDE_PLUGIN_ROOT}/CONTRACT.md`)
