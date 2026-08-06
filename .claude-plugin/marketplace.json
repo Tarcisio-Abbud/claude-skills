@@ -15,6 +15,12 @@
       "displayName": "tk-cowork — session flow for Claude Cowork",
       "source": "./tk-cowork",
       "description": "The kickoff/wrap-up pair rebuilt for knowledge work in Cowork: no git, no test suite; the gate covers irreversible actions (send, share, schedule) and the queue is next-steps.md at the project folder's root."
+    },
+    {
+      "name": "plugin-drift",
+      "displayName": "plugin-drift — plugin drift checker",
+      "source": "./plugin-drift",
+      "description": "Read-only drift report across every installed Claude Code plugin, in every marketplace known to this machine: refreshes each catalog, compares installed content against it (commit for git-pinned plugins, file hashes for plugins packaged in the marketplace repo), and pulls changelog highlights for drifted git-pinned plugins. Never applies an update."
     }
   ]
 }

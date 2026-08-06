@@ -62,6 +62,21 @@ unset for a standalone uploaded skill — so the queue lives in the project fold
 the sandbox. The personal upload path wants a zip with `SKILL.md` at the top level; the
 plugin form here is for marketplace/organization sync.
 
+## The `plugin-drift` plugin
+
+Read-only drift report across every installed Claude Code plugin, in every marketplace known
+to this machine (`~/.claude/plugins/known_marketplaces.json`) — one skill, `check`, wrapping
+`plugin-drift/bin/plugin-drift-check`. Refreshes each marketplace's catalog first, then per
+plugin: git-pinned plugins (catalog `source.sha`) compare the installed commit against the
+catalog's directly — matching semver is not proof of matching commit, `mattpocock-skills` is
+the canonical case where both read the same version with different commits underneath.
+Plugins packaged inside the marketplace repo itself (catalog `source` is a path, no `sha`)
+compare file hashes one direction instead, since the installed `gitCommitSha` on those is the
+marketplace's own commit, not a per-plugin one. `--changelog <name@marketplace>` pulls the
+commit-log highlights for one drifted git-pinned plugin, best-effort, from its own upstream
+repo. Never applies anything — the CLI's `disable`+`install` pair, or the `/plugin` dialog
+where the CLI binary is unavailable, is still how a drifted plugin actually gets updated.
+
 ## Site extensions
 
 The skills are generic and standalone. Site-specific integrations — a wiki to update at

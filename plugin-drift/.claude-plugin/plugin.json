@@ -1,0 +1,8 @@
+{
+  "name": "plugin-drift",
+  "version": "1.0.0",
+  "description": "Read-only drift check across every installed Claude Code plugin, in every marketplace known to this machine: refreshes each marketplace catalog, then compares installed content against it (commit sha for git-pinned plugins, file hashes for plugins packaged in the marketplace repo itself). Reports drift; never applies an update.",
+  "author": {
+    "name": "Tarcisio-Abbud"
+  }
+}
