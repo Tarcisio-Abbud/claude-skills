@@ -10,17 +10,23 @@ has moved. Never trust the version string; the script always compares the commit
 
 ## Steps
 
-1. Run `bin/plugin-drift-check` from this plugin (no args needed — it pulls every known
-   marketplace catalog first, then diffs). Read every row: `up to date`, `DRIFT`, or `unknown`.
-2. For each `DRIFT` row that came from a git-pinned plugin, run
-   `bin/plugin-drift-check --changelog <name@marketplace>` and surface the commit subjects it
-   returns as the update's highlights — a few lines, not the full log. If it reports the
-   installed commit wasn't found upstream, say so plainly instead of inventing what changed.
+1. Run `${CLAUDE_PLUGIN_ROOT}/bin/plugin-drift-check` (no args needed — it pulls every known
+   marketplace catalog first, then diffs) with whatever Python 3 is on PATH — try `python3`,
+   then `python`; on a Windows machine with neither aliased, fall back to a full interpreter
+   path (`where python`/`py -3` finds it). Read every row: `up to date`, `DRIFT`, or `unknown`,
+   and the marketplace header for `[STALE CATALOG]` — that marks a skipped pull (local edits
+   in the clone), so rows under it are judged against whatever was already on disk.
+2. For each `DRIFT` row that came from a git-pinned plugin, run it again with
+   `--changelog <name@marketplace>` and surface the commit subjects it returns as the update's
+   highlights — a few lines, not the full log. If it reports the installed commit wasn't found
+   upstream, say so plainly instead of inventing what changed.
 3. State the verdict plainly: which plugins drifted, and for each, the highlights from step 2
    if any. This script is read-only by construction — it never installs anything. Applying a
    drifted plugin still needs `claude plugin disable <name>` then `claude plugin install <name>`
-   where the `claude` CLI exists, or the `/plugin` dialog in an interactive session where it
-   doesn't (both unavailable from a non-interactive run — say so rather than attempting either).
+   where the `claude` CLI exists, or the `/plugin` dialog where it doesn't — and neither is a
+   safe default assumption: check whether this session actually has an interactive dialog
+   surface to run one in before pointing the user at it, rather than assuming one is always
+   one keystroke away.
 
 ## Reading the two kinds of drift
 
