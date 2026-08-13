@@ -8,3 +8,7 @@
 !/tk
 !/tk-cowork
 !/plugin-drift
+
+# Python bytecode from the tk-queue test suite
+__pycache__/
+*.pyc
