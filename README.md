@@ -117,6 +117,8 @@ tk/
   skills/<name>/SKILL.md          one directory per skill
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   bin/tk-queue                    deterministic CLI: only writer of the queue files
+  tests/test_tk_queue.py          regression suite for that CLI (stdlib only)
+  tests/mutations.py              puts each defect back; every test must fall
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
@@ -128,6 +130,14 @@ directly inside the skills directory and Claude Code auto-loads it as `tk@skills
 install step, and a SKILL.md is edited where it actually runs. Other skills living in that
 same directory (private or machine-local ones) are kept out of git by an allowlist
 `.gitignore`.
+
+Being the live directory cuts both ways: a checked-out branch changes behaviour **now**, and
+returning to `main` puts the old `tk-queue` back. A fix is only in force once merged.
+
+`tk-queue` has a suite — `python3 -m unittest discover -s tk/tests` — and every test in it is
+proved by `python3 tk/tests/mutations.py`, which restores each defect and requires the tests
+named for it to fail, one at a time. A test that passes with the defect back protects
+nothing, so a mutation that survives is a hole, not a pass.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
 the whole `tk/` tree is versioned.
