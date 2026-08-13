@@ -29,7 +29,18 @@ Sources, in this order:
 
 Wiki and repo docs are NOT agenda sources — volatile state doesn't live there; a pending
 item found there is stale doc, not queue.
-**Done when:** there is a single list of candidate items, each with its source.
+
+**Open with what left the queue this week.** Before the agenda itself, run
+`tk-queue report --since <today minus 7 days>` (`../../bin/tk-queue`; the date is a literal
+`YYYY-MM-DD`) and show its lines as a short **"saiu da fila esta semana"** block. It is
+context, not agenda: it says what moved while the user was away and catches an item about to
+be re-opened by mistake. The report prints one `### <project>` heading per memory dir — add
+`--all` to sweep every project's log, which is how a session opening on one project still
+sees the week whole. No lines in the window → say the week was quiet, in one line, and move
+on.
+
+**Done when:** the user saw the week's closed items (or the quiet week stated), and there is
+a single list of candidate items, each with its source.
 
 ## 2. Verify against reality
 
