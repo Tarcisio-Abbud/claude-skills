@@ -18,9 +18,12 @@ recommendations. (A project's own `.claude/skills/wrap-up` overrides this skill 
 
 ## 1. Inventory the session's changes
 
-Fire the sweep as ONE parallel batch — `git status`, `git diff --stat`,
+Fire the sweep as ONE parallel batch — `git fetch`, `git status`, `git diff --stat`,
 `git log --branches --not <default> --oneline` (commits still outside the default branch)
 and, if `gh`/forge CLI exists, the open PRs — and print the inventory before going deeper.
+The fetch comes first because every other signal here reads this disk only: a session
+working from another clone leaves no local trace at all, and without it the divergence
+surfaces as a rejected push at the end of the gate instead of a known fact at the start.
 Add the **facts/decisions/learnings** from the conversation (not just code — user choices,
 discoveries, external pending items). The inventory drives the rest: no code change →
 step 4 skips the suite; nothing behaviour- or knowledge-changing → step 3 shrinks to

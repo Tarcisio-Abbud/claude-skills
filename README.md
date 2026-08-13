@@ -55,6 +55,20 @@ the first write silently, and a tool reporting success does not prove which base
 started from. Subagents execute and report back; the orchestrator writes once and reads the
 file back to confirm.
 
+Since v1.2.0 both skills also carry a **surface guard**: `COWORK ONLY` in the description,
+a `Wrong surface?` stop before step 1, and `compatibility` naming the intended product.
+Nothing in the plugin format gates a skill by product — the separation is that the Cowork
+tab sources its plugins from the claude.ai account (**Customize**) while Claude Code reads
+its marketplaces and `~/.claude`, so one plugin list can end up serving both. These two are
+model-invoked, so without the guard a wrap-up meant for knowledge work can close a code
+session with no test suite and no versioning gate. `compatibility` documents the intent per
+the Agent Skills spec; Claude Code accepts the field but does not act on it.
+
+Keep the frontmatter of both within the spec's six fields (`name`, `description`, `license`,
+`compatibility`, `metadata`, `allowed-tools`). The claude.ai upload path that Cowork syncs
+from rejects anything else with a hard error rather than ignoring it — which is also why
+`tk`'s own skills, which use `disable-model-invocation`, could never travel that route.
+
 Measured constraints behind that design (2026-08-04, probed with a throwaway skill): a
 script bundled in a skill **does** run in the Cowork sandbox (python3, git available), but
 state written there dies with the session, and `CLAUDE_PLUGIN_ROOT`/`CLAUDE_PLUGIN_DATA` are
