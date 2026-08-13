@@ -128,9 +128,23 @@ tk-queue add "<action>" --class DECISION --effort "M (~30min)" \
 tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."]
 tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...] [--criterion ...] [--project slug] [--force]
-tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries; --all sweeps every project
+tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
 tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
 ```
+
+`<id>` is accepted in the form the queue displays (`T006`) as well as bare (`6`).
+
+Two writers at once are safe: every mutating command holds an exclusive lock on the
+memory dir for its whole read-modify-write. When an ID is not among the open items the
+script says WHY — already in the done-log, still ticked `[x]`, never allocated, or
+allocated and since removed by another writer. None of those mean "invent it again":
+re-read with `tk-queue list` instead of adding a replacement, which is how a queue grows
+duplicates.
+
+Free text may not contain a bold field marker (`**Project:**`, `**Risk:**`, …) — it would
+be read as the real field and silently hijack it, so `add`/`edit`/`done`/`cancel` refuse
+it and ask for a rephrase. Naming a field in plain prose is fine; only the bold-plus-colon
+shape is refused.
 
 Item fields (every recorded field is the writer's guess — kickoff always re-verifies and
 re-triages; tracker tickets are referenced, not mirrored):
@@ -155,7 +169,11 @@ re-triages; tracker tickets are referenced, not mirrored):
   splinters the grouping. `tk-queue list` groups items by this tag once any item carries one
   (untagged items land in a final "no project" group); with no tagged items at all, `list`
   is unchanged from the flat format. There is no `list --project X` filter and no
-  per-project file — a single project-scoped queue simply never sets the tag.
+  per-project file — a single project-scoped queue simply never sets the tag. The tag
+  follows the item into the done-log when it is closed, and `report` groups by it under
+  `####` headers (untagged last, same convention) — that grouping is what makes the weekly
+  closed-items block legible in a root queue that mixes projects. `###` remains the memory
+  dir, a different axis: one per project repo, `####` the tags within it.
 
 An item is a pending action, not an essay — the script enforces a size ceiling. Durable
 context goes to a memory file or wiki page, linked from the item with `[[slug]]`.
