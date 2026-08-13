@@ -25,12 +25,21 @@ exception.
 """
 
 import argparse
+import contextlib
 import datetime
 import os
 import re
 import sys
+import tempfile
+import time
+
+try:
+    import fcntl
+except ImportError:      # non-POSIX; see queue_lock
+    fcntl = None
 
 CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
+MUTATING = ("add", "edit", "done", "cancel", "migrate")   # commands that take the queue lock
 CEILING = 700          # chars per item; enough for title + fields + 1 link
 CEILING_FORCED = 2000
 PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
@@ -73,10 +82,70 @@ def read(path):
 
 
 def write_atomic(path, text):
-    tmp = path + ".tk-queue.tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(text)
-    os.replace(tmp, path)
+    """Write via a temp file in the same directory, then os.replace — a reader
+    sees the whole old file or the whole new one, never a half.
+
+    The temp name must be UNIQUE. A fixed one (`path + ".tk-queue.tmp"`) is
+    shared state between processes: two concurrent writers open and truncate
+    the same temp, and whichever calls os.replace second renames the other's
+    half-written bytes into place. Measured on this script before the fix: the
+    queue file came back truncated to one item and ID allocation restarted at
+    T001 — while both `add` calls had reported success.
+    """
+    d = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=os.path.basename(path) + ".tk-queue.",
+                               suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+LOCK_TIMEOUT = 10          # seconds a mutating command waits for the queue lock
+
+
+@contextlib.contextmanager
+def queue_lock(memdir):
+    """Serialize the read-modify-write that every mutating command performs.
+
+    Read → compute → write is not atomic even when the write is: two writers
+    interleave, and the second computes from a snapshot that predates the
+    first, so the first item is silently lost. The caller is then told "no open
+    item" and adds a duplicate — the failure this lock exists to prevent.
+    Holding it across the WHOLE command is what makes the read authoritative.
+
+    Advisory (flock), which is enough: the contract already makes this script
+    the queue's only writer. Readers (`list`, `report`) take no lock — every
+    write lands with os.replace, so a reader sees a coherent file regardless.
+    """
+    if fcntl is None:
+        # No flock (non-POSIX): the unique temp name and the honest miss report
+        # still hold; only cross-process serialization is unavailable.
+        yield
+        return
+    path = os.path.join(memdir, ".tk-queue.lock")
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        deadline = time.monotonic() + LOCK_TIMEOUT
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    fail(f"another tk-queue still holds {path} after {LOCK_TIMEOUT}s "
+                         "— a concurrent session is writing this queue. Nothing was "
+                         "changed; re-run `tk-queue list` and retry.")
+                time.sleep(0.05)
+        yield
+    finally:
+        os.close(fd)       # closing the fd releases the flock
 
 
 # --- item parsing ---------------------------------------------------------
@@ -115,6 +184,22 @@ def item_id(text):
     return int(m.group(1)) if m else None
 
 
+# CLI-facing ID parser: the queue DISPLAYS "T006" everywhere and the contract
+# writes `done <id>`, so the displayed form must be accepted. ASCII digits only
+# ([0-9], never \d): Python's int() would also swallow surrounding whitespace,
+# underscores ("1_0" → 10) and Unicode digits ("０６" → 6), which is a looser
+# grammar than `done N`, not the same one.
+ID_INPUT_RE = re.compile(r"[Tt]?([0-9]+)")
+
+
+def parse_id(raw):
+    m = ID_INPUT_RE.fullmatch(raw)
+    if not m:
+        raise argparse.ArgumentTypeError(
+            f"invalid id: {raw!r} (expected T006, t006, 006 or 6)")
+    return int(m.group(1))
+
+
 def max_id(memdir):
     top = 0
     for name in ("next-steps.md", "done-log.md"):
@@ -139,6 +224,30 @@ def ensure_filled(**fields):
             fail(f"--{name} cannot be blank")
 
 
+def ensure_no_embedded_marker(**fields):
+    """Refuse a field-marker shape (`**Project:**`) inside free text.
+
+    Once composed into the block, an embedded marker is indistinguishable from
+    the real field it precedes, and every reader takes the FIRST match:
+    item_title truncates the title there, PROJECT_TAG_RE reads the next word as
+    the project tag, `list` then groups the item under it, and `edit` rewrites
+    the prose instead of the field. That is the whole T063 incident — an item
+    whose text said "**Project:** para o done-log" acquired the tag "para".
+
+    The trigger is deliberately narrow: the literal bold-colon shape with a
+    capitalised field name. Prose that merely says "risk" or "projeto" never
+    matches — only bolding it with a trailing colon does. Refusing beats
+    escaping: an escape would need a matching unescape in every reader and in
+    the display path, each one a fresh chance to reintroduce this same bug.
+    """
+    for name, val in fields.items():
+        if val and EMBEDDED_MARKER_RE.search(val):
+            fail(f"--{name} contains a field-marker shape (e.g. **Project:**), which would "
+                 "be read as the real field and silently hijack it. Rephrase without the "
+                 "bold '**Word:**' shape — e.g. 'the Project field', or `Project:` in a "
+                 "code span.")
+
+
 FIELD_VARIANTS = {
     "Class": r"Class(?:e)?",
     "Effort": r"(?:Effort|Esforço)",
@@ -148,10 +257,19 @@ FIELD_VARIANTS = {
     "Source": r"(?:Source|Fonte)",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
+# the marker SHAPE alone, with no trailing value — every other use of ANY_FIELD
+# parses a real field; this one refuses the shape inside free text
+EMBEDDED_MARKER_RE = re.compile(r"\*\*(?:" + ANY_FIELD + r"):\*\*")
 PROJECT_RE = re.compile(r"\A[a-z0-9][a-z0-9_-]*\Z")
 # single source for reading a tag back out: the warning and the grouping must
 # see the same tag, or an item warns as unprecedented and then groups elsewhere
 PROJECT_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)")
+# same field, but anchored to end-of-line, for reading the tag back out of a
+# done-log entry's FIRST line only (see log_entry_tag). An entry's remaining
+# lines are a free-text --note that can itself quote "**Project:**" in prose —
+# a real case in this queue's own log — and searching the whole entry would
+# read that prose as the tag, which is precisely the T063 failure
+LOG_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)\.\s*$")
 
 
 def validate_project(tag):
@@ -181,6 +299,13 @@ def item_title(text, limit=100):
 
 
 # --- done-log writing -----------------------------------------------------
+
+def log_entry_tag(entry_text):
+    """Project tag of a done-log entry, read from its first line only — never
+    from the indented --note continuation lines (see LOG_TAG_RE)."""
+    m = LOG_TAG_RE.search(entry_text.split("\n", 1)[0])
+    return m.group(1) if m else None
+
 
 def append_done_line(memdir, line, today):
     path = os.path.join(memdir, "done-log.md")
@@ -222,14 +347,42 @@ def remove_block(memdir, block_text):
     write_atomic(path, excise(content, block_text))
 
 
+def missing_item_message(memdir, content, wanted_id):
+    """Why the ID is not among the open items — the four cases are NOT the same
+    answer, and a flat "no open item" is the one that does damage: it reads as
+    "never existed", so the caller adds the item again and the queue ends up
+    with two. Every branch below says what to do instead of re-adding.
+    """
+    label = f"T{wanted_id:03d}"
+    for kind, text in split_blocks(content):
+        if kind == "item-done" and item_id(text) == wanted_id:
+            return (f"{label} is in next-steps.md but already ticked [x], so it never "
+                    "reached the done-log. Run `tk-queue migrate` to move it, then read "
+                    "the log line — do NOT add a replacement item.")
+    log = read(os.path.join(memdir, "done-log.md")) or ""
+    if re.search(r"\b" + label + r"\b", log):
+        return (f"{label} already left the queue — it is in done-log.md. Read that line "
+                "before acting, and do NOT add a replacement item.")
+    top = max_id(memdir)
+    if wanted_id > top:
+        return (f"{label} was never allocated in {memdir} — the highest ID in use is "
+                f"T{top:03d}. Check the ID with `tk-queue list`.")
+    return (f"{label} is allocated but appears in neither next-steps.md nor done-log.md. "
+            "Another writer very likely removed or clobbered it. Nothing was changed. "
+            "Re-read the queue with `tk-queue list` before acting — do NOT add a "
+            "replacement item, that is exactly how a duplicate is born.")
+
+
 def find_open_item(memdir, wanted_id):
+    # Called under queue_lock by every mutating command, so THIS read is the
+    # authoritative one: no writer can have moved the item since it was taken.
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
         fail("next-steps.md not found in " + memdir)
     for kind, text in split_blocks(content):
         if kind == "item-open" and item_id(text) == wanted_id:
             return text
-    fail(f"no open item **T{wanted_id:03d}** in next-steps.md (see `tk-queue list`)")
+    fail(missing_item_message(memdir, content, wanted_id))
 
 
 # --- commands -------------------------------------------------------------
@@ -299,6 +452,8 @@ def cmd_add(args):
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
                        criterion=args.criterion, source=args.source, project=args.project)
     ensure_filled(text=args.text, effort=args.effort, criterion=args.criterion)
+    ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,
+                              criterion=args.criterion, source=args.source)
     if args.project:
         validate_project(args.project)
     path = os.path.join(memdir, "next-steps.md")
@@ -336,9 +491,19 @@ def close_item(args, marker, outcome):
     memdir = memory_dir(args.dir)
     block = find_open_item(memdir, args.id)
     ensure_single_line(outcome=outcome, summary=args.summary)
+    # these land in the done-log line, where the project tag is now a real field
+    # anchored at end-of-line — an embedded marker here would hijack it too
+    ensure_no_embedded_marker(summary=args.summary, outcome=outcome, note=args.note)
     today = datetime.date.today().isoformat()
+    # read the tag from the ORIGINAL block: item_title strips every field, and
+    # --summary replaces the text wholesale, so by then the tag is already gone
+    tag_m = PROJECT_TAG_RE.search(block)
     text = args.summary or item_title(block, limit=400)
     line = f"- {today} — {marker} — T{args.id:03d} {text} — {outcome}"
+    if tag_m:
+        # appended last so LOG_TAG_RE's end-of-line anchor reads this field, not
+        # any earlier lookalike in the item's own text
+        line += f" **Project:** {tag_m.group(1)}."
     if args.note:
         line += "\n  " + args.note.replace("\n", "\n  ")
     append_done_line(memdir, line, today)
@@ -359,6 +524,8 @@ def cmd_edit(args):
     block = find_open_item(memdir, args.id)
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
                        criterion=args.criterion, project=args.project)
+    ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,
+                              criterion=args.criterion)
     if args.project:
         validate_project(args.project)
     new = block
@@ -380,13 +547,18 @@ def cmd_edit(args):
         if field == "Class" and flag not in CLASSES:
             fail(f"--class must be one of {', '.join(CLASSES)}")
         pat = re.compile(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*[^*\n]*\.?")
-        if pat.search(new):
+        matches = list(pat.finditer(new))
+        if matches:
+            # the LAST occurrence, not the first: compose_item appends the fields at
+            # the tail, so the real field is always the last one. Items predating the
+            # embedded-marker guard can carry the shape inside their TEXT, and
+            # rewriting that first match replaces the author's prose with the flag
+            m = matches[-1]
+            matched = m.group(0)
             # the body is greedy, so the match swallows the blank that separated this
             # field from the next one — hand it back, or the two fields come out glued
-            def repl(m, _field=field, _flag=flag):
-                matched = m.group(0)
-                return f"**{_field}:** {_flag}." + matched[len(matched.rstrip()):]
-            new = pat.sub(repl, new, count=1)
+            new = (new[: m.start()] + f"**{field}:** {flag}."
+                   + matched[len(matched.rstrip()):] + new[m.end():])
         else:
             new = new.rstrip("\n") + f" **{field}:** {flag}.\n"
     if not new.endswith("\n"):
@@ -418,10 +590,26 @@ def cmd_report(args):
             for m in entry.finditer(content)
             if not args.since or m.group(1) >= args.since
         ]
-        if lines:
-            proj = os.path.basename(os.path.dirname(d))
-            print(f"\n### {proj}")
-            print("\n".join(lines))
+        if not lines:
+            continue
+        proj = os.path.basename(os.path.dirname(d))
+        print(f"\n### {proj}")
+        # two different axes: `###` is the memory dir (one per project repo),
+        # `####` the --project tag WITHIN it — the root queue mixes several
+        tagged = [(log_entry_tag(ln), ln) for ln in lines]
+        if not any(tag for tag, _ in tagged):
+            print("\n".join(lines))     # no tag anywhere: identical to before
+            continue
+        groups = {}
+        for tag, ln in tagged:
+            groups.setdefault(tag, []).append(ln)
+        # untagged last: that group is a residue, not a project (as in cmd_list)
+        order = sorted(k for k in groups if k is not None) + ([None] if None in groups else [])
+        for n, tag in enumerate(order):
+            if n:
+                print()
+            print(f"#### {tag or 'no project'}")
+            print("\n".join(groups[tag]))
 
 
 def cmd_migrate(args):
@@ -491,19 +679,19 @@ def main():
     a.add_argument("--force", action="store_true")
 
     d = sub.add_parser("done", parents=[common], help="conclude: move the item to the done-log")
-    d.add_argument("id", type=int)
+    d.add_argument("id", type=parse_id)
     d.add_argument("--how", required=True, help="outcome + pointer: 'PR #82', 'commit abc123', '[[slug]]'")
     d.add_argument("--summary", help="replaces the item text on the log line")
     d.add_argument("--note", help="extra substance when there is NO pointer (the line is the only record)")
 
     c = sub.add_parser("cancel", parents=[common], help="discard: move the item to the done-log as DESCARTADO")
-    c.add_argument("id", type=int)
+    c.add_argument("id", type=parse_id)
     c.add_argument("--why", required=True)
     c.add_argument("--summary")
     c.add_argument("--note")
 
     e = sub.add_parser("edit", parents=[common], help="edit fields of an open item")
-    e.add_argument("id", type=int)
+    e.add_argument("id", type=parse_id)
     e.add_argument("--text")
     e.add_argument("--class", dest="classe")
     e.add_argument("--effort")
@@ -520,7 +708,7 @@ def main():
                    help="move legacy [x] items to the done-log and assign IDs to open ones")
 
     args = p.parse_args()
-    {
+    handler = {
         "list": cmd_list,
         "add": cmd_add,
         "done": cmd_done,
@@ -528,7 +716,14 @@ def main():
         "edit": cmd_edit,
         "report": cmd_report,
         "migrate": cmd_migrate,
-    }[args.cmd](args)
+    }[args.cmd]
+    if args.cmd in MUTATING:
+        # taken BEFORE the handler's first read, released after its last write:
+        # a lock around the write alone would still let a stale snapshot win
+        with queue_lock(memory_dir(args.dir)):
+            handler(args)
+    else:
+        handler(args)
 
 
 if __name__ == "__main__":
