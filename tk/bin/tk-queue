@@ -100,6 +100,16 @@ def write_atomic(path, text):
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
+        # mkstemp creates 0600 — carry over the mode the queue file already had
+        # (or the umask default for a new one), or the rename silently narrows a
+        # world-readable memory file to owner-only
+        try:
+            mode = os.stat(path).st_mode & 0o7777
+        except FileNotFoundError:
+            umask = os.umask(0)
+            os.umask(umask)
+            mode = 0o666 & ~umask
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):

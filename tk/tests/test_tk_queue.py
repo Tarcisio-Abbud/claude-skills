@@ -185,10 +185,22 @@ class TestAtomicWrite(QueueTest):
             list(ex.map(writer, payloads))
 
         self.assertEqual(errors, [], "a writer crashed on another's temp file")
+
         got = self.body("atomic.md")
         self.assertIn(got, payloads,
                       f"file is neither writer's payload — {len(got)} chars, "
                       "so a rename published half-written bytes")
+
+    def test_the_rename_keeps_the_file_mode(self):
+        """mkstemp creates 0600. Publishing that by rename would narrow a
+        world-readable memory file to owner-only behind the user's back."""
+        self.seed(item(1, "um"))
+        path = os.path.join(self.mem, "next-steps.md")
+        os.chmod(path, 0o644)
+        r = self.run_tk("add", "novo", "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o644)
 
 
 class TestMissingItemMessage(QueueTest):

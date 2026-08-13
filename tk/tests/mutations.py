@@ -44,6 +44,10 @@ MUTATIONS = [
      '    fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o644)',
      ["TestAtomicWrite.test_concurrent_writers_never_leave_a_mixed_or_truncated_file"]),
 
+    ("T060 the rename publishes mkstemp's 0600 over the file's own mode",
+     "        os.chmod(tmp, mode)", "        pass",
+     ["TestAtomicWrite.test_the_rename_keeps_the_file_mode"]),
+
     ("T060 a miss reports the flat \"no open item\" again",
      "fail(missing_item_message(memdir, content, wanted_id))",
      'fail(f"no open item **T{wanted_id:03d}** in next-steps.md (see `tk-queue list`)")',
