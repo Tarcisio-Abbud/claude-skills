@@ -22,6 +22,11 @@ import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
 TK = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "bin", "tk-queue")
 
 
@@ -141,6 +146,30 @@ class TestConcurrency(QueueTest):
         for iid in ids:
             self.assertIn(f"**{iid}**", body)
 
+    @unittest.skipIf(fcntl is None, "flock unavailable on this platform")
+    def test_a_second_writer_waits_for_the_lock(self):
+        """The race test above is real but timing-dependent, so it cannot be a
+        mutation's proof — it passes by luck often enough. This one asserts the
+        lock's contract directly and deterministically: while the lock is held,
+        a writer must NOT proceed; once released, it must."""
+        self.seed(item(1, "um"))
+        lock_fd = os.open(os.path.join(self.mem, ".tk-queue.lock"),
+                          os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        proc = subprocess.Popen(
+            [sys.executable, TK, "add", "bloqueado", "--class", "AUTONOMOUS",
+             "--effort", "S", "--criterion", "A: c", "--dir", self.mem],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            with self.assertRaises(subprocess.TimeoutExpired,
+                                   msg="the writer did not wait for the lock"):
+                proc.wait(timeout=1.5)
+        finally:
+            os.close(lock_fd)                      # releases the flock
+        out, err = proc.communicate(timeout=30)
+        self.assertEqual(proc.returncode, 0, err)  # and then it goes through
+        self.assertIn("**T002**", self.body())
+
     def test_concurrent_close_and_add_keep_both_files_coherent(self):
         self.seed(item(1, "um"), item(2, "dois"))
         with ThreadPoolExecutor(2) as ex:
@@ -231,6 +260,33 @@ class TestMissingItemMessage(QueueTest):
         self.assertEqual(r.returncode, 1)
         self.assertIn("never allocated", r.stderr)
         self.assert_no_duplicate_invited(r.stderr)
+
+    def test_an_id_merely_quoted_in_the_log_is_not_closed(self):
+        """Real shapes from this queue's own log: a --note saying "assigned IDs
+        up to T022", and an outcome naming a sibling ticket still open in
+        another project. Neither closed anything — reporting them as closed is
+        a confident wrong answer from the path built to stop wrong answers."""
+        # T030 open, so 22 and 54 are inside the allocated range but in neither
+        # file — the branch that must NOT be confused with "already closed"
+        self.seed(item(30, "trinta"), item(60, "sessenta"),
+                  log="- 2026-08-04 — FEITO — T017 migrate — pointer\n"
+                      "  Migrou 1 item [x] e atribuiu IDs até T022.\n"
+                      "- 2026-08-13 — DESCARTADO — T033 fila errada — "
+                      "re-registrado lá como T054\n")
+        for iid in ("T022", "T054"):
+            with self.subTest(iid=iid):
+                r = self.run_tk("edit", iid, "--effort", "L")
+                self.assertEqual(r.returncode, 1)
+                self.assertNotIn("already left the queue", r.stderr)
+                self.assertIn("Another writer", r.stderr)
+
+    def test_a_genuinely_closed_id_is_still_recognised(self):
+        # the other side of the same rule: the canonical position must still match
+        self.seed(item(30, "trinta"),
+                  log="- 2026-08-04 — FEITO — T017 migrate — pointer\n")
+        r = self.run_tk("edit", "T017", "--effort", "L")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("already left the queue", r.stderr)
 
     def test_allocated_but_vanished_names_the_concurrent_writer(self):
         # the T060 case: the ID was handed out, the item is in neither file
@@ -356,14 +412,30 @@ class TestEmbeddedMarker(QueueTest):
         self.assertIn("field-marker shape", r.stderr)
         self.assertEqual(self.body(), before)
 
-    def test_close_refuses_a_marker_in_summary_and_note(self):
-        for flag in ("--summary", "--note"):
-            with self.subTest(flag=flag):
+    def test_close_refuses_a_marker_in_summary_and_outcome(self):
+        # both share the log entry's first line with the appended project tag
+        for argv in (("--how", "x", "--summary", "y **Project:** z"),
+                     ("--how", "feito **Project:** z")):
+            with self.subTest(argv=argv):
                 self.seed(item(1, "um", project="tk"))
-                r = self.run_tk("done", "T001", "--how", "x", flag, "y **Project:** z")
+                r = self.run_tk("done", "T001", *argv)
                 self.assertEqual(r.returncode, 1)
                 self.assertIn("field-marker shape", r.stderr)
-                self.assertEqual(self.body("done-log.md"), "")
+                # body() returns "" for a missing file too, so assert on the queue:
+                # the item must still be open, i.e. nothing was closed
+                self.assertIn("**T001**", self.body())
+
+    def test_a_note_may_still_quote_a_marker(self):
+        """--note lands on continuation lines, which log_entry_tag never reads.
+        Guarding it would forbid the exact note this queue's real log carries
+        while describing this very field."""
+        self.seed(item(1, "um", project="tk"))
+        r = self.run_tk("done", "T001", "--how", "x", "--note",
+                        "close_item nao levava a tag **Project:** para o done-log")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Project:** para o done-log", self.body("done-log.md"))
+        out = self.run_tk("report", "--since", "2026-01-01").stdout
+        self.assertNotIn("#### para", out)
 
     def test_plain_prose_naming_the_fields_is_not_refused(self):
         """T065's own text lists the field names in parentheses. Only the bold

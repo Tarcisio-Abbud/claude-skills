@@ -39,7 +39,12 @@ except ImportError:      # non-POSIX; see queue_lock
     fcntl = None
 
 CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
-MUTATING = ("add", "edit", "done", "cancel", "migrate")   # commands that take the queue lock
+READERS = frozenset(("list", "report"))   # everything else mutates and takes the queue lock
+LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
+# read once, at import: os.umask can only be read by setting it, and doing that
+# mid-run would race any other thread writing a file (the suite writes from six)
+UMASK = os.umask(0)
+os.umask(UMASK)
 CEILING = 700          # chars per item; enough for title + fields + 1 link
 CEILING_FORCED = 2000
 PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
@@ -106,18 +111,13 @@ def write_atomic(path, text):
         try:
             mode = os.stat(path).st_mode & 0o7777
         except FileNotFoundError:
-            umask = os.umask(0)
-            os.umask(umask)
-            mode = 0o666 & ~umask
+            mode = 0o666 & ~UMASK
         os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
-
-
-LOCK_TIMEOUT = 10          # seconds a mutating command waits for the queue lock
 
 
 @contextlib.contextmanager
@@ -300,6 +300,25 @@ def open_project_tags(content):
     return tags
 
 
+def group_by_tag(pairs):
+    """(tag, payload) pairs → ordered [(tag, [payload, ...])], tags sorted and
+    the untagged group LAST — that group is a residue, not a project. Returns
+    None when nothing carries a tag, so the caller prints its flat form and an
+    untagged queue looks exactly as it did before tags existed.
+
+    `list` and `report` group on different things (open items vs done-log
+    entries) under different heading levels, but the ordering rule is one rule
+    and belongs in one place.
+    """
+    if not any(tag for tag, _ in pairs):
+        return None
+    groups = {}
+    for tag, payload in pairs:
+        groups.setdefault(tag, []).append(payload)
+    order = sorted(k for k in groups if k is not None) + ([None] if None in groups else [])
+    return [(tag, groups[tag]) for tag in order]
+
+
 def item_title(text, limit=100):
     t = re.sub(r"^- \[[ x]\] ", "", text.strip())
     t = ID_RE.sub("", t)
@@ -357,6 +376,23 @@ def remove_block(memdir, block_text):
     write_atomic(path, excise(content, block_text))
 
 
+def id_in_done_log(memdir, label):
+    """Whether the ID really was closed — matched ONLY where a close writes it:
+    after the marker on an entry's first line, or as a bold ID on a legacy [x]
+    line moved verbatim by `migrate`.
+
+    Anywhere else the ID is prose. This queue's own log carries a --note saying
+    "atribuiu IDs até T022" and an outcome naming a sibling ticket "T054" that
+    is still open in another project — a whole-file search reads both as closed
+    and answers "already left the queue", a confident wrong diagnosis from the
+    error path that exists to prevent confident wrong diagnoses.
+    """
+    log = read(os.path.join(memdir, "done-log.md")) or ""
+    closed = re.compile(r"^- \d{4}-\d{2}-\d{2} — \S+ — " + label + r"\b"
+                        r"|^- \[x\] .*\*\*" + label + r"\*\*", re.M)
+    return closed.search(log) is not None
+
+
 def missing_item_message(memdir, content, wanted_id):
     """Why the ID is not among the open items — the four cases are NOT the same
     answer, and a flat "no open item" is the one that does damage: it reads as
@@ -369,8 +405,7 @@ def missing_item_message(memdir, content, wanted_id):
             return (f"{label} is in next-steps.md but already ticked [x], so it never "
                     "reached the done-log. Run `tk-queue migrate` to move it, then read "
                     "the log line — do NOT add a replacement item.")
-    log = read(os.path.join(memdir, "done-log.md")) or ""
-    if re.search(r"\b" + label + r"\b", log):
+    if id_in_done_log(memdir, label):
         return (f"{label} already left the queue — it is in done-log.md. Read that line "
                 "before acting, and do NOT add a replacement item.")
     top = max_id(memdir)
@@ -414,21 +449,18 @@ def cmd_list(args):
     if not rows:
         print("(queue empty)")
         return
-    if any(project for *_, project in rows):
-        groups = {}
-        for label, cls, title, project in rows:
-            groups.setdefault(project, []).append((label, cls, title))
-        # untagged last: that group is a residue, not a project
-        order = sorted(k for k in groups if k is not None) + ([None] if None in groups else [])
-        for n, project in enumerate(order):
+    grouped = group_by_tag([(project, (label, cls, title))
+                            for label, cls, title, project in rows])
+    if grouped is None:
+        for label, cls, title, _ in rows:
+            print(f"{label}  {cls:<10}  {title}")
+    else:
+        for n, (project, entries) in enumerate(grouped):
             if n:
                 print()
             print(f"## {project or 'no project'}")
-            for label, cls, title in groups[project]:
+            for label, cls, title in entries:
                 print(f"{label}  {cls:<10}  {title}")
-    else:
-        for label, cls, title, _ in rows:
-            print(f"{label}  {cls:<10}  {title}")
     if any(r[0] == "----" for r in rows):
         print("\nitems without ID: run `tk-queue migrate` to assign them.")
 
@@ -501,9 +533,12 @@ def close_item(args, marker, outcome):
     memdir = memory_dir(args.dir)
     block = find_open_item(memdir, args.id)
     ensure_single_line(outcome=outcome, summary=args.summary)
-    # these land in the done-log line, where the project tag is now a real field
-    # anchored at end-of-line — an embedded marker here would hijack it too
-    ensure_no_embedded_marker(summary=args.summary, outcome=outcome, note=args.note)
+    # --summary and the outcome share the log entry's FIRST line with the project
+    # tag appended below, so a marker in them can be read as that tag. --note is
+    # deliberately NOT guarded: it lands on continuation lines, which log_entry_tag
+    # never reads — and a real note in this queue's log quotes "**Project:**" while
+    # describing this very field, which is the case LOG_TAG_RE exists to tolerate
+    ensure_no_embedded_marker(summary=args.summary, outcome=outcome)
     today = datetime.date.today().isoformat()
     # read the tag from the ORIGINAL block: item_title strips every field, and
     # --summary replaces the text wholesale, so by then the tag is already gone
@@ -606,20 +641,15 @@ def cmd_report(args):
         print(f"\n### {proj}")
         # two different axes: `###` is the memory dir (one per project repo),
         # `####` the --project tag WITHIN it — the root queue mixes several
-        tagged = [(log_entry_tag(ln), ln) for ln in lines]
-        if not any(tag for tag, _ in tagged):
+        grouped = group_by_tag([(log_entry_tag(ln), ln) for ln in lines])
+        if grouped is None:
             print("\n".join(lines))     # no tag anywhere: identical to before
             continue
-        groups = {}
-        for tag, ln in tagged:
-            groups.setdefault(tag, []).append(ln)
-        # untagged last: that group is a residue, not a project (as in cmd_list)
-        order = sorted(k for k in groups if k is not None) + ([None] if None in groups else [])
-        for n, tag in enumerate(order):
+        for n, (tag, entries) in enumerate(grouped):
             if n:
                 print()
             print(f"#### {tag or 'no project'}")
-            print("\n".join(groups[tag]))
+            print("\n".join(entries))
 
 
 def cmd_migrate(args):
@@ -727,7 +757,7 @@ def main():
         "report": cmd_report,
         "migrate": cmd_migrate,
     }[args.cmd]
-    if args.cmd in MUTATING:
+    if args.cmd not in READERS:
         # taken BEFORE the handler's first read, released after its last write:
         # a lock around the write alone would still let a stale snapshot win
         with queue_lock(memory_dir(args.dir)):
