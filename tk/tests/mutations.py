@@ -11,6 +11,18 @@ is reported as SURVIVED — that is a hole in the suite, not a passing result.
 Each mutation switches off the RULE (the guard's decision), never a whole step:
 deleting the step would also break tests that merely pass through it, which
 proves nothing about the guard.
+
+KNOWN BLIND SPOT — vacuity at SUBTEST level. This harness reads a test's exit
+status, and one falling subTest already reddens the whole test. So a test whose
+subtests are individually vacuous still reports as "caught" as long as ONE of
+them falls, and nothing here can see the others. Two live examples, both
+annotated in the test that carries them:
+TestRiskDeletion.test_the_reserved_word_is_case_and_space_tolerant (the `none`
+form survives the case-tolerance mutation) and
+TestCeilingScope.test_every_field_edit_passes_without_force (the `--class` form
+survives the block-ceiling mutation, because swapping AUTONOMOUS for DECISION
+SHRINKS the item). Reading the failure list, not the tally, is what catches
+these — which is why the PR body pastes the measured lines.
 """
 
 import os
@@ -162,8 +174,16 @@ MUTATIONS = [
      ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
 
     ("T070 clearing leaves the separator blank dangling at end of line",
-     '                new = re.sub(r"[ \\t]+(?=\\n|\\Z)", "", new)', "                pass",
+     '                if tail[:1] in ("", "\\n"):', "                if False:",
      ["TestRiskDeletion.test_no_trailing_blank_is_left_when_risk_was_the_last_field"]),
+
+    # the same repair in the other direction: too WIDE instead of absent
+    ("review#2 the blank repair sweeps the whole block again, eating a hard break",
+     '                if tail[:1] in ("", "\\n"):\n'
+     '                    head = head.rstrip(" \\t")\n'
+     "                new = head + tail",
+     '                new = re.sub(r"[ \\t]+(?=\\n|\\Z)", "", head + tail)',
+     ["TestRiskDeletion.test_a_hard_break_elsewhere_in_the_block_survives"]),
 
     ("T071 the ceiling gates a field-only edit again",
      "    if args.text and len(new) > len(block):", "    if len(new) > len(block):",
@@ -173,6 +193,31 @@ MUTATIONS = [
      "    if args.text and len(new) > len(block):", "    if False:",
      ["TestCeilingScope.test_a_text_edit_over_the_ceiling_is_still_refused",
       "TestCeilingScope.test_a_text_edit_growing_an_already_oversized_item_is_refused"]),
+
+    # the block-ceiling exemption (T071) is only safe because the field ceiling
+    # bounds what a field edit can write — without it, the exemption IS the bypass
+    ("review#1 edit stops measuring field values (the reported bypass)",
+     "    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,\n"
+     "                         criterion=args.criterion, project=args.project)",
+     "    pass",
+     ["TestCeilingScope.test_a_field_value_over_its_ceiling_is_refused",
+      "TestCeilingScope.test_the_bypass_cannot_push_the_item_past_the_block_ceiling"]),
+
+    ("review#1 add stops measuring field values",
+     "    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,\n"
+     "                         criterion=args.criterion, project=args.project, "
+     "source=args.source)",
+     "    pass",
+     ["TestCeilingScope.test_add_measures_field_values_too"]),
+
+    ("review#1 the field ceiling over-triggers, refusing every value",
+     "        if val and len(val) > limit:", "        if val:",
+     ["TestCeilingScope.test_a_field_value_under_its_ceiling_still_passes"]),
+
+    ("review#1 --force stops raising the field ceiling",
+     "    limit = FIELD_CEILING_FORCED if force else FIELD_CEILING",
+     "    limit = FIELD_CEILING",
+     ["TestCeilingScope.test_force_raises_the_field_ceiling"]),
 
     ("T072 a mutating command stops naming the queue it writes",
      '        print(f"tk-queue: queue: {memdir}", file=sys.stderr)', "        pass",

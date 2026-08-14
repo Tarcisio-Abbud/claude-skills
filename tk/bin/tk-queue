@@ -17,12 +17,19 @@ items predating this script may lack IDs; `migrate` assigns them (legacy [x]
 items move to the log verbatim, ID-less, and — carrying no `- YYYY-MM-DD —`
 prefix — stay outside `report`'s scope; read the log itself for that history).
 
-Size ceiling: an item is a PENDING ACTION, not an essay. Durable context
-belongs in a memory file or the wiki, linked from the item. `add` rejects
-items over the ceiling; `edit` rejects growth beyond it when it rewrites the
-item's TEXT — a field-only edit (--class/--effort/--risk/--criterion/--project)
-is never measured, so a legacy oversized item stays taggable and triageable.
---force raises the ceiling for the rare exception.
+Size ceilings: an item is a PENDING ACTION, not an essay. Durable context
+belongs in a memory file or the wiki, linked from the item. TWO ceilings, one
+per thing being guarded:
+
+  block (CEILING)        the whole item. `add` rejects an oversized item;
+                         `edit` measures it only when --text rewrites and grows
+                         the item, so a field-only edit leaves a legacy
+                         oversized item taggable and triageable.
+  field (FIELD_CEILING)  each field VALUE, on add AND edit alike. Without it
+                         the block ceiling is bypassable by choosing another
+                         flag — every field but --class is free text.
+
+--force raises both for the rare exception.
 
 Every mutating command prints the resolved memory dir on stderr before acting:
 the target queue is inferred from --dir or the cwd, and an unseen inference is
@@ -58,8 +65,17 @@ LOCK_TIMEOUT = 10                         # seconds a mutating command waits for
 # mid-run would race any other thread writing a file (the suite writes from six)
 UMASK = os.umask(0)
 os.umask(UMASK)
-CEILING = 700          # chars per item; enough for title + fields + 1 link
+CEILING = 700          # chars per ITEM BLOCK; enough for title + fields + 1 link
 CEILING_FORCED = 2000
+# chars per FIELD VALUE. The block ceiling cannot be the only one: a field-only
+# edit is exempt from it (see cmd_edit), and --effort/--risk/--criterion/--project
+# are free text, so without this the whole ceiling is bypassed just by choosing a
+# different flag — measured before this existed: `edit <id> --criterion "<900
+# chars>"` took a 100-char item to 1014 and returned 0. Every field is one line of
+# a one-line item, so 200 chars is already generous: it is nearly a third of the
+# whole item's budget.
+FIELD_CEILING = 200
+FIELD_CEILING_FORCED = 500
 PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
 
 DONE_LOG_TEMPLATE = """---
@@ -510,6 +526,26 @@ def check_ceiling(item, force):
         )
 
 
+def check_field_ceilings(force, **fields):
+    """Measure each field VALUE against its own ceiling.
+
+    Two ceilings, because they guard two different things. The block ceiling
+    guards the item's PROSE — the essay problem. This one guards the fields, and
+    it is what keeps the block ceiling from being bypassed by choosing another
+    flag: `--class` and the ID are bounded by their own grammars, but
+    `--effort`, `--risk`, `--criterion`, `--project` and `--source` are free
+    text. Applied identically on `add` and `edit`, or the file could hold a
+    value that no `edit` is allowed to write.
+    """
+    limit = FIELD_CEILING_FORCED if force else FIELD_CEILING
+    for name, val in fields.items():
+        if val and len(val) > limit:
+            fail(f"--{name} has {len(val)} chars (field ceiling {limit}). A field is one "
+                 "line of a one-line item: put the substance in a memory file or wiki "
+                 "page and link it ([[slug]])."
+                 + ("" if force else f" --force raises it to {FIELD_CEILING_FORCED}."))
+
+
 def cmd_add(args):
     memdir = memory_dir(args.dir)
     if args.classe not in CLASSES:
@@ -519,6 +555,8 @@ def cmd_add(args):
     ensure_filled(text=args.text, effort=args.effort, criterion=args.criterion)
     ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,
                               criterion=args.criterion, source=args.source)
+    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,
+                         criterion=args.criterion, project=args.project, source=args.source)
     if args.project:
         validate_project(args.project)
     path = os.path.join(memdir, "next-steps.md")
@@ -594,6 +632,8 @@ def cmd_edit(args):
                        criterion=args.criterion, project=args.project)
     ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,
                               criterion=args.criterion)
+    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,
+                         criterion=args.criterion, project=args.project)
     if args.project:
         validate_project(args.project)
     new = block
@@ -622,12 +662,17 @@ def cmd_edit(args):
                 # uses it: an item predating the embedded-marker guard can carry
                 # the shape inside its own text
                 start, end = matches[-1].span()
-                new = new[:start] + new[end:]
+                head, tail = new[:start], new[end:]
                 # the body is greedy, so the match already swallowed the blank that
                 # separated Risk from the next field — but when Risk was the last
                 # field on the line there is nothing after it, and the blank BEFORE
-                # it is left dangling at end of line
-                new = re.sub(r"[ \t]+(?=\n|\Z)", "", new)
+                # it is left dangling at end of line. Repair exactly at the removal
+                # site: a sweep over the whole block would also eat a two-space
+                # Markdown hard break on an unrelated continuation line, silently
+                # rewrapping text this command was never asked to touch
+                if tail[:1] in ("", "\n"):
+                    head = head.rstrip(" \t")
+                new = head + tail
             continue
         if matches:
             # the LAST occurrence, not the first: compose_item appends the fields at
@@ -644,13 +689,16 @@ def cmd_edit(args):
             new = new.rstrip("\n") + f" **{field}:** {flag}.\n"
     if not new.endswith("\n"):
         new += "\n"
-    # The ceiling exists to stop an item's PROSE from becoming an essay, so only a
+    # Two ceilings, two jobs. The BLOCK ceiling guards the item's prose, so only a
     # --text edit is measured against it (and only when it grows the item — shrinking
-    # a legacy oversized item must always be allowed). Adding or swapping a field is
-    # never the essay the ceiling guards against: it is a fixed handful of chars, and
-    # gating it meant a legacy oversized item (T001, T002, T013 in the real queue)
-    # needed --force just to gain a --project tag, which trains the caller to type
-    # --force on edits and thereby disarms the guard where it does matter.
+    # a legacy oversized item must always be allowed): gating field edits by it meant
+    # a legacy oversized item (T001, T002, T013 in the real queue) needed --force
+    # merely to gain a --project tag, which trains the caller to type --force on edits
+    # and disarms the guard where it does matter. What bounds a field edit is the
+    # FIELD ceiling, already checked above — the exemption is from the block's budget,
+    # NOT a licence to write an essay through another flag. Without that second
+    # ceiling this exemption made the first one bypassable: measured at 1014 chars
+    # via `--criterion` on a 100-char item, no --force needed.
     if args.text and len(new) > len(block):
         check_ceiling(new, args.force)
     path = os.path.join(memdir, "next-steps.md")

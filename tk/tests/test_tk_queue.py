@@ -515,13 +515,34 @@ class TestRiskDeletion(QueueTest):
 
     def test_the_reserved_word_is_case_and_space_tolerant(self):
         """A Risk field whose content is the word for "no risk" is never what the
-        caller meant — `None` and ` none ` must clear, not write."""
+        caller meant — `None` and ` none ` must clear, not write.
+
+        Only `None`/`NONE`/` none ` prove the tolerance: the `none` subtest is
+        VACUOUS against the mutation that drops `.strip().lower()`, since exact
+        matching still clears it. It stays as the happy-path form the docs tell
+        callers to type. Note the general trap it illustrates: subtest-level
+        vacuity is invisible to mutations.py, because one falling subtest already
+        reddens the whole test — see that file's docstring.
+        """
         for form in ("none", "None", "NONE", " none "):
             with self.subTest(form=form):
                 self.seed(item(19, "re-triar", risk="dano X"))
                 r = self.run_tk("edit", "T019", "--risk", form)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertNotIn("**Risk:**", self.body())
+
+    def test_a_hard_break_elsewhere_in_the_block_survives(self):
+        """The repair of the blank left by the removal must be anchored AT the
+        removal site. A sweep over the whole block eats a two-space Markdown hard
+        break on a continuation line — a silent rewrap of text this command was
+        never asked to touch, and invisible in a diff."""
+        block = (item(19, "re-triar", risk="dano X")
+                 + "  contexto na primeira linha  \n  e a continuação\n")
+        self.seed(block)
+        r = self.run_tk("edit", "T019", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("**Risk:**", self.body())
+        self.assertIn("  contexto na primeira linha  \n", self.body())
 
     def test_clearing_an_item_that_has_no_risk_is_a_no_op(self):
         self.seed(item(19, "sem risco"))
@@ -615,6 +636,62 @@ class TestCeilingScope(QueueTest):
     def test_force_still_raises_the_ceiling_for_a_text_edit(self):
         self.seed(item(1, "curto"))
         r = self.run_tk("edit", "T001", "--text", "ensaio. " * 120, "--force")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    # --- the field ceiling: what keeps the block exemption from being a bypass ---
+
+    def test_a_field_value_over_its_ceiling_is_refused(self):
+        """The exemption above is from the BLOCK's budget, not a licence to write
+        an essay through another flag. Measured before this ceiling existed:
+        `edit T001 --criterion "<900 chars>"` returned 0 and took a 100-char item
+        to 1014 chars — past the normal ceiling AND past the forced one."""
+        tk = load_tk()
+        big = "x" * (tk.FIELD_CEILING + 1)
+        for flag, val in (("--criterion", "A: " + big), ("--risk", big),
+                          ("--effort", "S " + big), ("--project", "a" * 250)):
+            with self.subTest(flag=flag):
+                self.seed(item(1, "curto"))
+                before = self.body()
+                r = self.run_tk("edit", "T001", flag, val)
+                self.assertEqual(r.returncode, 1, f"{flag} was accepted: {r.stdout}")
+                self.assertIn("field ceiling", r.stderr)
+                self.assertEqual(self.body(), before, "a refused edit still wrote")
+
+    def test_the_bypass_cannot_push_the_item_past_the_block_ceiling(self):
+        """The bug as it was reported, asserted on the outcome rather than on the
+        message: no field edit may leave the item over the block ceiling."""
+        tk = load_tk()
+        self.seed(item(1, "curto"))
+        r = self.run_tk("edit", "T001", "--criterion", "A: " + "ensaio " * 130)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        for line in self.body().splitlines():
+            self.assertLessEqual(len(line), tk.CEILING, line[:120])
+
+    def test_add_measures_field_values_too(self):
+        """Same ceiling on both, or the file could hold a value no `edit` is
+        allowed to write."""
+        tk = load_tk()
+        self.seed()
+        r = self.run_tk("add", "texto curto", "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: " + "x" * tk.FIELD_CEILING)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("field ceiling", r.stderr)
+
+    def test_a_field_value_under_its_ceiling_still_passes(self):
+        """The false-positive direction: a ceiling that over-triggers makes the
+        fields unwritable, which is worse than the bypass it replaced."""
+        tk = load_tk()
+        self.seed(self.oversized())
+        r = self.run_tk("edit", "T013", "--criterion", "A: " + "x" * (tk.FIELD_CEILING - 10))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("ceiling", r.stderr)
+
+    def test_force_raises_the_field_ceiling(self):
+        tk = load_tk()
+        self.seed(item(1, "curto"))
+        val = "A: " + "x" * (tk.FIELD_CEILING + 50)
+        self.assertEqual(self.run_tk("edit", "T001", "--criterion", val).returncode, 1)
+        r = self.run_tk("edit", "T001", "--criterion", val, "--force")
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_add_is_unchanged_by_all_this(self):

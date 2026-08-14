@@ -124,7 +124,7 @@ verifies the queue at open.
 tk-queue list                                  # open items with IDs (T001…)
 tk-queue add "<action>" --class DECISION --effort "M (~30min)" \
          --criterion "A: <command that proves it> | B: user verdict" \
-         [--risk "..."] [--project slug] [--source "..."]
+         [--risk "..."|none] [--project slug] [--source "..."]
 tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."]
 tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--criterion ...] [--project slug] [--force]
@@ -185,14 +185,20 @@ re-triages; tracker tickets are referenced, not mirrored):
   closed-items block legible in a root queue that mixes projects. `###` remains the memory
   dir, a different axis: one per project repo, `####` the tags within it.
 
-An item is a pending action, not an essay — the script enforces a size ceiling on the
-item's TEXT. Durable context goes to a memory file or wiki page, linked from the item with
-`[[slug]]`. `add` refuses an oversized item outright; `edit` measures only a `--text`
-rewrite that grows the item (`--force` raises the ceiling for the rare exception). Adding
-or swapping a field — `--class`, `--effort`, `--risk`, `--criterion`, `--project` — is
-never measured: it is a fixed handful of chars, and gating it meant a legacy oversized item
-needed `--force` merely to gain a project tag, which trains the caller to type `--force` on
-edits and disarms the guard where it does matter.
+An item is a pending action, not an essay — the script enforces **two** size ceilings, and
+durable context goes to a memory file or wiki page, linked from the item with `[[slug]]`:
+
+- **the block ceiling**, on the whole item. `add` refuses an oversized item outright;
+  `edit` measures it only on a `--text` rewrite that GROWS the item. A field-only edit
+  (`--class`, `--effort`, `--risk`, `--criterion`, `--project`) is exempt, because gating
+  it meant a legacy oversized item needed `--force` merely to gain a project tag — which
+  trains the caller to type `--force` on edits and disarms the guard where it matters.
+- **the field ceiling**, on each field VALUE, applied the same way on `add` and `edit`.
+  Every field but `--class` is free text, so without this the exemption above would BE a
+  bypass: measured, before it existed, at `--criterion` taking a 100-char item to 1014
+  chars with no `--force` in sight.
+
+`--force` raises both, for the rare exception.
 
 **The done-log pointer rule:** `--how` points at the most durable address available —
 commit/PR (immutable) > wiki page or repo doc (versioned) > memory file (prunable). The
