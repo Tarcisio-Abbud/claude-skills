@@ -109,10 +109,17 @@ ALWAYS close by explicitly recommending ONE path, with the why in 1–2 sentence
   docs + green tests + gate settled), nothing mid-flight, and the next task is discrete
   (starts from zero with just `MEMORY.md` + repo). Compacting here would pay to summarize
   what's already saved. When recommending, **give 1–3 ready sentences to open the next
-  conversation, each naming the project by path or name** — e.g. "in
-  `/workspace/projects/foo`, take T012", not "take T012". The next session may open anywhere
-  (on the desktop it does not start in the project's folder), so a cold sentence that names
-  no project points at nothing. Site extensions may add flow-specific opening lines.
+  conversation** — two shapes, chosen by what the sentence does:
+  - **Invokes a slash command** (`/tk:kickoff afk`, `/implement`, …) — the command leads the
+    sentence alone, no prose before it, and does NOT name the project: `tk-queue` and similar
+    resolve state from the session's `cwd`, so the project is carried by telling the user
+    where to open the session, e.g. "open the session in `/workspace/projects/foo` and type
+    `/tk:kickoff afk` as the first line" — never by naming it inside the command line.
+  - **Describes a task, no slash command** — name the project by path or name in the prose,
+    e.g. "in `/workspace/projects/foo`, take T012", not "take T012". The next session may
+    open anywhere (on the desktop it does not start in the project's folder), so a cold
+    sentence that names no project points at nothing.
+  Site extensions may add flow-specific opening lines.
 - **`/compact`** — when there is a live thread that is NOT a durable memory fact: an
   incomplete task mid-flight, debugging with open hypotheses, a half-made
   negotiation/decision, or conversation nuances the next stage still needs that don't make
@@ -124,15 +131,16 @@ ALWAYS close by explicitly recommending ONE path, with the why in 1–2 sentence
 - **None (continue)** — only when the user will immediately chain a related task and the
   current context is still short enough to beat a clean restart.
 
-**Leaving rather than continuing?** Close with the ready pair: `/clear` now, then
-`/tk:kickoff afk` from the project's directory — name it, for the same reason the opening
-sentences do.
+**Leaving rather than continuing?** Close with the ready pair: `/clear` now, then open the
+next session in the project's directory and type `/tk:kickoff afk` as its first line — the
+slash-command shape above, project carried by the `cwd`, not named in the sentence.
 
 Also cite any pending item crossing the session boundary (e.g. open PR awaiting merge) — it
 enters the suggested opening sentence.
 **Done when:** the user received ONE clear recommendation (not a neutral menu), the
 justification, and — when the path is `/clear` — the next conversation's opening sentences,
-every one of them naming the project by path or name.
+each in the shape that fits: a slash-command line leads with the command alone and carries
+the project via the session's `cwd`; a descriptive line names the project in prose.
 
 ## The `afk` argument
 
