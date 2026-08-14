@@ -1,6 +1,6 @@
 ---
 name: docs-audit
-description: "Full documentation audit against the code: finds stale docs, fixes, verifies and opens a PR (good under /loop, periodic)"
+description: "Full documentation audit against the code: finds stale docs, fixes, verifies, audits the project's auto-memory and opens a PR (good under /loop, periodic)"
 disable-model-invocation: true
 ---
 
@@ -37,13 +37,55 @@ Run the project's test suite (**detect the runner**: `pytest`, `npm test`, `carg
 command runs; the count matches).
 **Done when:** tests green and every fix re-confirmed against the code.
 
-## 5. Open the PR
-Create a branch, commit the doc fixes (following the project's commit conventions — e.g.
+## 5. Audit the project's auto-memory
+
+The repo's docs are not the only thing that goes stale: the project's auto-memory
+(`~/.claude/projects/<cwd-slug>/memory/`, index `MEMORY.md`) records the moment it was
+written. Read every file in that directory — the index alone is not the audit — and give
+each one exactly ONE outcome:
+
+- **Obsolete → propose pruning.** The fact stopped holding: the file/flag/script it cites no
+  longer exists, the branch merged, the PR closed, a later decision replaced it. Establish
+  that against reality, not from memory (`grep` the path, `gh pr view`, `git log`), and list
+  the memory with the evidence that killed it. The user deletes — this step proposes and
+  leaves every file on disk.
+- **Canonical → promote.** The fact stopped being volatile: stable knowledge (an
+  architecture decision, an entity, a convention) any future session needs. Write it into
+  the project's canonical store — repo docs/ADR, or the site's wiki when there is one —
+  under that store's own contract, then reduce the memory file to a pointer to it. The
+  boundary is volatility: what will change again next session stays in memory.
+- **Stale in part → correct in place.** The lesson still holds, a detail around it moved (a
+  version number, a count, a renamed command, an issue that closed). Fix the detail exactly
+  as step 3 fixes a doc — a memory carrying one dead fact is read as dead whole.
+- **Live → keep**, and check its index line below.
+
+`next-steps.md` and `done-log.md` are NOT ordinary memory: they are written only by
+`tk-queue` (contract in `../kickoff/SKILL.md`), so they never enter the pruning proposal and
+are never hand-edited. A queue item this audit finds already resolved leaves through
+`tk-queue done <id> --how "<what resolved it>"`, one that no longer makes sense through
+`tk-queue cancel <id> --why "..."`.
+
+Then **cut `MEMORY.md` back to an index**: one line per memory file, naming what the file
+holds and when to reach for it — the content itself lives in the file. Before shortening a
+line, confirm what it carried is also inside the file; when it isn't, move it there first.
+An index line that survived its file's correction is stale by the same test as the file. A
+pointer with no file, a file with no pointer, and a `[[link]]` resolving to neither memory
+nor canonical store are all findings.
+
+**Done when:** every file in `memory/` carries one outcome (prune-proposal / promoted /
+corrected / kept) with none unread, each promotion is written into the canonical store,
+every correction is applied, `MEMORY.md` is one line per file with the two queue pointers
+intact, and the user has the pruning proposal — file by file, with the evidence — with
+nothing deleted.
+
+## 6. Open the PR
+Create a branch, commit the doc fixes and any step-5 promotion that landed in this repo
+(following the project's commit conventions — e.g.
 required `Co-Authored-By` line) and open the PR with the audit summary (what was stale, what
 was fixed). Don't touch production code — this audit is documentation-only.
 **Done when:** the PR is open and referenced in the reply to the user.
 
-## 6. Recommend the next step: /clear or /compact
+## 7. Recommend the next step: /clear or /compact
 After the audit the state is externalized by definition (docs = code, green tests), so the
 default recommendation is **`/clear`** — with one caveat: the **audit PR stays open** and
 crosses the session boundary. Include the merge in the suggested opening sentence for the
@@ -58,5 +100,5 @@ conversation's opening sentence.
 ## Under /loop
 For a periodic autonomous pass:
 `/loop Whenever a documentation pass is needed, run the docs-audit skill: review the whole
-codebase, ensure every doc reflects the current implementation, fix stale docs, verify, and
-open a PR.`
+codebase, ensure every doc reflects the current implementation, fix stale docs, verify,
+audit the project's auto-memory and open a PR.`
