@@ -125,8 +125,8 @@ tk-queue list                                  # open items with IDs (T001…)
 tk-queue add "<action>" --class DECISION --effort "M (~30min)" \
          --criterion "A: <command that proves it> | B: user verdict" \
          [--risk "..."|none] [--project slug] [--source "..."]
-tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
-tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."]
+tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."] [--force]
+tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."] [--force]
 tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--criterion ...] [--project slug] [--force]
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
 tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
@@ -151,6 +151,14 @@ Free text may not contain a bold field marker (`**Project:**`, `**Risk:**`, …)
 be read as the real field and silently hijack it, so `add`/`edit`/`done`/`cancel` refuse
 it and ask for a rephrase. Naming a field in plain prose is fine; only the bold-plus-colon
 shape is refused.
+
+Items written **before** that guard can still carry the shape, so `edit` locates the field
+it is changing by the item's **field chain** — the run of `**Field:** value.` segments that
+ends the item's first line — never by "the last marker in the block", which reaches into
+continuation lines. When the chain is ambiguous (a marker only outside it, or the same
+field twice inside it) `edit` **refuses and says so** instead of guessing: a refusal costs
+one command, and `--risk none` guessing wrong deletes prose that cannot be recovered.
+The fix for such an item is `cancel` + `add`.
 
 Item fields (every recorded field is the writer's guess — kickoff always re-verifies and
 re-triages; tracker tickets are referenced, not mirrored):
@@ -188,15 +196,23 @@ re-triages; tracker tickets are referenced, not mirrored):
 An item is a pending action, not an essay — the script enforces **two** size ceilings, and
 durable context goes to a memory file or wiki page, linked from the item with `[[slug]]`:
 
-- **the block ceiling**, on the whole item. `add` refuses an oversized item outright;
-  `edit` measures it only on a `--text` rewrite that GROWS the item. A field-only edit
-  (`--class`, `--effort`, `--risk`, `--criterion`, `--project`) is exempt, because gating
-  it meant a legacy oversized item needed `--force` merely to gain a project tag — which
-  trains the caller to type `--force` on edits and disarms the guard where it matters.
-- **the field ceiling**, on each field VALUE, applied the same way on `add` and `edit`.
-  Every field but `--class` is free text, so without this the exemption above would BE a
-  bypass: measured, before it existed, at `--criterion` taking a 100-char item to 1014
-  chars with no `--force` in sight.
+- **the block ceiling**, on the whole item. `add` always. `edit` whenever a **prose** flag
+  is used — `--text`, `--criterion`, `--risk` — and the edit grows the item.
+- **the field ceiling**, on each field VALUE, on `add`, `edit` and the closes
+  (`--how`/`--why`/`--summary`/`--note`) alike. It comes in two sizes: a small one for the
+  fields that are short by construction (`--class` an enum, `--effort` "M (~30min)",
+  `--project` a slug) and a larger one for prose.
+
+The **short** fields are the only ones exempt from the block ceiling, and that exemption is
+deliberate: gating them meant a legacy oversized item needed `--force` merely to gain a
+project tag, which trains the caller to type `--force` on edits and disarms the guard where
+it matters. It is safe only because those fields are small AND replaced rather than
+appended, so repeated edits cannot accumulate.
+
+Neither ceiling holds alone, and both gaps were measured, not imagined: with only the block
+ceiling, one field edit was exempt and `--criterion` took a 100-char item to **1014** chars;
+with only the field ceiling, three prose fields at 199 chars **in a single call** took an
+item to **709**, past a 700 ceiling, with no `--force`.
 
 `--force` raises both, for the rare exception.
 

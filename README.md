@@ -26,10 +26,13 @@ The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (de
 (open items only) and `done-log.md` (what left the queue, when, and how) — written ONLY
 through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / list /
 report / migrate), which moves a resolved item to the log in one command and enforces a
-size ceiling on the item's text (a field-only `edit` is exempt — a legacy oversized item
-stays taggable without `--force`) plus a second, smaller one on each field VALUE, which is
-what keeps that exemption from becoming a bypass through a free-text flag. Every mutating
-command prints the
+two size ceilings whose scope follows each flag's nature: the whole ITEM is measured
+whenever a prose flag (`--text`, `--criterion`, `--risk`) grows it, while the short fields
+(`--class`, `--effort`, `--project`) answer only to a small per-VALUE ceiling — that
+exemption is what keeps a legacy oversized item taggable without `--force`, and the
+per-value ceiling is what keeps the exemption from becoming a bypass. `edit` also locates
+the field it changes by the item's field CHAIN, refusing to guess when a legacy item quotes
+the marker shape in prose. Every mutating command prints the
 memory dir it resolved on **stderr** before acting, since that target is inferred from
 `--dir` or the cwd and an unseen inference is an unchecked one. Each item carries an ID
 (T001…), **Class** (AUTONOMOUS / DECISION / BLOCKED / EXTERNAL / RECURRING), **Effort**

@@ -18,18 +18,21 @@ items move to the log verbatim, ID-less, and — carrying no `- YYYY-MM-DD —`
 prefix — stay outside `report`'s scope; read the log itself for that history).
 
 Size ceilings: an item is a PENDING ACTION, not an essay. Durable context
-belongs in a memory file or the wiki, linked from the item. TWO ceilings, one
-per thing being guarded:
+belongs in a memory file or the wiki, linked from the item. TWO ceilings, and
+which one a flag answers to depends on the flag's NATURE:
 
-  block (CEILING)        the whole item. `add` rejects an oversized item;
-                         `edit` measures it only when --text rewrites and grows
-                         the item, so a field-only edit leaves a legacy
-                         oversized item taggable and triageable.
-  field (FIELD_CEILING)  each field VALUE, on add AND edit alike. Without it
-                         the block ceiling is bypassable by choosing another
-                         flag — every field but --class is free text.
+  block (CEILING)   the whole item. `add` always. `edit` whenever a PROSE flag
+                    is used (--text, --criterion, --risk) and the edit grows the
+                    item. Exempt: the short fields below — that exemption is
+                    what keeps a legacy oversized item taggable without --force.
+  field             each field VALUE, on add, edit and the closes alike.
+                    FIELD_CEILING_SHORT for --class/--effort/--project, which
+                    are bounded by construction (enum, "M (~30min)", a slug);
+                    FIELD_CEILING for prose.
 
---force raises both for the rare exception.
+Neither ceiling holds alone: with only the block one, a single field edit was
+exempt and reached 1014 chars; with only the field one, three prose fields in a
+single call reached 709 past a 700 ceiling. --force raises both.
 
 Every mutating command prints the resolved memory dir on stderr before acting:
 the target queue is inferred from --dir or the cwd, and an unseen inference is
@@ -67,15 +70,30 @@ UMASK = os.umask(0)
 os.umask(UMASK)
 CEILING = 700          # chars per ITEM BLOCK; enough for title + fields + 1 link
 CEILING_FORCED = 2000
-# chars per FIELD VALUE. The block ceiling cannot be the only one: a field-only
-# edit is exempt from it (see cmd_edit), and --effort/--risk/--criterion/--project
-# are free text, so without this the whole ceiling is bypassed just by choosing a
-# different flag — measured before this existed: `edit <id> --criterion "<900
-# chars>"` took a 100-char item to 1014 and returned 0. Every field is one line of
-# a one-line item, so 200 chars is already generous: it is nearly a third of the
-# whole item's budget.
+# chars per FIELD VALUE. The block ceiling cannot be the only one: the fields a
+# legacy oversized item must stay able to gain are exempt from it (see cmd_edit),
+# so without a second ceiling the first is bypassed by choosing another flag —
+# measured before this existed: `edit <id> --criterion "<900 chars>"` took a
+# 100-char item to 1014 and returned 0.
+#
+# The fields split by NATURE, and that split is what decides which ceiling each
+# one answers to (see cmd_edit for the block half):
+#   SHORT   --class (enum), --effort ("M (~30min)"), --project (a slug) are bounded
+#           by construction. Small ceiling, and exempt from the block ceiling —
+#           that exemption is the whole point of T071: tagging a legacy oversized
+#           item must not require --force.
+#   FREE    --criterion, --risk, --source, and the close flags, are prose. A field
+#           ceiling alone does NOT bound them: three of them at 199 chars each, in
+#           ONE call, took an item to 709 chars past a 700 block ceiling with no
+#           --force. So these also put the resulting BLOCK through the block
+#           ceiling, exactly as --text does.
+FIELD_CEILING_SHORT = 60
+FIELD_CEILING_SHORT_FORCED = 150
 FIELD_CEILING = 200
 FIELD_CEILING_FORCED = 500
+SHORT_FLAGS = frozenset(("classe", "class", "effort", "project"))
+# the free-text item fields: an edit touching any of them measures the block
+FREE_TEXT_FLAGS = ("text", "criterion", "risk")
 PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
 
 DONE_LOG_TEMPLATE = """---
@@ -311,6 +329,61 @@ PROJECT_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*
 LOG_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)\.\s*$")
 
 
+FIELD_SEGMENT_RE = re.compile(r"\*\*(" + ANY_FIELD + r"):\*\*[^*\n]*")
+
+
+def canonical_field(raw):
+    """Map a matched field word ('Risco', 'Criterio') to its canonical name."""
+    for name, variants in FIELD_VARIANTS.items():
+        if re.fullmatch(variants, raw):
+            return name
+    return None
+
+
+def field_chain(block):
+    """The item's REAL field chain: the maximal run of `**Field:** value.`
+    segments ENDING the block's first line. Empty when no such run exists.
+
+    Why a chain, and not "the last marker in the block". An item block absorbs
+    its continuation lines, and a legacy item — precisely the population the
+    ceiling exemption exists to serve, and the one `ensure_no_embedded_marker`
+    never protected, since it only guards items added after it — can carry the
+    marker SHAPE in prose: before the fields, or on a note line after them.
+    Taking the last match then edits the NOTE and leaves the real field alone,
+    while reporting success. Measured on `--risk none`: the real Risk survived
+    untouched and the note's text was deleted instead — a no-op on the field the
+    command claimed to change, plus destruction of text nobody asked it to touch,
+    on the DELETION path.
+
+    Two conditions separate chain from prose, and neither works alone:
+
+      anchored   the run must reach the end of the line. The fields are a suffix
+                 of the first line, by construction (compose_item).
+      periods    each segment's value ends in '.', because compose_item writes
+                 `**Field:** value.` — the ONE exception being Source, which is
+                 written last and without one. Contiguity cannot stand in for
+                 this: the body is greedy, so a prose marker's match runs right
+                 up to the next marker and looks contiguous too. The period is
+                 what tells `**Project:** para o done-log **Class:** ...` (prose)
+                 from `**Project:** tk. **Source:** ...` (a real field).
+
+    Ambiguity is left for the caller to resolve (see cmd_edit), never guessed:
+    a refusal costs one command, deleted text is not recoverable.
+    """
+    line = block.split("\n", 1)[0]
+    segs = list(FIELD_SEGMENT_RE.finditer(line))
+    if not segs or segs[-1].end() < len(line.rstrip()):
+        return []
+    chain = [segs[-1]]
+    for m in reversed(segs[:-1]):
+        ends_field = (m.group(0).rstrip().endswith(".")
+                      or canonical_field(m.group(1)) == "Source")
+        if m.end() != chain[0].start() or not ends_field:
+            break
+        chain.insert(0, m)
+    return chain
+
+
 def clears_field(value):
     """Whether this flag value is the reserved word that DELETES the field.
 
@@ -527,23 +600,28 @@ def check_ceiling(item, force):
 
 
 def check_field_ceilings(force, **fields):
-    """Measure each field VALUE against its own ceiling.
+    """Measure each field VALUE against the ceiling its NATURE earns it.
 
-    Two ceilings, because they guard two different things. The block ceiling
-    guards the item's PROSE — the essay problem. This one guards the fields, and
-    it is what keeps the block ceiling from being bypassed by choosing another
-    flag: `--class` and the ID are bounded by their own grammars, but
-    `--effort`, `--risk`, `--criterion`, `--project` and `--source` are free
-    text. Applied identically on `add` and `edit`, or the file could hold a
-    value that no `edit` is allowed to write.
+    Short fields (SHORT_FLAGS) are bounded by construction and get the small
+    ceiling; everything else is prose and gets the larger one — and, for the
+    item fields among them, the block ceiling too (see cmd_edit), because a
+    per-field ceiling alone does not bound a call that passes several at once.
+    Applied identically on `add`, `edit` and the closes, or a file could hold a
+    value that no later command is allowed to write.
     """
-    limit = FIELD_CEILING_FORCED if force else FIELD_CEILING
     for name, val in fields.items():
-        if val and len(val) > limit:
+        if not val:
+            continue
+        if name in SHORT_FLAGS:
+            limit, forced = (FIELD_CEILING_SHORT_FORCED if force
+                             else FIELD_CEILING_SHORT), FIELD_CEILING_SHORT_FORCED
+        else:
+            limit, forced = (FIELD_CEILING_FORCED if force
+                             else FIELD_CEILING), FIELD_CEILING_FORCED
+        if len(val) > limit:
             fail(f"--{name} has {len(val)} chars (field ceiling {limit}). A field is one "
-                 "line of a one-line item: put the substance in a memory file or wiki "
-                 "page and link it ([[slug]])."
-                 + ("" if force else f" --force raises it to {FIELD_CEILING_FORCED}."))
+                 "line: put the substance in a memory file or wiki page and link it "
+                 "([[slug]])." + ("" if force else f" --force raises it to {forced}."))
 
 
 def cmd_add(args):
@@ -590,7 +668,7 @@ def cmd_add(args):
     print(f"added T{iid:03d}: {item_title(item)}")
 
 
-def close_item(args, marker, outcome):
+def close_item(args, marker, outcome, marker_flag):
     memdir = memory_dir(args.dir)
     block = find_open_item(memdir, args.id)
     ensure_single_line(outcome=outcome, summary=args.summary)
@@ -600,6 +678,11 @@ def close_item(args, marker, outcome):
     # never reads — and a real note in this queue's log quotes "**Project:**" while
     # describing this very field, which is the case LOG_TAG_RE exists to tolerate
     ensure_no_embedded_marker(summary=args.summary, outcome=outcome)
+    # the log line is a line too, and it is the record that OUTLIVES the item —
+    # same ceiling, same reason. --note is the one that can legitimately carry
+    # substance (it exists for work that left no pointer), which is what --force is for
+    check_field_ceilings(args.force, **{marker_flag: outcome},
+                         summary=args.summary, note=args.note)
     today = datetime.date.today().isoformat()
     # read the tag from the ORIGINAL block: item_title strips every field, and
     # --summary replaces the text wholesale, so by then the tag is already gone
@@ -618,11 +701,11 @@ def close_item(args, marker, outcome):
 
 
 def cmd_done(args):
-    close_item(args, "FEITO", args.how)
+    close_item(args, "FEITO", args.how, "how")
 
 
 def cmd_cancel(args):
-    close_item(args, "DESCARTADO", args.why)
+    close_item(args, "DESCARTADO", args.why, "why")
 
 
 def cmd_edit(args):
@@ -654,14 +737,24 @@ def cmd_edit(args):
             continue
         if field == "Class" and flag not in CLASSES:
             fail(f"--class must be one of {', '.join(CLASSES)}")
-        pat = re.compile(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*[^*\n]*\.?")
-        matches = list(pat.finditer(new))
+        # the real field is the one in the item's FIELD CHAIN — never merely the
+        # last marker in the block, which lands on a continuation note (see
+        # field_chain). Ambiguity is refused, not guessed: the caller fixes a
+        # refusal with one command, and cannot undo deleted text
+        found = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]
+        if len(found) > 1:
+            fail(f"T{args.id:03d} carries {len(found)} **{field}:** fields in its field "
+                 f"chain, so `--{field.lower()}` is ambiguous. Nothing was changed. Close "
+                 "it with `cancel` and re-add it clean.")
+        if not found and re.search(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*", new):
+            fail(f"T{args.id:03d} has a **{field}:** marker OUTSIDE its field chain — in "
+                 "the item's own prose or on a continuation line — and none inside it. "
+                 "Nothing was changed. Editing that marker would rewrite prose you did "
+                 "not point at (and on `--risk none`, DELETE it). Close the item with "
+                 "`cancel` and re-add it clean.")
         if field == "Risk" and clears_field(flag):
-            if matches:
-                # the LAST occurrence, for the same reason the set branch below
-                # uses it: an item predating the embedded-marker guard can carry
-                # the shape inside its own text
-                start, end = matches[-1].span()
+            if found:
+                start, end = found[0].span()
                 head, tail = new[:start], new[end:]
                 # the body is greedy, so the match already swallowed the blank that
                 # separated Risk from the next field — but when Risk was the last
@@ -674,32 +767,38 @@ def cmd_edit(args):
                     head = head.rstrip(" \t")
                 new = head + tail
             continue
-        if matches:
-            # the LAST occurrence, not the first: compose_item appends the fields at
-            # the tail, so the real field is always the last one. Items predating the
-            # embedded-marker guard can carry the shape inside their TEXT, and
-            # rewriting that first match replaces the author's prose with the flag
-            m = matches[-1]
+        if found:
+            m = found[0]
             matched = m.group(0)
             # the body is greedy, so the match swallows the blank that separated this
             # field from the next one — hand it back, or the two fields come out glued
             new = (new[: m.start()] + f"**{field}:** {flag}."
                    + matched[len(matched.rstrip()):] + new[m.end():])
         else:
-            new = new.rstrip("\n") + f" **{field}:** {flag}.\n"
+            # append at the end of the FIRST line, where the chain lives. Appending
+            # after a continuation line would put the field outside the chain — i.e.
+            # write, right now, the very shape the guard above refuses to touch later
+            head, sep, rest = new.partition("\n")
+            new = head.rstrip() + f" **{field}:** {flag}." + sep + rest
     if not new.endswith("\n"):
         new += "\n"
-    # Two ceilings, two jobs. The BLOCK ceiling guards the item's prose, so only a
-    # --text edit is measured against it (and only when it grows the item — shrinking
-    # a legacy oversized item must always be allowed): gating field edits by it meant
-    # a legacy oversized item (T001, T002, T013 in the real queue) needed --force
-    # merely to gain a --project tag, which trains the caller to type --force on edits
-    # and disarms the guard where it does matter. What bounds a field edit is the
-    # FIELD ceiling, already checked above — the exemption is from the block's budget,
-    # NOT a licence to write an essay through another flag. Without that second
-    # ceiling this exemption made the first one bypassable: measured at 1014 chars
-    # via `--criterion` on a 100-char item, no --force needed.
-    if args.text and len(new) > len(block):
+    # The BLOCK ceiling guards the item's prose, so every PROSE flag is measured
+    # against it — --text and the free-text fields alike — and only when the edit
+    # grows the item, since shrinking a legacy oversized item must always be allowed.
+    #
+    # Exempt: the short fields (--class/--effort/--project), and ONLY they. That
+    # exemption is T071 and it is what the ceiling costs: gating them meant a legacy
+    # oversized item (T001, T002, T013 in the real queue) needed --force merely to
+    # gain a project tag, which trains the caller to type --force on edits and
+    # disarms the guard where it does matter. Their own small field ceiling is what
+    # bounds them, and since a field is REPLACED when present, repeated edits cannot
+    # accumulate — the exemption's total cost is bounded by 3 short fields.
+    #
+    # Both halves of this rule were bypasses before they existed, each measured:
+    # one free-text field alone took a 100-char item to 1014 chars (no --force), and
+    # after the per-field ceiling closed that, three free-text fields at 199 chars in
+    # ONE call still took an item to 709 past a 700 ceiling.
+    if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):
         check_ceiling(new, args.force)
     path = os.path.join(memdir, "next-steps.md")
     write_atomic(path, read(path).replace(block, new, 1))
@@ -815,12 +914,14 @@ def main():
     d.add_argument("--how", required=True, help="outcome + pointer: 'PR #82', 'commit abc123', '[[slug]]'")
     d.add_argument("--summary", help="replaces the item text on the log line")
     d.add_argument("--note", help="extra substance when there is NO pointer (the line is the only record)")
+    d.add_argument("--force", action="store_true", help="raise the field ceiling")
 
     c = sub.add_parser("cancel", parents=[common], help="discard: move the item to the done-log as DESCARTADO")
     c.add_argument("id", type=parse_id)
     c.add_argument("--why", required=True)
     c.add_argument("--summary")
     c.add_argument("--note")
+    c.add_argument("--force", action="store_true", help="raise the field ceiling")
 
     e = sub.add_parser("edit", parents=[common], help="edit fields of an open item")
     e.add_argument("id", type=parse_id)

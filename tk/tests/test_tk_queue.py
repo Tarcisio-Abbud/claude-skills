@@ -601,18 +601,88 @@ class TestCeilingScope(QueueTest):
                            "fixture is not actually over the ceiling")
         return block
 
-    def test_every_field_edit_passes_without_force(self):
+    def test_every_short_field_edit_passes_without_force(self):
+        """The T071 guarantee, and it covers the SHORT fields only: those are
+        bounded by construction, so exempting them from the block's budget costs
+        a bounded number of chars and cannot accumulate (a field is replaced, not
+        appended, once present).
+
+        Note the `--class` subtest is vacuous against the mutation that puts the
+        block ceiling back on field edits: DECISION is shorter than AUTONOMOUS,
+        so that edit SHRINKS the item and never reaches the ceiling either way.
+        It is kept as coverage of the flag, not as proof — see mutations.py's
+        KNOWN BLIND SPOT."""
         for flag, val, expected in (("--project", "ambiente", "**Project:** ambiente."),
                                     ("--class", "DECISION", "**Class:** DECISION."),
-                                    ("--effort", "L (~2h)", "**Effort:** L (~2h)."),
-                                    ("--risk", "dano X", "**Risk:** dano X."),
-                                    ("--criterion", "B: veredito", "**Criterion:** B: veredito.")):
+                                    ("--effort", "L (~2h)", "**Effort:** L (~2h).")):
             with self.subTest(flag=flag):
                 self.seed(self.oversized())
                 r = self.run_tk("edit", "T013", flag, val)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertNotIn("ceiling", r.stderr)
                 self.assertIn(expected, self.body())
+
+    def test_a_free_text_field_edit_is_measured_against_the_block(self):
+        """The other half of the split: --criterion and --risk are prose, so they
+        answer to the block ceiling exactly as --text does. On an already
+        oversized item that means a refusal — which is the point: growing an item
+        that is already too long is what the ceiling is for."""
+        for flag, val in (("--risk", "dano X"), ("--criterion", "B: veredito")):
+            with self.subTest(flag=flag):
+                self.seed(self.oversized())
+                before = self.body()
+                r = self.run_tk("edit", "T013", flag, val)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("ceiling 700", r.stderr)
+                self.assertEqual(self.body(), before)
+                # and --force is the documented way through
+                self.assertEqual(self.run_tk("edit", "T013", flag, val, "--force").returncode,
+                                 0)
+
+    def midsized(self, iid=14):
+        """A legal item — under the block ceiling — with little room left. That
+        is where the combining vector bites: on a nearly empty item, two capped
+        field values simply cannot reach 700, so a fixture starting there would
+        pass with the guard OFF and prove nothing."""
+        block = item(iid, "contexto que ocupa espaco. " * 13)
+        tk = load_tk()
+        self.assertLess(len(block), tk.CEILING, "fixture must start legal")
+        self.assertGreater(len(block) + 2 * tk.FIELD_CEILING, tk.CEILING,
+                           "fixture has too much room left to test the ceiling")
+        return block
+
+    def test_combining_free_text_fields_cannot_cross_the_block_ceiling(self):
+        """The bypass one level below the per-field ceiling: every value under
+        the field ceiling, several of them in ONE call. Measured before this
+        rule: `--effort E*199 --risk R*199 --criterion C*199` returned 0 and left
+        the item at 709 chars, past a 700 ceiling, with no --force."""
+        tk = load_tk()
+        self.seed(self.midsized())
+        before = self.body()
+        r = self.run_tk("edit", "T014", "--effort", "M (~30min)",
+                        "--risk", "R" * 190, "--criterion", "C" * 190)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("ceiling 700", r.stderr)
+        self.assertEqual(self.body(), before)
+        for line in self.body().splitlines():
+            self.assertLessEqual(len(line), tk.CEILING, line[:120])
+
+    def test_repeated_field_edits_cannot_grow_the_item_without_limit(self):
+        """One call at a time, each starting from the already-inflated size — the
+        shape a rule looking only at the per-call delta would never stop."""
+        tk = load_tk()
+        self.seed(self.midsized())
+        refused = False
+        for n in range(12):
+            flag = "--criterion" if n % 2 else "--risk"
+            r = self.run_tk("edit", "T014", flag, f"{flag[2:3]}{n} " + "y" * 185)
+            if r.returncode != 0:
+                refused = True
+                self.assertIn("ceiling", r.stderr)
+                break
+        self.assertTrue(refused, "12 edits in a row and the item never hit a ceiling")
+        for line in self.body().splitlines():
+            self.assertLessEqual(len(line), tk.CEILING, line[:120])
 
     def test_a_text_edit_over_the_ceiling_is_still_refused(self):
         self.seed(item(1, "curto"))
@@ -647,8 +717,9 @@ class TestCeilingScope(QueueTest):
         to 1014 chars — past the normal ceiling AND past the forced one."""
         tk = load_tk()
         big = "x" * (tk.FIELD_CEILING + 1)
+        short_big = "x" * (tk.FIELD_CEILING_SHORT + 1)
         for flag, val in (("--criterion", "A: " + big), ("--risk", big),
-                          ("--effort", "S " + big), ("--project", "a" * 250)):
+                          ("--effort", "S " + short_big), ("--project", "a" * 250)):
             with self.subTest(flag=flag):
                 self.seed(item(1, "curto"))
                 before = self.body()
@@ -679,12 +750,16 @@ class TestCeilingScope(QueueTest):
 
     def test_a_field_value_under_its_ceiling_still_passes(self):
         """The false-positive direction: a ceiling that over-triggers makes the
-        fields unwritable, which is worse than the bypass it replaced."""
+        fields unwritable, which is worse than the bypass it replaced. Measured
+        on a normal-sized item, where the block ceiling has room to spare."""
         tk = load_tk()
-        self.seed(self.oversized())
-        r = self.run_tk("edit", "T013", "--criterion", "A: " + "x" * (tk.FIELD_CEILING - 10))
+        self.seed(item(1, "curto"))
+        r = self.run_tk("edit", "T001", "--criterion", "A: " + "x" * (tk.FIELD_CEILING - 10))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn("ceiling", r.stderr)
+        self.seed(self.oversized())
+        r = self.run_tk("edit", "T013", "--project", "ambiente")
+        self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_force_raises_the_field_ceiling(self):
         tk = load_tk()
@@ -758,6 +833,142 @@ class TestTargetQueueAnnounced(QueueTest):
                 r = self.run_tk(*argv)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertNotIn(self.mem, r.stderr)
+
+
+# --- review#2: the real field is the one in the CHAIN, never the last marker ---
+
+# the reported shape: a legacy item whose continuation note quotes the marker
+# AFTER the real field. ensure_no_embedded_marker never protected these — it only
+# guards items added after it existed, and legacy items are the whole population
+# the ceiling exemption exists to serve.
+NOTE_ITEM = ("- [ ] **T007** — item legado **Class:** AUTONOMOUS. **Effort:** S. "
+             "**Risk:** risco real. **Criterion:** A: x.\n"
+             "  nota de continuacao com **Risk:** dentro do texto tambem\n")
+
+
+class TestFieldChain(QueueTest):
+    """Taking the LAST marker in the block reaches into continuation lines. On
+    `--risk none` that deleted the note's text and left the real Risk standing,
+    while printing "T007 updated": a no-op on the field named, destruction of
+    text nobody pointed at, on the deletion path."""
+
+    def test_clearing_hits_the_real_field_and_spares_the_note(self):
+        self.seed(NOTE_ITEM)
+        r = self.run_tk("edit", "T007", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertNotIn("**Risk:** risco real.", body)      # the real field went
+        self.assertIn("nota de continuacao com **Risk:** dentro do texto tambem", body)
+
+    def test_setting_hits_the_real_field_and_spares_the_note(self):
+        self.seed(NOTE_ITEM)
+        r = self.run_tk("edit", "T007", "--risk", "risco novo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertIn("**Risk:** risco novo.", body)
+        self.assertNotIn("risco real", body)
+        self.assertIn("nota de continuacao com **Risk:** dentro do texto tambem", body)
+
+    def test_a_marker_only_outside_the_chain_is_refused_not_guessed(self):
+        """No Risk among the real fields, one quoted in the note. Editing the
+        note is never what the caller meant, and deleting it is unrecoverable —
+        so the command refuses and says why."""
+        item_ = ("- [ ] **T008** — legado **Class:** AUTONOMOUS. **Effort:** S. "
+                 "**Criterion:** A: x.\n"
+                 "  a nota fala de **Risk:** como conceito\n")
+        self.seed(item_)
+        before = self.body()
+        for val in ("none", "risco novo"):
+            with self.subTest(val=val):
+                r = self.run_tk("edit", "T008", "--risk", val)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("OUTSIDE its field chain", r.stderr)
+                self.assertIn("Nothing was changed", r.stderr)
+                self.assertEqual(self.body(), before)
+
+    def test_an_ambiguous_chain_is_refused_not_guessed(self):
+        """Prose that ends in a period right before the fields is genuinely
+        indistinguishable from a field — two Projects in the chain, and the
+        command says so instead of picking one."""
+        item_ = ("- [ ] **T009** — levar o campo **Project:** para o done-log. "
+                 "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                 "**Project:** tk. **Source:** 2026-08-13\n")
+        self.seed(item_)
+        before = self.body()
+        r = self.run_tk("edit", "T009", "--project", "ambiente")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("ambiguous", r.stderr)
+        self.assertEqual(self.body(), before)
+
+    def test_a_field_appended_after_source_stays_editable(self):
+        """Source is the one field compose_item writes WITHOUT a trailing period,
+        so a chain rule keyed on periods alone would stop there — and every field
+        appended after Source (which is where `edit` used to put them) would fall
+        outside the chain, making the item uneditable from the next call on."""
+        self.seed(item(1, "um", project="tk"))
+        self.assertEqual(self.run_tk("edit", "T001", "--risk", "dano X").returncode, 0)
+        r = self.run_tk("edit", "T001", "--project", "ambiente")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Project:** ambiente.", self.body())
+        self.assertEqual(self.run_tk("edit", "T001", "--risk", "none").returncode, 0)
+        self.assertNotIn("**Risk:**", self.body())
+
+    def test_a_marker_before_the_fields_is_still_prose(self):
+        """The case the previous rule already got right, kept as the other side:
+        prose that does NOT end in a period stays prose, and the real field wins."""
+        legacy = ("- [ ] **T001** — levar o campo **Project:** para o done-log "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Project:** tk. **Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--project", "ambiente")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertIn("levar o campo **Project:** para o done-log", body)
+        self.assertIn("**Project:** ambiente.", body)
+        self.assertNotIn("**Project:** tk.", body)
+
+
+# --- review#3: the close flags are lines too ------------------------------
+
+class TestCloseFieldCeilings(QueueTest):
+    """--how/--why/--summary/--note go to the done-log, not to the queue, so the
+    damage is smaller — but it is the same hole, and the log line is the record
+    that OUTLIVES the item."""
+
+    def test_done_measures_how_summary_and_note(self):
+        tk = load_tk()
+        big = "x" * (tk.FIELD_CEILING + 1)
+        for argv in (("--how", big), ("--how", "PR #1", "--summary", big),
+                     ("--how", "PR #1", "--note", big)):
+            with self.subTest(argv=argv[0] if len(argv) == 2 else argv[2]):
+                self.seed(item(1, "um"))
+                r = self.run_tk("done", "T001", *argv)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("field ceiling", r.stderr)
+                self.assertIn("**T001**", self.body())        # nothing was closed
+                self.assertEqual(self.body("done-log.md"), "")
+
+    def test_cancel_measures_why(self):
+        tk = load_tk()
+        self.seed(item(1, "um"))
+        r = self.run_tk("cancel", "T001", "--why", "x" * (load_tk().FIELD_CEILING + 1))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("field ceiling", r.stderr)
+        self.assertIn("**T001**", self.body())
+        del tk
+
+    def test_force_raises_it_and_an_ordinary_close_is_untouched(self):
+        """The false-positive direction: --note exists for work that left no
+        pointer, so it must stay writable — at ordinary length always, and
+        beyond it with --force."""
+        tk = load_tk()
+        self.seed(item(1, "um"), item(2, "dois"))
+        r = self.run_tk("done", "T001", "--how", "PR #1",
+                        "--note", "n" * (tk.FIELD_CEILING - 10))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.run_tk("done", "T002", "--how", "PR #2",
+                        "--note", "n" * (tk.FIELD_CEILING + 50), "--force")
+        self.assertEqual(r.returncode, 0, r.stderr)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ them falls, and nothing here can see the others. Two live examples, both
 annotated in the test that carries them:
 TestRiskDeletion.test_the_reserved_word_is_case_and_space_tolerant (the `none`
 form survives the case-tolerance mutation) and
-TestCeilingScope.test_every_field_edit_passes_without_force (the `--class` form
+TestCeilingScope.test_every_short_field_edit_passes_without_force (`--class`
 survives the block-ceiling mutation, because swapping AUTONOMOUS for DECISION
 SHRINKS the item). Reading the failure list, not the tally, is what catches
 these — which is why the PR body pastes the measured lines.
@@ -142,9 +142,6 @@ MUTATIONS = [
      '    return re.search(r"\\b" + label + r"\\b", log) is not None',
      ["TestMissingItemMessage.test_an_id_merely_quoted_in_the_log_is_not_closed"]),
 
-    ("T065 edit rewrites the FIRST marker again, eating the prose",
-     "            m = matches[-1]", "            m = matches[0]",
-     ["TestEmbeddedMarker.test_edit_rewrites_the_real_field_not_prose_that_looks_like_one"]),
 
     ("T070 add writes a Risk line for the reserved word again",
      "    if args.risk and not clears_field(args.risk):", "    if args.risk:",
@@ -156,10 +153,6 @@ MUTATIONS = [
       "TestRiskDeletion.test_the_surrounding_fields_survive_intact",
       "TestRiskDeletion.test_clearing_an_item_that_has_no_risk_is_a_no_op",
       "TestRiskDeletion.test_clearing_rewrites_the_real_field_not_prose_that_looks_like_one"]),
-
-    ("T070 clearing removes the FIRST marker again, eating the prose",
-     "start, end = matches[-1].span()", "start, end = matches[0].span()",
-     ["TestRiskDeletion.test_clearing_rewrites_the_real_field_not_prose_that_looks_like_one"]),
 
     ("T070 the reserved word stops tolerating case and surrounding blanks",
      '    return (value or "").strip().lower() == FIELD_CLEAR',
@@ -185,23 +178,17 @@ MUTATIONS = [
      '                new = re.sub(r"[ \\t]+(?=\\n|\\Z)", "", head + tail)',
      ["TestRiskDeletion.test_a_hard_break_elsewhere_in_the_block_survives"]),
 
-    ("T071 the ceiling gates a field-only edit again",
-     "    if args.text and len(new) > len(block):", "    if len(new) > len(block):",
-     ["TestCeilingScope.test_every_field_edit_passes_without_force"]),
-
-    ("T071 a --text edit stops being measured against the ceiling",
-     "    if args.text and len(new) > len(block):", "    if False:",
-     ["TestCeilingScope.test_a_text_edit_over_the_ceiling_is_still_refused",
-      "TestCeilingScope.test_a_text_edit_growing_an_already_oversized_item_is_refused"]),
-
     # the block-ceiling exemption (T071) is only safe because the field ceiling
     # bounds what a field edit can write — without it, the exemption IS the bypass
     ("review#1 edit stops measuring field values (the reported bypass)",
      "    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,\n"
      "                         criterion=args.criterion, project=args.project)",
      "    pass",
-     ["TestCeilingScope.test_a_field_value_over_its_ceiling_is_refused",
-      "TestCeilingScope.test_the_bypass_cannot_push_the_item_past_the_block_ceiling"]),
+     # NOT test_the_bypass_cannot_push_the_item_past_the_block_ceiling: now that the
+     # block rule covers the free-text fields, a 910-char --criterion is refused by
+     # the BLOCK ceiling even with this guard off. Listing it claimed a proof the run
+     # could not make — and it showed up as a SURVIVOR the first time it ran
+     ["TestCeilingScope.test_a_field_value_over_its_ceiling_is_refused"]),
 
     ("review#1 add stops measuring field values",
      "    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,\n"
@@ -209,15 +196,6 @@ MUTATIONS = [
      "source=args.source)",
      "    pass",
      ["TestCeilingScope.test_add_measures_field_values_too"]),
-
-    ("review#1 the field ceiling over-triggers, refusing every value",
-     "        if val and len(val) > limit:", "        if val:",
-     ["TestCeilingScope.test_a_field_value_under_its_ceiling_still_passes"]),
-
-    ("review#1 --force stops raising the field ceiling",
-     "    limit = FIELD_CEILING_FORCED if force else FIELD_CEILING",
-     "    limit = FIELD_CEILING",
-     ["TestCeilingScope.test_force_raises_the_field_ceiling"]),
 
     ("T072 a mutating command stops naming the queue it writes",
      '        print(f"tk-queue: queue: {memdir}", file=sys.stderr)', "        pass",
@@ -234,6 +212,98 @@ MUTATIONS = [
     ("T072 readers announce a write target too",
      'READERS = frozenset(("list", "report"))', "READERS = frozenset()",
      ["TestTargetQueueAnnounced.test_readers_stay_silent"]),
+    # --- review#2: the real field is the one in the CHAIN ------------------
+
+    ("review#2 the real field is the LAST marker in the block again (note eaten)",
+     "        found = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]",
+     '        found = list(re.finditer(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
+     'r"):\\*\\*[^*\\n]*", new))[-1:]',
+     ["TestFieldChain.test_clearing_hits_the_real_field_and_spares_the_note",
+      "TestFieldChain.test_setting_hits_the_real_field_and_spares_the_note"]),
+
+    ("T065/review#2 the real field is the FIRST marker in the block again (prose eaten)",
+     "        found = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]",
+     '        found = list(re.finditer(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
+     'r"):\\*\\*[^*\\n]*", new))[:1]',
+     ["TestEmbeddedMarker.test_edit_rewrites_the_real_field_not_prose_that_looks_like_one",
+      "TestFieldChain.test_a_marker_before_the_fields_is_still_prose",
+      "TestRiskDeletion.test_clearing_rewrites_the_real_field_not_prose_that_looks_like_one"]),
+
+    ("review#2 the chain admits prose (the period discriminator goes away)",
+     '        ends_field = (m.group(0).rstrip().endswith(".")\n'
+     '                      or canonical_field(m.group(1)) == "Source")',
+     "        ends_field = True",
+     ["TestEmbeddedMarker.test_edit_rewrites_the_real_field_not_prose_that_looks_like_one",
+      "TestFieldChain.test_a_marker_before_the_fields_is_still_prose"]),
+
+    ("review#2 the chain stops at Source (fields appended after it become unreachable)",
+     '                      or canonical_field(m.group(1)) == "Source")',
+     "                      or False)",
+     ["TestFieldChain.test_a_field_appended_after_source_stays_editable"]),
+
+    ("review#2 a marker only outside the chain is silently written instead of refused",
+     '        if not found and re.search(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
+     'r"):\\*\\*", new):',
+     "        if False:",
+     ["TestFieldChain.test_a_marker_only_outside_the_chain_is_refused_not_guessed"]),
+
+    # over-refusal, the direction the tests above cannot see: a guard that fires on
+    # every edit makes the fields unwritable instead of merely un-guessable
+    ("review#2 the outside-the-chain guard fires on every edit",
+     "        if not found and re.search(",
+     "        if re.search(",
+     ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
+
+    ("review#2 a duplicated field in the chain is guessed instead of refused",
+     "        if len(found) > 1:", "        if False:",
+     ["TestFieldChain.test_an_ambiguous_chain_is_refused_not_guessed"]),
+
+    # --- review#2: which flags the BLOCK ceiling covers --------------------
+
+    ("T071 the block ceiling gates a SHORT field edit again",
+     "    if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):",
+     "    if len(new) > len(block):",
+     ["TestCeilingScope.test_every_short_field_edit_passes_without_force"]),
+
+    ("review#2 the block ceiling stops covering the free-text fields (combining bypass)",
+     "    if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):",
+     "    if args.text and len(new) > len(block):",
+     ["TestCeilingScope.test_combining_free_text_fields_cannot_cross_the_block_ceiling",
+      "TestCeilingScope.test_repeated_field_edits_cannot_grow_the_item_without_limit",
+      "TestCeilingScope.test_a_free_text_field_edit_is_measured_against_the_block"]),
+
+    ("T071 a --text edit stops being measured against the block ceiling",
+     "    if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):",
+     "    if False:",
+     ["TestCeilingScope.test_a_text_edit_over_the_ceiling_is_still_refused",
+      "TestCeilingScope.test_a_text_edit_growing_an_already_oversized_item_is_refused"]),
+
+    # --- the field ceiling, restructured by nature ------------------------
+
+    ("review#1 the field ceiling over-triggers, refusing every value",
+     "        if len(val) > limit:", "        if val:",
+     ["TestCeilingScope.test_a_field_value_under_its_ceiling_still_passes",
+      "TestCloseFieldCeilings.test_force_raises_it_and_an_ordinary_close_is_untouched"]),
+
+    ("review#2 the short/prose split collapses (short fields get the prose ceiling)",
+     "        if name in SHORT_FLAGS:", "        if False:",
+     ["TestCeilingScope.test_a_field_value_over_its_ceiling_is_refused"]),
+
+    ("review#1 --force stops raising the field ceiling",
+     "            limit, forced = (FIELD_CEILING_FORCED if force\n"
+     "                             else FIELD_CEILING), FIELD_CEILING_FORCED",
+     "            limit, forced = FIELD_CEILING, FIELD_CEILING_FORCED",
+     ["TestCeilingScope.test_force_raises_the_field_ceiling",
+      "TestCloseFieldCeilings.test_force_raises_it_and_an_ordinary_close_is_untouched"]),
+
+    # --- review#3: the close flags -----------------------------------------
+
+    ("review#3 done/cancel stop measuring their flags",
+     "    check_field_ceilings(args.force, **{marker_flag: outcome},\n"
+     "                         summary=args.summary, note=args.note)",
+     "    pass",
+     ["TestCloseFieldCeilings.test_done_measures_how_summary_and_note",
+      "TestCloseFieldCeilings.test_cancel_measures_why"]),
 ]
 
 
@@ -248,7 +318,8 @@ def main():
                                   "TestDirResolution", "TestProjectTagInDoneLog",
                                   "TestEmbeddedMarker", "TestAtomicWrite",
                                   "TestRiskDeletion", "TestCeilingScope",
-                                  "TestTargetQueueAnnounced"])
+                                  "TestTargetQueueAnnounced", "TestFieldChain",
+                                  "TestCloseFieldCeilings"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
