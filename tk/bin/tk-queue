@@ -19,9 +19,14 @@ prefix — stay outside `report`'s scope; read the log itself for that history).
 
 Size ceiling: an item is a PENDING ACTION, not an essay. Durable context
 belongs in a memory file or the wiki, linked from the item. `add` rejects
-items over the ceiling; `edit` rejects growth beyond it (legacy oversized
-items can still have fields edited). --force raises the ceiling for the rare
-exception.
+items over the ceiling; `edit` rejects growth beyond it when it rewrites the
+item's TEXT — a field-only edit (--class/--effort/--risk/--criterion/--project)
+is never measured, so a legacy oversized item stays taggable and triageable.
+--force raises the ceiling for the rare exception.
+
+Every mutating command prints the resolved memory dir on stderr before acting:
+the target queue is inferred from --dir or the cwd, and an unseen inference is
+an unchecked one.
 """
 
 import argparse
@@ -39,6 +44,14 @@ except ImportError:      # non-POSIX; see queue_lock
     fcntl = None
 
 CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
+# Reserved word that CLEARS an optional field instead of setting it. `--risk ''`
+# cannot do the job: argparse hands an empty string, every writer treats it as
+# falsy, and the command is a silent no-op — so a Risk line written when it was
+# true (a branch that has since been merged, a migration already run) was
+# unremovable, and a stale Risk keeps the item out of every afk package forever.
+# A reserved value reuses the existing parser: no new flag to forget, no new
+# precedence rule between "set" and "clear".
+FIELD_CLEAR = "none"
 READERS = frozenset(("list", "report"))   # everything else mutates and takes the queue lock
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
 # read once, at import: os.umask can only be read by setting it, and doing that
@@ -282,6 +295,16 @@ PROJECT_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*
 LOG_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)\.\s*$")
 
 
+def clears_field(value):
+    """Whether this flag value is the reserved word that DELETES the field.
+
+    Case-insensitive and whitespace-tolerant, so `--risk None` and `--risk ' none '`
+    do not silently write a Risk line reading "None" — a Risk field whose content
+    is the word for "no risk" is never what the caller meant.
+    """
+    return (value or "").strip().lower() == FIELD_CLEAR
+
+
 def validate_project(tag):
     if not PROJECT_RE.match(tag):
         fail(f"--project must be a short lowercase slug (letters, digits, '-'/'_', "
@@ -467,7 +490,7 @@ def cmd_list(args):
 
 def compose_item(args, iid):
     fields = [f"**Class:** {args.classe}.", f"**Effort:** {args.effort}."]
-    if args.risk:
+    if args.risk and not clears_field(args.risk):
         fields.append(f"**Risk:** {args.risk}.")
     fields.append(f"**Criterion:** {args.criterion}.")
     if args.project:
@@ -593,6 +616,19 @@ def cmd_edit(args):
             fail(f"--class must be one of {', '.join(CLASSES)}")
         pat = re.compile(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*[^*\n]*\.?")
         matches = list(pat.finditer(new))
+        if field == "Risk" and clears_field(flag):
+            if matches:
+                # the LAST occurrence, for the same reason the set branch below
+                # uses it: an item predating the embedded-marker guard can carry
+                # the shape inside its own text
+                start, end = matches[-1].span()
+                new = new[:start] + new[end:]
+                # the body is greedy, so the match already swallowed the blank that
+                # separated Risk from the next field — but when Risk was the last
+                # field on the line there is nothing after it, and the blank BEFORE
+                # it is left dangling at end of line
+                new = re.sub(r"[ \t]+(?=\n|\Z)", "", new)
+            continue
         if matches:
             # the LAST occurrence, not the first: compose_item appends the fields at
             # the tail, so the real field is always the last one. Items predating the
@@ -608,7 +644,14 @@ def cmd_edit(args):
             new = new.rstrip("\n") + f" **{field}:** {flag}.\n"
     if not new.endswith("\n"):
         new += "\n"
-    if len(new) > len(block):  # the ceiling blocks growth, not edits of legacy oversized items
+    # The ceiling exists to stop an item's PROSE from becoming an essay, so only a
+    # --text edit is measured against it (and only when it grows the item — shrinking
+    # a legacy oversized item must always be allowed). Adding or swapping a field is
+    # never the essay the ceiling guards against: it is a fixed handful of chars, and
+    # gating it meant a legacy oversized item (T001, T002, T013 in the real queue)
+    # needed --force just to gain a --project tag, which trains the caller to type
+    # --force on edits and thereby disarms the guard where it does matter.
+    if args.text and len(new) > len(block):
         check_ceiling(new, args.force)
     path = os.path.join(memdir, "next-steps.md")
     write_atomic(path, read(path).replace(block, new, 1))
@@ -710,7 +753,8 @@ def main():
     a.add_argument("text")
     a.add_argument("--class", dest="classe", required=True, help="|".join(CLASSES))
     a.add_argument("--effort", required=True, help="S/M/L + wall-clock guess, e.g. 'M (~30min)'")
-    a.add_argument("--risk", help="only when unsupervised execution can do damage")
+    a.add_argument("--risk", help="only when unsupervised execution can do damage "
+                   "('none' writes no Risk line)")
     a.add_argument("--criterion", required=True,
                    help="acceptance: 'A: <command that proves it>' or 'B: user verdict'")
     a.add_argument("--project", help="optional short slug tagging which project this item "
@@ -735,7 +779,8 @@ def main():
     e.add_argument("--text")
     e.add_argument("--class", dest="classe")
     e.add_argument("--effort")
-    e.add_argument("--risk")
+    e.add_argument("--risk", help="new Risk line, or 'none' to DELETE the field "
+                   "(re-triage of an obsolete Risk)")
     e.add_argument("--criterion")
     e.add_argument("--project", help="assign/change the project tag")
     e.add_argument("--force", action="store_true")
@@ -758,9 +803,20 @@ def main():
         "migrate": cmd_migrate,
     }[args.cmd]
     if args.cmd not in READERS:
+        memdir = memory_dir(args.dir)
+        # Which queue is being written is INFERRED — from --dir, or from the cwd
+        # when it is absent — and an inference nobody sees is an inference nobody
+        # checks. A caller whose cwd is not where they think (the agent's shell
+        # keeps its cwd between calls) edits a homonymous item in ANOTHER project's
+        # queue and is told "T019 updated", which reads as success. Printing the
+        # resolved dir is what makes that visible without a flag to remember —
+        # stderr, so it never contaminates stdout that a caller parses, and BEFORE
+        # the work, so a command that then fails or blocks on the lock has still
+        # said where it was aiming.
+        print(f"tk-queue: queue: {memdir}", file=sys.stderr)
         # taken BEFORE the handler's first read, released after its last write:
         # a lock around the write alone would still let a stale snapshot win
-        with queue_lock(memory_dir(args.dir)):
+        with queue_lock(memdir):
             handler(args)
     else:
         handler(args)

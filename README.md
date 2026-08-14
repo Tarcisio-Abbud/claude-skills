@@ -26,10 +26,15 @@ The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (de
 (open items only) and `done-log.md` (what left the queue, when, and how) — written ONLY
 through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / list /
 report / migrate), which moves a resolved item to the log in one command and enforces a
-size ceiling on entry. Each item carries an ID (T001…), **Class** (AUTONOMOUS / DECISION /
-BLOCKED / EXTERNAL / RECURRING), **Effort** (S/M/L + rough wall-clock time), an optional
-**Risk** line naming what unsupervised execution could damage — an item with a Risk line
-never enters an afk package — a required **Criterion** (acceptance: `A:` a
+size ceiling on the item's text (a field-only `edit` is never measured against it — a
+legacy oversized item stays taggable without `--force`). Every mutating command prints the
+memory dir it resolved on **stderr** before acting, since that target is inferred from
+`--dir` or the cwd and an unseen inference is an unchecked one. Each item carries an ID
+(T001…), **Class** (AUTONOMOUS / DECISION / BLOCKED / EXTERNAL / RECURRING), **Effort**
+(S/M/L + rough wall-clock time), an optional **Risk** line naming what unsupervised
+execution could damage — an item with a Risk line never enters an afk package, and
+`--risk none` DELETES the field, which is how an obsolete Risk gets re-triaged — a
+required **Criterion** (acceptance: `A:` a
 deterministic check, `B:` the user's verdict; required on `add`, still optional on `edit`
 for legacy items), and an optional **Project** slug tagging which project an item belongs
 to, for a workspace-root queue that mixes several projects — `add` warns (not errors) when

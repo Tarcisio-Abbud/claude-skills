@@ -127,12 +127,18 @@ tk-queue add "<action>" --class DECISION --effort "M (~30min)" \
          [--risk "..."] [--project slug] [--source "..."]
 tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."]
-tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...] [--criterion ...] [--project slug] [--force]
+tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--criterion ...] [--project slug] [--force]
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
 tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
 ```
 
 `<id>` is accepted in the form the queue displays (`T006`) as well as bare (`6`).
+
+Every mutating command (`add`/`edit`/`done`/`cancel`/`migrate`) prints the memory dir it
+resolved on **stderr** before acting. That target is inferred — from `--dir`, or from the
+cwd when it is absent — and a shell that keeps its cwd between calls has already made an
+`edit` land on a homonymous item in ANOTHER project's queue while reporting success. Read
+that line before trusting the result.
 
 Two writers at once are safe: every mutating command holds an exclusive lock on the
 memory dir for its whole read-modify-write. When an ID is not among the open items the
@@ -155,7 +161,11 @@ re-triages; tracker tickets are referenced, not mirrored):
 - **Risk** — present ONLY when running the item unsupervised can do damage (production
   data, irreversible effects, anything externally visible): one line naming the damage. No
   Risk line = safe to run unattended; an item carrying a Risk line never enters an afk
-  package.
+  package. **`--risk none` DELETES the field** (on `add`, writes none in the first place):
+  a Risk recorded when it was true goes stale — the branch it names gets merged, the
+  migration it fears already ran — and a stale Risk keeps the item out of every afk package
+  forever. `--risk ''` cannot do that job: it is indistinguishable from "flag not passed",
+  so it is a silent no-op. Re-triaging a Risk means clearing it, not rewording it.
 - **Criterion** — acceptance criterion, required on `add` (and it must not be blank): `A:`
   a deterministic check (a command whose pass proves the item done) or `B:` the user's
   verdict. `edit` keeps it optional, because items created before the field was mandatory
@@ -175,8 +185,14 @@ re-triages; tracker tickets are referenced, not mirrored):
   closed-items block legible in a root queue that mixes projects. `###` remains the memory
   dir, a different axis: one per project repo, `####` the tags within it.
 
-An item is a pending action, not an essay — the script enforces a size ceiling. Durable
-context goes to a memory file or wiki page, linked from the item with `[[slug]]`.
+An item is a pending action, not an essay — the script enforces a size ceiling on the
+item's TEXT. Durable context goes to a memory file or wiki page, linked from the item with
+`[[slug]]`. `add` refuses an oversized item outright; `edit` measures only a `--text`
+rewrite that grows the item (`--force` raises the ceiling for the rare exception). Adding
+or swapping a field — `--class`, `--effort`, `--risk`, `--criterion`, `--project` — is
+never measured: it is a fixed handful of chars, and gating it meant a legacy oversized item
+needed `--force` merely to gain a project tag, which trains the caller to type `--force` on
+edits and disarms the guard where it does matter.
 
 **The done-log pointer rule:** `--how` points at the most durable address available —
 commit/PR (immutable) > wiki page or repo doc (versioned) > memory file (prunable). The

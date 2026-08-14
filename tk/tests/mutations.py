@@ -133,6 +133,62 @@ MUTATIONS = [
     ("T065 edit rewrites the FIRST marker again, eating the prose",
      "            m = matches[-1]", "            m = matches[0]",
      ["TestEmbeddedMarker.test_edit_rewrites_the_real_field_not_prose_that_looks_like_one"]),
+
+    ("T070 add writes a Risk line for the reserved word again",
+     "    if args.risk and not clears_field(args.risk):", "    if args.risk:",
+     ["TestRiskDeletion.test_add_writes_no_risk_line_for_the_reserved_word"]),
+
+    ("T070 edit SETS Risk to the reserved word instead of deleting the field",
+     '        if field == "Risk" and clears_field(flag):', "        if False:",
+     ["TestRiskDeletion.test_edit_clears_the_risk_field",
+      "TestRiskDeletion.test_the_surrounding_fields_survive_intact",
+      "TestRiskDeletion.test_clearing_an_item_that_has_no_risk_is_a_no_op",
+      "TestRiskDeletion.test_clearing_rewrites_the_real_field_not_prose_that_looks_like_one"]),
+
+    ("T070 clearing removes the FIRST marker again, eating the prose",
+     "start, end = matches[-1].span()", "start, end = matches[0].span()",
+     ["TestRiskDeletion.test_clearing_rewrites_the_real_field_not_prose_that_looks_like_one"]),
+
+    ("T070 the reserved word stops tolerating case and surrounding blanks",
+     '    return (value or "").strip().lower() == FIELD_CLEAR',
+     '    return (value or "") == FIELD_CLEAR',
+     ["TestRiskDeletion.test_the_reserved_word_is_case_and_space_tolerant"]),
+
+    # the opposite direction: a clear-word that over-triggers makes Risk unwritable
+    # rather than merely clearable, and only the false-positive test sees it
+    ("T070 the reserved word swallows every Risk value",
+     '    return (value or "").strip().lower() == FIELD_CLEAR',
+     "    return bool(value)",
+     ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
+
+    ("T070 clearing leaves the separator blank dangling at end of line",
+     '                new = re.sub(r"[ \\t]+(?=\\n|\\Z)", "", new)', "                pass",
+     ["TestRiskDeletion.test_no_trailing_blank_is_left_when_risk_was_the_last_field"]),
+
+    ("T071 the ceiling gates a field-only edit again",
+     "    if args.text and len(new) > len(block):", "    if len(new) > len(block):",
+     ["TestCeilingScope.test_every_field_edit_passes_without_force"]),
+
+    ("T071 a --text edit stops being measured against the ceiling",
+     "    if args.text and len(new) > len(block):", "    if False:",
+     ["TestCeilingScope.test_a_text_edit_over_the_ceiling_is_still_refused",
+      "TestCeilingScope.test_a_text_edit_growing_an_already_oversized_item_is_refused"]),
+
+    ("T072 a mutating command stops naming the queue it writes",
+     '        print(f"tk-queue: queue: {memdir}", file=sys.stderr)', "        pass",
+     ["TestTargetQueueAnnounced.test_every_mutating_command_names_the_memdir_on_stderr",
+      "TestTargetQueueAnnounced.test_the_announced_dir_is_the_one_actually_written"]),
+
+    ("T072 the announcement lands on stdout, where callers parse the output",
+     '        print(f"tk-queue: queue: {memdir}", file=sys.stderr)',
+     '        print(f"tk-queue: queue: {memdir}")',
+     ["TestTargetQueueAnnounced.test_it_goes_to_stderr_and_never_pollutes_stdout"]),
+
+    # over-trigger direction: readers write nothing, so announcing a write target
+    # on `list`/`report` is noise on every read
+    ("T072 readers announce a write target too",
+     'READERS = frozenset(("list", "report"))', "READERS = frozenset()",
+     ["TestTargetQueueAnnounced.test_readers_stay_silent"]),
 ]
 
 
@@ -145,7 +201,9 @@ def run_suite(tk_dir, names):
 def main():
     baseline = run_suite(TK_DIR, ["TestPrefixedId", "TestConcurrency", "TestMissingItemMessage",
                                   "TestDirResolution", "TestProjectTagInDoneLog",
-                                  "TestEmbeddedMarker", "TestAtomicWrite"])
+                                  "TestEmbeddedMarker", "TestAtomicWrite",
+                                  "TestRiskDeletion", "TestCeilingScope",
+                                  "TestTargetQueueAnnounced"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

@@ -51,10 +51,11 @@ metadata:
 """
 
 
-def item(iid, text, project=None, klass="AUTONOMOUS"):
+def item(iid, text, project=None, klass="AUTONOMOUS", risk=None):
     tag = f" **Project:** {project}." if project else ""
-    return (f"- [ ] **T{iid:03d}** — {text} **Class:** {klass}. **Effort:** S. "
-            f"**Criterion:** A: x.{tag} **Source:** 2026-08-13\n")
+    risk_field = f" **Risk:** {risk}." if risk else ""
+    return (f"- [ ] **T{iid:03d}** — {text} **Class:** {klass}. **Effort:** S."
+            f"{risk_field} **Criterion:** A: x.{tag} **Source:** 2026-08-13\n")
 
 
 class QueueTest(unittest.TestCase):
@@ -472,6 +473,214 @@ class TestEmbeddedMarker(QueueTest):
         self.assertIn("levar o campo **Project:** para o done-log", body)  # prose intact
         self.assertIn("**Project:** ambiente.", body)
         self.assertNotIn("**Project:** tk.", body)
+
+
+# --- T070: `--risk none` DELETES the field --------------------------------
+
+class TestRiskDeletion(QueueTest):
+    """`--risk ''` is a silent no-op (argparse hands an empty string and every
+    writer treats it as falsy), so a Risk line written when it was true could
+    never be removed — and a stale Risk keeps the item out of every afk package
+    for good. The reserved word `none` clears it."""
+
+    def test_edit_clears_the_risk_field(self):
+        self.seed(item(19, "re-triar", risk="branch afk/x pode sumir"))
+        r = self.run_tk("edit", "T019", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertNotIn("**Risk:**", body)
+        self.assertNotIn("branch afk/x", body)
+
+    def test_the_surrounding_fields_survive_intact(self):
+        """Deleting the middle of a one-line block must not glue its neighbours
+        together nor eat one of them."""
+        self.seed(item(19, "re-triar", risk="dano X", project="tk"))
+        self.assertEqual(self.run_tk("edit", "T019", "--risk", "none").returncode, 0)
+        body = self.body()
+        self.assertIn("**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.", body)
+        self.assertIn("**Project:** tk.", body)
+        self.assertIn("**Source:** 2026-08-13", body)
+        self.assertIn("- [ ] **T019** — re-triar **Class:**", body)
+
+    def test_no_trailing_blank_is_left_when_risk_was_the_last_field(self):
+        """`edit --risk` on an item that had none APPENDS the field at the end of
+        the line. Clearing it there leaves the separator blank dangling at
+        end-of-line — invisible in a diff, and it is what the queue file keeps."""
+        self.seed(item(19, "re-triar"))
+        self.assertEqual(self.run_tk("edit", "T019", "--risk", "dano X").returncode, 0)
+        self.assertTrue(self.body().rstrip("\n").endswith("**Risk:** dano X."), self.body())
+        self.assertEqual(self.run_tk("edit", "T019", "--risk", "none").returncode, 0)
+        for line in self.body().splitlines():
+            self.assertEqual(line, line.rstrip(), f"trailing blank left: {line!r}")
+
+    def test_the_reserved_word_is_case_and_space_tolerant(self):
+        """A Risk field whose content is the word for "no risk" is never what the
+        caller meant — `None` and ` none ` must clear, not write."""
+        for form in ("none", "None", "NONE", " none "):
+            with self.subTest(form=form):
+                self.seed(item(19, "re-triar", risk="dano X"))
+                r = self.run_tk("edit", "T019", "--risk", form)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertNotIn("**Risk:**", self.body())
+
+    def test_clearing_an_item_that_has_no_risk_is_a_no_op(self):
+        self.seed(item(19, "sem risco"))
+        before = self.body()
+        r = self.run_tk("edit", "T019", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), before)
+
+    def test_add_writes_no_risk_line_for_the_reserved_word(self):
+        self.seed()
+        r = self.run_tk("add", "item sem risco", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: x", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("**Risk:**", self.body())
+
+    def test_a_real_risk_is_still_written_and_still_replaceable(self):
+        """The other direction: the reserved word must not swallow ordinary
+        values, or the field becomes unwritable instead of merely clearable."""
+        self.seed()
+        r = self.run_tk("add", "item arriscado", "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: x", "--risk", "apaga dados de produção")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Risk:** apaga dados de produção.", self.body())
+        self.assertEqual(self.run_tk("edit", "T001", "--risk", "nenhum de fato").returncode, 0)
+        self.assertIn("**Risk:** nenhum de fato.", self.body())
+        self.assertNotIn("apaga dados", self.body())
+
+    def test_clearing_rewrites_the_real_field_not_prose_that_looks_like_one(self):
+        """Same trap as the set path: a legacy item can carry the marker shape
+        inside its own text, and the real field is always the LAST one."""
+        legacy = ("- [ ] **T001** — decidir se o campo **Risk:** ainda vale "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Risk:** dano X. "
+                  "**Criterion:** A: x. **Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertIn("decidir se o campo **Risk:** ainda vale", body)   # prose intact
+        self.assertNotIn("dano X", body)
+        # and the field really went away instead of being SET to the reserved word:
+        # the only marker left is the prose one
+        self.assertEqual(body.count("**Risk:**"), 1, body)
+
+
+# --- T071: the size ceiling gates the TEXT, not a field edit --------------
+
+class TestCeilingScope(QueueTest):
+    """The ceiling exists to stop an item's prose from becoming an essay. Gating
+    field edits too meant a legacy oversized item needed --force merely to gain a
+    --project tag — which trains the caller to type --force on edits, disarming
+    the guard exactly where it matters."""
+
+    def oversized(self, iid=13):
+        block = item(iid, "contexto legado que ninguém migrou. " * 20)
+        self.assertGreater(len(block), load_tk().CEILING,
+                           "fixture is not actually over the ceiling")
+        return block
+
+    def test_every_field_edit_passes_without_force(self):
+        for flag, val, expected in (("--project", "ambiente", "**Project:** ambiente."),
+                                    ("--class", "DECISION", "**Class:** DECISION."),
+                                    ("--effort", "L (~2h)", "**Effort:** L (~2h)."),
+                                    ("--risk", "dano X", "**Risk:** dano X."),
+                                    ("--criterion", "B: veredito", "**Criterion:** B: veredito.")):
+            with self.subTest(flag=flag):
+                self.seed(self.oversized())
+                r = self.run_tk("edit", "T013", flag, val)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertNotIn("ceiling", r.stderr)
+                self.assertIn(expected, self.body())
+
+    def test_a_text_edit_over_the_ceiling_is_still_refused(self):
+        self.seed(item(1, "curto"))
+        r = self.run_tk("edit", "T001", "--text", "ensaio. " * 120)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("ceiling", r.stderr)
+        self.assertIn("- [ ] **T001** — curto ", self.body())   # nothing was rewritten
+
+    def test_a_text_edit_growing_an_already_oversized_item_is_refused(self):
+        self.seed(self.oversized())
+        r = self.run_tk("edit", "T013", "--text", "contexto legado que ninguém migrou. " * 30)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("ceiling", r.stderr)
+
+    def test_a_text_edit_that_shrinks_an_oversized_item_is_allowed(self):
+        self.seed(self.oversized())
+        r = self.run_tk("edit", "T013", "--text", "texto enxuto agora")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("- [ ] **T013** — texto enxuto agora **Class:**", self.body())
+
+    def test_force_still_raises_the_ceiling_for_a_text_edit(self):
+        self.seed(item(1, "curto"))
+        r = self.run_tk("edit", "T001", "--text", "ensaio. " * 120, "--force")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_add_is_unchanged_by_all_this(self):
+        self.seed()
+        r = self.run_tk("add", "ensaio. " * 120, "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: x")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("ceiling", r.stderr)
+
+
+# --- T072: every mutation names the queue it is writing -------------------
+
+class TestTargetQueueAnnounced(QueueTest):
+    """The target queue is INFERRED — from --dir, or from the cwd when absent —
+    and an inference nobody sees is an inference nobody checks. An agent's shell
+    keeps its cwd between calls, so an `edit` has already landed on a homonymous
+    item in ANOTHER project's queue while reporting "T019 updated"."""
+
+    def test_every_mutating_command_names_the_memdir_on_stderr(self):
+        for argv in (("add", "novo", "--class", "AUTONOMOUS", "--effort", "S",
+                      "--criterion", "A: x"),
+                     ("edit", "T001", "--effort", "L"),
+                     ("done", "T001", "--how", "PR #1"),
+                     ("cancel", "T001", "--why", "n/a"),
+                     ("migrate",)):
+            with self.subTest(cmd=argv[0]):
+                self.seed(item(1, "um"))
+                r = self.run_tk(*argv)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn(self.mem, r.stderr, f"{argv[0]} did not name the queue")
+
+    def test_the_announced_dir_is_the_one_actually_written(self):
+        """The incident's exact shape: two queues carrying the same ID. Only the
+        printed line distinguishes the queue that was edited from the one the
+        caller believed they were in."""
+        other = os.path.join(self.dir, "other-memory")
+        os.makedirs(other)
+        self.seed(item(19, "revisar Risk obsoleto"))
+        with open(os.path.join(other, "next-steps.md"), "w", encoding="utf-8") as f:
+            f.write(HEADER + item(19, "revisar Risk obsoleto"))
+        r = subprocess.run([sys.executable, TK, "edit", "T019", "--effort", "L",
+                            "--dir", other], capture_output=True, text=True, cwd=self.dir)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(other, r.stderr)
+        self.assertNotIn(self.mem, r.stderr)
+        self.assertNotIn("**Effort:** L.", self.body())   # this queue was untouched
+
+    def test_it_goes_to_stderr_and_never_pollutes_stdout(self):
+        """stdout is parsed — the suite itself reads the new ID out of `add`'s
+        stdout, and so does anything scripting the CLI."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("add", "novo", "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: x")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn(self.mem, r.stdout)
+        self.assertEqual(r.stdout.splitlines()[0].split()[1].rstrip(":"), "T002")
+
+    def test_readers_stay_silent(self):
+        """`list` and `report` take no lock and write nothing — announcing a write
+        target there would be noise on every read."""
+        self.seed(item(1, "um"))
+        for argv in (("list",), ("report", "--since", "2026-01-01")):
+            with self.subTest(cmd=argv[0]):
+                r = self.run_tk(*argv)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertNotIn(self.mem, r.stderr)
 
 
 if __name__ == "__main__":
