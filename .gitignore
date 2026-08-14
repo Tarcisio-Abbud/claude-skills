@@ -8,6 +8,7 @@
 !/tk
 !/tk-cowork
 !/plugin-drift
+!/asr
 
 # Python bytecode from the tk-queue test suite
 __pycache__/

@@ -17,6 +17,12 @@
       "description": "The kickoff/wrap-up pair rebuilt for knowledge work in Cowork: no git, no test suite; the gate covers irreversible actions (send, share, schedule) and the queue is next-steps.md at the project folder's root."
     },
     {
+      "name": "asr",
+      "displayName": "asr — local speech-to-text",
+      "source": "./asr",
+      "description": "Transcribes audio Read cannot decode (voice notes, recordings, WhatsApp exports) locally on CPU, so nothing leaves the machine. Parakeet TDT 0.6B v3 by default, faster-whisper as the fallback for the languages Parakeet lacks; resumable batches, and a chunked pipeline that survives a small box."
+    },
+    {
       "name": "plugin-drift",
       "displayName": "plugin-drift — plugin drift checker",
       "source": "./plugin-drift",

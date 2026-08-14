@@ -1,7 +1,8 @@
 # claude-skills
 
-Own-authored skills for Claude Code, shipped as the **`tk` plugin** (v2) and served by the
-marketplace defined in `.claude-plugin/marketplace.json`.
+Own-authored skills for Claude Code, shipped as the **`tk`** (v2), **`tk-cowork`**, **`asr`**
+and **`plugin-drift`** plugins, served by the marketplace defined in
+`.claude-plugin/marketplace.json`.
 
 ## Install (a fresh machine)
 
@@ -101,6 +102,22 @@ commit-log highlights for one drifted git-pinned plugin, best-effort, from its o
 repo. Never applies anything — the CLI's `disable`+`install` pair, or the `/plugin` dialog
 where the CLI binary is unavailable, is still how a drifted plugin actually gets updated.
 
+## The asr plugin
+
+`transcribe-audio` turns audio Read cannot decode — voice notes, recordings, a WhatsApp
+export `.zip` — into text, entirely on CPU, so nothing leaves the machine. Parakeet TDT 0.6B
+v3 int8 is the default engine and faster-whisper the fallback for the languages Parakeet does
+not cover.
+
+Two design points carry the plugin. Parakeet transcribes a whole clip in one pass, so
+`bin/transcribe.py` slices long audio into windows and cuts each at the quietest nearby frame
+— without that, a long file OOMs a small box, and a naive cut splits numbers in half. And
+`onnx_asr` reads WAV from disk only, so the script decodes with PyAV into an array and hands
+that over, which is what makes `.opus` work with no system ffmpeg.
+
+Machine-specific addresses — which interpreter, where the weights live, how they are
+provisioned — stay out of this public repo and live in the extension file below.
+
 ## Site extensions
 
 The skills are generic and standalone. Site-specific integrations — a wiki to update at
@@ -109,6 +126,9 @@ plug in via optional extension files the skills read when present:
 
 - `~/.claude/tk/<skill>.md` — global to the machine;
 - `.claude/tk/<skill>.md` — per project, at the project root.
+
+`asr` follows the same shape: `~/.claude/asr/transcribe-audio.md` holds this machine's
+interpreter, cache path and provisioning notes.
 
 Keep extension files out of public repos when they carry private paths or names.
 
@@ -133,6 +153,10 @@ tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
   skills/<name>/SKILL.md          wrap-up and kickoff, rebuilt for knowledge work
+asr/
+  .claude-plugin/plugin.json      the plugin manifest
+  skills/transcribe-audio/SKILL.md
+  bin/transcribe.py               the transcription CLI (Parakeet / faster-whisper)
 ```
 
 On the authoring machine this repo is cloned **as** `~/.claude/skills/`, so `tk/` sits
