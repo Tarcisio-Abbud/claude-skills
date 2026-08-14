@@ -26,10 +26,20 @@ The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (de
 (open items only) and `done-log.md` (what left the queue, when, and how) — written ONLY
 through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / list /
 report / migrate), which moves a resolved item to the log in one command and enforces a
-size ceiling on entry. Each item carries an ID (T001…), **Class** (AUTONOMOUS / DECISION /
-BLOCKED / EXTERNAL / RECURRING), **Effort** (S/M/L + rough wall-clock time), an optional
-**Risk** line naming what unsupervised execution could damage — an item with a Risk line
-never enters an afk package — a required **Criterion** (acceptance: `A:` a
+two size ceilings whose scope follows each flag's nature: the whole ITEM is measured
+whenever a prose flag (`--text`, `--criterion`, `--risk`) grows it, while the short fields
+(`--class`, `--effort`, `--project`) answer only to a small per-VALUE ceiling — that
+exemption is what keeps a legacy oversized item taggable without `--force`, and the
+per-value ceiling is what keeps the exemption from becoming a bypass. `edit` also locates
+the field it changes by the item's field CHAIN, refusing to guess when a legacy item quotes
+the marker shape in prose. Every mutating command prints the
+memory dir it resolved on **stderr** before acting, since that target is inferred from
+`--dir` or the cwd and an unseen inference is an unchecked one. Each item carries an ID
+(T001…), **Class** (AUTONOMOUS / DECISION / BLOCKED / EXTERNAL / RECURRING), **Effort**
+(S/M/L + rough wall-clock time), an optional **Risk** line naming what unsupervised
+execution could damage — an item with a Risk line never enters an afk package, and
+`--risk none` DELETES the field, which is how an obsolete Risk gets re-triaged — a
+required **Criterion** (acceptance: `A:` a
 deterministic check, `B:` the user's verdict; required on `add`, still optional on `edit`
 for legacy items), and an optional **Project** slug tagging which project an item belongs
 to, for a workspace-root queue that mixes several projects — `add` warns (not errors) when

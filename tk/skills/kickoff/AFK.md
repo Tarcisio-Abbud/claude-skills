@@ -6,7 +6,10 @@ run unattended. `afk` fires it with zero interaction: the user typed the command
 
 ## 1. Build the package
 
-Eligible: items triaged **AUTONOMOUS** that carry **no Risk line**. Order by
+Eligible: items triaged **AUTONOMOUS** that carry **no Risk line** — a Risk the triage
+finds OBSOLETE (it names a branch since merged, a migration since run) is cleared on the
+spot with `tk-queue edit <id> --risk none`, which is what keeps a stale line from
+excluding the item forever. Order by
 impact/urgency, then add items while the package still fits ONE session: the parent only
 orchestrates and verifies — yet each item still costs context to dispatch, monitor and
 check. Guidance: stop around 3–6 items or ~2h of summed Effort; leaving an eligible item

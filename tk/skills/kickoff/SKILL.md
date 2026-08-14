@@ -124,15 +124,21 @@ verifies the queue at open.
 tk-queue list                                  # open items with IDs (T001…)
 tk-queue add "<action>" --class DECISION --effort "M (~30min)" \
          --criterion "A: <command that proves it> | B: user verdict" \
-         [--risk "..."] [--project slug] [--source "..."]
-tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
-tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."]
-tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...] [--criterion ...] [--project slug] [--force]
+         [--risk "..."|none] [--project slug] [--source "..."]
+tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."] [--force]
+tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."] [--force]
+tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--criterion ...] [--project slug] [--force]
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
 tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
 ```
 
 `<id>` is accepted in the form the queue displays (`T006`) as well as bare (`6`).
+
+Every mutating command (`add`/`edit`/`done`/`cancel`/`migrate`) prints the memory dir it
+resolved on **stderr** before acting. That target is inferred — from `--dir`, or from the
+cwd when it is absent — and a shell that keeps its cwd between calls has already made an
+`edit` land on a homonymous item in ANOTHER project's queue while reporting success. Read
+that line before trusting the result.
 
 Two writers at once are safe: every mutating command holds an exclusive lock on the
 memory dir for its whole read-modify-write. When an ID is not among the open items the
@@ -146,6 +152,14 @@ be read as the real field and silently hijack it, so `add`/`edit`/`done`/`cancel
 it and ask for a rephrase. Naming a field in plain prose is fine; only the bold-plus-colon
 shape is refused.
 
+Items written **before** that guard can still carry the shape, so `edit` locates the field
+it is changing by the item's **field chain** — the run of `**Field:** value.` segments that
+ends the item's first line — never by "the last marker in the block", which reaches into
+continuation lines. When the chain is ambiguous (a marker only outside it, or the same
+field twice inside it) `edit` **refuses and says so** instead of guessing: a refusal costs
+one command, and `--risk none` guessing wrong deletes prose that cannot be recovered.
+The fix for such an item is `cancel` + `add`.
+
 Item fields (every recorded field is the writer's guess — kickoff always re-verifies and
 re-triages; tracker tickets are referenced, not mirrored):
 
@@ -155,7 +169,11 @@ re-triages; tracker tickets are referenced, not mirrored):
 - **Risk** — present ONLY when running the item unsupervised can do damage (production
   data, irreversible effects, anything externally visible): one line naming the damage. No
   Risk line = safe to run unattended; an item carrying a Risk line never enters an afk
-  package.
+  package. **`--risk none` DELETES the field** (on `add`, writes none in the first place):
+  a Risk recorded when it was true goes stale — the branch it names gets merged, the
+  migration it fears already ran — and a stale Risk keeps the item out of every afk package
+  forever. `--risk ''` cannot do that job: it is indistinguishable from "flag not passed",
+  so it is a silent no-op. Re-triaging a Risk means clearing it, not rewording it.
 - **Criterion** — acceptance criterion, required on `add` (and it must not be blank): `A:`
   a deterministic check (a command whose pass proves the item done) or `B:` the user's
   verdict. `edit` keeps it optional, because items created before the field was mandatory
@@ -175,8 +193,28 @@ re-triages; tracker tickets are referenced, not mirrored):
   closed-items block legible in a root queue that mixes projects. `###` remains the memory
   dir, a different axis: one per project repo, `####` the tags within it.
 
-An item is a pending action, not an essay — the script enforces a size ceiling. Durable
-context goes to a memory file or wiki page, linked from the item with `[[slug]]`.
+An item is a pending action, not an essay — the script enforces **two** size ceilings, and
+durable context goes to a memory file or wiki page, linked from the item with `[[slug]]`:
+
+- **the block ceiling**, on the whole item. `add` always. `edit` whenever a **prose** flag
+  is used — `--text`, `--criterion`, `--risk` — and the edit grows the item.
+- **the field ceiling**, on each field VALUE, on `add`, `edit` and the closes
+  (`--how`/`--why`/`--summary`/`--note`) alike. It comes in two sizes: a small one for the
+  fields that are short by construction (`--class` an enum, `--effort` "M (~30min)",
+  `--project` a slug) and a larger one for prose.
+
+The **short** fields are the only ones exempt from the block ceiling, and that exemption is
+deliberate: gating them meant a legacy oversized item needed `--force` merely to gain a
+project tag, which trains the caller to type `--force` on edits and disarms the guard where
+it matters. It is safe only because those fields are small AND replaced rather than
+appended, so repeated edits cannot accumulate.
+
+Neither ceiling holds alone, and both gaps were measured, not imagined: with only the block
+ceiling, one field edit was exempt and `--criterion` took a 100-char item to **1014** chars;
+with only the field ceiling, three prose fields at 199 chars **in a single call** took an
+item to **709**, past a 700 ceiling, with no `--force`.
+
+`--force` raises both, for the rare exception.
 
 **The done-log pointer rule:** `--how` points at the most durable address available —
 commit/PR (immutable) > wiki page or repo doc (versioned) > memory file (prunable). The

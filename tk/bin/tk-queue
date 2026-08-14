@@ -17,11 +17,26 @@ items predating this script may lack IDs; `migrate` assigns them (legacy [x]
 items move to the log verbatim, ID-less, and — carrying no `- YYYY-MM-DD —`
 prefix — stay outside `report`'s scope; read the log itself for that history).
 
-Size ceiling: an item is a PENDING ACTION, not an essay. Durable context
-belongs in a memory file or the wiki, linked from the item. `add` rejects
-items over the ceiling; `edit` rejects growth beyond it (legacy oversized
-items can still have fields edited). --force raises the ceiling for the rare
-exception.
+Size ceilings: an item is a PENDING ACTION, not an essay. Durable context
+belongs in a memory file or the wiki, linked from the item. TWO ceilings, and
+which one a flag answers to depends on the flag's NATURE:
+
+  block (CEILING)   the whole item. `add` always. `edit` whenever a PROSE flag
+                    is used (--text, --criterion, --risk) and the edit grows the
+                    item. Exempt: the short fields below — that exemption is
+                    what keeps a legacy oversized item taggable without --force.
+  field             each field VALUE, on add, edit and the closes alike.
+                    FIELD_CEILING_SHORT for --class/--effort/--project, which
+                    are bounded by construction (enum, "M (~30min)", a slug);
+                    FIELD_CEILING for prose.
+
+Neither ceiling holds alone: with only the block one, a single field edit was
+exempt and reached 1014 chars; with only the field one, three prose fields in a
+single call reached 709 past a 700 ceiling. --force raises both.
+
+Every mutating command prints the resolved memory dir on stderr before acting:
+the target queue is inferred from --dir or the cwd, and an unseen inference is
+an unchecked one.
 """
 
 import argparse
@@ -39,14 +54,46 @@ except ImportError:      # non-POSIX; see queue_lock
     fcntl = None
 
 CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
+# Reserved word that CLEARS an optional field instead of setting it. `--risk ''`
+# cannot do the job: argparse hands an empty string, every writer treats it as
+# falsy, and the command is a silent no-op — so a Risk line written when it was
+# true (a branch that has since been merged, a migration already run) was
+# unremovable, and a stale Risk keeps the item out of every afk package forever.
+# A reserved value reuses the existing parser: no new flag to forget, no new
+# precedence rule between "set" and "clear".
+FIELD_CLEAR = "none"
 READERS = frozenset(("list", "report"))   # everything else mutates and takes the queue lock
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
 # read once, at import: os.umask can only be read by setting it, and doing that
 # mid-run would race any other thread writing a file (the suite writes from six)
 UMASK = os.umask(0)
 os.umask(UMASK)
-CEILING = 700          # chars per item; enough for title + fields + 1 link
+CEILING = 700          # chars per ITEM BLOCK; enough for title + fields + 1 link
 CEILING_FORCED = 2000
+# chars per FIELD VALUE. The block ceiling cannot be the only one: the fields a
+# legacy oversized item must stay able to gain are exempt from it (see cmd_edit),
+# so without a second ceiling the first is bypassed by choosing another flag —
+# measured before this existed: `edit <id> --criterion "<900 chars>"` took a
+# 100-char item to 1014 and returned 0.
+#
+# The fields split by NATURE, and that split is what decides which ceiling each
+# one answers to (see cmd_edit for the block half):
+#   SHORT   --class (enum), --effort ("M (~30min)"), --project (a slug) are bounded
+#           by construction. Small ceiling, and exempt from the block ceiling —
+#           that exemption is the whole point of T071: tagging a legacy oversized
+#           item must not require --force.
+#   FREE    --criterion, --risk, --source, and the close flags, are prose. A field
+#           ceiling alone does NOT bound them: three of them at 199 chars each, in
+#           ONE call, took an item to 709 chars past a 700 block ceiling with no
+#           --force. So these also put the resulting BLOCK through the block
+#           ceiling, exactly as --text does.
+FIELD_CEILING_SHORT = 60
+FIELD_CEILING_SHORT_FORCED = 150
+FIELD_CEILING = 200
+FIELD_CEILING_FORCED = 500
+SHORT_FLAGS = frozenset(("classe", "class", "effort", "project"))
+# the free-text item fields: an edit touching any of them measures the block
+FREE_TEXT_FLAGS = ("text", "criterion", "risk")
 PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
 
 DONE_LOG_TEMPLATE = """---
@@ -282,6 +329,71 @@ PROJECT_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*
 LOG_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)\.\s*$")
 
 
+FIELD_SEGMENT_RE = re.compile(r"\*\*(" + ANY_FIELD + r"):\*\*[^*\n]*")
+
+
+def canonical_field(raw):
+    """Map a matched field word ('Risco', 'Criterio') to its canonical name."""
+    for name, variants in FIELD_VARIANTS.items():
+        if re.fullmatch(variants, raw):
+            return name
+    return None
+
+
+def field_chain(block):
+    """The item's REAL field chain: the maximal run of `**Field:** value.`
+    segments ENDING the block's first line. Empty when no such run exists.
+
+    Why a chain, and not "the last marker in the block". An item block absorbs
+    its continuation lines, and a legacy item — precisely the population the
+    ceiling exemption exists to serve, and the one `ensure_no_embedded_marker`
+    never protected, since it only guards items added after it — can carry the
+    marker SHAPE in prose: before the fields, or on a note line after them.
+    Taking the last match then edits the NOTE and leaves the real field alone,
+    while reporting success. Measured on `--risk none`: the real Risk survived
+    untouched and the note's text was deleted instead — a no-op on the field the
+    command claimed to change, plus destruction of text nobody asked it to touch,
+    on the DELETION path.
+
+    Two conditions separate chain from prose, and neither works alone:
+
+      anchored   the run must reach the end of the line. The fields are a suffix
+                 of the first line, by construction (compose_item).
+      periods    each segment's value ends in '.', because compose_item writes
+                 `**Field:** value.` — the ONE exception being Source, which is
+                 written last and without one. Contiguity cannot stand in for
+                 this: the body is greedy, so a prose marker's match runs right
+                 up to the next marker and looks contiguous too. The period is
+                 what tells `**Project:** para o done-log **Class:** ...` (prose)
+                 from `**Project:** tk. **Source:** ...` (a real field).
+
+    Ambiguity is left for the caller to resolve (see cmd_edit), never guessed:
+    a refusal costs one command, deleted text is not recoverable.
+    """
+    line = block.split("\n", 1)[0]
+    segs = list(FIELD_SEGMENT_RE.finditer(line))
+    if not segs or segs[-1].end() < len(line.rstrip()):
+        return []
+    chain = [segs[-1]]
+    for m in reversed(segs[:-1]):
+        ends_field = (m.group(0).rstrip().endswith(".")
+                      or canonical_field(m.group(1)) == "Source")
+        if m.end() != chain[0].start() or not ends_field:
+            break
+        chain.insert(0, m)
+    return chain
+
+
+def clears_field(value):
+    """Whether this flag value is the reserved word that DELETES the field.
+
+    Case-insensitive and whitespace-tolerant, so `--risk None` and `--risk ' none '`
+    do not silently write a Risk line reading "None" — a Risk field whose content
+    is the word for "no risk" is never what the caller meant.
+    """
+    return (value or "").strip().lower() == FIELD_CLEAR
+
+
 def validate_project(tag):
     if not PROJECT_RE.match(tag):
         fail(f"--project must be a short lowercase slug (letters, digits, '-'/'_', "
@@ -467,7 +579,7 @@ def cmd_list(args):
 
 def compose_item(args, iid):
     fields = [f"**Class:** {args.classe}.", f"**Effort:** {args.effort}."]
-    if args.risk:
+    if args.risk and not clears_field(args.risk):
         fields.append(f"**Risk:** {args.risk}.")
     fields.append(f"**Criterion:** {args.criterion}.")
     if args.project:
@@ -487,6 +599,31 @@ def check_ceiling(item, force):
         )
 
 
+def check_field_ceilings(force, **fields):
+    """Measure each field VALUE against the ceiling its NATURE earns it.
+
+    Short fields (SHORT_FLAGS) are bounded by construction and get the small
+    ceiling; everything else is prose and gets the larger one — and, for the
+    item fields among them, the block ceiling too (see cmd_edit), because a
+    per-field ceiling alone does not bound a call that passes several at once.
+    Applied identically on `add`, `edit` and the closes, or a file could hold a
+    value that no later command is allowed to write.
+    """
+    for name, val in fields.items():
+        if not val:
+            continue
+        if name in SHORT_FLAGS:
+            limit, forced = (FIELD_CEILING_SHORT_FORCED if force
+                             else FIELD_CEILING_SHORT), FIELD_CEILING_SHORT_FORCED
+        else:
+            limit, forced = (FIELD_CEILING_FORCED if force
+                             else FIELD_CEILING), FIELD_CEILING_FORCED
+        if len(val) > limit:
+            fail(f"--{name} has {len(val)} chars (field ceiling {limit}). A field is one "
+                 "line: put the substance in a memory file or wiki page and link it "
+                 "([[slug]])." + ("" if force else f" --force raises it to {forced}."))
+
+
 def cmd_add(args):
     memdir = memory_dir(args.dir)
     if args.classe not in CLASSES:
@@ -496,6 +633,8 @@ def cmd_add(args):
     ensure_filled(text=args.text, effort=args.effort, criterion=args.criterion)
     ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,
                               criterion=args.criterion, source=args.source)
+    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,
+                         criterion=args.criterion, project=args.project, source=args.source)
     if args.project:
         validate_project(args.project)
     path = os.path.join(memdir, "next-steps.md")
@@ -529,7 +668,7 @@ def cmd_add(args):
     print(f"added T{iid:03d}: {item_title(item)}")
 
 
-def close_item(args, marker, outcome):
+def close_item(args, marker, outcome, marker_flag):
     memdir = memory_dir(args.dir)
     block = find_open_item(memdir, args.id)
     ensure_single_line(outcome=outcome, summary=args.summary)
@@ -539,6 +678,11 @@ def close_item(args, marker, outcome):
     # never reads — and a real note in this queue's log quotes "**Project:**" while
     # describing this very field, which is the case LOG_TAG_RE exists to tolerate
     ensure_no_embedded_marker(summary=args.summary, outcome=outcome)
+    # the log line is a line too, and it is the record that OUTLIVES the item —
+    # same ceiling, same reason. --note is the one that can legitimately carry
+    # substance (it exists for work that left no pointer), which is what --force is for
+    check_field_ceilings(args.force, **{marker_flag: outcome},
+                         summary=args.summary, note=args.note)
     today = datetime.date.today().isoformat()
     # read the tag from the ORIGINAL block: item_title strips every field, and
     # --summary replaces the text wholesale, so by then the tag is already gone
@@ -557,11 +701,11 @@ def close_item(args, marker, outcome):
 
 
 def cmd_done(args):
-    close_item(args, "FEITO", args.how)
+    close_item(args, "FEITO", args.how, "how")
 
 
 def cmd_cancel(args):
-    close_item(args, "DESCARTADO", args.why)
+    close_item(args, "DESCARTADO", args.why, "why")
 
 
 def cmd_edit(args):
@@ -571,6 +715,8 @@ def cmd_edit(args):
                        criterion=args.criterion, project=args.project)
     ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,
                               criterion=args.criterion)
+    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,
+                         criterion=args.criterion, project=args.project)
     if args.project:
         validate_project(args.project)
     new = block
@@ -591,24 +737,68 @@ def cmd_edit(args):
             continue
         if field == "Class" and flag not in CLASSES:
             fail(f"--class must be one of {', '.join(CLASSES)}")
-        pat = re.compile(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*[^*\n]*\.?")
-        matches = list(pat.finditer(new))
-        if matches:
-            # the LAST occurrence, not the first: compose_item appends the fields at
-            # the tail, so the real field is always the last one. Items predating the
-            # embedded-marker guard can carry the shape inside their TEXT, and
-            # rewriting that first match replaces the author's prose with the flag
-            m = matches[-1]
+        # the real field is the one in the item's FIELD CHAIN — never merely the
+        # last marker in the block, which lands on a continuation note (see
+        # field_chain). Ambiguity is refused, not guessed: the caller fixes a
+        # refusal with one command, and cannot undo deleted text
+        found = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]
+        if len(found) > 1:
+            fail(f"T{args.id:03d} carries {len(found)} **{field}:** fields in its field "
+                 f"chain, so `--{field.lower()}` is ambiguous. Nothing was changed. Close "
+                 "it with `cancel` and re-add it clean.")
+        if not found and re.search(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*", new):
+            fail(f"T{args.id:03d} has a **{field}:** marker OUTSIDE its field chain — in "
+                 "the item's own prose or on a continuation line — and none inside it. "
+                 "Nothing was changed. Editing that marker would rewrite prose you did "
+                 "not point at (and on `--risk none`, DELETE it). Close the item with "
+                 "`cancel` and re-add it clean.")
+        if field == "Risk" and clears_field(flag):
+            if found:
+                start, end = found[0].span()
+                head, tail = new[:start], new[end:]
+                # the body is greedy, so the match already swallowed the blank that
+                # separated Risk from the next field — but when Risk was the last
+                # field on the line there is nothing after it, and the blank BEFORE
+                # it is left dangling at end of line. Repair exactly at the removal
+                # site: a sweep over the whole block would also eat a two-space
+                # Markdown hard break on an unrelated continuation line, silently
+                # rewrapping text this command was never asked to touch
+                if tail[:1] in ("", "\n"):
+                    head = head.rstrip(" \t")
+                new = head + tail
+            continue
+        if found:
+            m = found[0]
             matched = m.group(0)
             # the body is greedy, so the match swallows the blank that separated this
             # field from the next one — hand it back, or the two fields come out glued
             new = (new[: m.start()] + f"**{field}:** {flag}."
                    + matched[len(matched.rstrip()):] + new[m.end():])
         else:
-            new = new.rstrip("\n") + f" **{field}:** {flag}.\n"
+            # append at the end of the FIRST line, where the chain lives. Appending
+            # after a continuation line would put the field outside the chain — i.e.
+            # write, right now, the very shape the guard above refuses to touch later
+            head, sep, rest = new.partition("\n")
+            new = head.rstrip() + f" **{field}:** {flag}." + sep + rest
     if not new.endswith("\n"):
         new += "\n"
-    if len(new) > len(block):  # the ceiling blocks growth, not edits of legacy oversized items
+    # The BLOCK ceiling guards the item's prose, so every PROSE flag is measured
+    # against it — --text and the free-text fields alike — and only when the edit
+    # grows the item, since shrinking a legacy oversized item must always be allowed.
+    #
+    # Exempt: the short fields (--class/--effort/--project), and ONLY they. That
+    # exemption is T071 and it is what the ceiling costs: gating them meant a legacy
+    # oversized item (T001, T002, T013 in the real queue) needed --force merely to
+    # gain a project tag, which trains the caller to type --force on edits and
+    # disarms the guard where it does matter. Their own small field ceiling is what
+    # bounds them, and since a field is REPLACED when present, repeated edits cannot
+    # accumulate — the exemption's total cost is bounded by 3 short fields.
+    #
+    # Both halves of this rule were bypasses before they existed, each measured:
+    # one free-text field alone took a 100-char item to 1014 chars (no --force), and
+    # after the per-field ceiling closed that, three free-text fields at 199 chars in
+    # ONE call still took an item to 709 past a 700 ceiling.
+    if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):
         check_ceiling(new, args.force)
     path = os.path.join(memdir, "next-steps.md")
     write_atomic(path, read(path).replace(block, new, 1))
@@ -710,7 +900,8 @@ def main():
     a.add_argument("text")
     a.add_argument("--class", dest="classe", required=True, help="|".join(CLASSES))
     a.add_argument("--effort", required=True, help="S/M/L + wall-clock guess, e.g. 'M (~30min)'")
-    a.add_argument("--risk", help="only when unsupervised execution can do damage")
+    a.add_argument("--risk", help="only when unsupervised execution can do damage "
+                   "('none' writes no Risk line)")
     a.add_argument("--criterion", required=True,
                    help="acceptance: 'A: <command that proves it>' or 'B: user verdict'")
     a.add_argument("--project", help="optional short slug tagging which project this item "
@@ -723,19 +914,22 @@ def main():
     d.add_argument("--how", required=True, help="outcome + pointer: 'PR #82', 'commit abc123', '[[slug]]'")
     d.add_argument("--summary", help="replaces the item text on the log line")
     d.add_argument("--note", help="extra substance when there is NO pointer (the line is the only record)")
+    d.add_argument("--force", action="store_true", help="raise the field ceiling")
 
     c = sub.add_parser("cancel", parents=[common], help="discard: move the item to the done-log as DESCARTADO")
     c.add_argument("id", type=parse_id)
     c.add_argument("--why", required=True)
     c.add_argument("--summary")
     c.add_argument("--note")
+    c.add_argument("--force", action="store_true", help="raise the field ceiling")
 
     e = sub.add_parser("edit", parents=[common], help="edit fields of an open item")
     e.add_argument("id", type=parse_id)
     e.add_argument("--text")
     e.add_argument("--class", dest="classe")
     e.add_argument("--effort")
-    e.add_argument("--risk")
+    e.add_argument("--risk", help="new Risk line, or 'none' to DELETE the field "
+                   "(re-triage of an obsolete Risk)")
     e.add_argument("--criterion")
     e.add_argument("--project", help="assign/change the project tag")
     e.add_argument("--force", action="store_true")
@@ -758,9 +952,20 @@ def main():
         "migrate": cmd_migrate,
     }[args.cmd]
     if args.cmd not in READERS:
+        memdir = memory_dir(args.dir)
+        # Which queue is being written is INFERRED — from --dir, or from the cwd
+        # when it is absent — and an inference nobody sees is an inference nobody
+        # checks. A caller whose cwd is not where they think (the agent's shell
+        # keeps its cwd between calls) edits a homonymous item in ANOTHER project's
+        # queue and is told "T019 updated", which reads as success. Printing the
+        # resolved dir is what makes that visible without a flag to remember —
+        # stderr, so it never contaminates stdout that a caller parses, and BEFORE
+        # the work, so a command that then fails or blocks on the lock has still
+        # said where it was aiming.
+        print(f"tk-queue: queue: {memdir}", file=sys.stderr)
         # taken BEFORE the handler's first read, released after its last write:
         # a lock around the write alone would still let a stale snapshot win
-        with queue_lock(memory_dir(args.dir)):
+        with queue_lock(memdir):
             handler(args)
     else:
         handler(args)
