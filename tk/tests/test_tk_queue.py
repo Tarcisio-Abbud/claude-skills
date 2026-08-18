@@ -299,6 +299,97 @@ class TestMissingItemMessage(QueueTest):
         self.assert_no_duplicate_invited(r.stderr)
 
 
+# --- T088: an ID is ALLOCATED at a position, not wherever the text says it ---
+
+class TestIdAllocationScope(QueueTest):
+    """`max_id` regexed the whole TEXT of both files, so any T-number in prose
+    counted as handed out. Measured 2026-08-14 on the real queue: a --note saying
+    an item "virou T0NN" made the following `add` skip that number, and the live
+    files still carry T054 and T086 as prose-only ghosts. A single HIGH id quoted
+    in prose jumps the counter for good.
+
+    Same defect, second face: `missing_item_message` asked `max_id` whether an ID
+    was ever handed out, so an ID only ever MENTIONED was reported as "allocated
+    but vanished — another writer clobbered it", sending the caller to hunt a
+    writer that never existed.
+    """
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    def test_a_note_quoting_an_id_does_not_burn_the_next_number(self):
+        """The reported shape, end to end: close an item with a --note naming the
+        very ID the next `add` is owed."""
+        self.seed(item(1, "um"), item(2, "dois"))
+        r = self.run_tk("done", "T001", "--how", "PR #1",
+                        "--note", "duplicata: virou T003 na fila do ambiente")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("virou T003", self.body("done-log.md"))   # the note really landed
+        self.assertEqual(self.add(), "T003")
+
+    def test_neither_a_summary_nor_an_item_text_burns_a_number(self):
+        """--note is not the only prose. --summary lands on the log line's text
+        column, and an item's own text is prose sitting in next-steps.md."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("done", "T001", "--how", "PR #1", "--summary", "absorvido pelo T004")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.add("sucessor do T009 da fila do ambiente"), "T002")
+        self.assertEqual(self.add(), "T003")   # and the text just written burned nothing
+
+    def test_a_bold_id_inside_an_item_text_is_not_an_allocation(self):
+        """The next-steps side of the position rule: the ID is the one AT the
+        item marker. An item whose text bolds a sibling's ID allocates nothing —
+        and bolding is exactly how the queue's own items cite each other."""
+        self.seed(item(1, "sucessor do **T040** da fila do ambiente"))
+        self.assertEqual(self.add(), "T002")
+
+    def test_a_high_id_quoted_in_prose_does_not_jump_the_counter(self):
+        """The unbounded direction: one number from another tracker, quoted once,
+        used to move this queue's counter there permanently."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("done", "T001", "--how", "x", "--note", "ver T900 no outro tracker")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.add(), "T002")
+
+    def test_the_diagnostic_stops_reading_a_prose_mention_as_an_allocation(self):
+        """The second face. T050 exists only inside a --note, so the honest answer
+        is "never allocated" — naming a concurrent writer instead is a confident
+        wrong diagnosis from the path built to stop confident wrong diagnoses."""
+        self.seed(item(1, "um"),
+                  log="- 2026-08-01 — FEITO — T002 dois — PR #1\n"
+                      "  duplicata: virou T050 na fila do ambiente\n")
+        r = self.run_tk("edit", "T050", "--effort", "L")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("never allocated", r.stderr)
+        self.assertIn("highest ID in use is T002", r.stderr)
+        self.assertNotIn("Another writer", r.stderr)
+
+    # --- the false-positive direction, which none of the above can see -------
+    # A position rule that narrows too far hands out an ID ALREADY IN USE — the
+    # failure the whole-file scan existed to prevent. Three writer positions, and
+    # each one needs its OWN fixture holding the highest ID alone: a single
+    # fixture carrying all three masks two of them, because the survivor still
+    # yields the expected next number. Measured — that fixture was written first,
+    # and mutations.py reported the done-log position as a SURVIVOR.
+
+    def test_an_open_item_still_blocks_reuse_of_its_id(self):
+        self.seed(item(7, "sete"), log="- 2026-08-01 — FEITO — T003 tres — PR #1\n")
+        self.assertEqual(self.add(), "T008")
+
+    def test_a_done_log_entry_still_blocks_reuse_of_its_id(self):
+        self.seed(item(2, "dois"), log="- 2026-08-01 — FEITO — T009 nove — PR #1\n")
+        self.assertEqual(self.add(), "T010")
+
+    def test_a_legacy_x_line_moved_by_migrate_still_blocks_reuse(self):
+        """`migrate` moves [x] items to the log verbatim; most are ID-less, but
+        one that already carried a bold ID keeps it, and it is still spent."""
+        self.seed(item(2, "dois"), log="- [x] **T012** — legado migrado verbatim\n")
+        self.assertEqual(self.add(), "T013")
+
+
 class TestDirResolution(QueueTest):
     """`list` and `add` must resolve the SAME file from the same cwd — the
     other half of T060's criterion."""

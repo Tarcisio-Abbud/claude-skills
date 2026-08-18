@@ -12,7 +12,9 @@ between the two writes can leave the item in both files (rerun-visible), never
 lost. That is what keeps finished work from silently accumulating in the queue.
 
 Items are identified by sequential IDs (**T001**, **T002**, ...) unique within
-a project (both files scanned, so a closed item's ID is never reused). Open
+a project (both files scanned, at the positions where a WRITER puts an ID, so
+a closed item's ID is never reused and an ID merely quoted in prose is not
+mistaken for an allocated one). Open
 items predating this script may lack IDs; `migrate` assigns them (legacy [x]
 items move to the log verbatim, ID-less, and — carrying no `- YYYY-MM-DD —`
 prefix — stay outside `report`'s scope; read the log itself for that history).
@@ -212,9 +214,33 @@ def queue_lock(memdir):
 
 ITEM_START = re.compile(r"^- \[( |x)\] ", re.M)
 ID_RE = re.compile(r"\*\*T(\d{3,})\*\*")
-# broad form for ID allocation: done-log lines carry plain "T012", and an ID that
-# appears ANYWHERE in either file must never be reused
-ANY_ID_RE = re.compile(r"\bT(\d{3,})\b")
+
+# --- where an ID is ALLOCATED, as against merely MENTIONED -----------------
+# An ID counts as taken only where a WRITER of these files PUTS it. There are
+# exactly three such positions, one per writer:
+#
+#   next-steps.md  the item marker        "- [ ] **T007** — ..."   compose_item, migrate
+#   done-log.md    an entry's ID column   "- 2026-08-13 — FEITO — T072 ..."  append_done_line
+#   done-log.md    a legacy [x] line moved verbatim by `migrate`
+#
+# Everywhere else a T-number is PROSE: a --note reading "atribuiu IDs até T022",
+# a --summary, an outcome naming a sibling ticket still open in ANOTHER project,
+# an item's own text quoting a duplicate. Scanning the whole text of both files
+# counted every one of those as allocated and BURNED the next number — measured
+# 2026-08-14 on this queue: a note saying an item "virou T0NN" made the following
+# `add` skip that number. It is not hypothetical residue either — the real files
+# still carry T054 and T086 as prose-only ghosts, counted as taken by nothing.
+# And the damage is unbounded in one direction: a single HIGH id quoted in prose
+# (a sibling tracker's "T900") jumps the counter for good.
+#
+# The same rule decides the diagnostic (see missing_item_message): an ID nobody
+# ever handed out must be reported as never allocated, not as one a concurrent
+# writer clobbered — that answer sends the caller hunting a writer that never
+# existed. `id_in_done_log` already worked this way; these three make the rest
+# of the script agree with it, from ONE definition.
+ITEM_ID_RE = re.compile(r"^- \[[ x]\] \*\*T(\d{3,})\*\*", re.M)
+LOG_ID_RE = re.compile(r"^- \d{4}-\d{2}-\d{2} — \S+ — T(\d{3,})\b", re.M)
+LEGACY_LOG_ID_RE = re.compile(r"^- \[x\] .*?\*\*T(\d{3,})\*\*", re.M)
 
 
 def split_blocks(body):
@@ -237,7 +263,9 @@ def split_blocks(body):
 
 
 def item_id(text):
-    m = ID_RE.search(text)
+    """The block's OWN id — the one at its item marker, never one its text or a
+    continuation note happens to quote."""
+    m = ITEM_ID_RE.match(text)
     return int(m.group(1)) if m else None
 
 
@@ -257,13 +285,19 @@ def parse_id(raw):
     return int(m.group(1))
 
 
+def allocated_ids(memdir):
+    """Every ID the two files have really handed out — the three structural
+    positions above, and nothing else."""
+    ids = {int(m.group(1))
+           for m in ITEM_ID_RE.finditer(read(os.path.join(memdir, "next-steps.md")) or "")}
+    log = read(os.path.join(memdir, "done-log.md")) or ""
+    for rx in (LOG_ID_RE, LEGACY_LOG_ID_RE):
+        ids |= {int(m.group(1)) for m in rx.finditer(log)}
+    return ids
+
+
 def max_id(memdir):
-    top = 0
-    for name in ("next-steps.md", "done-log.md"):
-        content = read(os.path.join(memdir, name)) or ""
-        for m in ANY_ID_RE.finditer(content):
-            top = max(top, int(m.group(1)))
-    return top
+    return max(allocated_ids(memdir), default=0)
 
 
 def ensure_single_line(**fields):
@@ -488,10 +522,10 @@ def remove_block(memdir, block_text):
     write_atomic(path, excise(content, block_text))
 
 
-def id_in_done_log(memdir, label):
+def id_in_done_log(memdir, wanted_id):
     """Whether the ID really was closed — matched ONLY where a close writes it:
-    after the marker on an entry's first line, or as a bold ID on a legacy [x]
-    line moved verbatim by `migrate`.
+    the ID column of an entry's first line, or the bold ID of a legacy [x] line
+    moved verbatim by `migrate`.
 
     Anywhere else the ID is prose. This queue's own log carries a --note saying
     "atribuiu IDs até T022" and an outcome naming a sibling ticket "T054" that
@@ -500,9 +534,9 @@ def id_in_done_log(memdir, label):
     error path that exists to prevent confident wrong diagnoses.
     """
     log = read(os.path.join(memdir, "done-log.md")) or ""
-    closed = re.compile(r"^- \d{4}-\d{2}-\d{2} — \S+ — " + label + r"\b"
-                        r"|^- \[x\] .*\*\*" + label + r"\*\*", re.M)
-    return closed.search(log) is not None
+    return any(int(m.group(1)) == wanted_id
+               for rx in (LOG_ID_RE, LEGACY_LOG_ID_RE)
+               for m in rx.finditer(log))
 
 
 def missing_item_message(memdir, content, wanted_id):
@@ -517,7 +551,7 @@ def missing_item_message(memdir, content, wanted_id):
             return (f"{label} is in next-steps.md but already ticked [x], so it never "
                     "reached the done-log. Run `tk-queue migrate` to move it, then read "
                     "the log line — do NOT add a replacement item.")
-    if id_in_done_log(memdir, label):
+    if id_in_done_log(memdir, wanted_id):
         return (f"{label} already left the queue — it is in done-log.md. Read that line "
                 "before acting, and do NOT add a replacement item.")
     top = max_id(memdir)

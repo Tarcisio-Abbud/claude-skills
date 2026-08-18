@@ -136,11 +136,56 @@ MUTATIONS = [
      ["TestEmbeddedMarker.test_plain_prose_naming_the_fields_is_not_refused"]),
 
     ("T064/T060 an ID quoted in a --note or an outcome counts as closed again",
-     '    closed = re.compile(r"^- \\d{4}-\\d{2}-\\d{2} — \\S+ — " + label + r"\\b"\n'
-     '                        r"|^- \\[x\\] .*\\*\\*" + label + r"\\*\\*", re.M)\n'
-     "    return closed.search(log) is not None",
-     '    return re.search(r"\\b" + label + r"\\b", log) is not None',
+     "    return any(int(m.group(1)) == wanted_id\n"
+     "               for rx in (LOG_ID_RE, LEGACY_LOG_ID_RE)\n"
+     "               for m in rx.finditer(log))",
+     '    return re.search(r"\\bT%03d\\b" % wanted_id, log) is not None',
      ["TestMissingItemMessage.test_an_id_merely_quoted_in_the_log_is_not_closed"]),
+
+    # --- T088: an ID is allocated at a POSITION, not wherever the text says it ---
+
+    ("T088 allocation goes back to regexing the whole text of both files",
+     '    ids = {int(m.group(1))\n'
+     '           for m in ITEM_ID_RE.finditer(read(os.path.join(memdir, '
+     '"next-steps.md")) or "")}\n'
+     '    log = read(os.path.join(memdir, "done-log.md")) or ""\n'
+     "    for rx in (LOG_ID_RE, LEGACY_LOG_ID_RE):\n"
+     "        ids |= {int(m.group(1)) for m in rx.finditer(log)}",
+     '    ids = set()\n'
+     '    for name in ("next-steps.md", "done-log.md"):\n'
+     '        content = read(os.path.join(memdir, name)) or ""\n'
+     '        ids |= {int(m.group(1)) for m in re.finditer(r"\\bT(\\d{3,})\\b", content)}',
+     ["TestIdAllocationScope.test_a_note_quoting_an_id_does_not_burn_the_next_number",
+      "TestIdAllocationScope.test_neither_a_summary_nor_an_item_text_burns_a_number",
+      "TestIdAllocationScope.test_a_bold_id_inside_an_item_text_is_not_an_allocation",
+      "TestIdAllocationScope.test_a_high_id_quoted_in_prose_does_not_jump_the_counter",
+      "TestIdAllocationScope.test_the_diagnostic_stops_reading_a_prose_mention_as_an_allocation"]),
+
+    ("T088 the item's ID may sit anywhere on its line, not at the marker",
+     'ITEM_ID_RE = re.compile(r"^- \\[[ x]\\] \\*\\*T(\\d{3,})\\*\\*", re.M)',
+     'ITEM_ID_RE = re.compile(r"^- \\[[ x]\\] .*\\*\\*T(\\d{3,})\\*\\*", re.M)',
+     ["TestIdAllocationScope.test_a_bold_id_inside_an_item_text_is_not_an_allocation"]),
+
+    # the two over-NARROWING directions: a position rule that stops seeing a real
+    # allocation hands out an ID already in use — the very failure the whole-file
+    # scan existed to prevent, and no test above can see it
+    ("T088 open items stop counting as allocations",
+     '    ids = {int(m.group(1))\n'
+     '           for m in ITEM_ID_RE.finditer(read(os.path.join(memdir, '
+     '"next-steps.md")) or "")}',
+     "    ids = set()",
+     ["TestIdAllocationScope.test_an_open_item_still_blocks_reuse_of_its_id"]),
+
+    ("T088 done-log entries stop counting as allocations",
+     'LOG_ID_RE = re.compile(r"^- \\d{4}-\\d{2}-\\d{2} — \\S+ — T(\\d{3,})\\b", re.M)',
+     'LOG_ID_RE = re.compile(r"(?!x)x")',
+     ["TestIdAllocationScope.test_a_done_log_entry_still_blocks_reuse_of_its_id",
+      "TestMissingItemMessage.test_a_genuinely_closed_id_is_still_recognised"]),
+
+    ("T088 a legacy [x] line moved verbatim by migrate stops counting",
+     'LEGACY_LOG_ID_RE = re.compile(r"^- \\[x\\] .*?\\*\\*T(\\d{3,})\\*\\*", re.M)',
+     'LEGACY_LOG_ID_RE = re.compile(r"(?!x)x")',
+     ["TestIdAllocationScope.test_a_legacy_x_line_moved_by_migrate_still_blocks_reuse"]),
 
 
     ("T070 add writes a Risk line for the reserved word again",
@@ -319,7 +364,7 @@ def main():
                                   "TestEmbeddedMarker", "TestAtomicWrite",
                                   "TestRiskDeletion", "TestCeilingScope",
                                   "TestTargetQueueAnnounced", "TestFieldChain",
-                                  "TestCloseFieldCeilings"])
+                                  "TestCloseFieldCeilings", "TestIdAllocationScope"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
