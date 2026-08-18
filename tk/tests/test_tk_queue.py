@@ -299,6 +299,317 @@ class TestMissingItemMessage(QueueTest):
         self.assert_no_duplicate_invited(r.stderr)
 
 
+# --- T088: an ID is ALLOCATED at a position, not wherever the text says it ---
+
+class TestIdAllocationScope(QueueTest):
+    """`max_id` regexed the whole TEXT of both files, so any T-number in prose
+    counted as handed out. Measured 2026-08-14 on the real queue: a --note saying
+    an item "virou T0NN" made the following `add` skip that number, and the live
+    files still carry T054 and T086 as prose-only ghosts. A single HIGH id quoted
+    in prose jumps the counter for good.
+
+    Same defect, second face: `missing_item_message` asked `max_id` whether an ID
+    was ever handed out, so an ID only ever MENTIONED was reported as "allocated
+    but vanished — another writer clobbered it", sending the caller to hunt a
+    writer that never existed.
+    """
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    def test_a_note_quoting_an_id_does_not_burn_the_next_number(self):
+        """The reported shape, end to end: close an item with a --note naming the
+        very ID the next `add` is owed."""
+        self.seed(item(1, "um"), item(2, "dois"))
+        r = self.run_tk("done", "T001", "--how", "PR #1",
+                        "--note", "duplicata: virou T003 na fila do ambiente")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("virou T003", self.body("done-log.md"))   # the note really landed
+        self.assertEqual(self.add(), "T003")
+
+    def test_neither_a_summary_nor_an_item_text_burns_a_number(self):
+        """--note is not the only prose. --summary lands on the log line's text
+        column, and an item's own text is prose sitting in next-steps.md."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("done", "T001", "--how", "PR #1", "--summary", "absorvido pelo T004")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.add("sucessor do T009 da fila do ambiente"), "T002")
+        self.assertEqual(self.add(), "T003")   # and the text just written burned nothing
+
+    def test_a_bold_id_inside_an_item_text_is_not_an_allocation(self):
+        """The next-steps side of the position rule: the ID is the one AT the
+        item marker. An item whose text bolds a sibling's ID allocates nothing —
+        and bolding is exactly how the queue's own items cite each other."""
+        self.seed(item(1, "sucessor do **T040** da fila do ambiente"))
+        self.assertEqual(self.add(), "T002")
+
+    def test_a_high_id_quoted_in_prose_does_not_jump_the_counter(self):
+        """The unbounded direction: one number from another tracker, quoted once,
+        used to move this queue's counter there permanently."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("done", "T001", "--how", "x", "--note", "ver T900 no outro tracker")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.add(), "T002")
+
+    def test_the_diagnostic_stops_reading_a_prose_mention_as_an_allocation(self):
+        """The second face. T050 exists only inside a --note, so the honest answer
+        is "never allocated" — naming a concurrent writer instead is a confident
+        wrong diagnosis from the path built to stop confident wrong diagnoses."""
+        self.seed(item(1, "um"),
+                  log="- 2026-08-01 — FEITO — T002 dois — PR #1\n"
+                      "  duplicata: virou T050 na fila do ambiente\n")
+        r = self.run_tk("edit", "T050", "--effort", "L")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("never allocated", r.stderr)
+        self.assertIn("highest ID in use is T002", r.stderr)
+        self.assertNotIn("Another writer", r.stderr)
+
+    # --- the false-positive direction, which none of the above can see -------
+    # A position rule that narrows too far hands out an ID ALREADY IN USE — the
+    # failure the whole-file scan existed to prevent. Three writer positions, and
+    # each one needs its OWN fixture holding the highest ID alone: a single
+    # fixture carrying all three masks two of them, because the survivor still
+    # yields the expected next number. Measured — that fixture was written first,
+    # and mutations.py reported the done-log position as a SURVIVOR.
+
+    def test_an_open_item_still_blocks_reuse_of_its_id(self):
+        self.seed(item(7, "sete"), log="- 2026-08-01 — FEITO — T003 tres — PR #1\n")
+        self.assertEqual(self.add(), "T008")
+
+    def test_a_done_log_entry_still_blocks_reuse_of_its_id(self):
+        self.seed(item(2, "dois"), log="- 2026-08-01 — FEITO — T009 nove — PR #1\n")
+        self.assertEqual(self.add(), "T010")
+
+    def test_a_legacy_x_line_moved_by_migrate_still_blocks_reuse(self):
+        """`migrate` moves [x] items to the log verbatim; most are ID-less, but
+        one that already carried a bold ID keeps it, and it is still spent."""
+        self.seed(item(2, "dois"), log="- [x] **T012** — legado migrado verbatim\n")
+        self.assertEqual(self.add(), "T013")
+
+
+    # --- review#4: the SAME line, before and after `migrate` moves it --------
+    # A legacy [x] line lives in next-steps.md until `migrate` moves it verbatim
+    # into the log. Read by two different rules it gives two different answers,
+    # and which one you get depends on nothing but the clock.
+
+    def test_a_prose_id_on_a_legacy_x_line_burns_nothing_on_either_side(self):
+        """Read loosely, the ID this line merely QUOTES became an allocation the
+        moment `migrate` moved the line — the T088 ghost, back through the log."""
+        self.seed(item(1, "um"),
+                  "- [x] legado sem ID, feito junto com o **T900** do outro tracker\n")
+        self.assertEqual(self.add("a"), "T002")
+        # and the diagnostic must not invent a close either
+        r = self.run_tk("edit", "T900", "--effort", "M")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("never allocated", r.stderr)
+
+        self.assertEqual(self.run_tk("migrate").returncode, 0)
+        self.assertIn("**T900**", self.body("done-log.md"))    # really moved
+        self.assertEqual(self.add("b"), "T003")
+        r = self.run_tk("edit", "T900", "--effort", "M")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("never allocated", r.stderr)
+
+    def test_a_struck_through_legacy_id_is_spent_on_either_side(self):
+        """The mirror image: an ID a human ticked off by striking it through IS
+        an allocation, and reading it only in the log left it free to be handed
+        out a second time while the line still sat in next-steps."""
+        self.seed(item(1, "um"), item(2, "dois"), item(3, "tres"),
+                  "- [x] ~~**T012**~~ — legado, ID não colado no marcador\n")
+        self.assertEqual(self.add("a"), "T013")
+        self.assertEqual(self.run_tk("migrate").returncode, 0)
+        self.assertEqual(self.add("b"), "T014")
+
+    # --- review#4: the positions the suite was not actually reading ----------
+
+    def test_a_cancelled_item_still_blocks_reuse_of_its_id(self):
+        """Every done-log fixture in this file closes with FEITO, so the marker
+        column was never really read: pinned to that one word, a DESCARTADO
+        entry stops counting and `add` hands its ID straight back."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("cancel", "T001", "--why", "não vale mais")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("DESCARTADO — T001", self.body("done-log.md"))
+        self.assertEqual(self.add(), "T002")
+
+    def test_an_idless_item_quoting_a_bold_id_is_still_idless(self):
+        """The item has NO ID and its text bolds a sibling's. Read by searching
+        the block instead of its marker, that quote becomes the item's own id:
+        `list` labels it with a number nobody allocated and `migrate` skips it,
+        leaving it ID-less for good."""
+        self.seed("- [ ] legado sem ID, sucessor do **T040** da fila do ambiente"
+                  " **Class:** AUTONOMOUS. **Effort:** S.\n")
+        out = self.run_tk("list").stdout
+        self.assertIn("----", out)
+        self.assertNotIn("T040", out)
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("IDs assigned up to T001", r.stdout)
+        self.assertIn("- [ ] **T001** — legado sem ID", self.body())
+
+    def test_a_plain_t_number_at_the_head_is_not_the_item_s_id(self):
+        """The bold is not decoration, it is the grammar. An item whose TEXT
+        opens with another tracker's number allocates nothing — dropping the
+        `**` makes that number the item's id and jumps this queue's counter."""
+        self.seed("- [ ] T900 do outro tracker precisa de acompanhamento"
+                  " **Class:** AUTONOMOUS. **Effort:** S.\n")
+        self.assertIn("----", self.run_tk("list").stdout)
+        self.assertEqual(self.add(), "T001")
+
+    # --- review#5: DECORATION is not prose ----------------------------------
+    # The slot tolerated exactly one decoration, `~~`, so every other one made
+    # the ID vanish from the count. Measured on the LIVE m365 queue, which
+    # carries `- [x] \u2705 **T020** \u2014 Defaults de compartilhamento ...` today:
+    # done_log_ids() dropped 20. And in isolation the counter walks BACKWARDS
+    # against the pre-position-rule code \u2014 max_id 50 -> 3, and the next `add`
+    # handed out T004 with T050 already spent.
+
+    def test_decoration_before_the_id_is_still_an_allocation(self):
+        """The real shape, done-log side: an emoji between the box and the ID."""
+        self.seed(item(3, "tres"),
+                  log="- [x] \u2705 **T050** \u2014 legado com emoji antes do ID\n")
+        self.assertEqual(self.add(), "T051")
+
+    def test_decoration_before_the_id_counts_in_next_steps_too(self):
+        """Same line, before `migrate` moves it \u2014 the two sides must agree, which
+        is the whole reason ONE regex reads both files."""
+        self.seed(item(3, "tres"),
+                  "- [x] \u2705 **T060** \u2014 legado com emoji, ainda em next-steps\n")
+        self.assertEqual(self.add(), "T061")
+
+    def test_decoration_counts_and_prose_does_not_in_the_same_file(self):
+        """The discriminator, both sides in ONE number. `\u2705 ` is decoration and
+        allocates T030; `feito junto com o ` is PROSE and allocates nothing.
+        A rule that only widens gives T901 here; the old narrow one gives T002."""
+        self.seed(item(1, "um"),
+                  "- [x] \u2705 **T030** \u2014 decora\u00e7\u00e3o antes do ID\n",
+                  "- [x] feito junto com o **T900** do outro tracker\n")
+        self.assertEqual(self.add(), "T031")
+
+    def test_a_bold_wrapped_strikethrough_id_is_spent_and_leaves_no_fragment(self):
+        """`**~~T012~~**` \u2014 bold outside, strike inside \u2014 is the mirror of the
+        form already covered. Unread, the ID was free to be handed out twice AND
+        `item_title` leaked the raw `T012~~**` into `list`. Both faces are the
+        same defect: two spellings of one grammar."""
+        self.seed(item(1, "um"), "- [ ] **~~T012~~** \u2014 legado riscado por dentro\n")
+        self.assertEqual(self.add(), "T013")
+        out = self.run_tk("list").stdout
+        self.assertIn("T012  ", out)        # it has an ID, and it is its own
+        self.assertNotIn("~~", out)         # and the title carries no raw fragment
+        self.assertNotIn("----", out)
+
+    def test_an_open_box_parked_in_the_done_log_is_still_spent(self):
+        """ITEM_ID_RE is blind to the box on purpose, in BOTH files. A `- [ ]`
+        line sitting in done-log.md is not a shape any writer produces, but the
+        ID on it is spent all the same \u2014 handing it out again is the one
+        direction that cannot be undone. Locked here because the diagnostic
+        answers it with confidence: `edit` says it already left the queue."""
+        self.seed(item(1, "um"), log="- [ ] **T005** \u2014 caixa aberta parada no log\n")
+        self.assertEqual(self.add(), "T006")
+        r = self.run_tk("edit", "T005", "--effort", "M")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("already left the queue", r.stderr)
+
+    # --- review#5: the ANCHOR and the WIDTH, not just the position -----------
+
+    def test_the_marker_form_quoted_inside_an_item_text_is_not_an_allocation(self):
+        """`^` is grammar, not decoration. An item whose TEXT quotes a whole
+        marker mid-line allocates nothing; unanchored, that quote allocates and
+        the diagnostic answers the confident wrong thing about it."""
+        self.seed(item(1, "formato no doc: `- [ ] **T900** \u2014 exemplo` \u2014 s\u00f3 isso"))
+        self.assertEqual(self.add(), "T002")
+        r = self.run_tk("edit", "T900", "--effort", "M")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("never allocated", r.stderr)
+        self.assertNotIn("Another writer", r.stderr)
+
+    def test_a_two_digit_bold_number_is_no_id_at_the_marker_nor_in_a_title(self):
+        """`{3,}` is the grammar the writer emits, not a formatting habit.
+        Loosened to `+`, a legacy `**T7**` at a marker becomes an ID nobody
+        handed out (`list` labels it T007, the next add jumps to T008) and the
+        SAME regex strips a legitimate `**T7**` citation out of another title.
+        One spelling, so one mutation reaches both faces."""
+        self.seed(item(1, "um"),
+                  "- [ ] **T7** \u2014 numera\u00e7\u00e3o legada **Class:** AUTONOMOUS. **Effort:** S.\n",
+                  item(2, "cita o **T7** da fila antiga"))
+        out = self.run_tk("list").stdout
+        self.assertNotIn("T007", out)       # nobody allocated T007
+        self.assertIn("**T7**", out)        # and the citation survives in the title
+        self.assertEqual(self.add(), "T003")
+
+    def test_an_unclosed_bold_carries_no_id(self):
+        """The closing `**` is grammar too. `- [ ] **T005 \u2014 ...` is malformed;
+        reading an ID out of it hands the number to a line no writer produced."""
+        self.seed(item(1, "um"),
+                  "- [ ] **T005 \u2014 negrito mal fechado **Class:** AUTONOMOUS. **Effort:** S.\n")
+        out = self.run_tk("list").stdout
+        self.assertIn("----", out)
+        # the LABEL column, not the title: "T005 —" legitimately survives as text
+        self.assertNotIn("T005  ", out)
+        self.assertEqual(self.add(), "T002")
+
+
+class TestDoneLogLineGrammar(QueueTest):
+    """The done-log's own line has a grammar, and LOG_LINE is its ONE spelling.
+    Two readers use it \u2014 LOG_ID_RE (which ID a log line hands out) and `report`
+    (which lines are dated entries at all) \u2014 and each one respelled it before."""
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    def test_a_log_line_format_quoted_in_an_outcome_is_not_a_close(self):
+        """The done-log side of `^`. A --how quoting the SHAPE of a log line
+        lands mid-line; unanchored, that quote counts as a real close and the
+        next add skips to T901."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("done", "T001", "--how",
+                        "formato: - 2026-08-01 \u2014 FEITO \u2014 T900 exemplo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T900 exemplo", self.body("done-log.md"))    # really landed
+        self.assertEqual(self.add(), "T002")
+
+    def test_a_two_digit_number_in_the_id_column_is_no_id(self):
+        """Same width rule as the item marker, and it was spelled twice."""
+        self.seed(item(1, "um"), log="- 2026-08-01 \u2014 FEITO \u2014 T7 legado \u2014 PR #1\n")
+        self.assertEqual(self.add(), "T002")
+
+    def test_report_reads_the_date_column_in_ascii_digits_only(self):
+        r"""`\d` matches Unicode decimal digits and `[0-9]` does not. A line whose
+        date is written in FULL-WIDTH digits is not a line this script ever
+        wrote, and whether `report` shows it must not depend on which of the two
+        spellings the reader happens to carry \u2014 LOG_LINE decides, once."""
+        self.seed(item(1, "um"),
+                  log="- \uff12\uff10\uff12\uff16-\uff10\uff18-\uff10\uff11 \u2014 FEITO \u2014 T002 dois \u2014 PR #1\n"
+                      "- 2026-08-02 \u2014 FEITO \u2014 T003 tres \u2014 PR #2\n")
+        out = self.run_tk("report").stdout
+        self.assertIn("T003 tres", out)
+        self.assertNotIn("T002 dois", out)
+
+
+class TestCanonicalHead(QueueTest):
+    """`edit --text` rewrites the item's HEAD and keeps the rest. The head it
+    matches is the marker grammar plus compose_item's separator \u2014 respelled in
+    cmd_edit it drifted from the allocator, and an item the allocator reads
+    fine became one --text refuses to touch."""
+
+    def test_a_decorated_head_is_still_editable(self):
+        """A legacy item whose head carries an emoji is a head the allocator
+        accepts; --text must accept it too, and must keep the decoration."""
+        self.seed("- [ ] \u2705 **T005** \u2014 texto antigo **Class:** AUTONOMOUS."
+                  " **Effort:** S. **Criterion:** A: x.\n")
+        r = self.run_tk("edit", "T005", "--text", "texto novo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertIn("- [ ] \u2705 **T005** \u2014 texto novo **Class:** AUTONOMOUS.", body)
+        self.assertNotIn("texto antigo", body)
+
+
 class TestDirResolution(QueueTest):
     """`list` and `add` must resolve the SAME file from the same cwd — the
     other half of T060's criterion."""

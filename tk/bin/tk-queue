@@ -12,8 +12,15 @@ between the two writes can leave the item in both files (rerun-visible), never
 lost. That is what keeps finished work from silently accumulating in the queue.
 
 Items are identified by sequential IDs (**T001**, **T002**, ...) unique within
-a project (both files scanned, so a closed item's ID is never reused). Open
-items predating this script may lack IDs; `migrate` assigns them (legacy [x]
+a project (both files scanned, at the positions where a WRITER puts an ID, so
+a closed item's ID is never reused and an ID merely quoted in prose is not
+mistaken for an allocated one). Two tolerances at that position, both one-way —
+they can only make MORE IDs count as taken, never fewer: DECORATION between the
+box and the ID is read through (`- [x] ✅ **T020**`, `~~**T012**~~`,
+`**~~T012~~**` — a word is not decoration, so prose still allocates nothing),
+and the CHECKBOX is not read at all, so an ID parked in done-log.md under an
+open box is spent all the same. Open items predating this script may lack IDs;
+`migrate` assigns them (legacy [x]
 items move to the log verbatim, ID-less, and — carrying no `- YYYY-MM-DD —`
 prefix — stay outside `report`'s scope; read the log itself for that history).
 
@@ -210,11 +217,90 @@ def queue_lock(memdir):
 # the first blank line, next item, or heading. Everything else in the file
 # (frontmatter, headings, prose) is preserved verbatim.
 
-ITEM_START = re.compile(r"^- \[( |x)\] ", re.M)
-ID_RE = re.compile(r"\*\*T(\d{3,})\*\*")
-# broad form for ID allocation: done-log lines carry plain "T012", and an ID that
-# appears ANYWHERE in either file must never be reused
-ANY_ID_RE = re.compile(r"\bT(\d{3,})\b")
+# --- the two grammars, ONE spelling each ----------------------------------
+# Two shapes carry an ID in these files, and every reader of one is BUILT from the
+# strings below — ITEM_ID_RE, ID_RE and cmd_edit's canonical head alike, none of
+# them respelling the grammar: a next-steps item from MARKER (+ DECOR + ID_SLOT
+# for its ID), a done-log entry from LOG_LINE. Two readers of the same shape
+# spelling it differently is not a style question — it is how the same line came
+# to allocate an ID in one file and not in the other (see the allocation note
+# below), and how `list` came to leak a raw `T012~~**` into a title.
+MARKER = r"- \[( |x)\] "                        # group 1: the box
+# What a human may put between the box and the ID, and what the ID itself may be
+# wrapped in. The DISCRIMINATOR is prose, and prose is WORDS: DECOR admits only
+# characters that are neither alphanumeric nor a line break, at most DECOR_MAX of
+# them, so "✅ " and "~~" get through and "feito junto com o " cannot — one word
+# character and the match is over. Emoji before the ID is the real house style,
+# not a hypothetical: the m365 queue carries
+# `- [x] ✅ **T020** — Defaults de compartilhamento ...` today, and a slot that
+# tolerated only `~~` made that allocation invisible — the direction that hands
+# the number out twice. The ceiling is what keeps DECOR a decoration rather than
+# a wildcard; it fits an emoji plus a space plus a strikethrough (4 chars), with
+# room for a variation selector or a ZWJ sequence.
+DECOR_MAX = 6
+DECOR = r"[^\w\n]{0,%d}" % DECOR_MAX
+# group 2 after MARKER (+ DECOR): the ID. The strikethrough may sit on either
+# side of the bold — `~~**T012**~~` is DECOR + slot, `**~~T012~~**` is the slot's
+# own inner pair. Both are how a human ticks off a legacy item, and reading only
+# one of them left the other free to be handed out a second time.
+ID_SLOT = r"\*\*(?:~~)?T([0-9]{3,})(?:~~)?\*\*"
+LOG_LINE = r"- ([0-9]{4}-[0-9]{2}-[0-9]{2}) — "  # group 1: the date
+
+ITEM_START = re.compile("^" + MARKER, re.M)
+# the same bold ID ANYWHERE in a block — a citation, not an allocation. Built
+# from ID_SLOT so a form the allocator reads is a form item_title strips: spelled
+# separately, `**~~T012~~**` was an ID for one and raw text for the other, and
+# `list` leaked the fragment `T012~~**` into the title.
+ID_RE = re.compile(r"(?:~~)?" + ID_SLOT + r"(?:~~)?")
+
+# --- where an ID is ALLOCATED, as against merely MENTIONED -----------------
+# An ID counts as taken only where a WRITER of these files PUTS it. There are
+# exactly three such positions, one per writer:
+#
+#   next-steps.md  the item marker        "- [ ] **T007** — ..."   compose_item, migrate
+#   done-log.md    an entry's ID column   "- 2026-08-13 — FEITO — T072 ..."  append_done_line
+#   done-log.md    a legacy [x] line moved verbatim by `migrate`
+#
+# Everywhere else a T-number is PROSE: a --note reading "atribuiu IDs até T022",
+# a --summary, an outcome naming a sibling ticket still open in ANOTHER project,
+# an item's own text quoting a duplicate. Scanning the whole text of both files
+# counted every one of those as allocated and BURNED the next number — measured
+# 2026-08-14 on this queue: a note saying an item "virou T0NN" made the following
+# `add` skip that number. It is not hypothetical residue either — the real files
+# still carry T054 and T086 as prose-only ghosts, counted as taken by nothing.
+# And the damage is unbounded in one direction: a single HIGH id quoted in prose
+# (a sibling tracker's "T900") jumps the counter for good.
+#
+# The same rule decides the diagnostic (see missing_item_message): an ID nobody
+# ever handed out must be reported as never allocated, not as one a concurrent
+# writer clobbered — that answer sends the caller hunting a writer that never
+# existed. `id_in_done_log` already worked this way; these make the rest of the
+# script agree with it.
+#
+# The first and third positions are the SAME LINE, before and after `migrate`
+# moves it — so they must be the same regex, or the file it currently sits in
+# decides the answer. Reading the legacy line loosely (any bold ID anywhere on
+# it) gave exactly that split: `- [x] feito junto com o **T900** do outro
+# tracker` allocated nothing in next-steps and burned T900 the moment `migrate`
+# moved it verbatim, and `- [x] ~~**T012**~~ — legado` did the opposite, leaving
+# T012 free to be handed out a second time while it sat in next-steps. ONE
+# regex, ITEM_ID_RE, therefore reads the marker's ID SLOT in both files: the ID
+# is at the head of the line, DECORATION tolerated (a strikethrough, an emoji —
+# that is how a human ticks off or flags a legacy item) but never a word, because
+# anything after a word of prose IS prose. It stays blind to the box on purpose
+# (one regex, not two): an ID parked in the log under an OPEN box — `- [ ]
+# **T005**` sitting in done-log.md — is still spent, and refusing to see it is
+# the direction that hands the number out twice. Both tolerances are one-way:
+# they can only make MORE IDs count as taken, never fewer.
+ITEM_ID_RE = re.compile("^" + MARKER + DECOR + ID_SLOT, re.M)
+LOG_ID_RE = re.compile("^" + LOG_LINE + r"\S+ — T([0-9]{3,})\b", re.M)
+# the head `edit --text` rewrites: the same marker + ID slot, plus the separator
+# compose_item writes. Built here, not respelled in cmd_edit, so a head the
+# allocator accepts is a head --text can rewrite — a legacy item whose head
+# carries an emoji is editable, and no second grammar can drift from this one.
+# The box is not re-checked: cmd_edit only ever sees a block find_open_item
+# returned, and those are open by construction.
+CANONICAL_HEAD_RE = re.compile(MARKER + DECOR + ID_SLOT + " — ")
 
 
 def split_blocks(body):
@@ -237,8 +323,10 @@ def split_blocks(body):
 
 
 def item_id(text):
-    m = ID_RE.search(text)
-    return int(m.group(1)) if m else None
+    """The block's OWN id — the one in its marker's ID slot, never one its text
+    or a continuation note happens to quote. Group 2: group 1 is the box."""
+    m = ITEM_ID_RE.match(text)
+    return int(m.group(2)) if m else None
 
 
 # CLI-facing ID parser: the queue DISPLAYS "T006" everywhere and the contract
@@ -257,13 +345,27 @@ def parse_id(raw):
     return int(m.group(1))
 
 
+def ids_at(content, *positions):
+    """The IDs really carried by the given structural positions in `content`.
+    Group 2 in every one of them — group 1 is the box or the date."""
+    return {int(m.group(2)) for rx in positions for m in rx.finditer(content)}
+
+
+def done_log_ids(memdir):
+    """Every ID the done-log has really handed out: an entry's ID column, and
+    the marker's ID slot on a legacy [x] line moved verbatim by `migrate`.
+
+    Two callers, and they must not disagree: `max_id` decides which ID the next
+    `add` gets, `id_in_done_log` decides whether a missing one was closed. Two
+    copies of this loop is how one of them would keep a position the other had
+    already dropped.
+    """
+    return ids_at(read(os.path.join(memdir, "done-log.md")) or "", LOG_ID_RE, ITEM_ID_RE)
+
+
 def max_id(memdir):
-    top = 0
-    for name in ("next-steps.md", "done-log.md"):
-        content = read(os.path.join(memdir, name)) or ""
-        for m in ANY_ID_RE.finditer(content):
-            top = max(top, int(m.group(1)))
-    return top
+    open_items = read(os.path.join(memdir, "next-steps.md")) or ""
+    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir), default=0)
 
 
 def ensure_single_line(**fields):
@@ -432,7 +534,7 @@ def group_by_tag(pairs):
 
 
 def item_title(text, limit=100):
-    t = re.sub(r"^- \[[ x]\] ", "", text.strip())
+    t = re.sub("^" + MARKER, "", text.strip())
     t = ID_RE.sub("", t)
     t = re.sub(r"\*\*(" + ANY_FIELD + r"):\*\*.*", "", t, flags=re.S)
     t = re.sub(r"\s+", " ", t).strip(" —-~*")
@@ -488,10 +590,9 @@ def remove_block(memdir, block_text):
     write_atomic(path, excise(content, block_text))
 
 
-def id_in_done_log(memdir, label):
-    """Whether the ID really was closed — matched ONLY where a close writes it:
-    after the marker on an entry's first line, or as a bold ID on a legacy [x]
-    line moved verbatim by `migrate`.
+def id_in_done_log(memdir, wanted_id):
+    """Whether the ID really was closed — asked of the positions a close writes
+    (see done_log_ids), never of the log's free text.
 
     Anywhere else the ID is prose. This queue's own log carries a --note saying
     "atribuiu IDs até T022" and an outcome naming a sibling ticket "T054" that
@@ -499,10 +600,7 @@ def id_in_done_log(memdir, label):
     and answers "already left the queue", a confident wrong diagnosis from the
     error path that exists to prevent confident wrong diagnoses.
     """
-    log = read(os.path.join(memdir, "done-log.md")) or ""
-    closed = re.compile(r"^- \d{4}-\d{2}-\d{2} — \S+ — " + label + r"\b"
-                        r"|^- \[x\] .*\*\*" + label + r"\*\*", re.M)
-    return closed.search(log) is not None
+    return wanted_id in done_log_ids(memdir)
 
 
 def missing_item_message(memdir, content, wanted_id):
@@ -517,7 +615,7 @@ def missing_item_message(memdir, content, wanted_id):
             return (f"{label} is in next-steps.md but already ticked [x], so it never "
                     "reached the done-log. Run `tk-queue migrate` to move it, then read "
                     "the log line — do NOT add a replacement item.")
-    if id_in_done_log(memdir, label):
+    if id_in_done_log(memdir, wanted_id):
         return (f"{label} already left the queue — it is in done-log.md. Read that line "
                 "before acting, and do NOT add a replacement item.")
     top = max_id(memdir)
@@ -721,7 +819,7 @@ def cmd_edit(args):
         validate_project(args.project)
     new = block
     if args.text:
-        head_m = re.match(r"- \[ \] \*\*T\d{3,}\*\* — ", block)
+        head_m = CANONICAL_HEAD_RE.match(block)
         if not head_m:
             fail(f"T{args.id:03d} has a non-canonical head — use cancel + add instead of --text")
         # keep everything from the FIRST field marker on, whichever field that is —
@@ -815,7 +913,7 @@ def cmd_report(args):
         if args.all
         else [memory_dir(args.dir)]
     )
-    entry = re.compile(r"^- (\d{4}-\d{2}-\d{2}) — .*(?:\n  .*)*", re.M)
+    entry = re.compile("^" + LOG_LINE + r".*(?:\n  .*)*", re.M)
     for d in dirs:
         content = read(os.path.join(d, "done-log.md"))
         if content is None:
