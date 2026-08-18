@@ -20,7 +20,7 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens with the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality, triaged and dispatched via menu. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort |
 | `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (merges preceded by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the ceiling is a local commit on a branch, never push/merge |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
-| `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR |
+| `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
 
 The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (defined in
 `tk/skills/kickoff/SKILL.md`): two files per project in auto-memory — `next-steps.md`
