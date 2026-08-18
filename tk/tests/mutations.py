@@ -159,7 +159,7 @@ MUTATIONS = [
       "TestIdAllocationScope.test_the_diagnostic_stops_reading_a_prose_mention_as_an_allocation"]),
 
     ("T088 the item's ID may sit anywhere on its line, not at the marker",
-     'ITEM_ID_RE = re.compile("^" + MARKER + ID_SLOT, re.M)',
+     'ITEM_ID_RE = re.compile("^" + MARKER + DECOR + ID_SLOT, re.M)',
      'ITEM_ID_RE = re.compile("^" + MARKER + r".*" + ID_SLOT, re.M)',
      ["TestIdAllocationScope.test_a_bold_id_inside_an_item_text_is_not_an_allocation"]),
 
@@ -186,19 +186,90 @@ MUTATIONS = [
     # --- review#4: the same LINE must answer the same before and after migrate ---
 
     ("review#4 the legacy [x] line goes back to a tolerant mid-line match",
-     'ITEM_ID_RE = re.compile("^" + MARKER + ID_SLOT, re.M)',
+     'ITEM_ID_RE = re.compile("^" + MARKER + DECOR + ID_SLOT, re.M)',
      'ITEM_ID_RE = re.compile("^" + MARKER + r".*?" + ID_SLOT, re.M)',
      ["TestIdAllocationScope.test_a_prose_id_on_a_legacy_x_line_burns_nothing_on_either_side"]),
 
-    ("review#4 the ID slot stops tolerating a struck-through legacy ID",
-     'ID_SLOT = r"(?:~~)?\\*\\*T([0-9]{3,})\\*\\*"',
-     'ID_SLOT = r"\\*\\*T([0-9]{3,})\\*\\*"',
-     ["TestIdAllocationScope.test_a_struck_through_legacy_id_is_spent_on_either_side"]),
-
     ("review#4 the ID slot stops requiring the bold",
-     'ID_SLOT = r"(?:~~)?\\*\\*T([0-9]{3,})\\*\\*"',
-     'ID_SLOT = r"(?:~~)?\\*?\\*?T([0-9]{3,})"',
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]{3,})(?:~~)?\\*\\*"',
+     'ID_SLOT = r"\\*?\\*?(?:~~)?T([0-9]{3,})(?:~~)?\\*?\\*?"',
      ["TestIdAllocationScope.test_a_plain_t_number_at_the_head_is_not_the_item_s_id"]),
+
+    # --- review#5: DECORATION before the ID, and the ID's own wrapping -------
+    # The slot tolerated exactly ONE decoration (`~~`), so every other one made a
+    # real allocation invisible — measured on the live m365 queue, which carries
+    # `- [x] ✅ **T020** — ...` today, and in isolation walked the counter
+    # BACKWARDS against the pre-position-rule code (max_id 50 → 3).
+
+    ("review#5 nothing may sit between the box and the bold (the emoji ghost)",
+     'ITEM_ID_RE = re.compile("^" + MARKER + DECOR + ID_SLOT, re.M)',
+     'ITEM_ID_RE = re.compile("^" + MARKER + ID_SLOT, re.M)',
+     ["TestIdAllocationScope.test_decoration_before_the_id_is_still_an_allocation",
+      "TestIdAllocationScope.test_decoration_before_the_id_counts_in_next_steps_too",
+      "TestIdAllocationScope.test_decoration_counts_and_prose_does_not_in_the_same_file",
+      "TestIdAllocationScope.test_a_struck_through_legacy_id_is_spent_on_either_side"]),
+
+    ("review#5 the strikethrough INSIDE the bold stops counting (`**~~T012~~**`)",
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]{3,})(?:~~)?\\*\\*"',
+     'ID_SLOT = r"\\*\\*T([0-9]{3,})\\*\\*"',
+     ["TestIdAllocationScope."
+      "test_a_bold_wrapped_strikethrough_id_is_spent_and_leaves_no_fragment"]),
+
+    # the over-WIDENING direction, which no test above can see: a decoration slot
+    # that admits words is the whole-file scan again, one line at a time
+    ("review#5 DECOR admits words, so prose before the ID allocates again",
+     'DECOR = r"[^\\w\\n]{0,%d}" % DECOR_MAX',
+     'DECOR = r"[^\\n]{0,%d}" % (DECOR_MAX * 20)',
+     ["TestIdAllocationScope."
+      "test_a_prose_id_on_a_legacy_x_line_burns_nothing_on_either_side",
+      "TestIdAllocationScope.test_decoration_counts_and_prose_does_not_in_the_same_file"]),
+
+    ("review#5 the ID slot goes back to being read for one file only (box-aware)",
+     'ITEM_ID_RE = re.compile("^" + MARKER + DECOR + ID_SLOT, re.M)',
+     'ITEM_ID_RE = re.compile("^" + r"- \\[(x)\\] " + DECOR + ID_SLOT, re.M)',
+     ["TestIdAllocationScope.test_an_open_box_parked_in_the_done_log_is_still_spent"]),
+
+    # --- review#5: the ANCHOR and the WIDTH of both grammars -----------------
+
+    ("review#5 the item marker stops being anchored to start of line",
+     'ITEM_ID_RE = re.compile("^" + MARKER + DECOR + ID_SLOT, re.M)',
+     'ITEM_ID_RE = re.compile(MARKER + DECOR + ID_SLOT, re.M)',
+     ["TestIdAllocationScope."
+      "test_the_marker_form_quoted_inside_an_item_text_is_not_an_allocation"]),
+
+    ("review#5 the done-log line stops being anchored to start of line",
+     'LOG_ID_RE = re.compile("^" + LOG_LINE + r"\\S+ — T([0-9]{3,})\\b", re.M)',
+     'LOG_ID_RE = re.compile(LOG_LINE + r"\\S+ — T([0-9]{3,})\\b", re.M)',
+     ["TestDoneLogLineGrammar.test_a_log_line_format_quoted_in_an_outcome_is_not_a_close"]),
+
+    # ONE entry, because there is now ONE spelling: ID_RE is built from ID_SLOT,
+    # so the same loosening reaches the allocator AND item_title. Spelled twice,
+    # they were two mutants and could drift apart
+    ("review#5 the ID width loosens to `+` (a bold `T7` becomes an id)",
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]{3,})(?:~~)?\\*\\*"',
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]+)(?:~~)?\\*\\*"',
+     ["TestIdAllocationScope."
+      "test_a_two_digit_bold_number_is_no_id_at_the_marker_nor_in_a_title"]),
+
+    ("review#5 the done-log ID column loosens to `+`",
+     'LOG_ID_RE = re.compile("^" + LOG_LINE + r"\\S+ — T([0-9]{3,})\\b", re.M)',
+     'LOG_ID_RE = re.compile("^" + LOG_LINE + r"\\S+ — T([0-9]+)\\b", re.M)',
+     ["TestDoneLogLineGrammar.test_a_two_digit_number_in_the_id_column_is_no_id"]),
+
+    ("review#5 the closing bold becomes optional (an unclosed head gets an id)",
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]{3,})(?:~~)?\\*\\*"',
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]{3,})(?:~~)?(?:\\*\\*)?"',
+     ["TestIdAllocationScope.test_an_unclosed_bold_carries_no_id"]),
+
+    ("review#5 report respells the log line with \\d (Unicode digits sneak in)",
+     '    entry = re.compile("^" + LOG_LINE + r".*(?:\\n  .*)*", re.M)',
+     '    entry = re.compile(r"^- (\\d{4}-\\d{2}-\\d{2}) — .*(?:\\n  .*)*", re.M)',
+     ["TestDoneLogLineGrammar.test_report_reads_the_date_column_in_ascii_digits_only"]),
+
+    ("review#5 cmd_edit respells the canonical head instead of building it",
+     "        head_m = CANONICAL_HEAD_RE.match(block)",
+     '        head_m = re.match(r"- \\[ \\] \\*\\*T[0-9]{3,}\\*\\* — ", block)',
+     ["TestCanonicalHead.test_a_decorated_head_is_still_editable"]),
 
     ("review#4 the done-log ID column only counts a FEITO close",
      'LOG_ID_RE = re.compile("^" + LOG_LINE + r"\\S+ — T([0-9]{3,})\\b", re.M)',
@@ -389,7 +460,8 @@ def main():
                                   "TestEmbeddedMarker", "TestAtomicWrite",
                                   "TestRiskDeletion", "TestCeilingScope",
                                   "TestTargetQueueAnnounced", "TestFieldChain",
-                                  "TestCloseFieldCeilings", "TestIdAllocationScope"])
+                                  "TestCloseFieldCeilings", "TestIdAllocationScope",
+                                  "TestDoneLogLineGrammar", "TestCanonicalHead"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

@@ -459,6 +459,156 @@ class TestIdAllocationScope(QueueTest):
         self.assertIn("----", self.run_tk("list").stdout)
         self.assertEqual(self.add(), "T001")
 
+    # --- review#5: DECORATION is not prose ----------------------------------
+    # The slot tolerated exactly one decoration, `~~`, so every other one made
+    # the ID vanish from the count. Measured on the LIVE m365 queue, which
+    # carries `- [x] \u2705 **T020** \u2014 Defaults de compartilhamento ...` today:
+    # done_log_ids() dropped 20. And in isolation the counter walks BACKWARDS
+    # against the pre-position-rule code \u2014 max_id 50 -> 3, and the next `add`
+    # handed out T004 with T050 already spent.
+
+    def test_decoration_before_the_id_is_still_an_allocation(self):
+        """The real shape, done-log side: an emoji between the box and the ID."""
+        self.seed(item(3, "tres"),
+                  log="- [x] \u2705 **T050** \u2014 legado com emoji antes do ID\n")
+        self.assertEqual(self.add(), "T051")
+
+    def test_decoration_before_the_id_counts_in_next_steps_too(self):
+        """Same line, before `migrate` moves it \u2014 the two sides must agree, which
+        is the whole reason ONE regex reads both files."""
+        self.seed(item(3, "tres"),
+                  "- [x] \u2705 **T060** \u2014 legado com emoji, ainda em next-steps\n")
+        self.assertEqual(self.add(), "T061")
+
+    def test_decoration_counts_and_prose_does_not_in_the_same_file(self):
+        """The discriminator, both sides in ONE number. `\u2705 ` is decoration and
+        allocates T030; `feito junto com o ` is PROSE and allocates nothing.
+        A rule that only widens gives T901 here; the old narrow one gives T002."""
+        self.seed(item(1, "um"),
+                  "- [x] \u2705 **T030** \u2014 decora\u00e7\u00e3o antes do ID\n",
+                  "- [x] feito junto com o **T900** do outro tracker\n")
+        self.assertEqual(self.add(), "T031")
+
+    def test_a_bold_wrapped_strikethrough_id_is_spent_and_leaves_no_fragment(self):
+        """`**~~T012~~**` \u2014 bold outside, strike inside \u2014 is the mirror of the
+        form already covered. Unread, the ID was free to be handed out twice AND
+        `item_title` leaked the raw `T012~~**` into `list`. Both faces are the
+        same defect: two spellings of one grammar."""
+        self.seed(item(1, "um"), "- [ ] **~~T012~~** \u2014 legado riscado por dentro\n")
+        self.assertEqual(self.add(), "T013")
+        out = self.run_tk("list").stdout
+        self.assertIn("T012  ", out)        # it has an ID, and it is its own
+        self.assertNotIn("~~", out)         # and the title carries no raw fragment
+        self.assertNotIn("----", out)
+
+    def test_an_open_box_parked_in_the_done_log_is_still_spent(self):
+        """ITEM_ID_RE is blind to the box on purpose, in BOTH files. A `- [ ]`
+        line sitting in done-log.md is not a shape any writer produces, but the
+        ID on it is spent all the same \u2014 handing it out again is the one
+        direction that cannot be undone. Locked here because the diagnostic
+        answers it with confidence: `edit` says it already left the queue."""
+        self.seed(item(1, "um"), log="- [ ] **T005** \u2014 caixa aberta parada no log\n")
+        self.assertEqual(self.add(), "T006")
+        r = self.run_tk("edit", "T005", "--effort", "M")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("already left the queue", r.stderr)
+
+    # --- review#5: the ANCHOR and the WIDTH, not just the position -----------
+
+    def test_the_marker_form_quoted_inside_an_item_text_is_not_an_allocation(self):
+        """`^` is grammar, not decoration. An item whose TEXT quotes a whole
+        marker mid-line allocates nothing; unanchored, that quote allocates and
+        the diagnostic answers the confident wrong thing about it."""
+        self.seed(item(1, "formato no doc: `- [ ] **T900** \u2014 exemplo` \u2014 s\u00f3 isso"))
+        self.assertEqual(self.add(), "T002")
+        r = self.run_tk("edit", "T900", "--effort", "M")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("never allocated", r.stderr)
+        self.assertNotIn("Another writer", r.stderr)
+
+    def test_a_two_digit_bold_number_is_no_id_at_the_marker_nor_in_a_title(self):
+        """`{3,}` is the grammar the writer emits, not a formatting habit.
+        Loosened to `+`, a legacy `**T7**` at a marker becomes an ID nobody
+        handed out (`list` labels it T007, the next add jumps to T008) and the
+        SAME regex strips a legitimate `**T7**` citation out of another title.
+        One spelling, so one mutation reaches both faces."""
+        self.seed(item(1, "um"),
+                  "- [ ] **T7** \u2014 numera\u00e7\u00e3o legada **Class:** AUTONOMOUS. **Effort:** S.\n",
+                  item(2, "cita o **T7** da fila antiga"))
+        out = self.run_tk("list").stdout
+        self.assertNotIn("T007", out)       # nobody allocated T007
+        self.assertIn("**T7**", out)        # and the citation survives in the title
+        self.assertEqual(self.add(), "T003")
+
+    def test_an_unclosed_bold_carries_no_id(self):
+        """The closing `**` is grammar too. `- [ ] **T005 \u2014 ...` is malformed;
+        reading an ID out of it hands the number to a line no writer produced."""
+        self.seed(item(1, "um"),
+                  "- [ ] **T005 \u2014 negrito mal fechado **Class:** AUTONOMOUS. **Effort:** S.\n")
+        out = self.run_tk("list").stdout
+        self.assertIn("----", out)
+        # the LABEL column, not the title: "T005 —" legitimately survives as text
+        self.assertNotIn("T005  ", out)
+        self.assertEqual(self.add(), "T002")
+
+
+class TestDoneLogLineGrammar(QueueTest):
+    """The done-log's own line has a grammar, and LOG_LINE is its ONE spelling.
+    Two readers use it \u2014 LOG_ID_RE (which ID a log line hands out) and `report`
+    (which lines are dated entries at all) \u2014 and each one respelled it before."""
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    def test_a_log_line_format_quoted_in_an_outcome_is_not_a_close(self):
+        """The done-log side of `^`. A --how quoting the SHAPE of a log line
+        lands mid-line; unanchored, that quote counts as a real close and the
+        next add skips to T901."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("done", "T001", "--how",
+                        "formato: - 2026-08-01 \u2014 FEITO \u2014 T900 exemplo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T900 exemplo", self.body("done-log.md"))    # really landed
+        self.assertEqual(self.add(), "T002")
+
+    def test_a_two_digit_number_in_the_id_column_is_no_id(self):
+        """Same width rule as the item marker, and it was spelled twice."""
+        self.seed(item(1, "um"), log="- 2026-08-01 \u2014 FEITO \u2014 T7 legado \u2014 PR #1\n")
+        self.assertEqual(self.add(), "T002")
+
+    def test_report_reads_the_date_column_in_ascii_digits_only(self):
+        r"""`\d` matches Unicode decimal digits and `[0-9]` does not. A line whose
+        date is written in FULL-WIDTH digits is not a line this script ever
+        wrote, and whether `report` shows it must not depend on which of the two
+        spellings the reader happens to carry \u2014 LOG_LINE decides, once."""
+        self.seed(item(1, "um"),
+                  log="- \uff12\uff10\uff12\uff16-\uff10\uff18-\uff10\uff11 \u2014 FEITO \u2014 T002 dois \u2014 PR #1\n"
+                      "- 2026-08-02 \u2014 FEITO \u2014 T003 tres \u2014 PR #2\n")
+        out = self.run_tk("report").stdout
+        self.assertIn("T003 tres", out)
+        self.assertNotIn("T002 dois", out)
+
+
+class TestCanonicalHead(QueueTest):
+    """`edit --text` rewrites the item's HEAD and keeps the rest. The head it
+    matches is the marker grammar plus compose_item's separator \u2014 respelled in
+    cmd_edit it drifted from the allocator, and an item the allocator reads
+    fine became one --text refuses to touch."""
+
+    def test_a_decorated_head_is_still_editable(self):
+        """A legacy item whose head carries an emoji is a head the allocator
+        accepts; --text must accept it too, and must keep the decoration."""
+        self.seed("- [ ] \u2705 **T005** \u2014 texto antigo **Class:** AUTONOMOUS."
+                  " **Effort:** S. **Criterion:** A: x.\n")
+        r = self.run_tk("edit", "T005", "--text", "texto novo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertIn("- [ ] \u2705 **T005** \u2014 texto novo **Class:** AUTONOMOUS.", body)
+        self.assertNotIn("texto antigo", body)
+
 
 class TestDirResolution(QueueTest):
     """`list` and `add` must resolve the SAME file from the same cwd — the
