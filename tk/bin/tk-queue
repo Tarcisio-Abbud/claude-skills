@@ -14,7 +14,12 @@ lost. That is what keeps finished work from silently accumulating in the queue.
 Items are identified by sequential IDs (**T001**, **T002**, ...) unique within
 a project (both files scanned, at the positions where a WRITER puts an ID, so
 a closed item's ID is never reused and an ID merely quoted in prose is not
-mistaken for an allocated one). Open items predating this script may lack IDs;
+mistaken for an allocated one). Two tolerances at that position, both one-way —
+they can only make MORE IDs count as taken, never fewer: DECORATION between the
+box and the ID is read through (`- [x] ✅ **T020**`, `~~**T012**~~`,
+`**~~T012~~**` — a word is not decoration, so prose still allocates nothing),
+and the CHECKBOX is not read at all, so an ID parked in done-log.md under an
+open box is spent all the same. Open items predating this script may lack IDs;
 `migrate` assigns them (legacy [x]
 items move to the log verbatim, ID-less, and — carrying no `- YYYY-MM-DD —`
 prefix — stay outside `report`'s scope; read the log itself for that history).

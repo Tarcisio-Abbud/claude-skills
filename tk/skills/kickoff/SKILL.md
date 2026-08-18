@@ -134,6 +134,23 @@ tk-queue migrate                               # one-time: moves legacy [x] to t
 
 `<id>` is accepted in the form the queue displays (`T006`) as well as bare (`6`).
 
+**Which IDs are taken** — the script counts an ID as allocated only where a WRITER puts
+one: at an item's marker in either file (`- [ ] **T007** — …`) and in a done-log entry's
+ID column (`- 2026-08-13 — FEITO — T072 …`). A T-number anywhere else is PROSE — a note,
+a summary, an item citing a sibling ticket from another tracker — and burns no number.
+Two tolerances at the marker, both one-way (they can only make MORE IDs count as taken):
+
+- **Decoration before the ID counts; a word does not.** `- [x] ✅ **T020** — …` and
+  `- [x] ~~**T012**~~ — …` are allocations, and so is `**~~T012~~**`; a strikethrough or
+  an emoji is how a human ticks off or flags a legacy item. `- [x] feito junto com o
+  **T900** do outro tracker` is not — one word before the ID and the line is prose.
+- **The checkbox is not read.** An ID sits at a marker whether the box is `[ ]` or `[x]`,
+  in next-steps.md or in done-log.md alike. A `- [ ] **T005**` line parked in the log is
+  still spent: refusing to see it is the direction that hands the number out twice.
+
+Both matter to a session because they decide what `add` hands out next and what the
+"never allocated" diagnostic means. Neither is a licence to hand-edit the files.
+
 Every mutating command (`add`/`edit`/`done`/`cancel`/`migrate`) prints the memory dir it
 resolved on **stderr** before acting. That target is inferred — from `--dir`, or from the
 cwd when it is absent — and a shell that keeps its cwd between calls has already made an
