@@ -390,6 +390,76 @@ class TestIdAllocationScope(QueueTest):
         self.assertEqual(self.add(), "T013")
 
 
+    # --- review#4: the SAME line, before and after `migrate` moves it --------
+    # A legacy [x] line lives in next-steps.md until `migrate` moves it verbatim
+    # into the log. Read by two different rules it gives two different answers,
+    # and which one you get depends on nothing but the clock.
+
+    def test_a_prose_id_on_a_legacy_x_line_burns_nothing_on_either_side(self):
+        """Read loosely, the ID this line merely QUOTES became an allocation the
+        moment `migrate` moved the line — the T088 ghost, back through the log."""
+        self.seed(item(1, "um"),
+                  "- [x] legado sem ID, feito junto com o **T900** do outro tracker\n")
+        self.assertEqual(self.add("a"), "T002")
+        # and the diagnostic must not invent a close either
+        r = self.run_tk("edit", "T900", "--effort", "M")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("never allocated", r.stderr)
+
+        self.assertEqual(self.run_tk("migrate").returncode, 0)
+        self.assertIn("**T900**", self.body("done-log.md"))    # really moved
+        self.assertEqual(self.add("b"), "T003")
+        r = self.run_tk("edit", "T900", "--effort", "M")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("never allocated", r.stderr)
+
+    def test_a_struck_through_legacy_id_is_spent_on_either_side(self):
+        """The mirror image: an ID a human ticked off by striking it through IS
+        an allocation, and reading it only in the log left it free to be handed
+        out a second time while the line still sat in next-steps."""
+        self.seed(item(1, "um"), item(2, "dois"), item(3, "tres"),
+                  "- [x] ~~**T012**~~ — legado, ID não colado no marcador\n")
+        self.assertEqual(self.add("a"), "T013")
+        self.assertEqual(self.run_tk("migrate").returncode, 0)
+        self.assertEqual(self.add("b"), "T014")
+
+    # --- review#4: the positions the suite was not actually reading ----------
+
+    def test_a_cancelled_item_still_blocks_reuse_of_its_id(self):
+        """Every done-log fixture in this file closes with FEITO, so the marker
+        column was never really read: pinned to that one word, a DESCARTADO
+        entry stops counting and `add` hands its ID straight back."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("cancel", "T001", "--why", "não vale mais")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("DESCARTADO — T001", self.body("done-log.md"))
+        self.assertEqual(self.add(), "T002")
+
+    def test_an_idless_item_quoting_a_bold_id_is_still_idless(self):
+        """The item has NO ID and its text bolds a sibling's. Read by searching
+        the block instead of its marker, that quote becomes the item's own id:
+        `list` labels it with a number nobody allocated and `migrate` skips it,
+        leaving it ID-less for good."""
+        self.seed("- [ ] legado sem ID, sucessor do **T040** da fila do ambiente"
+                  " **Class:** AUTONOMOUS. **Effort:** S.\n")
+        out = self.run_tk("list").stdout
+        self.assertIn("----", out)
+        self.assertNotIn("T040", out)
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("IDs assigned up to T001", r.stdout)
+        self.assertIn("- [ ] **T001** — legado sem ID", self.body())
+
+    def test_a_plain_t_number_at_the_head_is_not_the_item_s_id(self):
+        """The bold is not decoration, it is the grammar. An item whose TEXT
+        opens with another tracker's number allocates nothing — dropping the
+        `**` makes that number the item's id and jumps this queue's counter."""
+        self.seed("- [ ] T900 do outro tracker precisa de acompanhamento"
+                  " **Class:** AUTONOMOUS. **Effort:** S.\n")
+        self.assertIn("----", self.run_tk("list").stdout)
+        self.assertEqual(self.add(), "T001")
+
+
 class TestDirResolution(QueueTest):
     """`list` and `add` must resolve the SAME file from the same cwd — the
     other half of T060's criterion."""

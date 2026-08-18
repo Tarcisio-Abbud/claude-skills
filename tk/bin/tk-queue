@@ -14,8 +14,8 @@ lost. That is what keeps finished work from silently accumulating in the queue.
 Items are identified by sequential IDs (**T001**, **T002**, ...) unique within
 a project (both files scanned, at the positions where a WRITER puts an ID, so
 a closed item's ID is never reused and an ID merely quoted in prose is not
-mistaken for an allocated one). Open
-items predating this script may lack IDs; `migrate` assigns them (legacy [x]
+mistaken for an allocated one). Open items predating this script may lack IDs;
+`migrate` assigns them (legacy [x]
 items move to the log verbatim, ID-less, and — carrying no `- YYYY-MM-DD —`
 prefix — stay outside `report`'s scope; read the log itself for that history).
 
@@ -212,8 +212,18 @@ def queue_lock(memdir):
 # the first blank line, next item, or heading. Everything else in the file
 # (frontmatter, headings, prose) is preserved verbatim.
 
-ITEM_START = re.compile(r"^- \[( |x)\] ", re.M)
-ID_RE = re.compile(r"\*\*T(\d{3,})\*\*")
+# --- the two grammars, ONE spelling each ----------------------------------
+# Two shapes carry an ID in these files, and every reader of one starts from the
+# strings below: a next-steps item from MARKER (+ ID_SLOT for its ID), a
+# done-log entry from LOG_LINE. Two readers of the same shape spelling it
+# differently is not a style question — it is how the same line came to allocate
+# an ID in one file and not in the other (see the allocation note below).
+MARKER = r"- \[( |x)\] "                        # group 1: the box
+ID_SLOT = r"(?:~~)?\*\*T([0-9]{3,})\*\*"        # group 2 after MARKER: the ID
+LOG_LINE = r"- ([0-9]{4}-[0-9]{2}-[0-9]{2}) — "  # group 1: the date
+
+ITEM_START = re.compile("^" + MARKER, re.M)
+ID_RE = re.compile(r"\*\*T([0-9]{3,})\*\*")
 
 # --- where an ID is ALLOCATED, as against merely MENTIONED -----------------
 # An ID counts as taken only where a WRITER of these files PUTS it. There are
@@ -236,11 +246,24 @@ ID_RE = re.compile(r"\*\*T(\d{3,})\*\*")
 # The same rule decides the diagnostic (see missing_item_message): an ID nobody
 # ever handed out must be reported as never allocated, not as one a concurrent
 # writer clobbered — that answer sends the caller hunting a writer that never
-# existed. `id_in_done_log` already worked this way; these three make the rest
-# of the script agree with it, from ONE definition.
-ITEM_ID_RE = re.compile(r"^- \[[ x]\] \*\*T(\d{3,})\*\*", re.M)
-LOG_ID_RE = re.compile(r"^- \d{4}-\d{2}-\d{2} — \S+ — T(\d{3,})\b", re.M)
-LEGACY_LOG_ID_RE = re.compile(r"^- \[x\] .*?\*\*T(\d{3,})\*\*", re.M)
+# existed. `id_in_done_log` already worked this way; these make the rest of the
+# script agree with it.
+#
+# The first and third positions are the SAME LINE, before and after `migrate`
+# moves it — so they must be the same regex, or the file it currently sits in
+# decides the answer. Reading the legacy line loosely (any bold ID anywhere on
+# it) gave exactly that split: `- [x] feito junto com o **T900** do outro
+# tracker` allocated nothing in next-steps and burned T900 the moment `migrate`
+# moved it verbatim, and `- [x] ~~**T012**~~ — legado` did the opposite, leaving
+# T012 free to be handed out a second time while it sat in next-steps. ONE
+# regex, ITEM_ID_RE, therefore reads the marker's ID SLOT in both files: the ID
+# is at the head of the line, strikethrough tolerated because that is how a
+# human ticks off a legacy item — anything after a word of prose is prose. It
+# stays blind to the box on purpose (one regex, not two): an ID parked in the
+# log under an open box is still spent, and refusing to see it is the direction
+# that hands the number out twice.
+ITEM_ID_RE = re.compile("^" + MARKER + ID_SLOT, re.M)
+LOG_ID_RE = re.compile("^" + LOG_LINE + r"\S+ — T([0-9]{3,})\b", re.M)
 
 
 def split_blocks(body):
@@ -263,10 +286,10 @@ def split_blocks(body):
 
 
 def item_id(text):
-    """The block's OWN id — the one at its item marker, never one its text or a
-    continuation note happens to quote."""
+    """The block's OWN id — the one in its marker's ID slot, never one its text
+    or a continuation note happens to quote. Group 2: group 1 is the box."""
     m = ITEM_ID_RE.match(text)
-    return int(m.group(1)) if m else None
+    return int(m.group(2)) if m else None
 
 
 # CLI-facing ID parser: the queue DISPLAYS "T006" everywhere and the contract
@@ -285,19 +308,27 @@ def parse_id(raw):
     return int(m.group(1))
 
 
-def allocated_ids(memdir):
-    """Every ID the two files have really handed out — the three structural
-    positions above, and nothing else."""
-    ids = {int(m.group(1))
-           for m in ITEM_ID_RE.finditer(read(os.path.join(memdir, "next-steps.md")) or "")}
-    log = read(os.path.join(memdir, "done-log.md")) or ""
-    for rx in (LOG_ID_RE, LEGACY_LOG_ID_RE):
-        ids |= {int(m.group(1)) for m in rx.finditer(log)}
-    return ids
+def ids_at(content, *positions):
+    """The IDs really carried by the given structural positions in `content`.
+    Group 2 in every one of them — group 1 is the box or the date."""
+    return {int(m.group(2)) for rx in positions for m in rx.finditer(content)}
+
+
+def done_log_ids(memdir):
+    """Every ID the done-log has really handed out: an entry's ID column, and
+    the marker's ID slot on a legacy [x] line moved verbatim by `migrate`.
+
+    Two callers, and they must not disagree: `max_id` decides which ID the next
+    `add` gets, `id_in_done_log` decides whether a missing one was closed. Two
+    copies of this loop is how one of them would keep a position the other had
+    already dropped.
+    """
+    return ids_at(read(os.path.join(memdir, "done-log.md")) or "", LOG_ID_RE, ITEM_ID_RE)
 
 
 def max_id(memdir):
-    return max(allocated_ids(memdir), default=0)
+    open_items = read(os.path.join(memdir, "next-steps.md")) or ""
+    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir), default=0)
 
 
 def ensure_single_line(**fields):
@@ -466,7 +497,7 @@ def group_by_tag(pairs):
 
 
 def item_title(text, limit=100):
-    t = re.sub(r"^- \[[ x]\] ", "", text.strip())
+    t = re.sub("^" + MARKER, "", text.strip())
     t = ID_RE.sub("", t)
     t = re.sub(r"\*\*(" + ANY_FIELD + r"):\*\*.*", "", t, flags=re.S)
     t = re.sub(r"\s+", " ", t).strip(" —-~*")
@@ -523,9 +554,8 @@ def remove_block(memdir, block_text):
 
 
 def id_in_done_log(memdir, wanted_id):
-    """Whether the ID really was closed — matched ONLY where a close writes it:
-    the ID column of an entry's first line, or the bold ID of a legacy [x] line
-    moved verbatim by `migrate`.
+    """Whether the ID really was closed — asked of the positions a close writes
+    (see done_log_ids), never of the log's free text.
 
     Anywhere else the ID is prose. This queue's own log carries a --note saying
     "atribuiu IDs até T022" and an outcome naming a sibling ticket "T054" that
@@ -533,10 +563,7 @@ def id_in_done_log(memdir, wanted_id):
     and answers "already left the queue", a confident wrong diagnosis from the
     error path that exists to prevent confident wrong diagnoses.
     """
-    log = read(os.path.join(memdir, "done-log.md")) or ""
-    return any(int(m.group(1)) == wanted_id
-               for rx in (LOG_ID_RE, LEGACY_LOG_ID_RE)
-               for m in rx.finditer(log))
+    return wanted_id in done_log_ids(memdir)
 
 
 def missing_item_message(memdir, content, wanted_id):
@@ -755,7 +782,7 @@ def cmd_edit(args):
         validate_project(args.project)
     new = block
     if args.text:
-        head_m = re.match(r"- \[ \] \*\*T\d{3,}\*\* — ", block)
+        head_m = re.match(r"- \[ \] \*\*T[0-9]{3,}\*\* — ", block)
         if not head_m:
             fail(f"T{args.id:03d} has a non-canonical head — use cancel + add instead of --text")
         # keep everything from the FIRST field marker on, whichever field that is —
@@ -849,7 +876,7 @@ def cmd_report(args):
         if args.all
         else [memory_dir(args.dir)]
     )
-    entry = re.compile(r"^- (\d{4}-\d{2}-\d{2}) — .*(?:\n  .*)*", re.M)
+    entry = re.compile("^" + LOG_LINE + r".*(?:\n  .*)*", re.M)
     for d in dirs:
         content = read(os.path.join(d, "done-log.md"))
         if content is None:
