@@ -987,17 +987,24 @@ MUTATIONS = [
      '    if FIELD_MARKER_RE["Class"].search(block):', "    if False:",
      ["TestClaim.test_an_item_whose_fields_sit_off_the_first_line_is_told_how_to_fold_them"]),
 
-    ("T121 release answers the unhostable shape with the prose diagnosis instead",
-     '    if not chain_hosts_class(block) and FIELD_MARKER_RE["Claimed"].search(block):',
-     "    if False:",
-     ["TestClaim.test_an_item_whose_fields_sit_off_the_first_line_is_told_how_to_fold_them"]),
-
-    # the over-refusal direction of that same guard: an item that merely holds no
-    # claim must not be answered with a diagnosis about its shape
-    ("T121 release refuses every chain-less item instead of reporting no claim",
-     '    if not chain_hosts_class(block) and FIELD_MARKER_RE["Claimed"].search(block):',
-     "    if not chain_hosts_class(block):",
+    # WRITING a claim needs a chain that can hold one; READING one does not. A
+    # release that demanded a host would refuse a diagnosis about a claim the item
+    # does not even have
+    ("T121 release demands a host it does not need",
+     "    held = claim_segment(args.id, block)\n    if held is None:",
+     "    if not chain_hosts_class(block):\n"
+     "        fail(claim_unhostable_message(args.id, block))\n"
+     "    held = claim_segment(args.id, block)\n    if held is None:",
      ["TestClaim.test_release_on_a_chainless_item_with_no_marker_is_still_an_honest_no_op"]),
+
+    # the order of two refusals: only the stray one is terminal, and preempting it
+    # printed a remedy that MUTATED the file and left the real refusal standing
+    ("T121 the missing-host refusal preempts the terminal stray one",
+     "    held = claim_segment(args.id, block)\n    if held is not None:",
+     "    if not chain_hosts_class(block):\n"
+     "        fail(claim_unhostable_message(args.id, block))\n"
+     "    held = claim_segment(args.id, block)\n    if held is not None:",
+     ["TestClaim.test_a_stray_marker_is_answered_BEFORE_the_missing_host"]),
 
     ("T121 an ambiguously claimed item is displayed as FREE",
      '    return "claimed ambiguously — `tk-queue claim` says why" if segs else None',

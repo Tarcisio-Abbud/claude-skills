@@ -2363,18 +2363,32 @@ class TestClaim(QueueTest):
         self.assertIn("--text", r.stderr)
         self.assertNotIn("--class AUTONOMOUS", r.stderr)   # the one that would refuse
         self.assertEqual(self.body(), before)
-        # `release` gives the same diagnosis when something in the block claims to be
-        # a claim — never the "it is in your own prose" one, which here is false
+        # the same shape CARRYING a marker is answered by the stray guard instead —
+        # one terminal refusal, never two in a row
         self.write("next-steps.md", before.replace("**Source:** 2026-08-13",
                                                    "**Source:** 2026-08-13 **Claimed:** x."))
         r = self.run_tk("release", "T001")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("--text", r.stderr)
+        self.assertIn("cancel", r.stderr)
         # and the printed remedy really does make the item claimable
         self.write("next-steps.md", before)
         self.assertEqual(self.run_tk("edit", "T001", "--text", "algo").returncode, 0)
         r = self.run_tk("claim", "T001", "--as", "alpha")
         self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_a_stray_marker_is_answered_BEFORE_the_missing_host(self):
+        """Both are refusals; only the stray one is TERMINAL. Measured with the order
+        the other way round: `claim` printed `edit --class AUTONOMOUS`, the caller ran
+        it, the FILE WAS MUTATED — and the stray refusal landed anyway. A remedy that
+        costs a write and fixes nothing is worse than the refusal it replaced."""
+        self.seed("- [ ] **T001** — algo\n  nota: **Claimed:** ver depois\n")
+        before = self.body()
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("cancel", r.stderr)                  # the terminal answer
+        self.assertNotIn("--class AUTONOMOUS", r.stderr)   # not the one that mutates
+        self.assertNotIn("--text", r.stderr)
+        self.assertEqual(self.body(), before)
 
     def test_release_on_a_chainless_item_with_no_marker_is_still_an_honest_no_op(self):
         """The other side of that asymmetry: WRITING a claim needs a host, reading
