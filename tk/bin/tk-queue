@@ -26,7 +26,8 @@ prefix — stay outside `report`'s scope; read the log itself for that history).
 
 Priority is the file's ORDER, global — no score, no hidden heuristic. `add` puts a
 new item at the end and `bump` moves one to the top; the package modes take the
-filtered top.
+filtered top — `pack` is that filter made executable, and `tk-queue pack --help`
+carries its rules and the shape it prints.
 
 The DECISION class parks the queue until the user is back, so it is never reached
 by omission: `add --class DECISION` and any `edit` that sets that class demand
@@ -120,7 +121,7 @@ FIELD_CLEAR = "none"
 # in one command, which is the thing `claim` exists to refuse. It is cleared by
 # `release`, which reads the same chain and splices with the same helper.
 CLEARABLE = frozenset(("Risk", "Deferred", "Env"))
-READERS = frozenset(("list", "report"))   # everything else mutates and takes the queue lock
+READERS = frozenset(("list", "report", "pack"))   # everything else mutates and takes the queue lock
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
 # read once, at import: os.umask can only be read by setting it, and doing that
 # mid-run would race any other thread writing a file (the suite writes from six)
@@ -1178,6 +1179,239 @@ def list_line(label, cls, title, mark):
     return f"{label}  {cls:<10}  {title}" + (f"  [{mark}]" if mark else "")
 
 
+# --- pack: the candidates for an unattended package ------------------------
+# Until now the afk package was filtered BY EYE, from `list` output plus the
+# prose in AFK.md. `pack` makes that filter executable — and, more importantly,
+# makes every exclusion VISIBLE: an item filtered out silently is an item the
+# user never learns about, and the two fields that do the filtering (Risk, Env)
+# are exactly the ones nothing else in the report would mention.
+#
+# What it does NOT decide is the SIZE of the package (3-6 items, ~2h). That
+# stays the orchestrator's judgment: the script hands over candidates in the
+# queue's global order and the caller cuts.
+
+PACK_TITLE = 60   # excluded lines carry a reason after the text; `list`'s 100 would bury it
+
+# One repair per SHAPE, printed ONCE under the list rather than on every line it
+# applies to. Measured on the real queues: six consecutive items carry the same
+# continuation-line defect, and repeating a remedy that long six times buries the
+# six reasons it sits beside — in output whose reader is a skill's prose. The IDs
+# are in the lines above; the repair names the shape it lifts.
+REPAIR_CANCEL = ("a chain no gate can read: `tk-queue cancel <id>` + re-add it clean. No "
+                 "per-field `edit` repairs this reliably — several are refused on the very "
+                 "field at fault")
+REPAIR_FOLD = ("fields off the first line: fold them up with `tk-queue edit <id> --text "
+               "\"<the item's whole text>\"` — it lifted 29 of the 31 items carrying this "
+               "shape on the real queues. Where a marker and its value sit on different "
+               "lines the fold cannot join them, and the repair is `cancel` + re-add")
+REPAIR_CLASSLESS = "no **Class:** at all: `tk-queue edit <id> --class AUTONOMOUS`"
+REPAIR_RELEASE = ("a claim whose session is gone: `tk-queue release <id>` hands the item "
+                  "back without closing it, and prints whose claim it dropped")
+REPAIR_MIGRATE = "an item with no ID: `tk-queue migrate` assigns one"
+
+# The stable shape, in the help because a skill's prose reads this output: a
+# format that drifts silently is a skill reading the wrong column and never
+# saying so.
+PACK_FORMAT = """output format (stable — a skill's prose reads it):
+
+  eligible (<n> of <total>, in queue order):
+  T007  S (~20min)  the item's text, truncated
+
+  excluded (<n>):
+  T001  the item's text, truncated  — class is DECISION
+
+  repairs:
+  - <one line per defect SHAPE above, listed once, whatever the item count>
+
+Eligible: ID, Effort, text — Effort raw, never summed, because summing free text
+is the hidden heuristic this queue's order deliberately has none of. Excluded:
+ID, text, and the reason, which always carries the VALUE the filter read ("Env
+is desktop, ...", "Risk: <the line>"): a marker absorbed from an item's prose
+then reads as an obviously wrong line instead of a silently missing item.
+
+Exclusion rules, in the order they are asked; the FIRST that applies is the
+reason. Every field is read at the position a WRITER puts it — after **Class:**,
+in the chain that ends the first line — never by searching the block:
+
+  class      the chain must name AUTONOMOUS
+  risk       no **Risk:** field
+  env        no **Env:** field, or one naming THIS machine (the site file's identity)
+  claimed    not held by a sibling session
+  id         an item `migrate` never gave an ID to cannot be closed by ID
+
+A marker the position rule may not read excludes the item too, saying so: "there
+is a **Risk:** marker I am not allowed to read" is not "there is no risk", and
+unattended execution is the wrong place to guess.
+
+**Deferred:** is deliberately NOT read here. `--deferred` is refused on every
+class but DECISION and leaving that class drops it, so no path through this CLI
+produces an AUTONOMOUS item carrying one. The invariant lives in the writer,
+where one mutation holds it, instead of being re-asserted by every reader."""
+
+
+def field_value(segment):
+    """The value a field segment carries — marker and the closing period removed.
+
+    One period, not `rstrip('.')`: a value ending in an ellipsis is a value, and a
+    reader that eats all three prints something the file does not contain."""
+    body = re.sub(r"\A\*\*[^*]+:\*\*\s*", "", segment.group(0)).strip()
+    return re.sub(r"\.\Z", "", body).strip()
+
+
+def pack_identity():
+    """This machine's environment name, or None when there is NO site file.
+
+    None is a decision, not an oversight: with no site file no environment exists,
+    so an item naming one names another machine and an item naming none is local.
+    Deliberately not an error — a queue on a machine that never wrote the file must
+    still produce a package, and the overwhelming majority of items carry no Env at
+    all. A file that EXISTS and is broken is the other case entirely and is refused
+    verbatim: there, "no environments exist" would be a guess about a file the user
+    can see, and every Env-bearing item would silently leave the package."""
+    try:
+        site = tk_site.load()
+    except tk_site.SiteError as e:
+        fail(str(e))
+    return site.identity if site else None
+
+
+def pack_classless_reason(block):
+    """(why this item's class could not be READ, the repair for its shape).
+
+    Three shapes, and one line covering all three would print a remedy that is
+    refused for two of them — the dead end this file has already paid for once (see
+    claim_unwritable_message, which discriminates the same three at the length a
+    single-item refusal can afford). Not shared with it: what the two have in common
+    is the CONDITION, spelled from the same FIELD_MARKER_RE, while the messages
+    differ in kind — one line inside a list here, a paragraph of diagnosis there.
+
+    The remedies are that function's, and each was RUN against the real queues
+    before being printed."""
+    found = [m for m in field_chain(block) if canonical_field(m.group(1)) == "Class"]
+    if len(found) > 1:
+        # asked FIRST: this item's markers are on the first line and in the chain, so
+        # both questions below would answer "fine" and the line would name a break
+        # that is not there
+        return (f"{len(found)} **Class:** fields in the chain, so its value is "
+                "ambiguous", REPAIR_CANCEL)
+    if not FIELD_MARKER_RE["Class"].search(block):
+        return "no **Class:** field", REPAIR_CLASSLESS
+    # where the MARKER is, not where the chain reached: an item whose fields are on
+    # the first line and whose Class merely lost its period is the third shape, and
+    # telling it its fields sit elsewhere would be false
+    if not FIELD_MARKER_RE["Class"].search(block.split("\n", 1)[0]):
+        return "**Class:** sits off the first line, where no gate reads it", REPAIR_FOLD
+    return "the field chain breaks before **Class:**, so no gate reads it", REPAIR_CANCEL
+
+
+def pack_exclusion(iid, block, identity):
+    """(why this item stays OUT of the package, the repair) — or None when it is a
+    candidate.
+
+    Every field is read through `qualified_fields`, the POSITION rule the write
+    gates use, and never by searching the block. The block absorbs its continuation
+    lines, so a marker in the item's own prose reads as a field to anything looser;
+    here that costs more than anywhere else, because the failure is SILENT — a junk
+    Env value is not this machine's identity, so the item simply stops appearing in
+    every package, on every machine, with nothing anywhere to say why. That is why
+    the reason carries the value it read.
+
+    Where the position rule refuses to read a marker the item is excluded rather
+    than passed. The two directions are not symmetric: passing it dispatches, with
+    nobody watching, an item that may carry a Risk line or another machine's Env.
+
+    Refusals are per-ITEM, never per-run: one malformed item may not stop the other
+    twenty from being packaged — the same choice `displayed_claim` makes for `list`
+    — so nothing here calls `fail`."""
+    cls = chain_class(block)
+    if cls != "AUTONOMOUS":
+        return pack_classless_reason(block) if cls is None else (f"class is {cls}", None)
+
+    for field in ("Risk", "Env"):
+        segs, markers = qualified_fields(block, field)
+        if markers > len(segs):
+            return (f"a **{field}:** marker sits where no gate reads it, so what the item "
+                    "really carries cannot be told", REPAIR_CANCEL)
+        if len(segs) > 1:
+            return (f"{len(segs)} **{field}:** fields in the chain, so its value is "
+                    "ambiguous", REPAIR_CANCEL)
+        if segs and field == "Risk":
+            return "Risk: " + field_value(segs[0]), None
+        if segs and field == "Env":
+            value = field_value(segs[0])
+            if value != identity:
+                where = f"this machine is {identity}" if identity else "there is no site file"
+                # QUOTED, the way `--env` is quoted when the roster refuses it: this
+                # value is the one the position rule may have read out of absorbed
+                # prose, and unquoted an empty one prints "Env is , ..." while a
+                # trailing blank prints as a clean name. The whole reason the value is
+                # here is to make a wrong one obviously wrong
+                return f"Env is {value!r}, {where}", None
+
+    # asked of `displayed_claim`, so `list` and the package cannot disagree about who
+    # holds an item — the package has always been built from exactly that display
+    mark = displayed_claim(block)
+    if mark:
+        return mark, REPAIR_RELEASE
+    if qualified_fields(block, "Claimed")[1]:
+        return ("a **Claimed:** marker sits where no gate reads it, so whether the item is "
+                "held cannot be told", REPAIR_CANCEL)
+
+    # last, so it is reached only by an item that is otherwise ready: the ID is how
+    # every other command names an item, and a package cannot close one without it
+    if iid is None:
+        return "no ID", REPAIR_MIGRATE
+    return None
+
+
+def pack_effort(block):
+    """The Effort the caller sizes the package by, or '?' when it cannot be read.
+
+    Read through the position rule like every other field, and never fatal: Effort
+    decides nothing about eligibility, so an item missing it is a candidate whose
+    cost the caller has to estimate — not an item to drop over a field the filter
+    was never about."""
+    segs, markers = qualified_fields(block, "Effort")
+    if len(segs) != 1 or markers > 1:
+        return "?"
+    return field_value(segs[0])
+
+
+def cmd_pack(args):
+    memdir = memory_dir(args.dir)
+    content = read(os.path.join(memdir, "next-steps.md"))
+    if content is None:
+        fail("next-steps.md not found in " + memdir)
+    identity = pack_identity()
+    eligible, excluded, repairs = [], [], []
+    for kind, text in split_blocks(content):
+        if kind != "item-open":
+            continue
+        iid = item_id(text)
+        label = f"T{iid:03d}" if iid else "----"
+        verdict = pack_exclusion(iid, text, identity)
+        if verdict is None:
+            # Effort is free text, so the column is padded and never TRUNCATED: a
+            # long one pushes the title right, where a cut one would hide the very
+            # wall-clock guess the caller sizes the package by
+            eligible.append(f"{label}  {pack_effort(text):<12}  {item_title(text)}")
+            continue
+        reason, repair = verdict
+        excluded.append(f"{label}  {item_title(text, PACK_TITLE)}  — {reason}")
+        if repair and repair not in repairs:
+            repairs.append(repair)
+    total = len(eligible) + len(excluded)
+    print(f"eligible ({len(eligible)} of {total}, in queue order):")
+    print("\n".join(eligible) if eligible else "(none)")
+    print()
+    print(f"excluded ({len(excluded)}):")
+    print("\n".join(excluded) if excluded else "(none)")
+    if repairs:
+        print("\nrepairs:")
+        for r in repairs:
+            print("- " + r)
+
+
 def compose_item(args, iid):
     fields = [f"**Class:** {args.classe}."]
     # right after the class it qualifies, so the two are read together
@@ -1760,6 +1994,12 @@ def main():
     r.add_argument("--since", help="YYYY-MM-DD")
     r.add_argument("--all", action="store_true", help="sweeps every project")
 
+    sub.add_parser("pack", parents=[common],
+                   help="candidates for an unattended package: the eligible items in "
+                        "queue order, and every exclusion with the value that caused it",
+                   epilog=PACK_FORMAT,
+                   formatter_class=argparse.RawDescriptionHelpFormatter)
+
     sub.add_parser("migrate", parents=[common],
                    help="move legacy [x] items to the done-log and assign IDs to open ones")
 
@@ -1774,6 +2014,7 @@ def main():
         "release": cmd_release,
         "bump": cmd_bump,
         "report": cmd_report,
+        "pack": cmd_pack,
         "migrate": cmd_migrate,
     }[args.cmd]
     if args.cmd not in READERS:

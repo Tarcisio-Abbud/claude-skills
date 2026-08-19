@@ -6,29 +6,34 @@ run unattended. `afk` fires it with zero interaction: the user typed the command
 
 ## 1. Build the package
 
-Eligible: items triaged **AUTONOMOUS** that carry **no Risk line** — a Risk the triage
-finds OBSOLETE (it names a branch since merged, a migration since run) is cleared on the
-spot with `tk-queue edit <id> --risk none`, which is what keeps a stale line from
-excluding the item forever — and whose **Env** is absent or names THIS machine. Env says
-which machine can execute the item (absent = the machine that owns the queue); this
-machine's name is the `identity` line of the site file `~/.claude/tk/env`. An item bound
-to another environment is **not dispatchable here** — it goes in the left-out list with
-"runs on: X", never into the package, because nothing in this session can run it. The
-same re-triage applies as for Risk: an Env that named a machine the item needed before it
-was sliced is cleared with `tk-queue edit <id> --env none`. An item `list` shows as
-**claimed** is another session's and stays out of the package for the same reason — if
-that session is known to be gone, hand the item back with `tk-queue release <id>` first,
-which prints whose claim it dropped. Take them in the queue's own
-order — priority IS the order of
-the file, and `tk-queue bump <id>` is what moves an item to the top — then add items while
-the package still fits ONE session: the parent only orchestrates and verifies, yet each
-item still costs context to dispatch, monitor and check. Guidance: stop around 3–6 items
-or ~2h of summed Effort; leaving an eligible item out beats a session too long to verify
-its own work.
+`tk-queue pack` (`../../bin/tk-queue`) hands over the candidates: the eligible
+items in the queue's own order, and every excluded item with the reason AND the
+value that caused it. The filter is the script's — AUTONOMOUS, no Risk, **Env**
+absent or naming THIS machine, unclaimed — and the shape it prints is documented
+in `tk-queue pack --help`. What it deliberately does not decide is the cut.
+
+**Re-triage before accepting an exclusion.** A Risk the triage finds OBSOLETE (it
+names a branch since merged, a migration since run) is cleared on the spot with
+`tk-queue edit <id> --risk none`, which is what keeps a stale line from excluding
+the item forever; an Env that named a machine the item needed before it was
+sliced goes the same way, with `--env none`. An item reported as claimed belongs
+to another session — if that session is known to be gone, hand it back with
+`tk-queue release <id>`, which prints whose claim it dropped. An item excluded
+over a malformed field carries its repair in the `repairs:` block. Re-run `pack`
+after any of these.
+
+**Then cut.** Take the eligible in the order printed — priority IS the order of
+the file, and `tk-queue bump <id>` is what moves an item to the top — then add
+items while the package still fits ONE session: the parent only orchestrates and
+verifies, yet each item still costs context to dispatch, monitor and check. Each
+candidate line carries its Effort, raw and unsummed. Guidance: stop around 3–6
+items or ~2h of summed Effort; leaving an eligible item out beats a session too
+long to verify its own work.
+
 **Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45"),
 and every item left out is noted with the reason — the eligible ones dropped for size AND
-the ones ruled out by Risk or by Env, which are not eligible at all and would otherwise
-leave no trace anywhere.
+the ones `pack` excluded, which are not eligible at all and would otherwise leave no
+trace anywhere.
 
 ## 2. `pack` only: confirm
 

@@ -1162,10 +1162,10 @@ class TestTargetQueueAnnounced(QueueTest):
         self.assertEqual(r.stdout.splitlines()[0].split()[1].rstrip(":"), "T002")
 
     def test_readers_stay_silent(self):
-        """`list` and `report` take no lock and write nothing — announcing a write
-        target there would be noise on every read."""
+        """`list`, `report` and `pack` take no lock and write nothing — announcing a
+        write target there would be noise on every read."""
         self.seed(item(1, "um"))
-        for argv in (("list",), ("report", "--since", "2026-01-01")):
+        for argv in (("list",), ("report", "--since", "2026-01-01"), ("pack",)):
             with self.subTest(cmd=argv[0]):
                 r = self.run_tk(*argv)
                 self.assertEqual(r.returncode, 0, r.stderr)
@@ -2556,6 +2556,371 @@ class TestClaim(QueueTest):
         r = self.run_tk("claim", "T001", "--as", "alpha")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("**Claimed:** alpha since", self.body())
+
+
+# --- T126: pack — the eligibility filter the package was built BY EYE ------
+
+def pack_item(iid, text, env=None, claimed=None, **kw):
+    """An item as `add` and `claim` write one, with the two fields `item()` does
+    not build. The POSITIONS are compose_item's, not a convenience: Env between
+    Risk and Criterion, Claimed appended last. A fixture that put them elsewhere
+    would prove the filter reads a shape the writer never produces."""
+    line = item(iid, text, **kw)
+    if env:
+        line = line.replace("**Criterion:**", f"**Env:** {env}. **Criterion:**", 1)
+    if claimed:
+        line = line.rstrip("\n") + f" **Claimed:** {claimed}.\n"
+    return line
+
+
+LEGACY = ("- [ ] **T%03d** — algo\n"
+          "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+          "**Source:** 2026-08-13\n")
+
+
+class TestPack(QueueTest):
+    """The package an unattended session runs was filtered by eye until now, from
+    `list` plus prose. Two things move when it becomes a command: the filter stops
+    being re-derived every session, and — the reason the ticket exists — every
+    exclusion becomes VISIBLE. An item dropped for its Risk or its Env leaves no
+    trace anywhere else; silently absent, it is an item the user never learns
+    about, on a queue they believe they have seen."""
+
+    # --- helpers ----------------------------------------------------------
+    def pack(self):
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r.stdout
+
+    def blocks(self, out):
+        """The output's three named blocks, as lists of lines. Reading through this
+        is what keeps a test about the FILTER from falling over a reworded heading
+        — and what makes a filter change fall HERE rather than in a skill."""
+        cur, res = None, {"eligible": [], "excluded": [], "repairs": []}
+        for ln in out.splitlines():
+            m = re.match(r"(eligible|excluded|repairs)[ :]", ln)
+            if m:
+                cur = m.group(1)
+            elif ln.strip() and ln != "(none)":
+                res[cur].append(ln)
+        return res
+
+    def labels(self, lines):
+        return [ln.split()[0] for ln in lines]
+
+    def eligible(self, out=None):
+        return self.labels(self.blocks(out if out is not None else self.pack())["eligible"])
+
+    def reason(self, out, label):
+        for ln in self.blocks(out)["excluded"]:
+            if ln.startswith(label + " "):
+                return ln.split("  — ", 1)[1]
+        self.fail(f"{label} is not in the excluded block:\n{out}")
+
+    def repairs(self, out):
+        return "\n".join(self.blocks(out)["repairs"])
+
+    # --- the two lists ----------------------------------------------------
+    def test_an_eligible_item_carries_its_id_effort_and_text(self):
+        """Effort is in the package line because the caller sizes the package by it
+        (3-6 items, ~2h) — raw, never summed: summing free text would put a hidden
+        heuristic in a queue whose whole contract is that it has none."""
+        self.seed(item(1, "um"))
+        self.assertEqual(self.blocks(self.pack())["eligible"], ["T001  S             um"])
+
+    def test_the_eligible_follow_the_queues_own_order(self):
+        """Priority IS the order of the file, global. Anything that sorted or
+        grouped here would silently re-prioritise the package."""
+        self.seed(item(3, "tres") + item(1, "um") + item(2, "dois"))
+        self.assertEqual(self.eligible(), ["T003", "T001", "T002"])
+
+    def test_bump_moves_an_item_to_the_top_of_the_package_too(self):
+        """Through the command that DEFINES priority, not through a fixture: that
+        is the only version of this test a re-ordering `pack` could not pass."""
+        self.seed(item(1, "um") + item(2, "dois"))
+        self.assertEqual(self.run_tk("bump", "T002").returncode, 0)
+        self.assertEqual(self.eligible(), ["T002", "T001"])
+
+    def test_the_package_is_not_grouped_by_project(self):
+        """`list` groups by **Project:** and the package must not: grouping reorders,
+        and the top of a grouped list is the top of one project, not of the queue."""
+        self.seed(item(1, "um", project="alfa") + item(2, "dois", project="beta")
+                  + item(3, "tres", project="alfa"))
+        self.assertEqual(self.eligible(), ["T001", "T002", "T003"])
+
+    def test_a_checked_item_is_not_a_candidate(self):
+        self.seed(item(1, "um") + item(2, "dois").replace("- [ ]", "- [x]", 1))
+        self.assertEqual(self.eligible(), ["T001"])
+
+    def test_an_empty_queue_says_so_in_both_blocks(self):
+        """The empty case is a SHAPE, not a blank: a skill's prose reading two
+        headings and no marker cannot tell "nothing eligible" from "output cut"."""
+        self.seed()
+        out = self.pack()
+        self.assertIn("eligible (0 of 0, in queue order):\n(none)", out)
+        self.assertIn("excluded (0):\n(none)", out)
+
+    def test_pack_writes_NOTHING(self):
+        """The whole file, byte for byte. A reader that rewrote what it read is
+        precisely the defect no assertion on its OUTPUT would ever show."""
+        before = HEADER + item(1, "um") + item(2, "dois", klass="DECISION")
+        self.write("next-steps.md", before)
+        self.pack()
+        self.assertEqual(self.body(), before)
+
+    def test_the_output_format_is_documented_in_the_help(self):
+        """The ticket's acceptance criterion: a skill's prose reads this output, so
+        the shape it reads is written where the script itself carries it."""
+        r = self.run_tk("pack", "--help")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for fragment in ("eligible (", "excluded (", "repairs:", "in queue order"):
+            self.assertIn(fragment, r.stdout)
+
+    # --- rule: the class, read from the CHAIN ------------------------------
+    def test_every_class_but_AUTONOMOUS_is_excluded_by_name(self):
+        for klass in ("DECISION", "BLOCKED", "EXTERNAL", "RECURRING"):
+            with self.subTest(klass=klass):
+                self.seed(decision_item(1, "um") if klass == "DECISION"
+                          else item(1, "um", klass=klass))
+                out = self.pack()
+                self.assertEqual(self.blocks(out)["eligible"], [])
+                self.assertEqual(self.reason(out, "T001"), f"class is {klass}")
+
+    def test_a_class_QUOTED_IN_PROSE_does_not_decide_the_package(self):
+        """The over-exclusion direction, and the one only a chain reader survives:
+        the loose reader `list` uses takes the LEFTMOST marker in the block, so this
+        item reads as DECISION to it and drops out of every package — while its real
+        field, the one a writer wrote, says AUTONOMOUS."""
+        self.seed("- [ ] **T001** — nota sobre **Class:** DECISION em prosa — um "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.assertEqual(self.eligible(), ["T001"])
+
+    def test_two_classes_in_the_chain_are_ambiguous_not_guessed(self):
+        self.seed("- [ ] **T001** — um. **Class:** DECISION. **Class:** AUTONOMOUS. "
+                  "**Effort:** S. **Criterion:** A: x. **Source:** 2026-08-13\n")
+        out = self.pack()
+        self.assertEqual(self.reason(out, "T001"),
+                         "2 **Class:** fields in the chain, so its value is ambiguous")
+
+    def test_a_class_off_the_first_line_is_named_and_the_FOLD_repair_works(self):
+        """The remedy is RUN and the command re-run. A refusal prescribing a command
+        that is itself refused is a dead end; one prescribing a command that is
+        accepted, rewrites the file and hands back the same refusal costs a write and
+        repairs nothing. 31 of this machine's real open items carry this shape, and the fold lifts 29."""
+        self.seed(LEGACY % 1)
+        out = self.pack()
+        self.assertEqual(self.reason(out, "T001"),
+                         "**Class:** sits off the first line, where no gate reads it")
+        self.assertIn("--text", self.repairs(out))
+        self.assertEqual(self.run_tk("edit", "T001", "--text", "algo").returncode, 0)
+        self.assertEqual(self.eligible(), ["T001"])
+
+    def test_no_class_at_all_is_named_and_the_CLASS_repair_works(self):
+        self.seed("- [ ] **T001** — algo **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        out = self.pack()
+        self.assertEqual(self.reason(out, "T001"), "no **Class:** field")
+        self.assertIn("--class AUTONOMOUS", self.repairs(out))
+        self.assertEqual(self.run_tk("edit", "T001", "--class", "AUTONOMOUS").returncode, 0)
+        self.assertEqual(self.eligible(), ["T001"])
+
+    def test_a_chain_that_never_reaches_the_class_is_named_as_that(self):
+        """Not as "off the first line", which would be false here and would send the
+        caller to a fold that changes nothing: the fields ARE on the first line, and
+        the run of them stops before **Class:** because a value lost its period."""
+        self.seed("- [ ] **T001** — um **Class:** AUTONOMOUS, **Effort:** S. "
+                  "**Criterion:** A: x. **Source:** 2026-08-13\n")
+        out = self.pack()
+        self.assertEqual(self.reason(out, "T001"),
+                         "the field chain breaks before **Class:**, so no gate reads it")
+        self.assertIn("cancel", self.repairs(out))
+
+    # --- rule: no Risk -----------------------------------------------------
+    def test_a_Risk_excludes_the_item_and_the_reason_carries_the_LINE(self):
+        """The VALUE, not just the verdict: the Risk line is the whole reason a
+        human re-triages the item, and `edit --risk none` is what clears an obsolete
+        one. A reason that only said "carries a Risk" would make them go and look."""
+        self.seed(item(1, "um", risk="apaga dado do usuário"))
+        self.assertEqual(self.reason(self.pack(), "T001"), "Risk: apaga dado do usuário")
+
+    def test_only_the_field_terminator_is_stripped_off_the_value(self):
+        """One period, not every trailing period: a value ending in an ellipsis is a
+        value, and a reason that ate all three would print something the file does
+        not contain — on the one line a human re-triages the item from."""
+        self.seed(item(1, "um", risk="depende da migração de junho..."))
+        self.assertEqual(self.reason(self.pack(), "T001"),
+                         "Risk: depende da migração de junho...")
+
+    def test_a_Risk_marker_no_gate_may_read_still_excludes_the_item(self):
+        """"there is a **Risk:** marker I am not allowed to read" is not "there is no
+        risk", and unattended execution is the wrong place to guess. Excluded, and
+        SAID — the safe direction is also the one that leaves a trace."""
+        self.seed(item(1, "um").rstrip("\n") + "\n  nota: **Risk:** a migração de junho\n")
+        self.assertIn("**Risk:** marker sits where no gate reads it",
+                      self.reason(self.pack(), "T001"))
+
+    # --- rule: Env absent or naming THIS machine ---------------------------
+    def test_an_item_bound_to_this_machine_is_eligible(self):
+        self.site(SITE)
+        self.seed(pack_item(1, "um", env="alpha"))
+        self.assertEqual(self.eligible(), ["T001"])
+
+    def test_an_item_bound_to_ANOTHER_machine_is_out_naming_BOTH_names(self):
+        self.site(SITE)
+        self.seed(pack_item(1, "um", env="bravo"))
+        self.assertEqual(self.reason(self.pack(), "T001"),
+                         "Env is 'bravo', this machine is alpha")
+
+    def test_with_no_site_file_an_Env_is_foreign_and_no_Env_is_local(self):
+        """Decided, not left to explode: with no site file NO environment exists, so
+        an item naming one names another machine and an item naming none is local.
+        Refusing the whole command instead would deny a package to every machine that
+        never wrote the file — where the overwhelming majority of items carry no Env
+        and the rule decides nothing."""
+        self.seed(pack_item(1, "um", env="bravo") + item(2, "dois"))
+        out = self.pack()
+        self.assertEqual(self.reason(out, "T001"), "Env is 'bravo', there is no site file")
+        self.assertEqual(self.eligible(out), ["T002"])
+
+    def test_a_site_file_that_EXISTS_and_is_broken_is_refused_verbatim(self):
+        """The other case entirely, and telling them apart is the point: "create the
+        file" and "line 2 of your file is wrong" are different instructions. Guessing
+        "no environments exist" here would drop every Env-bearing item in silence."""
+        self.site("identity = alpha\n")
+        self.seed(item(1, "um"))
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("environments", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_the_roster_is_NOT_revalidated_on_the_way_out(self):
+        """The writer already refuses a value outside the roster, so re-asking here
+        is the same rule in two places — and the day the roster changes, the second
+        one starts lying about items that were already in the file. An Env that does
+        not match this machine is another machine's. Full stop, no verdict on whether
+        the name still exists."""
+        self.site(SITE)
+        self.seed(pack_item(1, "um", env="delta"))
+        self.assertEqual(self.reason(self.pack(), "T001"),
+                         "Env is 'delta', this machine is alpha")
+
+    def test_an_EMPTY_Env_reads_as_an_empty_value_and_not_as_no_value(self):
+        """Quoted for this: unquoted, a field a hand-edit left empty prints "Env is ,
+        this machine is alpha" and a value with a trailing blank prints as a clean
+        name. The value is in the line precisely so a wrong one looks wrong."""
+        self.site(SITE)
+        self.seed(pack_item(1, "um", env="").replace("**Criterion:**",
+                                                     "**Env:** . **Criterion:**", 1))
+        self.assertEqual(self.reason(self.pack(), "T001"),
+                         "Env is '', this machine is alpha")
+
+    def test_two_Env_fields_are_ambiguous_not_guessed(self):
+        """The first of the two names THIS machine, so a reader that took it would
+        package the item — while the file says two different things about where it
+        runs."""
+        self.site(SITE)
+        self.seed(pack_item(1, "um", env="alpha")
+                  .replace("**Criterion:**", "**Env:** bravo. **Criterion:**", 1))
+        self.assertEqual(self.reason(self.pack(), "T001"),
+                         "2 **Env:** fields in the chain, so its value is ambiguous")
+
+    def test_an_Env_marker_no_gate_may_read_still_excludes_the_item(self):
+        """The silent failure this whole output exists to end: a junk Env value is
+        not this machine's identity either, so before `pack` the item simply stopped
+        appearing in every package, on every machine, with nothing anywhere saying
+        why."""
+        self.site(SITE)
+        self.seed(item(1, "um").rstrip("\n") + "\n  nota: **Env:** a máquina do escritório\n")
+        self.assertIn("**Env:** marker sits where no gate reads it",
+                      self.reason(self.pack(), "T001"))
+
+    # --- rule: not claimed by a sibling session ----------------------------
+    def test_a_claimed_item_is_out_and_the_line_says_who_holds_it(self):
+        """Claimed through the real command, so this asserts the two-sided contract:
+        what `claim` writes is what the package reads. A fixture would only assert
+        that the reader agrees with itself."""
+        self.seed(item(1, "um"))
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha").returncode, 0)
+        self.assertRegex(self.reason(self.pack(), "T001"),
+                         r"\Aclaimed by alpha since " + STAMP_RE.pattern + r"\Z")
+
+    def test_the_RELEASE_repair_is_printed_and_gives_the_item_back(self):
+        self.seed(item(1, "um"))
+        self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertIn("`tk-queue release <id>`", self.repairs(self.pack()))
+        self.assertEqual(self.run_tk("release", "T001").returncode, 0)
+        self.assertEqual(self.eligible(), ["T001"])
+
+    def test_two_claims_are_never_shown_as_free(self):
+        """The dangerous direction of tolerance: two owners are on the record, and an
+        item printed without a mark reads as FREE to the very package built from it."""
+        self.seed(pack_item(1, "um", claimed="alpha since 2026-08-19T10:00:00Z")
+                  .rstrip("\n") + " **Claimed:** bravo since 2026-08-19T11:00:00Z.\n")
+        self.assertIn("ambiguous", self.reason(self.pack(), "T001"))
+
+    def test_a_Claimed_marker_no_gate_may_read_still_excludes_the_item(self):
+        self.seed(item(1, "um").rstrip("\n") + "\n  nota: **Claimed:** alguém\n")
+        self.assertIn("**Claimed:** marker sits where no gate reads it",
+                      self.reason(self.pack(), "T001"))
+
+    # --- rule: an item with no ID cannot be closed by ID -------------------
+    def test_an_item_with_no_ID_is_not_packaged_and_MIGRATE_repairs_it(self):
+        """Asked LAST, so it is reached only by an item that is otherwise ready — and
+        so the reason a DECISION item gets is its class, not its missing ID."""
+        self.seed("- [ ] sem id **Class:** AUTONOMOUS. **Effort:** S. "
+                  "**Criterion:** A: x. **Source:** 2026-08-13\n")
+        out = self.pack()
+        self.assertEqual(self.reason(out, "----"), "no ID")
+        self.assertIn("`tk-queue migrate`", self.repairs(out))
+        self.assertEqual(self.run_tk("migrate").returncode, 0)
+        self.assertEqual(self.eligible(), ["T001"])
+
+    def test_the_missing_ID_is_asked_LAST_not_first(self):
+        """Order is part of the contract: the first rule that applies is the reason
+        printed. Asked first, every legacy ID-less item would report a missing ID and
+        never the class or the Risk that is the thing a reader can act on."""
+        self.seed("- [ ] sem id **Class:** DECISION. **Deferred:** afk. **Effort:** S. "
+                  "**Criterion:** B: veredito. **Source:** 2026-08-13\n")
+        self.assertEqual(self.reason(self.pack(), "----"), "class is DECISION")
+
+    # --- the rule that must NOT exist here ---------------------------------
+    def test_a_Deferred_field_decides_NOTHING_here(self):
+        """`--deferred` is refused on every class but DECISION and leaving that class
+        drops it, so no path through this CLI produces an AUTONOMOUS item carrying
+        one. Reading it here would be the same invariant in a second place — and the
+        second place is the one that rots, because nothing exercises it."""
+        self.seed(item(1, "um").replace("**Class:** AUTONOMOUS.",
+                                        "**Class:** AUTONOMOUS. **Deferred:** afk.", 1))
+        self.assertEqual(self.eligible(), ["T001"])
+
+    # --- reading, not gating -----------------------------------------------
+    def test_one_malformed_item_does_not_stop_the_others(self):
+        """A gate may `fail`; a reader may not. `list` must not die on one bad item
+        and stop showing the other twenty, and the package that is built from it
+        inherits the rule."""
+        self.seed(item(1, "um").rstrip("\n") + "\n  nota: **Claimed:** alguém\n"
+                  + item(2, "dois"))
+        out = self.pack()
+        self.assertEqual(self.eligible(out), ["T002"])
+        self.assertIn("**Claimed:** marker", self.reason(out, "T001"))
+
+    def test_an_unreadable_Effort_does_not_cost_the_item_its_place(self):
+        """Effort decides nothing about eligibility, so an item missing it is a
+        candidate whose cost the caller estimates — not an item dropped over a field
+        this filter was never about."""
+        self.seed(item(1, "um").replace(" **Effort:** S.", "", 1))
+        self.assertEqual(self.blocks(self.pack())["eligible"], ["T001  ?             um"])
+
+    def test_a_repair_is_printed_ONCE_however_many_items_need_it(self):
+        """Six consecutive items carrying one defect is the real queue's shape, and
+        six copies of a remedy that long bury the six reasons standing beside them —
+        in output whose reader is a skill's prose."""
+        self.seed("".join(LEGACY % i for i in (1, 2, 3)))
+        out = self.pack()
+        self.assertEqual(len(self.blocks(out)["excluded"]), 3)
+        self.assertEqual(len(self.blocks(out)["repairs"]), 1)
 
 
 if __name__ == "__main__":
