@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""tk-contract — the block every dispatched subagent is handed, GENERATED.
+
+An orchestrator that writes the contract from memory writes a different one
+each time: a ceiling it half-remembers, a role row it approximates, a rule it
+drops because the prompt was already long. This bin produces the block from the
+two files that hold the answers — the SITE file (`~/.claude/tk/env`: this
+machine's identity and its two subagent ceilings) and the ROLE TABLE
+(`tk/reference/subagent-policy.md`: model, effort and venue per role).
+
+    tk-contract --role implementer
+    tk-contract --role audit-finder --fleet 3
+
+Same input, same block, byte for byte: nothing here reads the clock, the cwd or
+the environment beyond the two files above.
+
+WHAT IT WILL NOT DO is carry a copy of either file's data. Not a roster, not a
+machine name, not a ceiling, and not one cell of the role table — not even "the
+implementer default", which is the copy that looks harmless. A consumer holding
+its own copy has FORKED the policy: the table is edited, the block keeps
+emitting yesterday's row, and nothing anywhere reports a disagreement. So every
+value below is read at run time, and a source this bin cannot parse is refused
+with the defect named — never filled in with a default of its own.
+
+The role table declares its own schema version in its opening marker. This bin
+reads schema=1 and REFUSES a different one rather than parsing blind: a schema
+bump is a column moving, and a positional parser that shrugs at it emits a
+plausible block with the wrong cells in it.
+"""
+
+import argparse
+import os
+import re
+import sys
+
+# the site file's reader, beside this script. Inserted explicitly rather than
+# relied on: sys.path[0] is the script's directory only when Python launched
+# THIS file, and the suite also loads it as a module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tk_site      # noqa: E402  (the path above is what makes it importable)
+
+BIN_DIR = os.path.dirname(os.path.abspath(__file__))
+POLICY_FILE = os.path.normpath(
+    os.path.join(BIN_DIR, os.pardir, "reference", "subagent-policy.md"))
+
+SCHEMA = "1"
+OPEN_RE = re.compile(r"<!--\s*tk:roles\s+schema=(\S+)\s*-->\Z")
+OPEN_LOOSE = "tk:roles"
+CLOSE_MARKER = "<!-- /tk:roles -->"
+COLUMNS = ("role", "model", "effort", "venue", "note")
+ALIGN_RE = re.compile(r":?-{3,}:?\Z")
+# the closed vocabularies, as the schema declares them. They are not defaults:
+# nothing here is ever substituted for a cell, they only say which cells are
+# readable at all
+VOCABULARY = (
+    ("model", ("sonnet", "haiku", "parent")),
+    ("effort", ("session", "high")),
+    ("venue", ("local", "cloud")),
+)
+
+LOCAL_KEY = "max-local-subagents"
+CLOUD_KEY = "max-cloud-subagents"
+
+
+class PolicyError(Exception):
+    """The role table cannot be trusted. Reported verbatim, like SiteError: the
+    message names the file and the line, which is the whole diagnosis."""
+
+
+class Role:
+    def __init__(self, role, model, effort, venue, note):
+        self.role = role
+        self.model = model
+        self.effort = effort
+        self.venue = venue
+        self.note = note      # prose: emitted verbatim, never parsed
+
+
+def split_row(line):
+    """A table row's cells. The outer pipes leave an empty field at each end and
+    those are dropped; every other field is stripped. Cells never contain `|`,
+    which is what makes this safe to do by splitting."""
+    line = line.strip()
+    fields = line.split("|")
+    # dropped by the PIPES, not by being blank: a row whose first cell is empty
+    # would otherwise lose that cell and be reported as one column short, which
+    # sends the reader counting columns in a row that plainly has five
+    if line.startswith("|"):
+        fields = fields[1:]
+    if line.endswith("|") and fields:
+        fields = fields[:-1]
+    return [f.strip() for f in fields]
+
+
+def parse_roles(text, path):
+    """The rows between the two literal markers, in the file's own order."""
+    lines = text.splitlines()
+    start = None
+    for n, line in enumerate(lines):
+        m = OPEN_RE.match(line.strip())
+        if m:
+            if m.group(1) != SCHEMA:
+                raise PolicyError(
+                    f"{path}:{n + 1}: the role table declares schema={m.group(1)}, and this "
+                    f"bin reads schema={SCHEMA}. The schema fixes the COLUMN ORDER and this "
+                    "parser is positional, so reading it anyway would emit a block with the "
+                    "wrong cells in it and no error. Update the parser to the new schema.")
+            start = n
+            break
+    if start is None:
+        hint = (" The file mentions `tk:roles`, so the marker is probably misspelt — it is "
+                f"the literal line `<!-- tk:roles schema={SCHEMA} -->`."
+                if OPEN_LOOSE in text else "")
+        raise PolicyError(f"{path}: no role table — the opening marker "
+                          f"`<!-- tk:roles schema={SCHEMA} -->` is not in the file.{hint}")
+    end = None
+    for n in range(start + 1, len(lines)):
+        if lines[n].strip() == CLOSE_MARKER:
+            end = n
+            break
+    if end is None:
+        raise PolicyError(
+            f"{path}: the role table opens at line {start + 1} and never closes — "
+            f"`{CLOSE_MARKER}` is missing. Without it there is no telling where the table "
+            "ends and the prose after it begins.")
+
+    rows = [(n + 1, lines[n]) for n in range(start + 1, end) if lines[n].lstrip().startswith("|")]
+    if len(rows) < 3:
+        raise PolicyError(
+            f"{path}: the role table holds {len(rows)} pipe row(s) between its markers. It "
+            "needs at least three: the header, the alignment row, and one role.")
+
+    header = split_row(rows[0][1])
+    if tuple(header) != COLUMNS:
+        raise PolicyError(
+            f"{path}:{rows[0][0]}: the header row reads {header}, and this parser reads "
+            f"columns BY POSITION in the order {list(COLUMNS)}. A renamed or reordered "
+            "column silently swaps two values, so it is refused instead.")
+    align = split_row(rows[1][1])
+    if len(align) != len(COLUMNS) or not all(ALIGN_RE.match(c) for c in align):
+        raise PolicyError(
+            f"{path}:{rows[1][0]}: the second row of the table is not the alignment row "
+            f"(one `---` cell per column); it reads {align}. That row is skipped BY "
+            "POSITION, so a table missing it loses its first role without a word.")
+
+    roles = []
+    seen = {}
+    for lineno, line in rows[2:]:
+        cells = split_row(line)
+        if len(cells) != len(COLUMNS):
+            raise PolicyError(
+                f"{path}:{lineno}: this row has {len(cells)} cells, not {len(COLUMNS)} "
+                f"({', '.join(COLUMNS)}). A row short of a cell shifts every value after "
+                "the gap into the wrong column.")
+        row = Role(*cells)
+        if not row.role:
+            raise PolicyError(f"{path}:{lineno}: this row has an empty `role` cell — the "
+                              "role is the lookup key, so a row without one is unreachable.")
+        if row.role in seen:
+            raise PolicyError(
+                f"{path}:{lineno}: duplicate role {row.role!r} — it already has a row at "
+                f"line {seen[row.role]}. Two rows for one role means the table says two "
+                "things and the reader gets whichever came first. Keep one.")
+        seen[row.role] = lineno
+        for column, allowed in VOCABULARY:
+            value = getattr(row, column)
+            if value not in allowed:
+                raise PolicyError(
+                    f"{path}:{lineno}: role {row.role!r} has {column}={value!r}, which is "
+                    f"outside the closed vocabulary ({', '.join(allowed)}). A value nobody "
+                    "recognises is a defective file, not a reason to fall back to a "
+                    "default — a silent default here is the fork this table exists to "
+                    "prevent.")
+        if not row.note:
+            raise PolicyError(
+                f"{path}:{lineno}: role {row.role!r} has an empty `note` cell. A role with "
+                "nothing to add carries the literal `—`, so that a blank reads as an "
+                "unfinished row rather than as a deliberate silence.")
+        roles.append(row)
+    return roles
+
+
+def pick(roles, name):
+    for row in roles:
+        if row.role == name:
+            return row
+    raise PolicyError(
+        f"the role table declares no role {name!r}. It carries: "
+        f"{', '.join(r.role for r in roles)}. A role absent from the table has NO default "
+        "here — add a row to the table, or dispatch deliberately and log the choice as a "
+        "deviation.")
+
+
+def ceiling_lines(site, fleet):
+    """The two ceilings as the block states them. Both keys are optional in the
+    site file (a machine that runs no fleet never writes them), and an absent
+    one is stated as absent — never as a number this bin picked."""
+    lines = []
+    local = site.ceilings.get(LOCAL_KEY)
+    cloud = site.ceilings.get(CLOUD_KEY)
+    if local is None:
+        tail = (f" The fleet divisor of {fleet} had nothing to divide." if fleet else "")
+        lines.append(f"- Local subagents: the site file declares no `{LOCAL_KEY}`, so this "
+                     f"block states no number. Do not invent one — decide, and log the "
+                     f"decision as a deviation.{tail}")
+    elif fleet is None:
+        lines.append(f"- Local subagents: at most {local} at a time. No fleet divisor was "
+                     "given, so the whole ceiling belongs to this run.")
+    elif local // fleet == 0:
+        lines.append(f"- Local subagents: the ceiling is {local} and the fleet is {fleet}, "
+                     "so an equal share rounds down to none. Dispatch NO local subagents — "
+                     "do the work in this session, or shrink the fleet. Rounding up instead "
+                     "would put every member over the ceiling at once, which is the ceiling "
+                     "not existing.")
+    else:
+        lines.append(f"- Local subagents: the ceiling is {local} and the fleet is {fleet}, "
+                     f"so this run's share is at most {local // fleet} at a time.")
+    if cloud is None:
+        lines.append(f"- Cloud subagents: the site file declares no `{CLOUD_KEY}`, so this "
+                     "block states no number either. Same rule: decide and log it.")
+    else:
+        lines.append(f"- Cloud subagents: at most {cloud} at a time. The fleet divisor never "
+                     "touches this one — it bounds concurrent remotes, and what they "
+                     "contend for is not this machine's memory.")
+    lines.append("- Quota is ONE window across both venues. A cloud run buys RAM, not quota, "
+                 "so moving work off this machine relieves the ceiling above and nothing else.")
+    return lines
+
+
+def render(row, site, fleet, policy_path):
+    out = [
+        f"<!-- tk:contract schema=1 role={row.role} -->",
+        f"## Subagent contract — `{row.role}`",
+        "",
+        "Generated by `tk-contract`, not written from memory. Its two sources:",
+        "",
+        f"- the site file `{site.path}` — this machine, and its ceilings;",
+        f"- the role table in `{policy_path}` — your row.",
+        "",
+        "Where this block and the prose around it disagree, this block is the half that was",
+        "parsed from the source.",
+        "",
+        "### Your row",
+        "",
+        "| role | model | effort | venue |",
+        "|---|---|---|---|",
+        f"| {row.role} | {row.model} | {row.effort} | {row.venue} |",
+        "",
+        f"Note: {row.note}",
+        "",
+        "The row is the DEFAULT, not an order: deviate when the case in front of you calls",
+        "for it, and pay one line for the deviation, where you hand the run back —",
+        "",
+        f"    {row.role}: {row.model}→<what actually ran> — reason",
+        "",
+        "— because a deviation with no line is indistinguishable from a slip.",
+        "",
+        "### Ceilings",
+        "",
+    ]
+    out += ceiling_lines(site, fleet)
+    out += [
+        "",
+        "### What you return",
+        "",
+        "An EMPTY return is a failure that reads as success: the orchestrator gets no error",
+        "and nothing to act on, and the run is spent. Never end with silence. Return, always:",
+        "",
+        "1. **The work.** The artifact, the paths you touched, the finding, the verdict —",
+        "   whatever the dispatch asked for. Your own account of it is not the proof: the",
+        "   orchestrator checks the artifact.",
+        "2. **Your venue signature.** The working directory you resolved, plus a marker the",
+        f"   remote sandbox would not share. You were dispatched from `{site.identity}`.",
+        "   `isolation: remote` has been measured degrading SILENTLY to local: the run",
+        "   reports success while the filesystem and the memory it touched were this",
+        "   machine's. The orchestrator reads your signature rather than the flag it passed,",
+        "   and a run that degraded counts against the LOCAL ceiling above — counted",
+        "   anywhere else, that ceiling leaks through remotes that never left the machine.",
+        "3. **Your deviation log.** One line per deviation, in the format above, or the",
+        "   literal `no deviations`.",
+        "",
+        "### What reading costs",
+        "",
+        "Measured, on one slice that ended at 372k of context — not general hygiene:",
+        "",
+        "- **~85k went to reading source files raw.** A file above ~500 lines that you are",
+        "  not going to edit end to end is read by a subagent that returns a brief: the",
+        "  brief enters your context, the file does not.",
+        "- **~100k went to patch scripts written as inline heredocs**, across the correction",
+        "  cycles of one slice. Every line of new code appears in full, and again if you",
+        "  re-read the file to check it. Edit by small hunk instead, against an anchor you",
+        "  assert matches exactly once.",
+        "",
+        "Neither rule touches the file you are actually EDITING — that one you have to see.",
+        "They are about reading to learn the terrain, which is where the tokens went.",
+        "",
+        "<!-- /tk:contract -->",
+    ]
+    return "\n".join(out)
+
+
+def fleet_size(raw):
+    if not re.fullmatch(r"[0-9]+", raw):
+        raise argparse.ArgumentTypeError(
+            f"invalid fleet: {raw!r} (expected a whole number of runs sharing this machine)")
+    if int(raw) < 1:
+        raise argparse.ArgumentTypeError(
+            f"invalid fleet: {raw} — a fleet of none divides nothing. Omit --fleet to give "
+            "this run the whole ceiling.")
+    return int(raw)
+
+
+def fail(msg):
+    sys.exit(f"tk-contract: {msg}")
+
+
+def main():
+    p = argparse.ArgumentParser(prog="tk-contract",
+                                description=__doc__.splitlines()[0])
+    p.add_argument("--role", required=True,
+                   help="which row of the role table this subagent is dispatched as")
+    p.add_argument("--fleet", type=fleet_size, default=None,
+                   help="how many runs share this machine; divides the LOCAL ceiling "
+                        "(omitted: the whole ceiling)")
+    p.add_argument("--policy", default=POLICY_FILE,
+                   help="the role table (default: the one beside this bin)")
+    args = p.parse_args()
+
+    try:
+        site = tk_site.load()
+    except tk_site.SiteError as e:
+        fail(str(e))
+    if site is None:
+        # NOT the same case as a defective file: one asks the user to write the
+        # file, the other names the line that is wrong in the one they wrote
+        fail(tk_site.missing_file_message())
+
+    if not os.path.exists(args.policy):
+        # absent and defective are different cases here too, exactly as they
+        # are for the site file: one says the path is wrong, the other says
+        # the file is
+        fail(f"the role table {args.policy} does not exist. It ships with this plugin, "
+             "beside the bin — a --policy pointing elsewhere is the likelier cause than "
+             "a missing checkout.")
+    if not os.path.isfile(args.policy):
+        # `open()` on a FIFO with no writer does not raise, it BLOCKS: the
+        # session hangs with no output at all, and no timeout anywhere would
+        # explain it. The same guard, for the same measured reason, is in
+        # tk_site.load() — and --policy is a path a caller types
+        fail(f"the role table {args.policy} is not a plain file (it is a directory, a "
+             "device or a pipe). It is Markdown checked into this repo — check the path.")
+    try:
+        with open(args.policy, encoding="utf-8") as f:
+            # the BOM is stripped EVERYWHERE, not decoded away with utf-8-sig:
+            # one glued to the opening marker makes the table unfindable while
+            # it sits in plain view, and utf-8-sig removes exactly one, at the
+            # very start. U+FEFF has no legitimate use in this file, and
+            # str.strip() does not remove it — it is not whitespace
+            text = f.read().replace("\ufeff", "")
+    except OSError as e:
+        fail(f"the role table {args.policy} cannot be read: {e.strerror}. It is the source "
+             "of the model, effort and venue this block states, and there is no copy of "
+             "those values here to fall back on.")
+    except UnicodeDecodeError as e:
+        fail(f"the role table {args.policy} is not valid UTF-8 (byte "
+             f"{e.object[e.start]:#04x} at position {e.start}).")
+
+    try:
+        row = pick(parse_roles(text, args.policy), args.role)
+    except PolicyError as e:
+        fail(str(e))
+
+    print(render(row, site, args.fleet, args.policy))
+
+
+if __name__ == "__main__":
+    main()

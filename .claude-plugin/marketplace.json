@@ -8,7 +8,7 @@
       "name": "tk",
       "displayName": "tk — session & engineering flow",
       "source": "./tk",
-      "description": "Own-authored session-flow skills: /tk:kickoff opens a session from the canonical next-steps queue, /tk:wrap-up closes it, /tk:dispatch routes a task to the right execution mechanism, /tk:docs-audit audits docs against the code."
+      "description": "Own-authored session-flow skills: /tk:kickoff opens a session from the canonical next-steps queue, /tk:wrap-up closes it, /tk:dispatch routes a task to the right execution mechanism, /tk:docs-audit audits docs against the code, /tk:verify runs the item's acceptance criterion as the gate of the delivery."
     },
     {
       "name": "tk-cowork",

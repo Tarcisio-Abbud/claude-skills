@@ -20,13 +20,14 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens with the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality, triaged and dispatched via menu. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort |
 | `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (merges preceded by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the ceiling is a local commit on a branch, never push/merge |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
+| `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
 
 The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (defined in
 `tk/skills/kickoff/SKILL.md`): two files per project in auto-memory — `next-steps.md`
 (open items only) and `done-log.md` (what left the queue, when, and how) — written ONLY
 through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / bump /
-list / report / migrate), which moves a resolved item to the log in one command and enforces a
+claim / release / list / pack / report / migrate), which moves a resolved item to the log in one command and enforces a
 two size ceilings whose scope follows each flag's nature: the whole ITEM is measured
 whenever a prose flag (`--text`, `--criterion`, `--risk`, `--deferred`) grows it, while the
 short fields (`--class`, `--effort`, `--project`) answer only to a small per-VALUE ceiling — that
@@ -174,13 +175,21 @@ tk/
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
                                   identity, the roster of environments, the two ceilings,
                                   and the fleet's allow/denylist of projects
+  bin/tk-contract                 generates the block a dispatched subagent is handed,
+                                  from the site file and the role table — never written
+                                  from memory, and carrying no copy of either
   bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
                                   where their projects are, minus the site file's lists
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
+  tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
   tests/mutations.py              puts each defect back; every test must fall
-  tests/mutations_roster.py       the same, for the roster suite (one harness once
-                                  mutations.py can name a test outside test_tk_queue)
+  tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
+                                  an argument — and that reports a test no mutation
+                                  names, since a green score counts only the mutants
+                                  someone wrote
+  tests/mutations_roster.py       the same, for the roster suite — folds into that
+                                  runner, which already takes the suite as an argument
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
@@ -203,7 +212,9 @@ returning to `main` puts the old `tk-queue` back. A fix is only in force once me
 `tk-queue` has a suite — `python3 -m unittest discover -s tk/tests` — and every test in it is
 proved by `python3 tk/tests/mutations.py`, which restores each defect and requires the tests
 named for it to fail, one at a time. A test that passes with the defect back protects
-nothing, so a mutation that survives is a hole, not a pass.
+nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answers to the same
+rule through `python3 tk/tests/mutations_tk_contract.py`; the two harnesses are separate files
+only because the older one names its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
 the whole `tk/` tree is versioned.
