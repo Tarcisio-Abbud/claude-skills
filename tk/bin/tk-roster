@@ -35,7 +35,6 @@ it was written to keep out, silently.
 
 import argparse
 import os
-import re
 import sys
 
 # the site file's reader, beside this script. Inserted explicitly rather than
@@ -47,11 +46,11 @@ import tk_site      # noqa: E402  (the path above is what makes it importable)
 PROJECTS_DIR = os.path.join("~", ".claude", "projects")
 MEMORY_DIR = "memory"
 QUEUE_FILE = "next-steps.md"
-# the encoding `tk-queue` applies to the working directory to find its queue.
-# The rule lives there too, inline in memory_dir(); it is repeated here because
-# this bin has to run the SAME rule backwards, and the two copies are the same
-# three characters — see the delivery note on the ticket for the merge
-UNSAFE = re.compile(r"[^A-Za-z0-9-]")
+# the encoding is `tk_site.project_slug` — the same one the site file's list
+# entries are validated against, so a name this bin can never produce cannot be
+# written there either. tk-queue still carries its own copy, inline in
+# memory_dir(); merging it is one import, the day that file is free to edit
+project_slug = tk_site.project_slug
 
 
 def fail(msg):
@@ -64,20 +63,15 @@ def projects_root():
     return os.path.expanduser(PROJECTS_DIR)
 
 
-def project_slug(path):
-    """The directory name `tk-queue` keeps a queue for `path` under."""
-    return UNSAFE.sub("-", path)
-
-
 def queues(root):
     """(name, memory dir) for every project directory that HAS a queue."""
     try:
         names = sorted(os.listdir(root))
-    except OSError as e:
+    except FileNotFoundError:
         # not a failure of this machine's setup: a machine where no session ever
         # ran has no such directory, and an empty roster is the true answer
-        if isinstance(e, FileNotFoundError):
-            return []
+        return []
+    except OSError as e:
         fail(f"{root} cannot be listed: {e.strerror}. That is where every project's "
              "queue lives, so there is nothing to sweep until it is readable.")
     return [(name, os.path.join(root, name, MEMORY_DIR))
@@ -85,8 +79,12 @@ def queues(root):
             if os.path.isfile(os.path.join(root, name, MEMORY_DIR, QUEUE_FILE))]
 
 
-def project_paths(name, root="/"):
+def project_paths(name):
     """Every directory whose slug is `name`, found by walking the filesystem.
+
+    Iterative, not recursive: the depth is the number of components in a path
+    a user chose, and a RecursionError would surface as the bare traceback the
+    whole of tk exists to replace.
 
     Symlinked directories are stepped over: `os.getcwd()` — what the encoding
     was applied to — never contains one, so a symlink can only add a second
@@ -95,19 +93,21 @@ def project_paths(name, root="/"):
     """
     if not name.startswith("-"):
         # every queue directory encodes an ABSOLUTE path, so it opens with the
-        # leading '/'. A name that does not is not one of ours to resolve
+        # leading '/'. A name that does not is not one of ours to resolve, and
+        # walking it anyway would match a shorter path by dropping its first
+        # character: `foo` would be resolved as if it read `-oo`
         return []
-    found = []
-
-    def walk(rest, here):
+    found, stack = [], [(name, "/")]
+    while stack:
+        rest, here = stack.pop()
         rest = rest[1:]              # the separator this level was reached by
         if not rest:
             found.append(here)
-            return
+            continue
         try:
             entries = sorted(os.scandir(here), key=lambda e: e.name)
         except OSError:
-            return                   # unreadable branch: no candidate, no crash
+            continue                 # unreadable branch: no candidate, no crash
         for entry in entries:
             try:
                 if not entry.is_dir(follow_symlinks=False):
@@ -118,9 +118,7 @@ def project_paths(name, root="/"):
             if rest == encoded:
                 found.append(os.path.join(here, entry.name))
             elif rest.startswith(encoded + "-"):
-                walk(rest[len(encoded):], os.path.join(here, entry.name))
-
-    walk(name, root)
+                stack.append((rest[len(encoded):], os.path.join(here, entry.name)))
     return found
 
 

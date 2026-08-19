@@ -114,6 +114,14 @@ class TestSweep(RosterTest):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("no project on this machine has a queue", r.stdout)
 
+    def test_an_absent_projects_root_is_an_empty_roster_not_a_failure(self):
+        # a machine where no session ever ran has no such directory: an empty
+        # roster is the true answer, not a setup failure to report
+        shutil.rmtree(self.projects)
+        r = self.run_roster()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("no project on this machine has a queue", r.stdout)
+
     def test_every_queue_found_is_reported(self):
         names = []
         for part in ("one", "two", "three"):
@@ -152,6 +160,16 @@ class TestProjectPath(RosterTest):
         self.queue(name)
         r = self.run_roster()
         self.assertEqual(self.block(r.stdout, "roster"), [f"{name}  {nested}"])
+
+    def test_a_name_that_is_not_an_encoded_path_is_not_dispatchable(self):
+        # every queue directory encodes an ABSOLUTE path, so it opens with '-'.
+        # `Xtmp` does not — and resolving it anyway drops the first character
+        # and lands the roster on /tmp, a directory nobody asked about
+        self.queue("Xtmp")
+        r = self.run_roster()
+        self.assertEqual(self.names(r.stdout, "roster"), [])
+        self.assertIn("the project directory is gone",
+                      "\n".join(self.block(r.stdout, "not dispatchable")))
 
     def test_a_queue_whose_project_directory_is_gone_is_not_dispatchable(self):
         name = encode(os.path.join(self.tmp, "vanished"))
@@ -210,20 +228,23 @@ class TestAllowDeny(RosterTest):
         self.site(SITE + f"fleet-allow = {self.kept_name}\n")
         r = self.run_roster()
         self.assertEqual(self.names(r.stdout, "roster"), [self.kept_name])
-        self.assertEqual(self.names(r.stdout, "excluded"), [self.other_name])
+        self.assertEqual(self.block(r.stdout, "excluded"),
+                         [f"{self.other_name}  (fleet-allow)"])
 
     def test_fleet_deny_removes_what_it_lists(self):
         self.site(SITE + f"fleet-deny = {self.other_name}\n")
         r = self.run_roster()
         self.assertEqual(self.names(r.stdout, "roster"), [self.kept_name])
-        self.assertEqual(self.names(r.stdout, "excluded"), [self.other_name])
+        self.assertEqual(self.block(r.stdout, "excluded"),
+                         [f"{self.other_name}  (fleet-deny)"])
 
     def test_a_name_in_both_lists_is_denied(self):
         self.site(SITE + f"fleet-allow = {self.kept_name}, {self.other_name}\n"
                          f"fleet-deny = {self.other_name}\n")
         r = self.run_roster()
         self.assertEqual(self.names(r.stdout, "roster"), [self.kept_name])
-        self.assertIn("fleet-deny", "\n".join(self.block(r.stdout, "excluded")))
+        self.assertEqual(self.block(r.stdout, "excluded"),
+                         [f"{self.other_name}  (fleet-deny)"])
 
     def test_an_entry_written_as_a_path_names_the_same_project(self):
         self.site(SITE + f"fleet-deny = {self.other}\n")

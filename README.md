@@ -172,8 +172,12 @@ tk/
                                   table is parseable, schema declared in the file
   bin/tk-queue                    deterministic CLI: only writer of the queue files
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
-                                  identity, the roster of environments, the two ceilings
+                                  identity, the roster of environments, the two ceilings,
+                                  and the fleet's allow/denylist of projects
+  bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
+                                  where their projects are, minus the site file's lists
   tests/test_tk_queue.py          regression suite for that CLI (stdlib only)
+  tests/test_tk_roster.py         regression suite for the sweep and the two list keys
   tests/mutations.py              puts each defect back; every test must fall
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest

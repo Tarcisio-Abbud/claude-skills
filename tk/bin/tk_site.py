@@ -50,8 +50,9 @@ chars), and never the word `none`, which every tk flag reserves for DELETING a
 field: a roster entry spelled that way could be written into an item and never
 removed from it.
 
-UNKNOWN KEYS ARE IGNORED, so a later reader can add its own (a fleet
-allow/denylist, another ceiling) without an older tk refusing the whole file.
+UNKNOWN KEYS ARE IGNORED, so a later reader can add its own without an older tk
+refusing the whole file — `fleet-allow` and `fleet-deny` below arrived exactly
+that way, and the next key will too.
 The cost is that a MISTYPED key reads as an absent one — so a missing required
 key is reported together with the keys the file does carry, which puts the typo
 in the message itself.
@@ -78,11 +79,15 @@ CEILINGS = ("max-local-subagents", "max-cloud-subagents")
 # `environments`, and both read by the roster sweep rather than by this module,
 # which only says whether the file is trustworthy.
 FLEET_LISTS = ("fleet-allow", "fleet-deny")
-# a project named by its DIRECTORY under ~/.claude/projects: the alphabet the
-# encoding produces, and nothing else. A name outside it (a relative path, a `~`,
-# a Windows drive) is refused rather than encoded, because encoding it would
-# invent a project directory nobody has
-PROJECT_NAME_RE = re.compile(r"[A-Za-z0-9-]+\Z")
+# The alphabet a project's queue DIRECTORY is spelled in, defined once and used
+# both ways: `project_slug` encodes a path into it, and PROJECT_NAME_RE is what a
+# name written by hand has to already be. Two spellings of one alphabet drift
+# into a validator that accepts names the encoder can never produce.
+PROJECT_ALPHABET = "A-Za-z0-9-"
+UNSAFE_IN_PATH = re.compile(f"[^{PROJECT_ALPHABET}]")
+# a name outside the alphabet (a relative path, a `~`, a Windows drive) is
+# refused rather than encoded: encoding it would invent a project nobody has
+PROJECT_NAME_RE = re.compile(f"[{PROJECT_ALPHABET}]+\\Z")
 
 TEMPLATE = """  identity = <this machine's environment name>
   environments = <name>, <name>
@@ -108,6 +113,21 @@ class Site:
         # refused below instead of read as this same tuple
         self.fleet_allow = fleet_allow
         self.fleet_deny = fleet_deny
+
+
+def project_slug(path):
+    """The directory under ~/.claude/projects that holds `path`'s queue.
+
+    The rule is `tk-queue`'s — it derives its own queue directory from the
+    working directory this way, inline in memory_dir(). It lives here because
+    two readers of the site file now need it (this module, to validate a
+    fleet list; the roster sweep, to run it backwards), and a rule copied per
+    reader is a rule that stops agreeing. The copy still in tk-queue is one
+    import away from this one, and merges the day that file is free to edit.
+
+    It is ONE-WAY: `/w/p/x-y` and `/w/p/x/y` produce the same name.
+    """
+    return UNSAFE_IN_PATH.sub("-", path)
 
 
 def site_path():
