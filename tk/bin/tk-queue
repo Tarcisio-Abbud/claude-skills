@@ -24,13 +24,23 @@ open box is spent all the same. Open items predating this script may lack IDs;
 items move to the log verbatim, ID-less, and — carrying no `- YYYY-MM-DD —`
 prefix — stay outside `report`'s scope; read the log itself for that history).
 
+Priority is the file's ORDER, global — no score, no hidden heuristic. `add` puts a
+new item at the end and `bump` moves one to the top; the package modes take the
+filtered top.
+
+The DECISION class parks the queue until the user is back, so it is never reached
+by omission: `add --class DECISION` and any `edit` that sets that class demand
+`--deferred <justification>`, which lands in the item as a **Deferred:** field.
+The default path is the other one — ask the decision at birth, write it into the
+item's text and Criterion, and the item is AUTONOMOUS.
+
 Size ceilings: an item is a PENDING ACTION, not an essay. Durable context
 belongs in a memory file or the wiki, linked from the item. TWO ceilings, and
 which one a flag answers to depends on the flag's NATURE:
 
   block (CEILING)   the whole item. `add` always. `edit` whenever a PROSE flag
-                    is used (--text, --criterion, --risk) and the edit grows the
-                    item. Exempt: the short fields below — that exemption is
+                    is used (--text, --criterion, --risk, --deferred) and the edit
+                    grows the item. Exempt: the short fields below — that exemption is
                     what keeps a legacy oversized item taggable without --force.
   field             each field VALUE, on add, edit and the closes alike.
                     FIELD_CEILING_SHORT for --class/--effort/--project, which
@@ -61,6 +71,12 @@ except ImportError:      # non-POSIX; see queue_lock
     fcntl = None
 
 CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
+# The class that PARKS the queue: nothing moves on a DECISION item until the user
+# is back. So it may not be reached by omission — `add --class DECISION` and any
+# `edit` that sets that class demand `--deferred <justification>`, recorded in the
+# item as a field. The default path is the other one: ask the decision at birth and
+# write it into the item's text and Criterion, and the item is AUTONOMOUS.
+DEFERRABLE_CLASS = "DECISION"
 # Reserved word that CLEARS an optional field instead of setting it. `--risk ''`
 # cannot do the job: argparse hands an empty string, every writer treats it as
 # falsy, and the command is a silent no-op — so a Risk line written when it was
@@ -69,6 +85,10 @@ CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
 # A reserved value reuses the existing parser: no new flag to forget, no new
 # precedence rule between "set" and "clear".
 FIELD_CLEAR = "none"
+# Fields the reserved word may DELETE. Both are true-when-written and go stale:
+# a Risk whose branch has since merged, a deferral whose class has since changed.
+# Neither is ever deleted in a way that opens a gate — see cmd_edit.
+CLEARABLE = frozenset(("Risk", "Deferred"))
 READERS = frozenset(("list", "report"))   # everything else mutates and takes the queue lock
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
 # read once, at import: os.umask can only be read by setting it, and doing that
@@ -100,7 +120,7 @@ FIELD_CEILING = 200
 FIELD_CEILING_FORCED = 500
 SHORT_FLAGS = frozenset(("classe", "class", "effort", "project"))
 # the free-text item fields: an edit touching any of them measures the block
-FREE_TEXT_FLAGS = ("text", "criterion", "risk")
+FREE_TEXT_FLAGS = ("text", "criterion", "risk", "deferred")
 PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
 
 DONE_LOG_TEMPLATE = """---
@@ -414,6 +434,7 @@ FIELD_VARIANTS = {
     "Criterion": r"(?:Criteri(?:on|o)|Critério)",
     "Project": r"(?:Project|Projeto)",
     "Source": r"(?:Source|Fonte)",
+    "Deferred": r"(?:Deferred|Adiado)",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
 # the marker SHAPE alone, with no trailing value — every other use of ANY_FIELD
@@ -496,6 +517,95 @@ def clears_field(value):
     return (value or "").strip().lower() == FIELD_CLEAR
 
 
+CLASS_VALUE_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Class"] + r"):\*\*\s*([A-Za-zÀ-ÿ]+)")
+
+
+def item_class(block):
+    """The class word an item carries, or None. One spelling for `list` and for
+    the deferral gate: a class the display reads and the gate does not is how the
+    two would disagree about what an item IS."""
+    m = CLASS_VALUE_RE.search(block)
+    return m.group(1) if m else None
+
+
+DEFERRED_MARKER_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Deferred"] + r"):\*\*")
+
+
+def chain_class(block):
+    """The class the item really carries, read from its FIELD CHAIN — the stricter
+    reader the deferral gate uses, and deliberately not `item_class`.
+
+    `item_class` searches the whole block and takes the leftmost match, which is
+    what `list` has always displayed. That is too loose to decide a gate: an item
+    whose prose says `nota: itens **Class:** DECISION são raros aqui.` before its
+    real `**Class:** AUTONOMOUS.` reads as DECISION, and `edit <id> --deferred x`
+    then wrote a deferral onto an AUTONOMOUS item — the very state the flag is
+    refused for.
+
+    Returns None when the chain names no class — a legacy item whose fields sit on
+    a continuation line — and equally when it names TWO, which is exactly what a
+    prose marker absorbed into the chain looks like. Ambiguity is refused, not
+    guessed: the same answer `edit`'s own field loop already gives for a duplicated
+    field, and the gate then asks for `--class` explicitly, which costs one command.
+    """
+    found = [m for m in field_chain(block) if canonical_field(m.group(1)) == "Class"]
+    if len(found) != 1:
+        return None
+    value = re.match(r"\*\*[^*]+:\*\*\s*([A-Za-zÀ-ÿ]+)", found[0].group(0))
+    return value.group(1) if value else None
+
+
+def deferral_field(block):
+    """(segment, stray) — the item's REAL Deferred field, and whether a
+    `**Deferred:**` marker sits anywhere else in the block.
+
+    The real one is the chain segment that FOLLOWS the **Class:** it qualifies,
+    which is where compose_item writes it. "Somewhere in the chain" is not
+    enough, and the difference is a bypass: field_chain absorbs any run of
+    `**Field:** value.` segments that ends the line, so an item's own prose can
+    OPEN that run — `— item, ver a **Deferred:** nota de contexto. **Class:**
+    AUTONOMOUS. …` parses as a five-field chain. Measured on this script before
+    the position rule: `edit <id> --class DECISION` was let through with no
+    justification at all (the gate read the prose as the field), and the later
+    auto-clear then DELETED that prose from the item's text.
+
+    `stray` is what keeps the other direction honest: a marker the position rule
+    refuses to read is not thereby harmless — the caller is told, and nothing is
+    guessed (see deferral_for_edit).
+    """
+    chain = field_chain(block)
+    names = [canonical_field(m.group(1)) for m in chain]
+    seg = None
+    if "Class" in names:
+        after = names.index("Class")
+        seg = next((m for i, m in enumerate(chain)
+                    if names[i] == "Deferred" and i > after), None)
+    return seg, len(DEFERRED_MARKER_RE.findall(block)) > (1 if seg else 0)
+
+
+def deferral_gate_message(cmd):
+    """Why the command was refused, and BOTH ways out — a message naming only the
+    flag teaches the flag, and the flag is the exception, not the default path."""
+    return (
+        f"`{cmd} --class {DEFERRABLE_CLASS}` requires --deferred. A {DEFERRABLE_CLASS} "
+        "item parks the queue until the user is back, so parking it must be deliberate. "
+        "Two paths:\n"
+        "  ASK the decision now and write it into the item's text and --criterion — the "
+        "item is then AUTONOMOUS and an unattended session can run it (the default path);\n"
+        "  or DEFER it on the record: --deferred \"<why it could not be asked>\" "
+        "(an afk session passes --deferred afk).")
+
+
+def deferral_class_message(subject_is):
+    """Why a deferral was refused on a class that is not DECISION. One wording for
+    `add` and `edit` alike: two sites saying this in two ways is how one of them
+    came to be guarded and tested while the other was neither."""
+    return (f"--deferred qualifies --class {DEFERRABLE_CLASS} and nothing else — it records "
+            f"why a decision could not be asked, and no reader honours it elsewhere. "
+            f"{subject_is} Pass `--class {DEFERRABLE_CLASS}` in the same command, or drop "
+            "--deferred.")
+
+
 def validate_project(tag):
     if not PROJECT_RE.match(tag):
         fail(f"--project must be a short lowercase slug (letters, digits, '-'/'_', "
@@ -514,22 +624,32 @@ def open_project_tags(content):
     return tags
 
 
-def group_by_tag(pairs):
-    """(tag, payload) pairs → ordered [(tag, [payload, ...])], tags sorted and
-    the untagged group LAST — that group is a residue, not a project. Returns
-    None when nothing carries a tag, so the caller prints its flat form and an
-    untagged queue looks exactly as it did before tags existed.
+def group_by_tag(pairs, by_position=False):
+    """(tag, payload) pairs → ordered [(tag, [payload, ...])], the untagged group
+    LAST — that group is a residue, not a project. Returns None when nothing
+    carries a tag, so the caller prints its flat form and an untagged queue looks
+    exactly as it did before tags existed.
 
     `list` and `report` group on different things (open items vs done-log
     entries) under different heading levels, but the ordering rule is one rule
-    and belongs in one place.
+    and belongs in one place. Where they part is WHICH order the groups come in,
+    and each follows the axis its file is ordered by:
+
+      by_position   `list`. The queue's order IS its priority, so the groups
+                    follow the file: each one sits where its top item sits.
+                    Sorting them alphabetically instead made `bump` INVISIBLE on
+                    any tagged queue — the item reached the top of the file and
+                    still rendered under the third heading.
+      sorted        `report`. A done-log has no priority to reflect; alphabetical
+                    is the stable reading order there.
     """
     if not any(tag for tag, _ in pairs):
         return None
     groups = {}
     for tag, payload in pairs:
         groups.setdefault(tag, []).append(payload)
-    order = sorted(k for k in groups if k is not None) + ([None] if None in groups else [])
+    named = [k for k in groups if k is not None]      # dict order == file order
+    order = (named if by_position else sorted(named)) + ([None] if None in groups else [])
     return [(tag, groups[tag]) for tag in order]
 
 
@@ -568,10 +688,18 @@ def append_done_line(memdir, line, today):
     write_atomic(path, content)
 
 
-def excise(content, block):
-    """Remove block, collapsing surplus blank lines ONLY at the removal site —
-    spacing elsewhere in the file is not ours to touch."""
-    idx = content.index(block)
+def excise(content, block, idx):
+    """Remove the block AT `idx`, collapsing surplus blank lines ONLY at the
+    removal site — spacing elsewhere in the file is not ours to touch.
+
+    The offset is passed in, never re-derived with `content.index(block)`: an
+    item's text is NOT unique in the file. An item that documents the queue's own
+    format quotes another item's line verbatim in its note, and the substring
+    search finds THAT copy first — measured on this script: `done T002` deleted
+    the quoted copy out of T001's note and left the real T002 open, reporting
+    success, and `bump T002` produced a phantom duplicate. Positions come from
+    find_open_item, which walks the blocks.
+    """
     before, after = content[:idx], content[idx + len(block):]
     if not after.strip():
         return before.rstrip("\n") + "\n"
@@ -582,12 +710,12 @@ def excise(content, block):
     return before + after
 
 
-def remove_block(memdir, block_text):
-    path = os.path.join(memdir, "next-steps.md")
-    content = read(path)
-    if block_text not in content:
-        fail("internal error: block vanished from next-steps.md mid-operation")
-    write_atomic(path, excise(content, block_text))
+def remove_block(memdir, content, block, start):
+    """`content` is the read find_open_item already made under the lock — the
+    authoritative one. Re-reading here would only open a window for the file to
+    have changed between the two reads, and re-finding the block by text is the
+    bug excise() documents."""
+    write_atomic(os.path.join(memdir, "next-steps.md"), excise(content, block, start))
 
 
 def id_in_done_log(memdir, wanted_id):
@@ -629,14 +757,25 @@ def missing_item_message(memdir, content, wanted_id):
 
 
 def find_open_item(memdir, wanted_id):
-    # Called under queue_lock by every mutating command, so THIS read is the
-    # authoritative one: no writer can have moved the item since it was taken.
+    """(content, block, start) — the file, the item's block, and WHERE it starts.
+
+    Called under queue_lock by every mutating command, so THIS read is the
+    authoritative one: no writer can have moved the item since it was taken, and
+    every caller writes from this same `content`.
+
+    The offset is what makes the item addressable. Its TEXT is not: split_blocks
+    walks the file in order, so the position is exact, while searching the text
+    back out finds whichever copy comes first — including one quoted inside
+    another item's note (see excise).
+    """
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
         fail("next-steps.md not found in " + memdir)
+    pos = 0
     for kind, text in split_blocks(content):
         if kind == "item-open" and item_id(text) == wanted_id:
-            return text
+            return content, text, pos
+        pos += len(text)
     fail(missing_item_message(memdir, content, wanted_id))
 
 
@@ -653,14 +792,14 @@ def cmd_list(args):
             continue
         iid = item_id(text)
         label = f"T{iid:03d}" if iid else "----"
-        m = re.search(r"\*\*Class(?:e)?:\*\*\s*([A-Za-zÀ-ÿ]+)", text)
         pm = PROJECT_TAG_RE.search(text)
-        rows.append((label, m.group(1) if m else "?", item_title(text), pm.group(1) if pm else None))
+        rows.append((label, item_class(text) or "?", item_title(text),
+                     pm.group(1) if pm else None))
     if not rows:
         print("(queue empty)")
         return
     grouped = group_by_tag([(project, (label, cls, title))
-                            for label, cls, title, project in rows])
+                            for label, cls, title, project in rows], by_position=True)
     if grouped is None:
         for label, cls, title, _ in rows:
             print(f"{label}  {cls:<10}  {title}")
@@ -676,7 +815,11 @@ def cmd_list(args):
 
 
 def compose_item(args, iid):
-    fields = [f"**Class:** {args.classe}.", f"**Effort:** {args.effort}."]
+    fields = [f"**Class:** {args.classe}."]
+    # right after the class it qualifies, so the two are read together
+    if args.deferred and not clears_field(args.deferred):
+        fields.append(f"**Deferred:** {args.deferred}.")
+    fields.append(f"**Effort:** {args.effort}.")
     if args.risk and not clears_field(args.risk):
         fields.append(f"**Risk:** {args.risk}.")
     fields.append(f"**Criterion:** {args.criterion}.")
@@ -727,12 +870,27 @@ def cmd_add(args):
     if args.classe not in CLASSES:
         fail(f"--class must be one of {', '.join(CLASSES)}")
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
-                       criterion=args.criterion, source=args.source, project=args.project)
+                       criterion=args.criterion, source=args.source, project=args.project,
+                       deferred=args.deferred)
     ensure_filled(text=args.text, effort=args.effort, criterion=args.criterion)
+    if args.deferred is not None:
+        # the flag was typed: an empty justification is a deferral nobody can read,
+        # and argparse's own check only proves the flag was there
+        ensure_filled(deferred=args.deferred)
+    # the gate, in both directions. `--deferred none` is refused with the omission:
+    # `none` DELETES a field everywhere else in this script, so honouring it here
+    # would write a DECISION carrying no deferral — the gate open by way of the one
+    # word that means "no field"
+    if args.classe == DEFERRABLE_CLASS and (args.deferred is None or clears_field(args.deferred)):
+        fail(deferral_gate_message("add"))
+    if args.deferred is not None and args.classe != DEFERRABLE_CLASS:
+        fail(deferral_class_message(f"This add is --class {args.classe}."))
     ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,
-                              criterion=args.criterion, source=args.source)
+                              criterion=args.criterion, source=args.source,
+                              deferred=args.deferred)
     check_field_ceilings(args.force, effort=args.effort, risk=args.risk,
-                         criterion=args.criterion, project=args.project, source=args.source)
+                         criterion=args.criterion, project=args.project, source=args.source,
+                         deferred=args.deferred)
     if args.project:
         validate_project(args.project)
     path = os.path.join(memdir, "next-steps.md")
@@ -768,7 +926,7 @@ def cmd_add(args):
 
 def close_item(args, marker, outcome, marker_flag):
     memdir = memory_dir(args.dir)
-    block = find_open_item(memdir, args.id)
+    content, block, start = find_open_item(memdir, args.id)
     ensure_single_line(outcome=outcome, summary=args.summary)
     # --summary and the outcome share the log entry's FIRST line with the project
     # tag appended below, so a marker in them can be read as that tag. --note is
@@ -794,7 +952,7 @@ def close_item(args, marker, outcome, marker_flag):
     if args.note:
         line += "\n  " + args.note.replace("\n", "\n  ")
     append_done_line(memdir, line, today)
-    remove_block(memdir, block)
+    remove_block(memdir, content, block, start)
     print(f"T{args.id:03d} → done-log as {marker} ({today})")
 
 
@@ -806,17 +964,76 @@ def cmd_cancel(args):
     close_item(args, "DESCARTADO", args.why, "why")
 
 
+def deferral_for_edit(args, block):
+    """What `edit` should do to the Deferred field: None (leave it), FIELD_CLEAR
+    (remove it), or the new justification. Refuses every route to a DECISION item
+    with no deferral on the record — the gate is on the RESULT, not on the flag,
+    or each of these reaches by two commands what `add` refuses in one:
+
+      --class DECISION with no deferral anywhere        (the #70 two-command bypass)
+      --class DECISION --deferred none                  (set the class, delete the field)
+      --deferred none on an item that stays a DECISION  (delete the field, keep the class)
+
+    The gate fires on the CHANGE to DECISION, never on an unrelated edit of an item
+    that already is one: every DECISION item in a real queue predates this field, and
+    a gate that fired on `edit <id> --effort L` would make them all uneditable.
+    """
+    setting = args.deferred is not None and not clears_field(args.deferred)
+    clearing = args.deferred is not None and clears_field(args.deferred)
+    seg, stray = deferral_field(block)
+    # Refused, not guessed — and only when the command's outcome depends on the
+    # deferral (a --class or a --deferred). Reading a stray marker as the field
+    # would let prose satisfy the gate; clearing it would delete that prose. An
+    # edit that touches neither flag never consults the deferral, so it stays
+    # allowed: over-refusing here would make the item uneditable instead.
+    if stray and (args.classe or args.deferred is not None):
+        fail(f"T{args.id:03d} carries a **Deferred:** marker away from the position a "
+             "deferral is written in (right after **Class:**) — in the item's own prose, "
+             "or on a continuation line. Nothing was changed: reading it as the field "
+             "would let prose satisfy the gate, and clearing it would DELETE that prose. "
+             "Close the item with `cancel` and re-add it clean.")
+    has = seg is not None
+    result_class = args.classe or chain_class(block)
+    if args.classe == DEFERRABLE_CLASS and not (setting or (has and not clearing)):
+        fail(deferral_gate_message("edit"))
+    if setting and result_class != DEFERRABLE_CLASS:
+        fail(deferral_class_message(
+            f"T{args.id:03d} is {result_class or 'carrying no unambiguous class'}."))
+    if clearing and result_class == DEFERRABLE_CLASS:
+        fail(f"T{args.id:03d} would stay a {DEFERRABLE_CLASS} with no deferral on the "
+             "record. A deferral is dropped by leaving the class: pass the new "
+             "`--class` in the same command (the field goes with it).")
+    if args.deferred is None and args.classe and args.classe != DEFERRABLE_CLASS and has:
+        # a deferral left on an item that is no longer a DECISION is the stale-Risk
+        # failure again: true when written, still read by every later filter
+        print(f"tk-queue: T{args.id:03d} is no longer a {DEFERRABLE_CLASS} — its "
+              "**Deferred:** field goes with the class", file=sys.stderr)
+        return FIELD_CLEAR
+    return args.deferred
+
+
 def cmd_edit(args):
     memdir = memory_dir(args.dir)
-    block = find_open_item(memdir, args.id)
+    content, block, start = find_open_item(memdir, args.id)
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
-                       criterion=args.criterion, project=args.project)
+                       criterion=args.criterion, project=args.project,
+                       deferred=args.deferred)
+    if args.deferred is not None:
+        ensure_filled(deferred=args.deferred)
     ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,
-                              criterion=args.criterion)
+                              criterion=args.criterion, deferred=args.deferred)
     check_field_ceilings(args.force, effort=args.effort, risk=args.risk,
-                         criterion=args.criterion, project=args.project)
+                         criterion=args.criterion, project=args.project,
+                         deferred=args.deferred)
     if args.project:
         validate_project(args.project)
+    # before the deferral gate, which reasons about the resulting CLASS: a typo'd
+    # class reaching the gate first is answered "T001 is DECISON — pass --class
+    # DECISION", which sends the caller after the wrong mistake. `add` validates
+    # the class first for the same reason
+    if args.classe and args.classe not in CLASSES:
+        fail(f"--class must be one of {', '.join(CLASSES)}")
+    deferred_flag = deferral_for_edit(args, block)
     new = block
     if args.text:
         head_m = CANONICAL_HEAD_RE.match(block)
@@ -830,11 +1047,9 @@ def cmd_edit(args):
         new = head_m.group(0) + args.text.strip() + (" " + tail if tail else "\n")
     for flag, field in ((args.classe, "Class"), (args.effort, "Effort"),
                         (args.risk, "Risk"), (args.criterion, "Criterion"),
-                        (args.project, "Project")):
+                        (args.project, "Project"), (deferred_flag, "Deferred")):
         if not flag:
             continue
-        if field == "Class" and flag not in CLASSES:
-            fail(f"--class must be one of {', '.join(CLASSES)}")
         # the real field is the one in the item's FIELD CHAIN — never merely the
         # last marker in the block, which lands on a continuation note (see
         # field_chain). Ambiguity is refused, not guessed: the caller fixes a
@@ -850,10 +1065,16 @@ def cmd_edit(args):
                  "Nothing was changed. Editing that marker would rewrite prose you did "
                  "not point at (and on `--risk none`, DELETE it). Close the item with "
                  "`cancel` and re-add it clean.")
-        if field == "Risk" and clears_field(flag):
+        if field in CLEARABLE and clears_field(flag):
             if found:
-                start, end = found[0].span()
-                head, tail = new[:start], new[end:]
+                # NOT `start`: that name holds the item's offset in the FILE, and the
+                # final write splices with it. Shadowing it with a position inside
+                # `new` truncated the frontmatter mid-word and duplicated the item —
+                # measured on `--risk none`, with the whole suite still green, because
+                # every clearing test asserted `assertNotIn("**Risk:**")` and a
+                # corrupted file satisfies that too
+                f_start, f_end = found[0].span()
+                head, tail = new[:f_start], new[f_end:]
                 # the body is greedy, so the match already swallowed the blank that
                 # separated Risk from the next field — but when Risk was the last
                 # field on the line there is nothing after it, and the blank BEFORE
@@ -898,9 +1119,43 @@ def cmd_edit(args):
     # ONE call still took an item to 709 past a 700 ceiling.
     if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):
         check_ceiling(new, args.force)
-    path = os.path.join(memdir, "next-steps.md")
-    write_atomic(path, read(path).replace(block, new, 1))
+    # spliced at the block's own offset — `.replace(block, new, 1)` would rewrite
+    # whichever copy of that text comes first, which is not always this item
+    write_atomic(os.path.join(memdir, "next-steps.md"),
+                 content[:start] + new + content[start + len(block):])
     print(f"T{args.id:03d} updated")
+
+
+def cmd_bump(args):
+    """Move an item to the TOP of the file's global order.
+
+    Priority IS that order — no score, no hidden heuristic — so this command is
+    the only way it changes: `add` puts a new item at the end, and the package
+    modes take the filtered top. Top means "before the first item block", the
+    mirror of what `add` does at the other end; a `##` heading the item lands
+    under is cosmetic (`list` groups by the **Project:** field, never by the
+    heading), and everything that is not the item's own block — frontmatter,
+    headings, prose between items — is preserved verbatim.
+    """
+    memdir = memory_dir(args.dir)
+    content, block, start = find_open_item(memdir, args.id)
+    path = os.path.join(memdir, "next-steps.md")
+    first = ITEM_START.search(content)
+    if first and first.start() == start:
+        # already there: return without writing, so a no-op bump cannot churn the
+        # file's spacing (repeat it ten times and the file is still byte-identical)
+        print(f"T{args.id:03d} is already at the top of the queue")
+        return
+    without = excise(content, block, start)
+    dest = ITEM_START.search(without)
+    at = dest.start() if dest else len(without)
+    tail = without[at:]
+    # separate it from the item it now precedes, the way `add` separates the item
+    # it follows — unless the block already ends in a blank line, or there is no
+    # tail to separate from
+    moved = block if block.endswith("\n\n") or not tail else block + "\n"
+    write_atomic(path, without[:at] + moved + tail)
+    print(f"T{args.id:03d} → top of the queue")
 
 
 def cmd_report(args):
@@ -1002,6 +1257,9 @@ def main():
                    "('none' writes no Risk line)")
     a.add_argument("--criterion", required=True,
                    help="acceptance: 'A: <command that proves it>' or 'B: user verdict'")
+    a.add_argument("--deferred", help=f"why the decision could not be asked — REQUIRED by "
+                   f"--class {DEFERRABLE_CLASS}, refused on every other class ('afk' in an "
+                   "unattended session)")
     a.add_argument("--project", help="optional short slug tagging which project this item "
                    "belongs to, e.g. 'ambiente', 'tk' (warns on stderr if unseen in this queue)")
     a.add_argument("--source", help="origin (default: today's date)")
@@ -1029,8 +1287,15 @@ def main():
     e.add_argument("--risk", help="new Risk line, or 'none' to DELETE the field "
                    "(re-triage of an obsolete Risk)")
     e.add_argument("--criterion")
+    e.add_argument("--deferred", help=f"justification demanded by `--class "
+                   f"{DEFERRABLE_CLASS}`; it is dropped by leaving that class, never by "
+                   "'none'")
     e.add_argument("--project", help="assign/change the project tag")
     e.add_argument("--force", action="store_true")
+
+    b = sub.add_parser("bump", parents=[common],
+                       help="move an item to the top of the queue's global order")
+    b.add_argument("id", type=parse_id)
 
     r = sub.add_parser("report", parents=[common], help="done-log entries")
     r.add_argument("--since", help="YYYY-MM-DD")
@@ -1046,6 +1311,7 @@ def main():
         "done": cmd_done,
         "cancel": cmd_cancel,
         "edit": cmd_edit,
+        "bump": cmd_bump,
         "report": cmd_report,
         "migrate": cmd_migrate,
     }[args.cmd]

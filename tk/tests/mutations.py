@@ -20,8 +20,8 @@ annotated in the test that carries them:
 TestRiskDeletion.test_the_reserved_word_is_case_and_space_tolerant (the `none`
 form survives the case-tolerance mutation) and
 TestCeilingScope.test_every_short_field_edit_passes_without_force (`--class`
-survives the block-ceiling mutation, because swapping AUTONOMOUS for DECISION
-SHRINKS the item). Reading the failure list, not the tally, is what catches
+survives the block-ceiling mutation, because swapping AUTONOMOUS for any other
+class SHRINKS the item). Reading the failure list, not the tally, is what catches
 these — which is why the PR body pastes the measured lines.
 """
 
@@ -93,7 +93,7 @@ MUTATIONS = [
      ["TestProjectTagInDoneLog.test_report_groups_by_tag_untagged_last"]),
 
     ("T064/T065 the untagged group stops going last",
-     "    order = sorted(k for k in groups if k is not None) + "
+     "    order = (named if by_position else sorted(named)) + "
      "([None] if None in groups else [])",
      "    order = sorted(groups, key=lambda k: (k is not None, k or ''))",
      ["TestProjectTagInDoneLog.test_report_groups_by_tag_untagged_last"]),
@@ -105,7 +105,8 @@ MUTATIONS = [
 
     ("T065 add stops refusing an embedded marker",
      "    ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,\n"
-     "                              criterion=args.criterion, source=args.source)",
+     "                              criterion=args.criterion, source=args.source,\n"
+     "                              deferred=args.deferred)",
      "    pass",
      # NOT test_list_groups_by_the_project_that_was_passed: it adds clean text, so
      # it passes with the guard off. Listing it would claim a proof the run cannot make
@@ -114,7 +115,7 @@ MUTATIONS = [
 
     ("T065 edit stops refusing an embedded marker",
      "    ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,\n"
-     "                              criterion=args.criterion)",
+     "                              criterion=args.criterion, deferred=args.deferred)",
      "    pass",
      ["TestEmbeddedMarker.test_edit_refuses_a_marker_in_the_new_text"]),
 
@@ -289,7 +290,7 @@ MUTATIONS = [
      ["TestRiskDeletion.test_add_writes_no_risk_line_for_the_reserved_word"]),
 
     ("T070 edit SETS Risk to the reserved word instead of deleting the field",
-     '        if field == "Risk" and clears_field(flag):', "        if False:",
+     '        if field in CLEARABLE and clears_field(flag):', "        if False:",
      ["TestRiskDeletion.test_edit_clears_the_risk_field",
       "TestRiskDeletion.test_the_surrounding_fields_survive_intact",
       "TestRiskDeletion.test_clearing_an_item_that_has_no_risk_is_a_no_op",
@@ -323,7 +324,8 @@ MUTATIONS = [
     # bounds what a field edit can write — without it, the exemption IS the bypass
     ("review#1 edit stops measuring field values (the reported bypass)",
      "    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,\n"
-     "                         criterion=args.criterion, project=args.project)",
+     "                         criterion=args.criterion, project=args.project,\n"
+     "                         deferred=args.deferred)",
      "    pass",
      # NOT test_the_bypass_cannot_push_the_item_past_the_block_ceiling: now that the
      # block rule covers the free-text fields, a 910-char --criterion is refused by
@@ -334,7 +336,8 @@ MUTATIONS = [
     ("review#1 add stops measuring field values",
      "    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,\n"
      "                         criterion=args.criterion, project=args.project, "
-     "source=args.source)",
+     "source=args.source,\n"
+     "                         deferred=args.deferred)",
      "    pass",
      ["TestCeilingScope.test_add_measures_field_values_too"]),
 
@@ -445,6 +448,254 @@ MUTATIONS = [
      "    pass",
      ["TestCloseFieldCeilings.test_done_measures_how_summary_and_note",
       "TestCloseFieldCeilings.test_cancel_measures_why"]),
+
+    # --- T119: the DECISION class may not be reached by omission ------------
+
+    ("T119 add stops demanding a deferral for the DECISION class",
+     "    if args.classe == DEFERRABLE_CLASS and (args.deferred is None or "
+     "clears_field(args.deferred)):\n        fail(deferral_gate_message(\"add\"))",
+     "    pass",
+     ["TestDecisionDeferralGate."
+      "test_add_decision_without_a_deferral_is_refused_and_names_both_paths",
+      "TestDecisionDeferralGate.test_the_reserved_clear_word_is_no_justification_either"]),
+
+    ("T119 the reserved clear word passes as a justification (a fieldless DECISION)",
+     "    if args.classe == DEFERRABLE_CLASS and (args.deferred is None or "
+     "clears_field(args.deferred)):",
+     "    if args.classe == DEFERRABLE_CLASS and args.deferred is None:",
+     ["TestDecisionDeferralGate.test_the_reserved_clear_word_is_no_justification_either"]),
+
+    # over-trigger: a gate that fires on every class stops the queue rather than
+    # the silent deferral, and only the false-positive test sees it
+    ("T119 the gate fires on every class, not just DECISION",
+     "    if args.classe == DEFERRABLE_CLASS and (args.deferred is None or "
+     "clears_field(args.deferred)):",
+     "    if args.deferred is None or clears_field(args.deferred):",
+     ["TestDecisionDeferralGate.test_the_other_classes_are_untouched_by_the_gate"]),
+
+    ("T119 an empty justification satisfies the flag again",
+     "    if args.deferred is not None:\n"
+     "        # the flag was typed: an empty justification is a deferral nobody can read,\n"
+     "        # and argparse's own check only proves the flag was there\n"
+     "        ensure_filled(deferred=args.deferred)",
+     "    pass",
+     ["TestDecisionDeferralGate.test_the_justification_may_not_be_blank"]),
+
+    ("T119 add accepts a deferral on a class that is not DECISION",
+     "    if args.deferred is not None and args.classe != DEFERRABLE_CLASS:",
+     "    if False:",
+     ["TestDecisionDeferralGate.test_a_deferral_without_the_decision_class_is_refused"]),
+
+    ("T119 the deferral never reaches the item",
+     '    if args.deferred and not clears_field(args.deferred):\n'
+     '        fields.append(f"**Deferred:** {args.deferred}.")',
+     "    pass",
+     ["TestDecisionDeferralGate.test_a_deferral_reaches_the_item"]),
+
+    ("T119 edit stops gating the change to DECISION (the two-command bypass)",
+     "    if args.classe == DEFERRABLE_CLASS and not (setting or (has and not clearing)):\n"
+     '        fail(deferral_gate_message("edit"))',
+     "    pass",
+     ["TestDecisionDeferralGate.test_edit_to_decision_passes_the_same_gate"]),
+
+    ("T119 edit's gate stops seeing the deferral already on the item",
+     "    has = seg is not None", "    has = False",
+     ["TestDecisionDeferralGate.test_a_deferral_already_on_the_item_satisfies_the_gate"]),
+
+    # over-trigger on edit: a gate on the item's CURRENT class makes every legacy
+    # DECISION item uneditable — the direction no bypass test can see
+    ("T119 edit's gate fires on the item's class, not on the change to it",
+     "    if args.classe == DEFERRABLE_CLASS and not (setting or (has and not clearing)):",
+     "    if result_class == DEFERRABLE_CLASS and not (setting or (has and not clearing)):",
+     ["TestDecisionDeferralGate.test_a_legacy_decision_item_stays_editable"]),
+
+    ("T119 the deferral can be cleared while the class stays DECISION",
+     "    if clearing and result_class == DEFERRABLE_CLASS:",
+     "    if False:",
+     ["TestDecisionDeferralGate."
+      "test_the_deferral_cannot_be_dropped_while_the_item_stays_a_decision"]),
+
+    ("T119 a deferral survives the class that justified it (the stale field)",
+     "    if args.deferred is None and args.classe and args.classe != DEFERRABLE_CLASS "
+     "and has:",
+     "    if False:",
+     ["TestDecisionDeferralGate.test_leaving_the_decision_class_takes_the_deferral_with_it"]),
+
+    ("T119 Deferred stops being clearable, so leaving the class WRITES 'none'",
+     'CLEARABLE = frozenset(("Risk", "Deferred"))', 'CLEARABLE = frozenset(("Risk",))',
+     ["TestDecisionDeferralGate.test_leaving_the_decision_class_takes_the_deferral_with_it"]),
+
+    ("T119 add stops measuring the justification against the field ceiling",
+     "                         criterion=args.criterion, project=args.project, "
+     "source=args.source,\n"
+     "                         deferred=args.deferred)",
+     "                         criterion=args.criterion, project=args.project, "
+     "source=args.source)",
+     ["TestDecisionDeferralGate.test_the_justification_is_measured_against_the_field_ceiling"]),
+
+    ("T119 edit stops measuring the justification against the field ceiling",
+     "                         criterion=args.criterion, project=args.project,\n"
+     "                         deferred=args.deferred)",
+     "                         criterion=args.criterion, project=args.project)",
+     ["TestDecisionDeferralGate.test_the_justification_is_measured_against_the_field_ceiling"]),
+
+    # --- T119: priority is the file's order, and `bump` is how it moves ------
+
+    ("T119 bump appends at the end instead of the top",
+     "    at = dest.start() if dest else len(without)", "    at = len(without)",
+     ["TestBump.test_bump_moves_the_item_to_the_top_and_list_follows",
+      "TestBump.test_the_other_items_keep_their_relative_order"]),
+
+    ("T119 bump copies the item instead of moving it",
+     "    without = excise(content, block, start)", "    without = content",
+     ["TestBump.test_the_item_is_moved_whole_and_not_duplicated"]),
+
+    ("T119 bumping the top item rewrites the file anyway",
+     "    if first and first.start() == start:", "    if False:",
+     ["TestBump.test_bumping_the_top_item_leaves_the_file_byte_identical"]),
+
+    ("T119 edit accepts a deferral on an item that is not a DECISION",
+     "    if setting and result_class != DEFERRABLE_CLASS:", "    if False:",
+     ["TestDecisionDeferralGate."
+      "test_edit_refuses_a_deferral_on_an_item_that_is_not_a_decision"]),
+
+    ("T119 the typo'd class reaches the deferral gate before it is validated",
+     "    if args.classe and args.classe not in CLASSES:\n"
+     "        fail(f\"--class must be one of {', '.join(CLASSES)}\")\n"
+     "    deferred_flag = deferral_for_edit(args, block)",
+     "    deferred_flag = deferral_for_edit(args, block)",
+     ["TestDecisionDeferralGate.test_a_typo_in_the_class_is_answered_before_the_gate"]),
+
+    ("T119 bump lands above the frontmatter instead of above the first item",
+     "    at = dest.start() if dest else len(without)", "    at = 0",
+     ["TestBump.test_the_whole_file_comes_out_exactly_as_the_move_implies"]),
+
+    ("T119 bump glues the moved item to the one it now precedes",
+     '    moved = block if block.endswith("\\n\\n") or not tail else block + "\\n"',
+     "    moved = block",
+     ["TestBump.test_the_whole_file_comes_out_exactly_as_the_move_implies"]),
+
+    ("T119 bump acts without checking the item is really open",
+     "    content, block, start = find_open_item(memdir, args.id)\n"
+     '    path = os.path.join(memdir, "next-steps.md")',
+     '    path = os.path.join(memdir, "next-steps.md")\n'
+     "    content = read(path) or \"\"\n"
+     '    block, start = next(((t, 0) for k, t in split_blocks(content)\n'
+     '                         if k == "item-open" and item_id(t) == args.id), ("", 0))',
+     ["TestBump.test_an_unknown_id_is_diagnosed_and_nothing_moves"]),
+
+    ("T119 list orders its groups alphabetically, so a bump is invisible",
+     "                            for label, cls, title, project in rows], by_position=True)",
+     "                            for label, cls, title, project in rows])",
+     ["TestBump.test_a_bump_shows_in_list_on_a_tagged_queue_too"]),
+
+    ("T119 bump counts as a reader, so it takes no lock and names no queue",
+     'READERS = frozenset(("list", "report"))',
+     'READERS = frozenset(("list", "report", "bump"))',
+     ["TestTargetQueueAnnounced.test_every_mutating_command_names_the_memdir_on_stderr"]),
+
+    # --- 2nd pair of eyes: the free-text guards, ON THE NEW FLAG --------------
+    # Wiring `deferred=` into a generic checker is not proof that the checker sees
+    # it: each kwarg below was dropped on its own, and the whole suite stayed green.
+
+    ("2ª review add stops measuring the justification for newlines",
+     "    ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,\n"
+     "                       criterion=args.criterion, source=args.source, "
+     "project=args.project,\n"
+     "                       deferred=args.deferred)",
+     "    ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,\n"
+     "                       criterion=args.criterion, source=args.source, "
+     "project=args.project)",
+     ["TestDecisionDeferralGate."
+      "test_the_justification_goes_through_the_free_text_guards_on_add"]),
+
+    ("2ª review add stops refusing a field marker inside the justification",
+     "                              criterion=args.criterion, source=args.source,\n"
+     "                              deferred=args.deferred)",
+     "                              criterion=args.criterion, source=args.source)",
+     ["TestDecisionDeferralGate."
+      "test_the_justification_goes_through_the_free_text_guards_on_add"]),
+
+    ("2ª review edit stops refusing a blank justification",
+     "    if args.deferred is not None:\n        ensure_filled(deferred=args.deferred)",
+     "    pass",
+     ["TestDecisionDeferralGate."
+      "test_the_justification_goes_through_the_free_text_guards_on_edit"]),
+
+    ("2ª review edit stops measuring the justification for newlines and markers",
+     "    ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,\n"
+     "                              criterion=args.criterion, deferred=args.deferred)",
+     "    ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,\n"
+     "                              criterion=args.criterion)",
+     ["TestDecisionDeferralGate."
+      "test_the_justification_goes_through_the_free_text_guards_on_edit"]),
+
+    # --- 2nd pair of eyes: prose absorbed into the field chain ---------------
+
+    ("2ª review a Deferred anywhere in the chain counts, so prose satisfies the gate",
+     '        seg = next((m for i, m in enumerate(chain)\n'
+     '                    if names[i] == "Deferred" and i > after), None)',
+     '        seg = next((m for i, m in enumerate(chain)\n'
+     '                    if names[i] == "Deferred"), None)',
+     ["TestDecisionDeferralGate."
+      "test_prose_that_looks_like_a_deferral_never_satisfies_the_gate"]),
+
+    ("2ª review the stray marker is ignored instead of refused (prose gets deleted)",
+     "    if stray and (args.classe or args.deferred is not None):", "    if False:",
+     ["TestDecisionDeferralGate."
+      "test_prose_that_looks_like_a_deferral_never_satisfies_the_gate"]),
+
+    # the over-refusal direction: a guard that fires on every edit of such an item
+    # makes it uneditable, which is worse than the shape it protects against
+    ("2ª review the stray guard fires even when the edit never touches the deferral",
+     "    if stray and (args.classe or args.deferred is not None):", "    if stray:",
+     ["TestDecisionDeferralGate.test_an_edit_that_never_consults_the_deferral_stays_allowed"]),
+
+    # --- 2nd pair of eyes: an item's TEXT is not its ADDRESS ------------------
+
+    ("2ª review the block is addressed by its TEXT again (a quoted copy wins)",
+     "            return content, text, pos",
+     "            return content, text, content.index(text)",
+     ["TestBlockAddressing.test_done_closes_the_real_item_and_spares_the_quoted_copy",
+      "TestBlockAddressing.test_bump_moves_the_real_item_and_leaves_no_phantom",
+      "TestBlockAddressing.test_edit_rewrites_the_real_item_and_not_the_quotation"]),
+
+    # --- re-check of the FIX: the corruption the fix itself shipped -----------
+
+    ("re-check the clearing branch shadows the item's offset in the FILE",
+     "                f_start, f_end = found[0].span()\n"
+     "                head, tail = new[:f_start], new[f_end:]",
+     "                start, end = found[0].span()\n"
+     "                head, tail = new[:start], new[end:]",
+     ["TestClearingKeepsTheFileIntact.test_clearing_a_risk_rewrites_only_that_field",
+      "TestClearingKeepsTheFileIntact.test_clearing_a_deferral_rewrites_only_that_field"]),
+
+    ("re-check the gate reads the class the loose way `list` displays it",
+     "    result_class = args.classe or chain_class(block)",
+     "    result_class = args.classe or item_class(block)",
+     ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
+
+    ("re-check an ambiguous class in the chain is guessed instead of refused",
+     "    if len(found) != 1:\n        return None",
+     "    if not found:\n        return None",
+     ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
+
+    ("re-check a deferral counts with no Class in the chain to qualify",
+     '    if "Class" in names:\n        after = names.index("Class")',
+     '    if True:\n        after = names.index("Class") if "Class" in names else -1',
+     ["TestDecisionDeferralGate.test_a_chain_with_no_class_carries_no_deferral_to_find"]),
+
+    ("re-check the stray refusal drops its --deferred arm",
+     "    if stray and (args.classe or args.deferred is not None):",
+     "    if stray and args.classe:",
+     ["TestDecisionDeferralGate.test_the_stray_refusal_fires_for_a_bare_deferred_too"]),
+
+    ("2ª review edit splices by search-and-replace again",
+     "    write_atomic(os.path.join(memdir, \"next-steps.md\"),\n"
+     "                 content[:start] + new + content[start + len(block):])",
+     "    write_atomic(os.path.join(memdir, \"next-steps.md\"), "
+     "content.replace(block, new, 1))",
+     ["TestBlockAddressing.test_edit_rewrites_the_real_item_and_not_the_quotation"]),
 ]
 
 
@@ -461,7 +712,9 @@ def main():
                                   "TestRiskDeletion", "TestCeilingScope",
                                   "TestTargetQueueAnnounced", "TestFieldChain",
                                   "TestCloseFieldCeilings", "TestIdAllocationScope",
-                                  "TestDoneLogLineGrammar", "TestCanonicalHead"])
+                                  "TestDoneLogLineGrammar", "TestCanonicalHead",
+                                  "TestDecisionDeferralGate", "TestBump",
+                                  "TestBlockAddressing", "TestClearingKeepsTheFileIntact"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

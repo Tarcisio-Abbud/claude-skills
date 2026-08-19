@@ -43,7 +43,9 @@ duplicating; delete what proved wrong. Convert relative dates to absolute. Link 
 only writer of `next-steps.md` and `done-log.md`. Every change to either file arrives as one
 of its subcommands, run from this session: new items enter via `add` (with **Class**,
 **Effort** and **Criterion**, plus **Risk** and **Project** where they apply — the criterion
-is required, so decide it here rather than leaving "done" as the next closer's self-report);
+is required, so decide it here rather than leaving "done" as the next closer's self-report;
+a DECISION also demands `--deferred`, so ask the decision here and register the item
+AUTONOMOUS wherever the user is still in the room);
 a field of an open item changes via `edit`; resolved ones leave via `done --how "<pointer>"`
 and discarded ones via `cancel --why`, which move them to `done-log.md`. This holds for the
 one-word fix as much as for the new item: rewriting either file through Edit/Write/shell
@@ -94,9 +96,10 @@ Then ONE multiSelect `AskUserQuestion` with the actions, recommended first — t
 the authorization (this is how "commit/push only when the user asks" is satisfied). Execute
 what was checked, following the project's conventions (required trailer lines; on the
 default branch, branch first). Every unchecked action enters the queue as a DECISION item
-via `tk-queue add --class DECISION` — a merge carries its digest reference (forge link +
-review status), any other action carries the branch/paths involved — deferred by choice,
-not by omission.
+via `tk-queue add --class DECISION --deferred "<why it waits for the user>"` — a merge
+carries its digest reference (forge link + review status), any other action carries the
+branch/paths involved — deferred by choice, not by omission, and the script demands that
+choice in writing.
 **Done when:** every pending version-control action was executed or recorded as an explicit
 DECISION — none merely implied — and the user has the summary: what changed, what was
 verified, what was deferred.
@@ -153,8 +156,8 @@ the project via the session's `cwd`; a descriptive line names the project in pro
   project's review flow and fix its findings BEFORE committing. **Concurrent-session
   guard** first (defined in `../kickoff/AFK.md`): `git worktree list` + the `+` marks in
   `git branch -v`; another live session in the repo → leave the tree untouched and report
-  it. Push/merge/PR decisions enter the queue as DECISION via `tk-queue add` — merges with
-  their digest reference ready.
+  it. Push/merge/PR decisions enter the queue as DECISION via `tk-queue add`, which in an
+  unattended session means `--deferred afk` — merges with their digest reference ready.
 - The step-6 report ends with the ready pair for the user's return: `/clear` +
   `/tk:kickoff afk`.
 

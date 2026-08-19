@@ -83,7 +83,8 @@ the user sees nothing was lost before checking (BLOCKED/EXTERNAL show up here; t
 waits for the final report).
 
 Then one multiSelect `AskUserQuestion` with the actionable items (AUTONOMOUS + RECURRING)
-prioritized by impact/urgency, recommendation first with "(Recommended)". DECISION items
+in the queue's own order — that order IS the priority, and `tk-queue bump <id>` is what
+changes it — recommendation first with "(Recommended)". DECISION items
 become their own questions — the options are the choices themselves, not "yes/no". Tool
 limit: 4 questions × 4 options; what doesn't fit becomes a line in the final report, not an
 option. BLOCKED and EXTERNAL are never options.
@@ -122,17 +123,25 @@ verifies the queue at open.
 
 ```
 tk-queue list                                  # open items with IDs (T001…)
-tk-queue add "<action>" --class DECISION --effort "M (~30min)" \
+tk-queue add "<action>" --class AUTONOMOUS --effort "M (~30min)" \
          --criterion "A: <command that proves it> | B: user verdict" \
+         [--deferred "<why the decision could not be asked>"]   # REQUIRED by --class DECISION
          [--risk "..."|none] [--project slug] [--source "..."]
 tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."] [--force]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."] [--force]
-tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--criterion ...] [--project slug] [--force]
+tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--criterion ...] [--deferred ...] [--project slug] [--force]
+tk-queue bump <id>                             # move the item to the top of the global order
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
 tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
 ```
 
 `<id>` is accepted in the form the queue displays (`T006`) as well as bare (`6`).
+
+**Priority is the ORDER of the file, global** — no score, no hidden heuristic. `add` puts a
+new item at the end; `bump <id>` moves one to the top; the package modes take the filtered
+top. Re-prioritising means bumping, in that order (the last bump wins the top). The `##`
+headings a real queue carries are cosmetic: `list` groups by the **Project:** field, so a
+bumped item landing under a foreign heading changes nothing a reader acts on.
 
 **Which IDs are taken** — the script counts an ID as allocated only where a WRITER puts
 one: at an item's marker in either file (`- [ ] **T007** — …`) and in a done-log entry's
@@ -181,6 +190,15 @@ Item fields (every recorded field is the writer's guess — kickoff always re-ve
 re-triages; tracker tickets are referenced, not mirrored):
 
 - **Class** — one of the five triage classes above.
+- **Deferred** — the justification `--deferred` demands whenever an item BECOMES a DECISION,
+  on `add` and on `edit` alike (`add AUTONOMOUS` + `edit --class DECISION` would otherwise
+  reach in two commands what one refuses). A DECISION parks the queue until the user is
+  back, so ask the decision NOW and write it into the item's text and `--criterion` — the
+  item is then AUTONOMOUS and an afk session can run it. That is the default path; deferring
+  is the exception, and an unattended session that cannot ask passes `--deferred afk`. The
+  field is dropped by LEAVING the class (`edit <id> --class AUTONOMOUS` takes it along and
+  says so), never by `--risk`-style clearing: a DECISION with no deferral on the record is
+  the one state the gate exists to forbid.
 - **Effort** — S/M/L plus a rough wall-clock estimate; the package modes use it to size a
   session.
 - **Risk** — present ONLY when running the item unsupervised can do damage (production
@@ -214,7 +232,7 @@ An item is a pending action, not an essay — the script enforces **two** size c
 durable context goes to a memory file or wiki page, linked from the item with `[[slug]]`:
 
 - **the block ceiling**, on the whole item. `add` always. `edit` whenever a **prose** flag
-  is used — `--text`, `--criterion`, `--risk` — and the edit grows the item.
+  is used — `--text`, `--criterion`, `--risk`, `--deferred` — and the edit grows the item.
 - **the field ceiling**, on each field VALUE, on `add`, `edit` and the closes
   (`--how`/`--why`/`--summary`/`--note`) alike. It comes in two sizes: a small one for the
   fields that are short by construction (`--class` an enum, `--effort` "M (~30min)",

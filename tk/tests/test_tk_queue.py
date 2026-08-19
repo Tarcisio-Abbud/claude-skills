@@ -919,12 +919,14 @@ class TestCeilingScope(QueueTest):
         appended, once present).
 
         Note the `--class` subtest is vacuous against the mutation that puts the
-        block ceiling back on field edits: DECISION is shorter than AUTONOMOUS,
+        block ceiling back on field edits: BLOCKED is shorter than AUTONOMOUS,
         so that edit SHRINKS the item and never reaches the ceiling either way.
         It is kept as coverage of the flag, not as proof — see mutations.py's
-        KNOWN BLIND SPOT."""
+        KNOWN BLIND SPOT. (Every class is shorter than AUTONOMOUS, so no value
+        fixes that; DECISION specifically would also need --deferred, which is a
+        different guard's business — TestDecisionDeferralGate.)"""
         for flag, val, expected in (("--project", "ambiente", "**Project:** ambiente."),
-                                    ("--class", "DECISION", "**Class:** DECISION."),
+                                    ("--class", "BLOCKED", "**Class:** BLOCKED."),
                                     ("--effort", "L (~2h)", "**Effort:** L (~2h).")):
             with self.subTest(flag=flag):
                 self.seed(self.oversized())
@@ -1102,6 +1104,7 @@ class TestTargetQueueAnnounced(QueueTest):
                      ("edit", "T001", "--effort", "L"),
                      ("done", "T001", "--how", "PR #1"),
                      ("cancel", "T001", "--why", "n/a"),
+                     ("bump", "T001"),
                      ("migrate",)):
             with self.subTest(cmd=argv[0]):
                 self.seed(item(1, "um"))
@@ -1280,6 +1283,402 @@ class TestCloseFieldCeilings(QueueTest):
         r = self.run_tk("done", "T002", "--how", "PR #2",
                         "--note", "n" * (tk.FIELD_CEILING + 50), "--force")
         self.assertEqual(r.returncode, 0, r.stderr)
+
+
+# --- T119: a DECISION is either asked at birth or deferred on the record ---
+
+def decision_item(iid, text, deferred="afk", **kw):
+    """A DECISION item as `add` writes one — with its Deferred field."""
+    base = item(iid, text, klass="DECISION", **kw)
+    return base.replace("**Class:** DECISION.",
+                        f"**Class:** DECISION. **Deferred:** {deferred}.", 1)
+
+
+class TestDecisionDeferralGate(QueueTest):
+    """A DECISION item parks the queue until the user is back, so parking it has
+    to be a deliberate act. The default path is asking the decision at birth and
+    writing it into the item — the item is then AUTONOMOUS. Deferring is the
+    exception, and it must carry its justification into the file."""
+
+    ADD = ("add", "decidir algo", "--effort", "S", "--criterion", "B: veredito")
+
+    def test_add_decision_without_a_deferral_is_refused_and_names_both_paths(self):
+        self.seed()
+        r = self.run_tk(*self.ADD, "--class", "DECISION")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("--deferred", r.stderr)
+        # the two paths, not just the refusal: embed the decision, or defer it
+        self.assertIn("--criterion", r.stderr)
+        self.assertIn("AUTONOMOUS", r.stderr)
+        self.assertNotIn("- [ ]", self.body())          # nothing was written
+
+    def test_the_justification_may_not_be_blank(self):
+        for blank in ("", "   "):
+            with self.subTest(blank=repr(blank)):
+                self.seed()
+                r = self.run_tk(*self.ADD, "--class", "DECISION", "--deferred", blank)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("cannot be blank", r.stderr)
+                self.assertNotIn("- [ ]", self.body())
+
+    def test_the_reserved_clear_word_is_no_justification_either(self):
+        """`none` DELETES a field elsewhere in this script, so accepting it here
+        would write a DECISION item carrying no deferral at all — the gate open
+        by way of the one word that means "no field"."""
+        self.seed()
+        r = self.run_tk(*self.ADD, "--class", "DECISION", "--deferred", "none")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("--deferred", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_a_deferral_reaches_the_item(self):
+        self.seed()
+        r = self.run_tk(*self.ADD, "--class", "DECISION", "--deferred", "afk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Class:** DECISION. **Deferred:** afk.", self.body())
+
+    def test_the_other_classes_are_untouched_by_the_gate(self):
+        """The over-trigger direction: a gate that fires on every add stops the
+        queue rather than the silent deferral."""
+        for klass in ("AUTONOMOUS", "BLOCKED", "EXTERNAL", "RECURRING"):
+            with self.subTest(klass=klass):
+                self.seed()
+                r = self.run_tk(*self.ADD, "--class", klass)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertNotIn("**Deferred:**", self.body())
+
+    def test_a_deferral_without_the_decision_class_is_refused(self):
+        """A Deferred field on an AUTONOMOUS item is a field no reader honours —
+        and `pack` reads it to keep a deferred decision out of the package."""
+        self.seed()
+        r = self.run_tk(*self.ADD, "--class", "AUTONOMOUS", "--deferred", "afk")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_edit_to_decision_passes_the_same_gate(self):
+        """`add AUTONOMOUS` + `edit --class DECISION` is the two-command bypass
+        the gate exists to close (#70)."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("edit", "T001", "--class", "DECISION")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("--deferred", r.stderr)
+        self.assertIn("**Class:** AUTONOMOUS.", self.body())     # unchanged
+        r = self.run_tk("edit", "T001", "--class", "DECISION", "--deferred", "afk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Class:** DECISION.", self.body())
+        self.assertIn("**Deferred:** afk.", self.body())
+
+    def test_a_deferral_already_on_the_item_satisfies_the_gate(self):
+        self.seed(decision_item(1, "decidir"))
+        r = self.run_tk("edit", "T001", "--class", "DECISION", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Effort:** L.", self.body())
+
+    def test_a_legacy_decision_item_stays_editable(self):
+        """The over-trigger direction on `edit`: the gate fires on the CHANGE to
+        DECISION, never on an unrelated edit of an item that already is one —
+        every DECISION item in a real queue predates this field."""
+        self.seed(item(1, "decidir", klass="DECISION"))
+        r = self.run_tk("edit", "T001", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Effort:** L.", self.body())
+
+    def test_the_deferral_cannot_be_dropped_while_the_item_stays_a_decision(self):
+        """The third bypass: clear the field and the item is a DECISION with no
+        deferral on the record, reached in one command."""
+        self.seed(decision_item(1, "decidir"))
+        r = self.run_tk("edit", "T001", "--deferred", "none")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("**Deferred:** afk.", self.body())
+
+    def test_leaving_the_decision_class_takes_the_deferral_with_it(self):
+        """A deferral is an attribute of the DECISION: left behind on an item
+        that is no longer one, it is the stale-Risk failure again — a field that
+        was true when written and is read by `pack` long after."""
+        self.seed(decision_item(1, "decidir"))
+        r = self.run_tk("edit", "T001", "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("**Deferred:**", self.body())
+        self.assertIn("**Class:** AUTONOMOUS.", self.body())
+        self.assertIn("Deferred", r.stderr)     # the removal is announced, not silent
+
+    def test_edit_refuses_a_deferral_on_an_item_that_is_not_a_decision(self):
+        """The same refusal as on `add`, on the side that could otherwise reach in
+        two commands what one command refuses."""
+        self.seed(item(1, "um"))
+        for argv in (("edit", "T001", "--deferred", "afk"),
+                     ("edit", "T001", "--class", "AUTONOMOUS", "--deferred", "afk")):
+            with self.subTest(argv=" ".join(argv)):
+                r = self.run_tk(*argv)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("--deferred", r.stderr)
+                self.assertNotIn("**Deferred:**", self.body())
+
+    def test_prose_that_looks_like_a_deferral_never_satisfies_the_gate(self):
+        """`field_chain` absorbs any run of `**Field:** value.` segments that ends
+        the line, so an item's own prose can OPEN that run and be read as fields.
+        Trusting it let `edit --class DECISION` through with no justification at
+        all, and the later clear DELETED the prose it had misread."""
+        legacy = ("- [ ] **T001** — item, ver a **Deferred:** nota de contexto. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--class", "DECISION")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("**Class:** AUTONOMOUS.", self.body())          # class unchanged
+        self.assertIn("nota de contexto", self.body())                # prose intact
+        # and the same marker cannot be deleted by clearing it either
+        r = self.run_tk("edit", "T001", "--class", "BLOCKED", "--deferred", "none")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("nota de contexto", self.body())
+
+    def test_an_edit_that_never_consults_the_deferral_stays_allowed(self):
+        """The over-refusal direction: refusing that item outright would make it
+        uneditable, which is worse than the shape it protects against."""
+        legacy = ("- [ ] **T001** — item, ver a **Deferred:** nota de contexto. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Effort:** L.", self.body())
+        self.assertIn("nota de contexto", self.body())
+
+    def test_the_justification_goes_through_the_free_text_guards_on_add(self):
+        """--deferred is prose, so it answers to the same guards as the other
+        free-text flags. Wired but unproven is not wired: each of these was a
+        surviving mutation until it had a case of its own."""
+        for value, expected in (("linha um\nlinha dois", "single-line"),
+                                ("motivo **Project:** falso", "field-marker shape")):
+            with self.subTest(value=value):
+                self.seed()
+                r = self.run_tk(*self.ADD, "--class", "DECISION", "--deferred", value)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(expected, r.stderr)
+                self.assertNotIn("- [ ]", self.body())
+
+    def test_the_justification_goes_through_the_free_text_guards_on_edit(self):
+        for value, expected in (("", "cannot be blank"), ("   ", "cannot be blank"),
+                                ("linha um\nlinha dois", "single-line"),
+                                ("motivo **Project:** falso", "field-marker shape")):
+            with self.subTest(value=repr(value)):
+                self.seed(item(1, "um"))
+                r = self.run_tk("edit", "T001", "--class", "DECISION", "--deferred", value)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(expected, r.stderr)
+                self.assertIn("**Class:** AUTONOMOUS.", self.body())
+
+    def test_a_class_named_only_in_prose_does_not_open_the_gate(self):
+        """The gate reads the class from the FIELD CHAIN, not from the whole block
+        the way `list` displays it. An item whose prose names DECISION before its
+        real `**Class:** AUTONOMOUS.` took a deferral with no --class at all."""
+        legacy = ("- [ ] **T001** — nota: itens **Class:** DECISION sao raros aqui. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--deferred", "tentando sem --class")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("**Deferred:**", self.body())
+
+    def test_a_chain_with_no_class_carries_no_deferral_to_find(self):
+        """A deferral qualifies the class it follows, so a chain with no class at
+        all has no deferral to offer the gate — whatever the marker looks like."""
+        self.seed("- [ ] **T001** — item legado. **Deferred:** afk. **Effort:** S. "
+                  "**Criterion:** A: x. **Source:** 2026-08-13\n")
+        r = self.run_tk("edit", "T001", "--class", "DECISION")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("**Class:** DECISION.", self.body())
+
+    def test_the_stray_refusal_fires_for_a_bare_deferred_too(self):
+        """Both arms: the outcome depends on the deferral whenever --class OR
+        --deferred is passed, and the refusal has to say which problem it is."""
+        legacy = ("- [ ] **T001** — item, ver a **Deferred:** nota de contexto. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--deferred", "afk")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("away from the position", r.stderr)
+        self.assertIn("nota de contexto", self.body())
+
+    def test_a_typo_in_the_class_is_answered_before_the_gate(self):
+        """A gate reasoning about the RESULTING class answers a typo'd class with
+        "T001 is DECISON — pass --class DECISION", which sends the caller after
+        the wrong mistake. The class is validated first, as `add` does."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("edit", "T001", "--class", "DECISON", "--deferred", "afk")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("must be one of", r.stderr)
+        self.assertIn("**Class:** AUTONOMOUS.", self.body())
+
+    def test_the_justification_is_measured_against_the_field_ceiling(self):
+        tk = load_tk()
+        big = "x" * (tk.FIELD_CEILING + 1)
+        self.seed(item(1, "um"))
+        r = self.run_tk(*self.ADD, "--class", "DECISION", "--deferred", big)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("field ceiling", r.stderr)
+        r = self.run_tk("edit", "T001", "--class", "DECISION", "--deferred", big)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("field ceiling", r.stderr)
+        self.assertIn("**Class:** AUTONOMOUS.", self.body())
+
+
+# --- T119: priority is the file's global order, and `bump` is how it moves ---
+
+class TestBump(QueueTest):
+    """Priority is the order of the file — no hidden heuristic — and `bump` is
+    the one way to change it: the afk package takes the filtered top."""
+
+    def ids(self):
+        return [ln.split()[0] for ln in self.run_tk("list").stdout.splitlines()
+                if ln.startswith("T")]
+
+    def test_bump_moves_the_item_to_the_top_and_list_follows(self):
+        self.seed(item(1, "um"), item(2, "dois"), item(3, "tres"))
+        r = self.run_tk("bump", "T003")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.ids(), ["T003", "T001", "T002"])
+        # and the file itself, which is the order `pack` reads
+        self.assertLess(self.body().index("**T003**"), self.body().index("**T001**"))
+
+    def test_the_other_items_keep_their_relative_order(self):
+        self.seed(item(1, "um"), item(2, "dois"), item(3, "tres"), item(4, "quatro"))
+        self.assertEqual(self.run_tk("bump", "T003").returncode, 0)
+        self.assertEqual(self.ids(), ["T003", "T001", "T002", "T004"])
+
+    def test_bumping_the_top_item_leaves_the_file_byte_identical(self):
+        self.seed(item(1, "um"), item(2, "dois"))
+        before = self.body()
+        r = self.run_tk("bump", "T001")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), before)
+        self.assertIn("already at the top", r.stdout)
+
+    def test_the_whole_file_comes_out_exactly_as_the_move_implies(self):
+        """Items sit under `##` project headings in a real queue, with prose
+        paragraphs between them, and blank lines separating the items. `bump`
+        moves ONE block: it lands above the first ITEM (not above the file's
+        frontmatter), it keeps the blank line that separates it from the item it
+        now precedes, and every heading, paragraph and blank line elsewhere is
+        left where it was. Asserted as the whole file, because each of those is a
+        way the move can go subtly wrong while every "is it still there?" check
+        passes."""
+        prose = "Um parágrafo de contexto que ninguém pediu para mexer.\n"
+        self.write("next-steps.md",
+                   HEADER + "## projeto a\n\n" + item(1, "um")
+                   + "\n" + prose + "\n## projeto b\n\n" + item(2, "dois"))
+        self.assertEqual(self.run_tk("bump", "T002").returncode, 0)
+        self.assertEqual(
+            self.body(),
+            HEADER + "## projeto a\n\n" + item(2, "dois") + "\n" + item(1, "um")
+            + "\n" + prose + "\n## projeto b\n")
+
+    def test_the_item_is_moved_whole_and_not_duplicated(self):
+        self.seed(item(1, "um"), item(2, "dois", project="tk"))
+        self.assertEqual(self.run_tk("bump", "T002").returncode, 0)
+        body = self.body()
+        self.assertEqual(body.count("**T002**"), 1)
+        self.assertIn("**Project:** tk.", body)
+        self.assertEqual(len([l for l in body.splitlines() if l.startswith("- [ ]")]), 2)
+
+    def test_a_bump_shows_in_list_on_a_tagged_queue_too(self):
+        """`list` groups by the **Project:** tag, and a queue that mixes projects
+        is the shape those tags exist for. Ordering the groups alphabetically
+        made `bump` INVISIBLE there: the item reached the top of the file and
+        still rendered under a later heading, which reads as a bump that failed.
+        The groups follow the file, so the bumped item is the first line."""
+        self.seed(item(1, "um", project="a"), item(2, "dois", project="a"),
+                  item(3, "tres", project="b"))
+        self.assertEqual(self.run_tk("bump", "T003").returncode, 0)
+        out = self.run_tk("list").stdout
+        self.assertEqual(self.ids(), ["T003", "T001", "T002"])
+        self.assertLess(out.index("## b"), out.index("## a"))
+
+    def test_an_unknown_id_is_diagnosed_and_nothing_moves(self):
+        self.seed(item(1, "um"), item(2, "dois"))
+        before = self.body()
+        r = self.run_tk("bump", "T009")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("never allocated", r.stderr)
+        self.assertEqual(self.body(), before)
+
+
+# --- 2nd pair of eyes: an item's TEXT is not its ADDRESS -------------------
+
+class TestClearingKeepsTheFileIntact(QueueTest):
+    """Clearing a field is the one edit that computes a position INSIDE the block,
+    and the item is written back at its position in the FILE. Binding both to the
+    same name spliced a block offset into a file offset: the frontmatter came out
+    truncated mid-word and the item duplicated, on `edit --risk none`.
+
+    The whole suite stayed green through it, because every clearing test asked
+    `assertNotIn("**Risk:**", body)` — a question a corrupted file answers the
+    same way. These assert the FILE."""
+
+    def test_clearing_a_risk_rewrites_only_that_field(self):
+        risky = item(19, "re-triar", risk="dano X")
+        other = item(20, "outro item")
+        self.seed(risky, other)
+        r = self.run_tk("edit", "T019", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), HEADER + item(19, "re-triar") + other)
+
+    def test_clearing_a_deferral_rewrites_only_that_field(self):
+        deferred = decision_item(1, "decidir")
+        other = item(2, "outro item")
+        self.seed(deferred, other)
+        r = self.run_tk("edit", "T001", "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), HEADER + item(1, "decidir") + other)
+
+
+# --- 2nd pair of eyes: an item's TEXT is not its ADDRESS -------------------
+
+class TestBlockAddressing(QueueTest):
+    """A queue about the queue quotes item lines verbatim in its notes, so an
+    item's block text really does occur twice in the same file. Locating it with
+    `content.index(block)` found the QUOTED copy first: `done` deleted that copy
+    and left the real item open while reporting it closed, `bump` spliced a
+    phantom duplicate at the top, and `edit` rewrote the quotation. Measured on
+    this script — the `done` half predates `bump` and was reachable all along."""
+
+    def seed_quoted(self):
+        """T001 quotes T002's line verbatim in a continuation note (indented, so
+        it is part of T001's block), and the real T002 follows."""
+        quoted = item(2, "corrigir o bug")
+        self.seed("- [ ] **T001** — documentar o formato do item, exemplo abaixo.\n  "
+                  + quoted + "\n", quoted)
+        return quoted
+
+    def test_done_closes_the_real_item_and_spares_the_quoted_copy(self):
+        quoted = self.seed_quoted()
+        r = self.run_tk("done", "T002", "--how", "PR #1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertEqual(body.count("**T002**"), 1)          # only the quotation left
+        self.assertIn("  " + quoted, body)                   # and it is intact
+        self.assertIn("T002", self.body("done-log.md"))
+
+    def test_bump_moves_the_real_item_and_leaves_no_phantom(self):
+        quoted = self.seed_quoted()
+        r = self.run_tk("bump", "T002")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertEqual(body.count("**T002**"), 2)          # the real one + the quotation
+        self.assertIn("  " + quoted, body)
+        self.assertLess(body.index("**T002**"), body.index("**T001**"))
+        self.assertEqual(len([l for l in body.splitlines() if l.startswith("- [ ]")]), 2)
+
+    def test_edit_rewrites_the_real_item_and_not_the_quotation(self):
+        self.seed_quoted()
+        r = self.run_tk("edit", "T002", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertEqual(body.count("**Effort:** L."), 1)
+        for line in body.splitlines():
+            if line.startswith("  - [ ]"):                   # the quotation
+                self.assertIn("**Effort:** S.", line)
 
 
 if __name__ == "__main__":
