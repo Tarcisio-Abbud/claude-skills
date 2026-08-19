@@ -1031,23 +1031,27 @@ MUTATIONS = [
      '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):',
      ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix"]),
 
-    ("T121 the refusal names the chain's last field, not the one that BREAKS it",
+    ("T121 the refusal names where the chain STARTS instead of where it stops",
      "    before = [m for m in FIELD_SEGMENT_RE.finditer(line) if m.start() < chain[0].start()]\n"
      "    return canonical_field(before[-1].group(1)) if before else None",
      "    return canonical_field(chain[-1].group(1))",
-     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix"]),
+     ["TestClaim.test_the_refusal_names_where_the_chain_STOPS_not_where_it_starts"]),
 
-    # naming a per-field edit that `edit` itself refuses is the dead end again
-    ("T121 a per-field edit is prescribed for a culprit outside the chain edit reads",
-     "    if not (flag and reachable):", "    if not flag:",
-     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix"]),
-
-    ("T121 the period remedy stops warning that it deletes prose after the field",
-     '                   "which writes the period back. Read the item first: that rewrite also "\n'
-     '                   "DELETES any prose sitting after the field on the same line (it does on "\n'
-     '                   "`main` too — the field\'s match runs to end of line).")',
-     '                   "which writes the period back.")',
-     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix"]),
+    # the message went back to DIAGNOSING the break and prescribing a per-field
+    # repair — wrong for a gap of prose, for period-exempt Source, and refused
+    # outright on a duplicated field, a non-DECISION deferral or an Env with no site
+    ("T121 the broken-chain refusal guesses the cause and prescribes a per-field edit",
+     '    return head + (f"The unbroken run of fields ending that line stops at "\n'
+     '                   f"**{chain_breaker(candidate)}:** and never reaches **Class:**, so a "\n'
+     '                   "claim cannot be positioned after it. The usual causes are a field "\n'
+     '                   "value that does not end in a PERIOD — the period is what tells a field "\n'
+     '                   "from prose — and prose sitting between two fields. Which one it is, "\n'
+     '                   "this message does not guess: close the item with `cancel` and re-add it "\n'
+     '                   "clean. No per-field `edit` repairs this reliably; several are refused "\n'
+     '                   "on the very field at fault.")',
+     '    return head + (f"**{chain_breaker(candidate)}:** does not end in a PERIOD. Rewrite "\n'
+     '                   f"it: `tk-queue edit {label} --effort \\"<value>\\"`.")',
+     ["TestClaim.test_a_broken_chain_is_told_WHERE_it_stops_and_never_guesses_why"]),
 
     ("T121 two claims in the chain are guessed (the first wins) instead of refused",
      "    if len(segs) > 1:", "    if False:",

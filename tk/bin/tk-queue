@@ -811,25 +811,20 @@ def validate_owner(name):
              "one nobody holds. Hand an item back with `tk-queue release <id>`.")
 
 
-# the `edit` flag that rewrites each field, so a refusal can name the command that
-# repairs the item rather than the defect alone
-EDIT_FLAG = {"Class": "class", "Effort": "effort", "Risk": "risk",
-             "Criterion": "criterion", "Project": "project", "Deferred": "deferred",
-             "Env": "env"}
-
-
 def claim_unwritable_message(iid, block, candidate):
     """Why the item cannot hold a claim the reader would find, and the remedy that
     actually works for its shape.
 
-    Three shapes, three remedies, and printing the wrong one is a dead end. For an item
+    Three shapes, and printing the wrong remedy is a dead end. For an item
     whose fields sit on a CONTINUATION LINE, `edit --class` is itself refused (by
     the marker-outside-the-chain guard), so a message naming it sends the caller
     straight to a second refusal — measured on the real root queue, where 31 of 155
     open items carry that shape. That shape already blocked every per-field `edit`
     before `claim` existed: it is not a limitation this command introduced, and
-    folding the fields onto the first line lifts both at once — for every one of
-    those 31, measured.
+    folding the fields onto the first line lifts both at once — for 28 of those 31,
+    measured. The other three keep a marker and its value on different lines, so the
+    fold leaves the field empty; they fall through to the third shape, whose answer
+    is `cancel` + re-add, and the message says so rather than promising the fold.
 
     One shape it does NOT lift, and the message says so rather than sending the
     caller into it: an item whose own TEXT carries a `**Field:**` shape. `edit
@@ -837,6 +832,16 @@ def claim_unwritable_message(iid, block, candidate):
     included, so on that item it duplicates the prose instead of folding the chain
     (the pre-existing defect this queue already carries as an open item). There the
     answer is `cancel` + re-add.
+
+    The third shape NAMES where the chain stops and refuses to guess WHY. Three
+    rewrites tried to diagnose the cause and prescribe a per-field repair, and each
+    was wrong for some shape: it read "does not end in a PERIOD" onto a break that
+    was a gap of prose, and onto **Source:**, which is period-exempt by design; and
+    the `edit --<field>` it prescribed is itself refused when the field is duplicated
+    in the chain, when it is a deferral on a non-DECISION item, or when it is an Env
+    and the machine has no site file — besides repairing only ONE broken field per
+    run. The space of malformed chains is larger than any branch table for it, so the
+    message states the fact it can prove and gives the remedy that always works.
     """
     label = f"T{iid:03d}"
     head = (f"{label} cannot hold a claim the reader would find: a claim is the chain "
@@ -857,28 +862,17 @@ def claim_unwritable_message(iid, block, candidate):
             f"line: `tk-queue edit {label} --text \"<the item's whole text>\"` — read the "
             "item first, because --text replaces everything between the head and the first "
             "field, continuation prose included. If the item's own text carries a "
-            "`**Field:**` shape, --text duplicates it instead of folding: close that one "
-            "with `cancel` and re-add it clean.")
-    culprit = chain_breaker(candidate)
-    flag = EDIT_FLAG.get(culprit)
-    # `edit --<field>` refuses a field that is not in the block's OWN chain (the
-    # marker-outside-the-chain guard), so naming it there is another dead end — and
-    # the culprit is outside that chain exactly when a later field took the period
-    # rule's free pass from it. Measured: on `**Class:** AUTONOMOUS, **Effort:** M.`
-    # the culprit is Class and `edit --class` is refused
-    reachable = any(canonical_field(m.group(1)) == culprit for m in field_chain(block))
-    if not (flag and reachable):
-        return head + (f"**{culprit}:** does not end in a PERIOD, and the period is what "
-                       "tells a field from prose — so the chain stops there and never "
-                       "reaches **Class:**. No per-field `edit` reaches that field either "
-                       "(it sits outside the chain `edit` reads), so close this one with "
-                       "`cancel` and re-add it clean.")
-    return head + (f"**{culprit}:** does not end in a PERIOD, and the period is what tells "
-                   "a field from prose — so the chain stops there and never reaches "
-                   f"**Class:**. Rewrite it: `tk-queue edit {label} --{flag} \"<value>\"`, "
-                   "which writes the period back. Read the item first: that rewrite also "
-                   "DELETES any prose sitting after the field on the same line (it does on "
-                   "`main` too — the field's match runs to end of line).")
+            "`**Field:**` shape, --text duplicates it instead of folding. If the fold "
+            "does not lift this refusal — three real items keep a marker and its value on "
+            "different lines — close the item with `cancel` and re-add it clean.")
+    return head + (f"The unbroken run of fields ending that line stops at "
+                   f"**{chain_breaker(candidate)}:** and never reaches **Class:**, so a "
+                   "claim cannot be positioned after it. The usual causes are a field "
+                   "value that does not end in a PERIOD — the period is what tells a field "
+                   "from prose — and prose sitting between two fields. Which one it is, "
+                   "this message does not guess: close the item with `cancel` and re-add it "
+                   "clean. No per-field `edit` repairs this reliably; several are refused "
+                   "on the very field at fault.")
 
 
 def claim_segment(iid, block):

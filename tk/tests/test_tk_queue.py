@@ -2402,33 +2402,49 @@ class TestClaim(QueueTest):
         self.assertIn("claimed by alpha", self.run_tk("list").stdout)
         self.assertEqual(self.run_tk("release", "T001").returncode, 0)
 
-    def test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix(self):
-        """Two shapes, and the difference is which field lost the period. The message
-        has to name the one that BREAKS the chain (not simply the last one), and then
-        only prescribe a per-field `edit` when `edit` can actually reach it: a culprit
-        that a later field took the free pass from sits OUTSIDE the chain `edit` reads,
-        and naming it there is another dead end — measured on
-        `**Class:** AUTONOMOUS, **Effort:** M.`, where `edit --class` is refused."""
-        # culprit reachable: the chain's own last field
+    def test_a_broken_chain_is_told_WHERE_it_stops_and_never_guesses_why(self):
+        """The message names what it can prove — where the run of fields stops — and
+        prescribes the one remedy that always works. It does NOT diagnose the cause or
+        prescribe a per-field `edit`: three rewrites tried, and each was wrong for some
+        shape. "Does not end in a PERIOD" was read onto a break that is a GAP of prose,
+        and onto **Source:**, which is period-exempt by design; and the `edit --<field>`
+        prescribed is itself refused when the field is duplicated in the chain, is a
+        deferral on a non-DECISION item, or is an Env on a machine with no site file —
+        besides repairing one broken field per run out of however many there are.
+
+        The three shapes below break for three different reasons and every assertion
+        here is true of all of them, which is the point."""
+        cases = {
+            "value with no period": "algo **Class:** AUTONOMOUS. **Esforço:** L,",
+            "an earlier field broken": "algo **Class:** AUTONOMOUS, **Effort:** M.",
+            "a gap of prose": "algo **Class:** A. *nota* **Effort:** M.",
+        }
+        for label, line in cases.items():
+            with self.subTest(shape=label):
+                self.seed(f"- [ ] **T001** — {line}\n")
+                before = self.body()
+                r = self.run_tk("claim", "T001", "--as", "alpha")
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertIn("stops at", r.stderr)              # WHERE, provably
+                self.assertIn("cancel", r.stderr)                # the remedy that works
+                self.assertNotIn("OUTSIDE the first line", r.stderr)   # they are ON it
+                self.assertNotIn("--text", r.stderr)
+                # no per-field edit is prescribed — each of these is refused for a
+                # different reason on the very field at fault
+                for flag in ("--class \"", "--effort \"", "--deferred \"", "--env \""):
+                    self.assertNotIn(flag, r.stderr)
+                self.assertEqual(self.body(), before)
+
+    def test_the_refusal_names_where_the_chain_STOPS_not_where_it_starts(self):
+        """The field it names has to be the one the run does not reach past — naming
+        the run's own last segment names the claim itself, which tells the reader
+        nothing about their item."""
         self.seed("- [ ] **T001** — algo **Class:** AUTONOMOUS. **Esforço:** L,\n")
         r = self.run_tk("claim", "T001", "--as", "alpha")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("**Effort:**", r.stderr)
-        self.assertIn("--effort", r.stderr)
-        self.assertIn("DELETES", r.stderr)      # the rewrite eats prose after the field
-        # culprit NOT reachable: a later field holds the free pass
-        self.seed("- [ ] **T001** — algo **Class:** AUTONOMOUS, **Effort:** M.\n")
-        before = self.body()
-        r = self.run_tk("claim", "T001", "--as", "alpha")
-        self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("**Class:**", r.stderr)          # the field that breaks it
-        self.assertNotIn("OUTSIDE the first line", r.stderr)   # its fields are ON it
-        self.assertNotIn("--text", r.stderr)
-        self.assertNotIn("--class \"", r.stderr)       # the edit that would be refused
-        self.assertIn("cancel", r.stderr)              # the answer that is terminal
-        self.assertEqual(self.body(), before)
-        # and that is not defeatism: the prescribed `edit --class` really is refused
-        self.assertEqual(self.run_tk("edit", "T001", "--class", "AUTONOMOUS").returncode, 1)
+        self.assertIn("stops at **Effort:**", r.stderr)
+        self.assertNotIn("stops at **Claimed:**", r.stderr)
 
     def test_a_stray_marker_is_answered_BEFORE_the_missing_host(self):
         """Both are refusals; only the stray one is TERMINAL. Measured with the order
