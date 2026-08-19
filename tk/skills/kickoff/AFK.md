@@ -9,7 +9,14 @@ run unattended. `afk` fires it with zero interaction: the user typed the command
 Eligible: items triaged **AUTONOMOUS** that carry **no Risk line** — a Risk the triage
 finds OBSOLETE (it names a branch since merged, a migration since run) is cleared on the
 spot with `tk-queue edit <id> --risk none`, which is what keeps a stale line from
-excluding the item forever. Take them in the queue's own order — priority IS the order of
+excluding the item forever — and whose **Env** is absent or names THIS machine. Env says
+which machine can execute the item (absent = the machine that owns the queue); this
+machine's name is the `identity` line of the site file `~/.claude/tk/env`. An item bound
+to another environment is **not dispatchable here** — it goes in the left-out list with
+"runs on: X", never into the package, because nothing in this session can run it. The
+same re-triage applies as for Risk: an Env that named a machine the item needed before it
+was sliced is cleared with `tk-queue edit <id> --env none`. Take them in the queue's own
+order — priority IS the order of
 the file, and `tk-queue bump <id>` is what moves an item to the top — then add items while
 the package still fits ONE session: the parent only orchestrates and verifies, yet each
 item still costs context to dispatch, monitor and check. Guidance: stop around 3–6 items

@@ -172,9 +172,34 @@ def parse(text, path):
 def load(path=None):
     """The parsed site file, or None when there is none — the two cases the
     caller answers differently (one asks the user to create it; the other names
-    the defect). Raises SiteError for a file that exists and is unusable."""
+    the defect). Raises SiteError for a file that exists and is unusable.
+
+    The reading itself is guarded, and not only the parsing: a defect does not
+    have to be in the file's TEXT to exist. Measured on this module — a site
+    file that was a DIRECTORY, and one carrying a single non-UTF-8 byte, each
+    came back as a Python traceback, which names a line of THIS file while the
+    line that has to change is in the user's. Both are ordinary ways to mistype
+    a path or save from the wrong editor, and the module's whole contract is
+    that a defect comes back as a diagnosis.
+
+    `utf-8-sig` for the same reason: an editor that writes a BOM glues it onto
+    the first key, so `identity` read as ABSENT while sitting in plain view on
+    line 1 — the diagnosis was honest about what it saw and useless to the
+    reader, who has no reason to suspect an invisible character.
+    """
     path = path or site_path()
     if not os.path.exists(path):
         return None
-    with open(path, encoding="utf-8") as f:
-        return parse(f.read(), path)
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            text = f.read()
+    except OSError as e:
+        raise SiteError(f"{path} cannot be read: {e.strerror}. It has to be a plain "
+                        "text file — check that the path is not a directory and that "
+                        "it is readable.")
+    except UnicodeDecodeError as e:
+        raise SiteError(f"{path} is not valid UTF-8 (byte {e.object[e.start]:#04x} at "
+                        f"position {e.start}). Save it as UTF-8 — a machine name is a "
+                        "plain slug, so the offending byte is almost certainly in a "
+                        "comment.")
+    return parse(text, path)

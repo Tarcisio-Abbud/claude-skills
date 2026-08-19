@@ -1731,12 +1731,14 @@ class TestEnvField(QueueTest):
         self.seed()
 
     def test_add_writes_the_field_where_the_readers_look_for_it(self):
+        """The composed order is the format four sibling readers parse, so it is
+        asserted with the neighbouring gate field PRESENT — with `--risk`
+        omitted, Risk and Env could swap places and every assertion still held."""
         self.site(SITE)
-        r = self.run_tk(*self.ADD, "--env", "bravo")
+        r = self.run_tk(*self.ADD, "--risk", "apaga dado", "--env", "bravo")
         self.assertEqual(r.returncode, 0, r.stderr)
-        # inside the field chain, and its position is part of the format the
-        # package filter reads: right after the other gate field (Risk)
-        self.assertIn("**Effort:** S. **Env:** bravo. **Criterion:** A: x.", self.body())
+        self.assertIn("**Class:** AUTONOMOUS. **Effort:** S. **Risk:** apaga dado. "
+                      "**Env:** bravo. **Criterion:** A: x.", self.body())
 
     def test_edit_sets_the_field_and_then_REPLACES_it(self):
         """A second `--env` must rewrite the field, not append a second one: two
@@ -1855,6 +1857,41 @@ class TestEnvField(QueueTest):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("none", r.stderr)
         self.assertNotIn("- [ ]", self.body())
+
+    def test_a_file_that_cannot_be_READ_is_reported_and_not_crashed(self):
+        """The defect does not have to be in the file's TEXT. A site file that is
+        a directory, or one carrying a byte that is not UTF-8, never reaches the
+        parser at all — and an unguarded `open()` answers a hand-written-file
+        mistake with a Python traceback, which names a line of OUR code and not
+        the line of THEIR file that has to change."""
+        d = os.path.join(self.home, ".claude", "tk")
+        os.makedirs(d, exist_ok=True)
+        cases = {"a directory": lambda: os.mkdir(os.path.join(d, "env")),
+                 "a non-UTF-8 byte": lambda: open(os.path.join(d, "env"), "wb").write(
+                     b"identity = alpha\nenvironments = alpha, bravo\n# caf\xe9\n")}
+        for label, make in cases.items():
+            with self.subTest(case=label):
+                path = os.path.join(d, "env")
+                if os.path.isdir(path):
+                    os.rmdir(path)
+                elif os.path.exists(path):
+                    os.remove(path)
+                make()
+                r = self.run_tk(*self.ADD, "--env", "bravo")
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertIn("tk-queue:", r.stderr)      # our diagnosis, not the interpreter's
+                self.assertIn("env", r.stderr)            # and it names the file
+                self.assertNotIn("- [ ]", self.body())
+
+    def test_a_byte_order_mark_does_not_swallow_the_first_key(self):
+        """An editor that writes a BOM glues it to the first key, and `identity`
+        then reads as ABSENT while sitting in plain view on line 1 — a diagnosis
+        that sends the reader hunting a line that is already correct."""
+        self.site("﻿identity = alpha\nenvironments = alpha, bravo\n")
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Env:** bravo.", self.body())
 
     def test_a_duplicate_key_is_refused(self):
         """Last-wins is how a line the user believes they replaced keeps

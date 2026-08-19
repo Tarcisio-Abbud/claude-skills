@@ -748,6 +748,26 @@ MUTATIONS = [
      '        fields.append(f"**Env:** {args.env}.")',
      ["TestEnvField.test_add_writes_the_field_where_the_readers_look_for_it"]),
 
+    # the neighbouring gate field, which the assertion above only sees because the
+    # test passes --risk too: with it omitted the two could swap and nothing fell
+    ("T120 Env and Risk swap places in the composed item",
+     '    if args.risk and not clears_field(args.risk):\n'
+     '        fields.append(f"**Risk:** {args.risk}.")\n'
+     '    # beside Risk: the two fields that decide whether this item can be picked up\n'
+     '    # unattended, and where. Absent = it runs wherever the queue lives\n'
+     '    if args.env and not clears_field(args.env):\n'
+     '        fields.append(f"**Env:** {args.env}.")',
+     '    if args.env and not clears_field(args.env):\n'
+     '        fields.append(f"**Env:** {args.env}.")\n'
+     '    if args.risk and not clears_field(args.risk):\n'
+     '        fields.append(f"**Risk:** {args.risk}.")',
+     ["TestEnvField.test_add_writes_the_field_where_the_readers_look_for_it"]),
+
+    ("T120 site a missing file is read as a defective one instead of as absent",
+     "    if not os.path.exists(path):\n        return None", "    if False:\n        return None",
+     ["TestEnvField.test_no_site_file_refuses_the_flag_and_says_what_to_create"],
+     "bin/tk_site.py"),
+
     ("T120 Env stops being a field the readers know (it leaves FIELD_VARIANTS)",
      '    "Env": r"(?:Env|Ambiente)",', '    "Env": r"(?!x)x",',
      ["TestEnvField.test_edit_sets_the_field_and_then_REPLACES_it",
@@ -840,6 +860,28 @@ MUTATIONS = [
      "        raise SiteError(f'{path}: unknown key {key!r}')\n"
      "    for key in REQUIRED:",
      ["TestEnvField.test_comments_blank_lines_and_unknown_keys_are_tolerated"],
+     "bin/tk_site.py"),
+
+    # a defect does not have to be in the file's TEXT: a site file that is a
+    # directory, or one byte that is not UTF-8, never reaches the parser at all
+    ("T120 site an unreadable file crashes instead of being reported",
+     "    except OSError as e:\n"
+     '        raise SiteError(f"{path} cannot be read: {e.strerror}. It has to be a plain "\n'
+     '                        "text file — check that the path is not a directory and that "\n'
+     '                        "it is readable.")',
+     "    except ZeroDivisionError:\n        raise",
+     ["TestEnvField.test_a_file_that_cannot_be_READ_is_reported_and_not_crashed"],
+     "bin/tk_site.py"),
+
+    ("T120 site a byte that is not UTF-8 crashes instead of being reported",
+     "    except UnicodeDecodeError as e:", "    except ZeroDivisionError as e:",
+     ["TestEnvField.test_a_file_that_cannot_be_READ_is_reported_and_not_crashed"],
+     "bin/tk_site.py"),
+
+    ("T120 site a BOM is glued to the first key (identity reads as absent)",
+     '        with open(path, encoding="utf-8-sig") as f:',
+     '        with open(path, encoding="utf-8") as f:',
+     ["TestEnvField.test_a_byte_order_mark_does_not_swallow_the_first_key"],
      "bin/tk_site.py"),
 
     ("T120 site a trailing comment becomes part of the value",
