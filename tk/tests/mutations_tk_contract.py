@@ -25,6 +25,19 @@ The anchor is a plain SUBSTRING and it must match EXACTLY ONCE: zero matches
 means the code moved out from under the entry, more than one means the mutation
 is not the one described. Both are reported as UNRUNNABLE and fail the run —
 an anchor that quietly stopped matching is a test nobody is proving any more.
+
+Some entries below mutate THIS file, which puts a trap in the way: a short
+anchor also matches inside its own entry literal, and the count check calls it
+UNRUNNABLE. An anchor spanning a line break escapes it, because a `\n` written
+in an entry is two characters in the file and never a newline.
+
+WHAT THESE CHECKS DO NOT CATCH, so that a clean run is not read for more than
+it says. A mutation whose damage is collateral — one that breaks the module
+outright — kills whatever test it names, related or not; only reading the entry
+tells you whether the anchor has anything to do with the test beside it. And
+the score answers "did the named test fall", never "is this test worth having":
+a mutation and a test can agree with each other and both miss the behaviour
+that matters.
 """
 
 import os
@@ -32,13 +45,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TK_DIR = os.path.normpath(os.path.join(HERE, os.pardir))
 DEFAULT_SRC = os.path.join("bin", "tk-contract")
 TEST_MODULE = "test_tk_contract"
-CLASSES = ("TestDeterminism", "TestFleetDivisor", "TestCeilings", "TestRoleTable",
-           "TestBlockContent")
 
 MUTATIONS = [
     # --- the fleet divisor, and the two ceilings ---------------------------
@@ -186,6 +198,10 @@ MUTATIONS = [
      '    p.add_argument("--fleet", type=fleet_size, default=2,',
      ["TestFleetDivisor.test_without_a_fleet_the_whole_ceiling_is_this_run_s"]),
 
+    ("the whole-ceiling branch stops saying the ceiling is undivided",
+     '"given, so the whole ceiling belongs to this run.")', '"given.")',
+     ["TestFleetDivisor.test_without_a_fleet_the_whole_ceiling_is_this_run_s"]),
+
     ("a table path that does not exist is reported as a defective file",
      "    if not os.path.exists(args.policy):", "    if False:",
      ["TestRoleTable.test_a_table_that_is_not_there_is_refused_not_defaulted"]),
@@ -253,6 +269,29 @@ MUTATIONS = [
      '        f"<!-- tk:contract schema=1 role={row.role} -->",',
      '        f"## contract for {row.role}",',
      ["TestBlockContent.test_the_block_is_delimited_so_it_can_be_replaced"]),
+
+    # --- and the harness itself, which nothing else was checking -----------
+    ("the test classes go back to being a hand-kept list",
+     '    return tuple(name for name, obj in vars(module_obj).items()\n'
+     '                 if isinstance(obj, type) and issubclass(obj, unittest.TestCase)\n'
+     '                 and any(a.startswith("test_") for a in dir(obj)))',
+     '    return ("TestDeterminism", "TestFleetDivisor", "TestCeilings", "TestRoleTable",\n'
+     '            "TestBlockContent")',
+     ["TestHarness.test_the_test_classes_are_derived_not_listed"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the orphan check reports nothing, whatever the entries say",
+     '                missing.append(f"{cls_name}.{attr}")\n    return sorted(missing)',
+     '                missing.append(f"{cls_name}.{attr}")\n    return []',
+     ["TestHarness.test_a_test_that_no_entry_names_is_reported"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("an entry naming a test that does not exist passes the reverse check",
+     "            cls = getattr(module_obj, cls_name, None)\n"
+     "            if cls is None or not hasattr(cls, attr):",
+     "            cls = getattr(module_obj, cls_name, None)\n            if False:",
+     ["TestHarness.test_an_entry_naming_a_test_that_does_not_exist_is_reported"],
+     os.path.join("tests", "mutations_tk_contract.py")),
 ]
 
 
@@ -263,7 +302,23 @@ def run_suite(tk_dir, module, names):
     return subprocess.run(argv, cwd=tests, capture_output=True, text=True)
 
 
-def unproved(mutations, module, classes, tk_dir):
+def load_module(module, tk_dir):
+    sys.path.insert(0, os.path.join(tk_dir, "tests"))
+    return __import__(module)
+
+
+def test_classes(module_obj):
+    """Every TestCase in the module that actually holds tests — DERIVED, never
+    listed by hand. A hand-kept list is a list someone forgets, and a class left
+    out of it disappears from the baseline AND from the check below at the same
+    time: the two things that would have noticed both stop looking, in silence.
+    Deriving costs one function and removes the whole failure mode."""
+    return tuple(name for name, obj in vars(module_obj).items()
+                 if isinstance(obj, type) and issubclass(obj, unittest.TestCase)
+                 and any(a.startswith("test_") for a in dir(obj)))
+
+
+def unproved(mutations, module_obj):
     """Tests that no entry names — the hole a green score cannot show you.
 
     A run reports `N/N killed` and means it: N is the number of mutants SOMEONE
@@ -271,32 +326,53 @@ def unproved(mutations, module, classes, tk_dir):
     the suite reads as fully proved while one test is protecting nothing. So the
     tests are enumerated from the module itself and checked against the entries,
     rather than trusted to be in sync."""
-    sys.path.insert(0, os.path.join(tk_dir, "tests"))
-    module_obj = __import__(module)
     named = {name for entry in mutations for name in entry[3]}
     missing = []
-    for cls_name in classes:
-        cls = getattr(module_obj, cls_name)
-        for attr in dir(cls):
+    for cls_name in test_classes(module_obj):
+        for attr in dir(getattr(module_obj, cls_name)):
             if attr.startswith("test_") and f"{cls_name}.{attr}" not in named:
                 missing.append(f"{cls_name}.{attr}")
     return sorted(missing)
 
 
-def run(mutations=MUTATIONS, module=TEST_MODULE, classes=CLASSES, tk_dir=TK_DIR,
+def misnamed(mutations, module_obj):
+    """Entries naming a test that does not exist — the check above run BACKWARDS.
+
+    It is not symmetry for its own sake: unittest answers a name it cannot load
+    with a non-zero exit, and this runner reads non-zero as "the test failed",
+    so a typo in an entry is reported as a mutant KILLED. That is worse than an
+    uncovered guard — it is a guard that reports itself covered."""
+    bad = []
+    for entry in mutations:
+        for name in entry[3]:
+            cls_name, _, attr = name.partition(".")
+            cls = getattr(module_obj, cls_name, None)
+            if cls is None or not hasattr(cls, attr):
+                bad.append(f"{entry[0]} -> {name}")
+    return sorted(bad)
+
+
+def run(mutations=MUTATIONS, module=TEST_MODULE, tk_dir=TK_DIR,
         default_src=DEFAULT_SRC):
     """Replay every mutation. Returns the process exit code.
 
     The arguments are the seam: another suite passes its own list, its own test
     module and its own default source, and reuses everything below unchanged."""
-    baseline = run_suite(tk_dir, module, list(classes))
+    module_obj = load_module(module, tk_dir)
+    wrong = misnamed(mutations, module_obj)
+    for line in wrong:
+        print(f"MISNAMED   {line} — no such test; unittest would fail to load it, "
+              "and this runner would read that as the mutant dying")
+    if wrong:
+        return 1
+    baseline = run_suite(tk_dir, module, list(test_classes(module_obj)))
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating it\n")
         print(baseline.stderr[-4000:])
         return 1
     print(f"baseline green ({module})\n")
 
-    orphans = unproved(mutations, module, classes, tk_dir)
+    orphans = unproved(mutations, module_obj)
     for name in orphans:
         print(f"UNPROVED   {name} — no mutation entry names this test")
     if orphans:
@@ -321,7 +397,12 @@ def run(mutations=MUTATIONS, module=TEST_MODULE, classes=CLASSES, tk_dir=TK_DIR,
         tmp = tempfile.mkdtemp(prefix="tk-contract-mutation.")
         try:
             dst = os.path.join(tmp, "tk")
-            shutil.copytree(tk_dir, dst)
+            # NOT the bytecode: copytree preserves mtime, so a copied
+            # __pycache__ can still validate against the copied source and
+            # Python imports the PRE-mutation bytecode — a mutant reported as
+            # surviving that was in truth never applied. Measured on the older
+            # harness; it costs one argument to never meet again
+            shutil.copytree(tk_dir, dst, ignore=shutil.ignore_patterns("__pycache__"))
             with open(os.path.join(dst, rel), "w", encoding="utf-8") as f:
                 f.write(src.replace(old, new, 1))
             # one test at a time: a batch that goes red says nothing about

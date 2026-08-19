@@ -411,5 +411,44 @@ class TestBlockContent(ContractTest):
         self.assertTrue(out.rstrip("\n").endswith("<!-- /tk:contract -->"))
 
 
+# --- the harness that proves the tests above -------------------------------
+
+class TestHarness(unittest.TestCase):
+    """The mutation harness is the thing that says this suite protects anything,
+    and nothing was checking IT. Each test here is a way that harness could go
+    on reporting a clean score over a suite with a hole in it."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import mutations_tk_contract
+        self.h = mutations_tk_contract
+        self.mod = sys.modules[__name__]
+
+    def test_the_test_classes_are_derived_not_listed(self):
+        # a class left out of a hand-kept list drops out of the baseline and out
+        # of the orphan check at once — both watchers blind, no output
+        found = self.h.test_classes(self.mod)
+        for name in ("TestDeterminism", "TestFleetDivisor", "TestCeilings",
+                     "TestRoleTable", "TestBlockContent", "TestHarness"):
+            self.assertIn(name, found)
+        self.assertNotIn("ContractTest", found)   # a base class holds no tests
+
+    def test_a_test_that_no_entry_names_is_reported(self):
+        self.assertEqual(self.h.unproved(self.h.MUTATIONS, self.mod), [])
+        orphans = self.h.unproved([], self.mod)
+        self.assertIn("TestFleetDivisor.test_the_fleet_divides_the_local_ceiling", orphans)
+
+    def test_an_entry_naming_a_test_that_does_not_exist_is_reported(self):
+        # unittest answers an unloadable name with a non-zero exit, and the
+        # runner reads non-zero as "the mutant died" — a typo would report
+        # itself as coverage
+        self.assertEqual(self.h.misnamed(self.h.MUTATIONS, self.mod), [])
+        bad = self.h.misnamed([("typo", "a", "b", ["TestRoleTable.test_no_such_thing"])],
+                              self.mod)
+        self.assertEqual(bad, ["typo -> TestRoleTable.test_no_such_thing"])
+        gone = self.h.misnamed([("gone", "a", "b", ["TestVanished.test_x"])], self.mod)
+        self.assertEqual(gone, ["gone -> TestVanished.test_x"])
+
+
 if __name__ == "__main__":
     unittest.main()
