@@ -669,14 +669,36 @@ def chain_hosts_class(block):
     """Whether the item's field chain carries the **Class:** that qualified_fields
     positions every real field against.
 
-    A writer has to ask this BEFORE writing such a field: a chain with no Class
-    qualifies nothing, so a field written into one can never be read back. Measured
-    on `claim`, before this existed — the item came back held in the FILE, shown
-    FREE by `list` (which is the collision the command exists to prevent, made
-    permanent), and refused by `release` forever, leaving the queue editable only by
-    the hand the contract forbids.
+    A DIAGNOSTIC, not the gate — and the difference cost three fixes. Asked of the
+    block as READ, this question is not the one a writer needs: field_chain gives its
+    LAST segment a free pass on the period rule, so appending a field MOVES that pass
+    onto the new one, and a previous last field whose value does not end in a period
+    (a real queue carries `**Esforço:** L,`) then truncates the chain and drops
+    **Class:** out of it. Class was in the chain before the write and gone after it.
+    The gate is claim_readback, which asks of the block that would be WRITTEN; this
+    only helps the refusal say WHICH shape the item has.
     """
     return any(canonical_field(m.group(1)) == "Class" for m in field_chain(block))
+
+
+def last_chain_field(block):
+    """Canonical name of the last field on the item's chain — the one that loses the
+    period rule's free pass the moment anything is appended after it."""
+    chain = field_chain(block)
+    return canonical_field(chain[-1].group(1)) if chain else None
+
+
+def claim_readback(candidate):
+    """The claim segments a composed block gives BACK — the gate itself.
+
+    Compose, then require the reader to find exactly what was composed. That is the
+    only form of this question that is not a guess about the reader: three separate
+    fixes asked a proxy for it (does the chain carry a Class?) and the round-1 bug
+    survived all three, because appending the claim CHANGES the chain it is asked
+    about. An item came back claimed in the file, shown FREE by `list` and impossible
+    to release — the exact state the check exists to prevent.
+    """
+    return qualified_fields(candidate, "Claimed")[0]
 
 
 def deferral_field(block):
@@ -794,10 +816,18 @@ def validate_owner(name):
              "one nobody holds. Hand an item back with `tk-queue release <id>`.")
 
 
-def claim_unhostable_message(iid, block):
-    """Why the item cannot HOLD a claim, and the remedy that actually works for it.
+# the `edit` flag that rewrites each field, so a refusal can name the command that
+# repairs the item rather than the defect alone
+EDIT_FLAG = {"Class": "class", "Effort": "effort", "Risk": "risk",
+             "Criterion": "criterion", "Project": "project", "Deferred": "deferred",
+             "Env": "env"}
 
-    Two shapes, two remedies, and printing the wrong one is a dead end. For an item
+
+def claim_unwritable_message(iid, block):
+    """Why the item cannot hold a claim the reader would find, and the remedy that
+    actually works for its shape.
+
+    Three shapes, three remedies, and printing the wrong one is a dead end. For an item
     whose fields sit on a CONTINUATION LINE, `edit --class` is itself refused (by
     the marker-outside-the-chain guard), so a message naming it sends the caller
     straight to a second refusal — measured on the real root queue, where 31 of 155
@@ -814,11 +844,13 @@ def claim_unhostable_message(iid, block):
     answer is `cancel` + re-add.
     """
     label = f"T{iid:03d}"
-    head = (f"{label} carries no **Class:** field in its field chain, and a claim is "
-            "positioned against that field — one written here could not be read back, so "
-            "the item would be held in the file, shown FREE by `list` and impossible to "
-            "release. Nothing was changed. ")
-    if FIELD_MARKER_RE["Class"].search(block):
+    head = (f"{label} cannot hold a claim the reader would find: a claim is the chain "
+            "segment written after **Class:**, and on this item it would not land there. "
+            "Nothing was changed — written anyway, the item is held in the file, shown "
+            "FREE by `list` and impossible to release. ")
+    if not FIELD_MARKER_RE["Class"].search(block):
+        return head + f"Give it a class first: `tk-queue edit {label} --class AUTONOMOUS`."
+    if not chain_hosts_class(block):
         return head + (
             "Its fields sit OUTSIDE the first line, which already blocks every per-field "
             f"`edit` on this item (it did before `claim` existed). Fold them onto the first "
@@ -827,7 +859,14 @@ def claim_unhostable_message(iid, block):
             "field, continuation prose included. If the item's own text carries a "
             "`**Field:**` shape, --text duplicates it instead of folding: close that one "
             "with `cancel` and re-add it clean.")
-    return head + f"Give it a class first: `tk-queue edit {label} --class AUTONOMOUS`."
+    last = last_chain_field(block)
+    flag = EDIT_FLAG.get(last)
+    fix = (f"`tk-queue edit {label} --{flag} \"<value>\"`, which writes the period back"
+           if flag else "rewrite that field so its value ends in a period")
+    return head + (f"Its last field on that line, **{last}:**, does not end in a PERIOD — "
+                   "and the period is what tells a field from prose, so appending the claim "
+                   f"after it breaks the chain and drops **Class:** out of it. Fix it with "
+                   f"{fix}.")
 
 
 def claim_segment(iid, block):
@@ -1471,20 +1510,20 @@ def cmd_claim(args):
              "changed: a claim is how two sessions on one queue avoid executing the same "
              "item. Take another one — or, if that session is gone, hand this one back "
              f"with `tk-queue release T{args.id:03d}`.")
-    # AFTER the stray and ambiguity refusals, never before. Both are refusals, but
-    # only THEY are terminal: an item carrying a marker somewhere unreadable is
-    # answered `cancel` + re-add, and that ends the matter. Preempting it with this
-    # one printed `edit --class AUTONOMOUS`, which the caller then ran — the file was
-    # MUTATED and the real refusal landed anyway. A remedy that costs a write and
-    # fixes nothing is worse than the refusal it replaced.
-    if not chain_hosts_class(block):
-        fail(claim_unhostable_message(args.id, block))
     stamp = now_stamp()
     # appended at the end of the FIRST line, where the chain lives — the same place
     # `edit` puts a field it did not find, and the only place claim_segment reads
     # one back from
     head, sep, rest = block.partition("\n")
     new = head.rstrip() + f" **Claimed:** {args.owner}{CLAIM_SINCE}{stamp}." + sep + rest
+    # THE gate, and it is asked of what would be WRITTEN — compose first, then require
+    # the reader to find exactly the claim composed. Every proxy for this question
+    # (does the chain carry a Class?) is a guess about a chain the write itself
+    # changes, and three of them in a row let the same bug through. AFTER the stray
+    # and ambiguity refusals, which are the terminal ones: preempting those printed a
+    # remedy the caller ran, MUTATING the file, with the real refusal landing anyway.
+    if len(claim_readback(new)) != 1:
+        fail(claim_unwritable_message(args.id, block))
     # NOT measured against the BLOCK ceiling, on the same rule as the short fields
     # (T071): the value is bounded by construction — OWNER_RE plus a fixed-width
     # stamp — and a legacy oversized item is precisely the one a session must be

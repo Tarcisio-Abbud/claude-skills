@@ -2376,6 +2376,32 @@ class TestClaim(QueueTest):
         r = self.run_tk("claim", "T001", "--as", "alpha")
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_a_last_field_missing_its_period_refuses_the_claim_and_names_it(self):
+        """The gate has to be asked of what would be WRITTEN, and three fixes in a row
+        asked a proxy instead. field_chain gives its LAST segment a free pass on the
+        period rule, so appending the claim MOVES that pass onto the claim — and the
+        previous last field, if its value does not end in a period, then truncates the
+        chain and drops **Class:** out of it. Class was in the chain before the write
+        and gone after it, so every pre-write check passed.
+
+        Measured on a real queue item carrying `**Esforço:** L,` (a typed comma): the
+        item came back claimed in the FILE, shown FREE by `list` — the collision the
+        command exists to prevent, made permanent — and unreleasable forever."""
+        self.seed("- [ ] **T001** — algo **Class:** AUTONOMOUS. **Esforço:** L,\n")
+        before = self.body()
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("**Effort:**", r.stderr)      # WHICH field, not just that one is wrong
+        self.assertIn("PERIOD", r.stderr)
+        self.assertEqual(self.body(), before)
+        self.assertNotIn("claimed", self.run_tk("list").stdout)
+        # and the remedy it printed round-trips the item
+        self.assertEqual(self.run_tk("edit", "T001", "--effort", "L").returncode, 0)
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha").returncode, 0)
+        self.assertIn("claimed by alpha", self.run_tk("list").stdout)
+        self.assertEqual(self.run_tk("release", "T001").returncode, 0)
+
     def test_a_stray_marker_is_answered_BEFORE_the_missing_host(self):
         """Both are refusals; only the stray one is TERMINAL. Measured with the order
         the other way round: `claim` printed `edit --class AUTONOMOUS`, the caller ran

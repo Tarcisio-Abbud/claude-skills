@@ -978,14 +978,25 @@ MUTATIONS = [
 
     # the write site has to know the READ site's position rule: without this the
     # item comes back held in the file, shown FREE by `list`, and unreleasable
-    ("T121 a claim is written into a chain that cannot host it",
-     "    if not chain_hosts_class(block):", "    if False:",
-     ["TestClaim.test_an_item_whose_chain_has_no_class_refuses_the_claim"]),
+    ("T121 a claim is written without checking the reader finds it back",
+     "    if len(claim_readback(new)) != 1:", "    if False:",
+     ["TestClaim.test_an_item_whose_chain_has_no_class_refuses_the_claim",
+      "TestClaim.test_an_item_whose_fields_sit_off_the_first_line_is_told_how_to_fold_them",
+      "TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it"]),
 
-    # a refusal that prescribes a command which is ITSELF refused is a dead end
-    ("T121 the unhostable refusal prints the remedy that this shape refuses",
-     '    if FIELD_MARKER_RE["Class"].search(block):', "    if False:",
-     ["TestClaim.test_an_item_whose_fields_sit_off_the_first_line_is_told_how_to_fold_them"]),
+    # the proxy question three fixes asked instead: it passes on the item below,
+    # because appending the claim CHANGES the chain it is asked about
+    ("T121 the gate asks the chain it READ instead of the one it would WRITE",
+     "    if len(claim_readback(new)) != 1:", "    if not chain_hosts_class(block):",
+     ["TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it"]),
+
+    # a refusal that prescribes a command which is ITSELF refused is a dead end: for
+    # the continuation-line shape `edit --class` is refused too, and for the missing
+    # period it repairs nothing
+    ("T121 every shape gets the --class remedy, refused or useless for two of them",
+     '    if not FIELD_MARKER_RE["Class"].search(block):', "    if True:",
+     ["TestClaim.test_an_item_whose_fields_sit_off_the_first_line_is_told_how_to_fold_them",
+      "TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it"]),
 
     # WRITING a claim needs a chain that can hold one; READING one does not. A
     # release that demanded a host would refuse a diagnosis about a claim the item
