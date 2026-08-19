@@ -173,8 +173,14 @@ tk/
   bin/tk-queue                    deterministic CLI: only writer of the queue files
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
                                   identity, the roster of environments, the two ceilings
+  bin/tk-contract                 generates the block a dispatched subagent is handed,
+                                  from the site file and the role table — never written
+                                  from memory, and carrying no copy of either
   tests/test_tk_queue.py          regression suite for that CLI (stdlib only)
   tests/mutations.py              puts each defect back; every test must fall
+  tests/test_tk_contract.py       regression suite for the generator
+  tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
+                                  an argument
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
@@ -197,7 +203,9 @@ returning to `main` puts the old `tk-queue` back. A fix is only in force once me
 `tk-queue` has a suite — `python3 -m unittest discover -s tk/tests` — and every test in it is
 proved by `python3 tk/tests/mutations.py`, which restores each defect and requires the tests
 named for it to fail, one at a time. A test that passes with the defect back protects
-nothing, so a mutation that survives is a hole, not a pass.
+nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answers to the same
+rule through `python3 tk/tests/mutations_tk_contract.py`; the two harnesses are separate files
+only because the older one names its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
 the whole `tk/` tree is versioned.
