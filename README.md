@@ -66,6 +66,13 @@ dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, and `/loop
 project's `loop.md` — spelled out in `tk/skills/dispatch/SKILL.md`, which also single-sources
 the dispatch palette, the `/goal` recipe and the `loop.md` contract.
 
+Every subagent an orchestrator dispatches gets its model, reasoning effort and **venue**
+(local × cloud) from `tk/reference/subagent-policy.md` — one row per role, the hybrid rule
+that lets the orchestrator deviate by logging one line, and the venue eligibility test
+(cloud only where the proof fits in the pushed repo). Its role table is delimited and
+carries its own parsing schema, so the bin that generates the subagent contract block reads
+those cells verbatim instead of keeping a second copy.
+
 ## The `tk-cowork` plugin
 
 The same pair rebuilt for **Claude Cowork**, where there is no repo and no test suite. What
@@ -161,6 +168,8 @@ tk/
   .claude-plugin/plugin.json      the plugin manifest
   skills/<name>/SKILL.md          one directory per skill
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
+  reference/subagent-policy.md    model, effort and venue per subagent role; the role
+                                  table is parseable, schema declared in the file
   bin/tk-queue                    deterministic CLI: only writer of the queue files
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
                                   identity, the roster of environments, the two ceilings
