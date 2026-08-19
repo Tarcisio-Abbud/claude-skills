@@ -794,6 +794,32 @@ def validate_owner(name):
              "one nobody holds. Hand an item back with `tk-queue release <id>`.")
 
 
+def claim_unhostable_message(iid, block):
+    """Why the item cannot HOLD a claim, and the remedy that actually works for it.
+
+    Two shapes, two remedies, and printing the wrong one is a dead end. For an item
+    whose fields sit on a CONTINUATION LINE, `edit --class` is itself refused (by
+    the marker-outside-the-chain guard), so a message naming it sends the caller
+    straight to a second refusal — measured on the real root queue, where 31 of 155
+    open items carry that shape. That shape already blocked every per-field `edit`
+    before `claim` existed: it is not a limitation this command introduced, and
+    folding the fields onto the first line lifts both at once.
+    """
+    label = f"T{iid:03d}"
+    head = (f"{label} carries no **Class:** field in its field chain, and a claim is "
+            "positioned against that field — one written here could not be read back, so "
+            "the item would be held in the file, shown FREE by `list` and impossible to "
+            "release. Nothing was changed. ")
+    if FIELD_MARKER_RE["Class"].search(block):
+        return head + (
+            "Its fields sit OUTSIDE the first line, which already blocks every per-field "
+            f"`edit` on this item (it did before `claim` existed). Fold them onto the first "
+            f"line: `tk-queue edit {label} --text \"<the item's whole text>\"` — read the "
+            "item first, because --text replaces everything between the head and the first "
+            "field, continuation prose included.")
+    return head + f"Give it a class first: `tk-queue edit {label} --class AUTONOMOUS`."
+
+
 def claim_segment(iid, block):
     """The item's REAL **Claimed:** field — the one in its FIELD CHAIN — or None.
 
@@ -864,14 +890,21 @@ def displayed_claim(block):
     the POSITION rule, which is not relaxed: a display reading the item's own prose
     as a claim would show an owner made of three words of the title.
 
-    Where they part is the STRAY marker, and only in the safe direction. An item
-    carrying a real claim AND a marker elsewhere is displayed as claimed — which is
-    true, somebody holds it — while `claim`/`release` refuse it over the marker,
-    which is a defect in the item rather than an answer about who holds it. A
-    reader who skips it loses nothing, and one who tries to take it is refused.
+    Where they part is the STRAY marker, and there only in the safe direction: an
+    item carrying a real claim AND a marker elsewhere is displayed as claimed —
+    which is true, somebody holds it — while the commands refuse it over the marker,
+    a defect in the item rather than an answer about who holds it. A reader who
+    skips it loses nothing, and one who tries to take it is refused.
+
+    Ambiguity is NOT tolerated the same way, because there the tolerant answer is
+    the dangerous one: two qualifying claims mean two owners are on the record, and
+    printing no mark would show the item FREE — to a reader, and to the afk package
+    that is built from exactly this display.
     """
     segs, _ = qualified_fields(block, "Claimed")
-    return claim_mark(*claim_value(segs[0])) if len(segs) == 1 else None
+    if len(segs) == 1:
+        return claim_mark(*claim_value(segs[0]))
+    return "claimed ambiguously — `tk-queue claim` says why" if segs else None
 
 
 def validate_project(tag):
@@ -1422,15 +1455,14 @@ def cmd_claim(args):
     memdir = memory_dir(args.dir)
     validate_owner(args.owner)
     content, block, start = find_open_item(memdir, args.id)
-    held = claim_segment(args.id, block)
-    # a gate that cannot read back what it writes must refuse to write: see
-    # chain_hosts_class for the state this produced before the check existed
+    # BEFORE reading the claim, not after: a gate that cannot read back what it
+    # writes must refuse to write (see chain_hosts_class), and asking in this order
+    # is what makes the diagnosis name the item's real problem — an item that cannot
+    # host a claim was otherwise told its marker sat "in the item's own prose", which
+    # is false, and sent to `cancel` + re-add
     if not chain_hosts_class(block):
-        fail(f"T{args.id:03d} carries no **Class:** field in its field chain, and a claim "
-             "is positioned against that field — one written here could not be read back, "
-             "so the item would be held in the file, shown FREE by `list` and impossible "
-             "to release. Nothing was changed. Give it a class first: "
-             f"`tk-queue edit T{args.id:03d} --class AUTONOMOUS`.")
+        fail(claim_unhostable_message(args.id, block))
+    held = claim_segment(args.id, block)
     if held is not None:
         fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. Nothing was "
              "changed: a claim is how two sessions on one queue avoid executing the same "
@@ -1461,6 +1493,13 @@ def cmd_release(args):
     """
     memdir = memory_dir(args.dir)
     content, block, start = find_open_item(memdir, args.id)
+    # asymmetric with `claim`, deliberately: WRITING needs a host, reading does not.
+    # A chain-less item carrying no marker at all simply holds no claim, and saying
+    # so is the honest answer; one carrying a marker it cannot host gets the
+    # diagnosis that names the shape, not the "it is in your prose" one, which for
+    # this population is false
+    if not chain_hosts_class(block) and FIELD_MARKER_RE["Claimed"].search(block):
+        fail(claim_unhostable_message(args.id, block))
     held = claim_segment(args.id, block)
     if held is None:
         # an honest no-op, like `bump` on an item already at the top. Reporting a

@@ -982,6 +982,28 @@ MUTATIONS = [
      "    if not chain_hosts_class(block):", "    if False:",
      ["TestClaim.test_an_item_whose_chain_has_no_class_refuses_the_claim"]),
 
+    # a refusal that prescribes a command which is ITSELF refused is a dead end
+    ("T121 the unhostable refusal prints the remedy that this shape refuses",
+     '    if FIELD_MARKER_RE["Class"].search(block):', "    if False:",
+     ["TestClaim.test_an_item_whose_fields_sit_off_the_first_line_is_told_how_to_fold_them"]),
+
+    ("T121 release answers the unhostable shape with the prose diagnosis instead",
+     '    if not chain_hosts_class(block) and FIELD_MARKER_RE["Claimed"].search(block):',
+     "    if False:",
+     ["TestClaim.test_an_item_whose_fields_sit_off_the_first_line_is_told_how_to_fold_them"]),
+
+    # the over-refusal direction of that same guard: an item that merely holds no
+    # claim must not be answered with a diagnosis about its shape
+    ("T121 release refuses every chain-less item instead of reporting no claim",
+     '    if not chain_hosts_class(block) and FIELD_MARKER_RE["Claimed"].search(block):',
+     "    if not chain_hosts_class(block):",
+     ["TestClaim.test_release_on_a_chainless_item_with_no_marker_is_still_an_honest_no_op"]),
+
+    ("T121 an ambiguously claimed item is displayed as FREE",
+     '    return "claimed ambiguously — `tk-queue claim` says why" if segs else None',
+     "    return None",
+     ["TestClaim.test_list_never_shows_an_ambiguously_claimed_item_as_free"]),
+
     ("T121 two claims in the chain are guessed (the first wins) instead of refused",
      "    if len(segs) > 1:", "    if False:",
      ["TestClaim.test_two_claim_fields_in_the_chain_are_refused_as_ambiguous"]),
