@@ -531,6 +531,30 @@ def item_class(block):
 DEFERRED_MARKER_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Deferred"] + r"):\*\*")
 
 
+def chain_class(block):
+    """The class the item really carries, read from its FIELD CHAIN — the stricter
+    reader the deferral gate uses, and deliberately not `item_class`.
+
+    `item_class` searches the whole block and takes the leftmost match, which is
+    what `list` has always displayed. That is too loose to decide a gate: an item
+    whose prose says `nota: itens **Class:** DECISION são raros aqui.` before its
+    real `**Class:** AUTONOMOUS.` reads as DECISION, and `edit <id> --deferred x`
+    then wrote a deferral onto an AUTONOMOUS item — the very state the flag is
+    refused for.
+
+    Returns None when the chain names no class — a legacy item whose fields sit on
+    a continuation line — and equally when it names TWO, which is exactly what a
+    prose marker absorbed into the chain looks like. Ambiguity is refused, not
+    guessed: the same answer `edit`'s own field loop already gives for a duplicated
+    field, and the gate then asks for `--class` explicitly, which costs one command.
+    """
+    found = [m for m in field_chain(block) if canonical_field(m.group(1)) == "Class"]
+    if len(found) != 1:
+        return None
+    value = re.match(r"\*\*[^*]+:\*\*\s*([A-Za-zÀ-ÿ]+)", found[0].group(0))
+    return value.group(1) if value else None
+
+
 def deferral_field(block):
     """(segment, stray) — the item's REAL Deferred field, and whether a
     `**Deferred:**` marker sits anywhere else in the block.
@@ -969,12 +993,12 @@ def deferral_for_edit(args, block):
              "would let prose satisfy the gate, and clearing it would DELETE that prose. "
              "Close the item with `cancel` and re-add it clean.")
     has = seg is not None
-    result_class = args.classe or item_class(block)
+    result_class = args.classe or chain_class(block)
     if args.classe == DEFERRABLE_CLASS and not (setting or (has and not clearing)):
         fail(deferral_gate_message("edit"))
     if setting and result_class != DEFERRABLE_CLASS:
         fail(deferral_class_message(
-            f"T{args.id:03d} is {result_class or 'carrying no class'}."))
+            f"T{args.id:03d} is {result_class or 'carrying no unambiguous class'}."))
     if clearing and result_class == DEFERRABLE_CLASS:
         fail(f"T{args.id:03d} would stay a {DEFERRABLE_CLASS} with no deferral on the "
              "record. A deferral is dropped by leaving the class: pass the new "
@@ -1043,8 +1067,14 @@ def cmd_edit(args):
                  "`cancel` and re-add it clean.")
         if field in CLEARABLE and clears_field(flag):
             if found:
-                start, end = found[0].span()
-                head, tail = new[:start], new[end:]
+                # NOT `start`: that name holds the item's offset in the FILE, and the
+                # final write splices with it. Shadowing it with a position inside
+                # `new` truncated the frontmatter mid-word and duplicated the item —
+                # measured on `--risk none`, with the whole suite still green, because
+                # every clearing test asserted `assertNotIn("**Risk:**")` and a
+                # corrupted file satisfies that too
+                f_start, f_end = found[0].span()
+                head, tail = new[:f_start], new[f_end:]
                 # the body is greedy, so the match already swallowed the blank that
                 # separated Risk from the next field — but when Risk was the last
                 # field on the line there is nothing after it, and the blank BEFORE

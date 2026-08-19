@@ -660,6 +660,36 @@ MUTATIONS = [
       "TestBlockAddressing.test_bump_moves_the_real_item_and_leaves_no_phantom",
       "TestBlockAddressing.test_edit_rewrites_the_real_item_and_not_the_quotation"]),
 
+    # --- re-check of the FIX: the corruption the fix itself shipped -----------
+
+    ("re-check the clearing branch shadows the item's offset in the FILE",
+     "                f_start, f_end = found[0].span()\n"
+     "                head, tail = new[:f_start], new[f_end:]",
+     "                start, end = found[0].span()\n"
+     "                head, tail = new[:start], new[end:]",
+     ["TestClearingKeepsTheFileIntact.test_clearing_a_risk_rewrites_only_that_field",
+      "TestClearingKeepsTheFileIntact.test_clearing_a_deferral_rewrites_only_that_field"]),
+
+    ("re-check the gate reads the class the loose way `list` displays it",
+     "    result_class = args.classe or chain_class(block)",
+     "    result_class = args.classe or item_class(block)",
+     ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
+
+    ("re-check an ambiguous class in the chain is guessed instead of refused",
+     "    if len(found) != 1:\n        return None",
+     "    if not found:\n        return None",
+     ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
+
+    ("re-check a deferral counts with no Class in the chain to qualify",
+     '    if "Class" in names:\n        after = names.index("Class")',
+     '    if True:\n        after = names.index("Class") if "Class" in names else -1',
+     ["TestDecisionDeferralGate.test_a_chain_with_no_class_carries_no_deferral_to_find"]),
+
+    ("re-check the stray refusal drops its --deferred arm",
+     "    if stray and (args.classe or args.deferred is not None):",
+     "    if stray and args.classe:",
+     ["TestDecisionDeferralGate.test_the_stray_refusal_fires_for_a_bare_deferred_too"]),
+
     ("2ª review edit splices by search-and-replace again",
      "    write_atomic(os.path.join(memdir, \"next-steps.md\"),\n"
      "                 content[:start] + new + content[start + len(block):])",
@@ -684,7 +714,7 @@ def main():
                                   "TestCloseFieldCeilings", "TestIdAllocationScope",
                                   "TestDoneLogLineGrammar", "TestCanonicalHead",
                                   "TestDecisionDeferralGate", "TestBump",
-                                  "TestBlockAddressing"])
+                                  "TestBlockAddressing", "TestClearingKeepsTheFileIntact"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

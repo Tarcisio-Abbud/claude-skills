@@ -1468,6 +1468,39 @@ class TestDecisionDeferralGate(QueueTest):
                 self.assertIn(expected, r.stderr)
                 self.assertIn("**Class:** AUTONOMOUS.", self.body())
 
+    def test_a_class_named_only_in_prose_does_not_open_the_gate(self):
+        """The gate reads the class from the FIELD CHAIN, not from the whole block
+        the way `list` displays it. An item whose prose names DECISION before its
+        real `**Class:** AUTONOMOUS.` took a deferral with no --class at all."""
+        legacy = ("- [ ] **T001** — nota: itens **Class:** DECISION sao raros aqui. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--deferred", "tentando sem --class")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("**Deferred:**", self.body())
+
+    def test_a_chain_with_no_class_carries_no_deferral_to_find(self):
+        """A deferral qualifies the class it follows, so a chain with no class at
+        all has no deferral to offer the gate — whatever the marker looks like."""
+        self.seed("- [ ] **T001** — item legado. **Deferred:** afk. **Effort:** S. "
+                  "**Criterion:** A: x. **Source:** 2026-08-13\n")
+        r = self.run_tk("edit", "T001", "--class", "DECISION")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("**Class:** DECISION.", self.body())
+
+    def test_the_stray_refusal_fires_for_a_bare_deferred_too(self):
+        """Both arms: the outcome depends on the deferral whenever --class OR
+        --deferred is passed, and the refusal has to say which problem it is."""
+        legacy = ("- [ ] **T001** — item, ver a **Deferred:** nota de contexto. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--deferred", "afk")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("away from the position", r.stderr)
+        self.assertIn("nota de contexto", self.body())
+
     def test_a_typo_in_the_class_is_answered_before_the_gate(self):
         """A gate reasoning about the RESULTING class answers a typo'd class with
         "T001 is DECISON — pass --class DECISION", which sends the caller after
@@ -1569,6 +1602,35 @@ class TestBump(QueueTest):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("never allocated", r.stderr)
         self.assertEqual(self.body(), before)
+
+
+# --- 2nd pair of eyes: an item's TEXT is not its ADDRESS -------------------
+
+class TestClearingKeepsTheFileIntact(QueueTest):
+    """Clearing a field is the one edit that computes a position INSIDE the block,
+    and the item is written back at its position in the FILE. Binding both to the
+    same name spliced a block offset into a file offset: the frontmatter came out
+    truncated mid-word and the item duplicated, on `edit --risk none`.
+
+    The whole suite stayed green through it, because every clearing test asked
+    `assertNotIn("**Risk:**", body)` — a question a corrupted file answers the
+    same way. These assert the FILE."""
+
+    def test_clearing_a_risk_rewrites_only_that_field(self):
+        risky = item(19, "re-triar", risk="dano X")
+        other = item(20, "outro item")
+        self.seed(risky, other)
+        r = self.run_tk("edit", "T019", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), HEADER + item(19, "re-triar") + other)
+
+    def test_clearing_a_deferral_rewrites_only_that_field(self):
+        deferred = decision_item(1, "decidir")
+        other = item(2, "outro item")
+        self.seed(deferred, other)
+        r = self.run_tk("edit", "T001", "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), HEADER + item(1, "decidir") + other)
 
 
 # --- 2nd pair of eyes: an item's TEXT is not its ADDRESS -------------------
