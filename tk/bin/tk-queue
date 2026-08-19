@@ -1605,7 +1605,21 @@ HANDOFF_FIELDS = (
 # that can tell a close whether some OTHER item still needs the file. A campaign
 # is exactly that shape: one briefing named for the anchor item, pointed at by
 # every item in the campaign.
-HANDOFF_REF_RE = re.compile(r"\[\[handoff-T([0-9]{3,})\]\]")
+#
+# Two tolerances, both ONE-WAY — they can only make MORE items count as holding a
+# briefing, never fewer, so each can DELAY a collection and neither can cause a
+# wrong deletion:
+#   digits    any count, not the writer's `{3,}` — measured: `[[handoff-T1]]` was
+#             invisible here, and the close printed "handoff-T001.md removed" while
+#             a second item still pointed at it. A link is written by a human or a
+#             skill's prose, not by this script, so the reader may not demand the
+#             writer's zero-padding.
+#   position  anywhere in the block, prose and continuation lines included. Unlike
+#             an ID (read only where a WRITER puts one), the link HAS no writer
+#             position — #68 puts it in the item's text — so an item that merely
+#             quotes the format holds the briefing until its own close, which then
+#             collects it.
+HANDOFF_REF_RE = re.compile(r"\[\[handoff-T([0-9]+)\]\]")
 # Levels 1-2 FRAME the five fields; a value carrying one of its own moves a field
 # boundary. Deeper headings are left alone on purpose: sub-structure inside a
 # field is prose, and refusing it would make the file harder to write than the
@@ -1728,11 +1742,15 @@ def handoff_gate(candidate, iid, block, values):
              "and re-run. Nothing was written.")
     blank = [h for h, body in got[1:] if not body]
     if blank:
-        flags = ", ".join(f"--{d}" for d, h, _ in HANDOFF_FIELDS if f"## {h}" in blank)
-        fail(f"{flags} carries no text. The briefing's mandatory fields are the three "
-             "the next session cannot work without, and an empty one is not 'nothing "
-             "to say' — it is a field nobody filled. Re-run naming it, spelling the "
-             f'empty answer out: {flags} "none". Nothing was written.')
+        empty = [f"--{d}" for d, h, _ in HANDOFF_FIELDS if f"## {h}" in blank]
+        # the remedy is a COMMAND, so the flags are spelled as one — `--objective,
+        # --state "none"` reads as a list and argparse refuses it for the very flag
+        # it names. Two empty fields is the case the suite now runs
+        remedy = " ".join(f'{f} "none"' for f in empty)
+        fail(f"{', '.join(empty)} carries no text. The briefing's mandatory fields are "
+             "the three the next session cannot work without, and an empty one is not "
+             "'nothing to say' — it is a field nobody filled. Re-run spelling the empty "
+             f"answer out: {remedy}. Nothing was written.")
 
 
 def handoff_holders(content, n):
@@ -1750,29 +1768,54 @@ def handoff_holders(content, n):
     return out
 
 
-def handoff_disposition(memdir, after, iid, block):
-    """(paths to delete, [(file name, the IDs still reaching it)]) for this close,
-    decided against `after` — the queue as the close will LEAVE it, never as it
-    found it: read before the removal, the item being closed still reaches its own
-    briefing and nothing is ever collected.
+def handoff_candidates(iid, block):
+    """The briefings ONE item can take with it: its own, and every one its text
+    points at. An item with no ID (a legacy line `migrate` is closing) has no
+    briefing of its own, and still carries pointers.
 
-    Candidates are bounded by the item being closed: its own briefing, plus every
-    briefing its text points at. That bound is what collects a campaign without
-    ever touching a file this item has nothing to do with — the anchor's briefing
-    survives its own close while a sibling still points at it, and the last sibling
-    to close is the one carrying the pointer that collects it.
+    This bound is what collects a campaign without ever touching a file the item
+    has nothing to do with — a sweep of the directory would collect a briefing
+    written seconds earlier for an item still to be claimed.
+    """
+    return handoff_refs(block) | ({iid} if iid is not None else set())
+
+
+def handoff_collect(memdir, after, ids):
+    """Delete every briefing among `ids` that `after` no longer reaches, and say
+    what became of each.
+
+    `after` is the queue as the command will LEAVE it, passed in rather than
+    re-read: asked of the queue as it was FOUND, the item being closed still
+    reaches its own briefing and nothing is ever collected. Kept is reported too —
+    a campaign's briefing outliving its anchor is a fact the caller acts on.
+
+    Called LAST, after the command's own writes. Every order has a crash window;
+    this one's residue is a file left behind, which is inert and removable by hand,
+    while deleting first would destroy a briefing whose item is still open. Same
+    rule the queue's two writes answer to: never lose, stay rerun-visible.
     """
     remove, kept = [], []
-    for n in sorted({iid} | handoff_refs(block)):
-        path = handoff_path(memdir, n)
-        if not os.path.exists(path):
+    for n in sorted(ids):
+        if not os.path.exists(handoff_path(memdir, n)):
             continue
         holders = handoff_holders(after, n)
-        if holders:
-            kept.append((handoff_name(n), holders))
-        else:
-            remove.append(path)
-    return remove, kept
+        (kept if holders else remove).append((n, holders))
+    for n, holders in kept:
+        print(f"{handoff_name(n)} kept — still reached by "
+              + ", ".join(f"T{i:03d}" for i in holders))
+    for n, _ in remove:
+        path = handoff_path(memdir, n)
+        try:
+            os.remove(path)
+        except OSError as e:
+            # the command's own writes are already committed, so dying here reports
+            # an APPLIED close as a failure — measured with a directory sitting at
+            # the briefing's name. The collection is best-effort; the close is not
+            print(f"tk-queue: warning: {handoff_name(n)} could not be removed ({e.strerror}) "
+                  f"— the item is closed either way. Remove it by hand: {path}",
+                  file=sys.stderr)
+            continue
+        print(f"{handoff_name(n)} removed")
 
 
 def cmd_handoff(args):
@@ -1797,11 +1840,20 @@ def cmd_handoff(args):
         # shell splits somewhere else entirely, and item_title's default limit
         # turned the remedy for a long item into `edit --text "<half of it>…"` —
         # a remedy that runs, reports success, and eats the item's own text.
-        fixed = f"{item_title(block, limit=10 ** 6)} [[handoff-T{args.id:03d}]]"
+        link = f"[[handoff-T{args.id:03d}]]"
+        fixed = f"{item_title(block, limit=10 ** 6)} {link}"
+        # …and it carries --force when the item it rewrites would cross the BLOCK
+        # ceiling. Measured: on a 719-char item the printed command was refused by
+        # the very ceiling adding the link crosses — a remedy that runs only after
+        # the caller repairs it is a remedy nobody checked. The estimate is the
+        # block plus the link, and it can only OVER-state the result (item_title
+        # collapses whitespace), so --force is printed needlessly before it is
+        # ever omitted when needed
+        forced = " --force" if len(block) + len(link) + 1 > CEILING else ""
         print(f"tk-queue: warning: T{args.id:03d} does not point at "
               f"[[handoff-T{args.id:03d}]] — the item is this briefing's only "
               f"discovery path. Add it with `tk-queue edit {args.id} --text "
-              f"{shlex.quote(fixed)}`.", file=sys.stderr)
+              f"{shlex.quote(fixed)}{forced}`.", file=sys.stderr)
 
 
 def close_item(args, marker, outcome, marker_flag):
@@ -1831,25 +1883,13 @@ def close_item(args, marker, outcome, marker_flag):
         line += f" **Project:** {tag_m.group(1)}."
     if args.note:
         line += "\n  " + args.note.replace("\n", "\n  ")
-    # decided BEFORE the first write, against the queue this close will LEAVE
-    # (excise is pure, and remove_block recomputes it from these same three
-    # values): a disposition read after the writes would be read from a file the
-    # crash window can have left in either state.
-    dead, kept = handoff_disposition(memdir, excise(content, block, start), args.id, block)
     append_done_line(memdir, line, today)
     remove_block(memdir, content, block, start)
     print(f"T{args.id:03d} → done-log as {marker} ({today})")
-    # the briefing dies LAST, after the item is both logged and out of the queue.
-    # Every order has a crash window; this one's residue is a file left behind,
-    # which is inert and removable by hand, while deleting first would destroy a
-    # briefing whose item is still open. Same rule the two writes above answer to:
-    # never lose, stay rerun-visible.
-    for name, holders in kept:
-        print(f"{name} kept — still reached by "
-              + ", ".join(f"T{i:03d}" for i in holders))
-    for path in dead:
-        os.remove(path)
-        print(f"{os.path.basename(path)} removed")
+    # excise is pure and remove_block recomputes it from these same three values,
+    # so this is the queue that was just written — not a second read of it
+    handoff_collect(memdir, excise(content, block, start),
+                    handoff_candidates(args.id, block))
 
 
 def cmd_done(args):
@@ -1920,10 +1960,16 @@ def splice_item(memdir, content, block, start, new):
     above cost a real corruption once, and it is not a bug each command should get
     its own chance to reintroduce.
     """
+    write_atomic(os.path.join(memdir, "next-steps.md"), splice(content, block, start, new))
+
+
+def splice(content, block, start, new):
+    """The file `splice_item` WRITES, without writing it — so a caller that must
+    also reason about the result reads the same bytes the file gets, rather than
+    recomposing them and drifting on the newline below."""
     if not new.endswith("\n"):
         new += "\n"
-    write_atomic(os.path.join(memdir, "next-steps.md"),
-                 content[:start] + new + content[start + len(block):])
+    return content[:start] + new + content[start + len(block):]
 
 
 def cmd_edit(args):
@@ -2018,6 +2064,15 @@ def cmd_edit(args):
         check_ceiling(new, args.force)
     splice_item(memdir, content, block, start, new)
     print(f"T{args.id:03d} updated")
+    # An edit is the only command other than a close that changes WHICH briefings
+    # an item reaches, and dropping the last pointer to one is a closing path in
+    # disguise. Measured before this existed: anchor closed (its briefing kept for
+    # the sibling), the sibling's --text rewritten without the link, the sibling
+    # closed — and the briefing outlived an EMPTY queue, with nothing left that
+    # could ever carry the pointer that collects it.
+    dropped = handoff_refs(block) - handoff_refs(new)
+    if dropped:
+        handoff_collect(memdir, splice(content, block, start, new), dropped)
 
 
 def cmd_claim(args):
@@ -2205,6 +2260,14 @@ def cmd_migrate(args):
         new_content = new_content.rstrip("\n") + "\n"
     write_atomic(path, new_content)
     print(f"{len(done)} [x] item(s) → done-log; IDs assigned up to T{nid:03d}")
+    # `migrate` closes items too — that is its whole job — so it is a closing path,
+    # and a closing path that left the briefing behind would be the orphan every
+    # other one refuses to make. Measured: a legacy [x] item with a briefing left
+    # it standing beside an empty queue.
+    ids = set()
+    for text in done:
+        ids |= handoff_candidates(item_id(text), text)
+    handoff_collect(memdir, new_content, ids)
 
 
 def main():

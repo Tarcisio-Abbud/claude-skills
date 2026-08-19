@@ -67,12 +67,13 @@ anything from that item on.
 The ceiling of three applies at the hard gate. Attempt 1 fails → fix the delivery and rerun;
 same for attempt 2. On the third failure, in this order:
 
-1. Write the handoff beside the queue files — `handoff-<id>.md`, in the same directory
-   `tk-queue` resolves `next-steps.md` in. Five fields, the first three required:
-   destination · state · blockers and notes · suggested skills · known traps. The **attempt
-   history** goes in state — per attempt: what changed, the command, the exit code and the
-   tail of the output. It lives there rather than in the item because the queue item is
-   size-capped.
+1. Write the handoff with the script, never by hand — `tk-queue handoff <id> --objective
+   "..." --state "..." --blockers "..." [--skills "..."] [--pitfalls "..."]`. It writes
+   `handoff-<id>.md` beside the queue files, refuses a briefing whose mandatory fields are
+   empty, and is what makes the file die with the item instead of outliving it. The
+   **attempt history** goes in `--state` — per attempt: what changed, the command, the exit
+   code and the tail of the output. It lives there rather than in the item because the queue
+   item is size-capped.
 2. `tk-queue edit <id> --class DECISION --deferred "<why the decision could not be asked> —
    [[handoff-<id>]]"` — an unattended session has no one to ask, so it passes
    `--deferred "afk — [[handoff-<id>]]"`. The pointer rides in that field either way, and an

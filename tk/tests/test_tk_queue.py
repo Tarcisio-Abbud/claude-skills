@@ -3099,10 +3099,26 @@ class TestHandoffCreation(HandoffTest):
         r = self.handoff(4, "--objective", "o", "--state", "s", "--blockers", "b")
         m = re.search(r"`tk-queue (edit .*?)`\.", r.stderr, re.S)
         argv = __import__("shlex").split(m.group(1))
-        self.assertNotIn("…", argv[-1])
-        fix = self.run_tk(*argv, "--force")
+        text = argv[argv.index("--text") + 1]
+        self.assertNotIn("…", text)
+        # the item crosses the block ceiling, so the remedy has to carry --force
+        # ITSELF — a flag the test adds is a flag nobody proved the command prints
+        self.assertIn("--force", argv)
+        fix = self.run_tk(*argv)          # verbatim
         self.assertEqual(fix.returncode, 0, fix.stderr)
         self.assertIn(long_text.strip() + " [[handoff-T004]]", self.body("next-steps.md"))
+
+    def test_TWO_empty_fields_still_print_ONE_runnable_remedy(self):
+        """`--objective, --state "none"` reads as a list and argparse refuses it for
+        the very flag it names. The remedy is a command, so it is run as one."""
+        self.seed(item(3, "um"))
+        r = self.handoff(3, "--objective", "", "--state", "", "--blockers", "b")
+        self.assertEqual(r.returncode, 1)
+        m = re.search(r"spelling the empty answer out: (.*?)\. Nothing", r.stderr, re.S)
+        argv = __import__("shlex").split(m.group(1))
+        ok = self.handoff(3, *argv, "--blockers", "b")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertIn("\n## Objective\n\nnone\n\n## State\n\nnone\n", self.brief(3))
 
     def test_an_item_that_is_not_open_gets_no_briefing(self):
         """A briefing for an item no close will ever reach is an orphan at birth."""
@@ -3220,7 +3236,106 @@ class TestHandoffLifecycle(HandoffTest):
         r = self.run_tk("done", "1", "--how", "PR #1")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn("Traceback", r.stderr)
+        # and no warning either: since the collection became best-effort, a missing
+        # file no longer crashes, so silence on stderr is the only thing left that
+        # tells "never a candidate" apart from "tried to remove it and could not"
+        self.assertNotIn("could not be removed", r.stderr)
         self.assertEqual(r.stdout, f"T001 → done-log as FEITO ({self.today()})\n")
+
+    # --- the other two closing paths ---------------------------------------
+    def test_migrate_collects_the_briefing_of_what_it_closes(self):
+        """`migrate` moves legacy [x] items to the log — it CLOSES items, so it is
+        a closing path, and one that left the briefing behind would be the orphan
+        every other path refuses to make."""
+        self.seed(item(5, "anchor [[handoff-T005]]"))
+        self.seed_brief(5)
+        self.write("next-steps.md", self.body().replace("- [ ] **T005**", "- [x] **T005**", 1))
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("handoff-T005.md removed\n", r.stdout)
+        self.assertIsNone(self.brief(5))
+
+    def test_migrate_keeps_one_an_open_item_still_reaches(self):
+        self.seed(item(5, "anchor [[handoff-T005]]"), item(6, "sibling [[handoff-T005]]"))
+        self.seed_brief(5)
+        self.write("next-steps.md", self.body().replace("- [ ] **T005**", "- [x] **T005**", 1))
+        r = self.run_tk("migrate")
+        self.assertIn("handoff-T005.md kept — still reached by T006\n", r.stdout)
+        self.assertIsNotNone(self.brief(5))
+
+    def test_edit_collects_a_briefing_it_stops_pointing_at(self):
+        """The measured hole: the anchor closes (briefing kept for the sibling),
+        the sibling's --text is rewritten without the link, the sibling closes —
+        and the briefing outlives an EMPTY queue, with nothing left that could ever
+        carry the pointer that collects it. An edit that drops the last pointer is
+        a closing path in disguise."""
+        self.seed(item(5, "anchor [[handoff-T005]]"), item(6, "sibling [[handoff-T005]]"))
+        self.seed_brief(5)
+        self.run_tk("done", "5", "--how", "PR #5")
+        r = self.run_tk("edit", "6", "--text", "sibling sem o ponteiro")
+        self.assertEqual(r.stdout, "T006 updated\nhandoff-T005.md removed\n")
+        self.assertIsNone(self.brief(5))
+
+    def test_edit_keeps_a_briefing_another_item_still_points_at(self):
+        self.seed(item(5, "anchor [[handoff-T005]]"), item(6, "sibling [[handoff-T005]]"),
+                  item(7, "outro [[handoff-T005]]"))
+        self.seed_brief(5)
+        r = self.run_tk("edit", "6", "--text", "sibling sem o ponteiro")
+        self.assertEqual(r.stdout,
+                         "T006 updated\nhandoff-T005.md kept — still reached by T005, T007\n")
+        self.assertIsNotNone(self.brief(5))
+
+    def test_an_edit_that_keeps_the_pointer_collects_nothing(self):
+        self.seed(item(5, "anchor [[handoff-T005]]"))
+        self.seed_brief(5)
+        r = self.run_tk("edit", "5", "--text", "outro texto [[handoff-T005]]")
+        self.assertEqual(r.stdout, "T005 updated\n")
+        self.assertIsNotNone(self.brief(5))
+
+    def test_a_ref_quoted_in_prose_only_DELAYS_the_collection(self):
+        """A `[[handoff-T00N]]` inside another item's prose counts as a pointer —
+        the link is prose by contract (there is no writer position to read it at),
+        so a quoting item holds the briefing it merely mentions. The tolerance is
+        ONE-WAY, which is what makes it safe: it can only make MORE items hold a
+        briefing, never fewer, so it delays a collection and can never cause a
+        wrong deletion — and the quoting item's own close collects it."""
+        self.seed(item(1, "anchor [[handoff-T001]]"),
+                  item(2, "documenta o formato: um item aponta com [[handoff-T001]]"))
+        self.seed_brief(1)
+        first = self.run_tk("done", "1", "--how", "PR #1")
+        self.assertIn("handoff-T001.md kept — still reached by T002\n", first.stdout)
+        last = self.run_tk("done", "2", "--how", "PR #2")
+        self.assertIn("handoff-T001.md removed\n", last.stdout)
+        self.assertIsNone(self.brief(1))
+
+    def test_a_link_without_the_writers_zero_padding_still_holds(self):
+        """`[[handoff-T1]]` is what a human or a skill's prose writes. Reading only
+        the writer's `T001` made it invisible, and the close DELETED a briefing a
+        second item still pointed at — the one direction this tolerance may not
+        fail in, since a wrong deletion cannot be undone by re-running anything."""
+        self.seed(item(1, "anchor [[handoff-T001]]"), item(2, "sibling [[handoff-T1]]"))
+        self.seed_brief(1)
+        r = self.run_tk("done", "1", "--how", "PR #1")
+        self.assertIn("handoff-T001.md kept — still reached by T002\n", r.stdout)
+        self.assertIsNotNone(self.brief(1))
+        last = self.run_tk("done", "2", "--how", "PR #2")
+        self.assertIn("handoff-T001.md removed\n", last.stdout)
+
+    def test_a_briefing_that_cannot_be_removed_does_not_fail_the_close(self):
+        """The close's own writes are already committed when the collection runs,
+        so dying here reports an APPLIED close as a failure."""
+        self.seed(item(1, "um"))
+        self.seed_brief(1)
+        path = os.path.join(self.mem, "handoff-T001.md")
+        os.remove(path)
+        os.makedirs(os.path.join(path, "inside"))
+        r = self.run_tk("done", "1", "--how", "PR #1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("could not be removed", r.stderr)
+        self.assertIn(path, r.stderr)
+        self.assertNotIn("T001", self.body("next-steps.md"))
+        self.assertIn("T001", self.body("done-log.md"))
 
     def test_a_TICKED_sibling_no_longer_holds_the_briefing_open(self):
         """Holders are read from OPEN items only, and a legacy `[x]` left in
