@@ -503,6 +503,10 @@ LOG_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\
 
 
 FIELD_SEGMENT_RE = re.compile(r"\*\*(" + ANY_FIELD + r"):\*\*[^*\n]*")
+# the marker and the blank after it, for reading a segment's VALUE back out.
+# Spelled once: two readers stripping the same prefix their own way is how one of
+# them comes to print a value the file does not carry
+FIELD_BODY_RE = re.compile(r"\A\*\*[^*]+:\*\*\s*")
 
 
 def canonical_field(raw):
@@ -812,6 +816,37 @@ def validate_owner(name):
              "one nobody holds. Hand an item back with `tk-queue release <id>`.")
 
 
+# The three shapes that keep a reader from finding an item's **Class:** in its
+# field chain. Named constants, not bare strings: two callers branch on them.
+CLASS_SHAPE_NONE = "no-class"        # no **Class:** marker anywhere in the block
+CLASS_SHAPE_OFF_LINE = "off-line"    # one, but not on the first line (a continuation)
+CLASS_SHAPE_BROKEN = "broken-chain"  # on the first line, and the chain misses it anyway
+
+
+def class_shape(block):
+    """Which of the three shapes it is — the classification two messages answer
+    differently, and the reason it is a function rather than two copies.
+
+    The CONDITION is common to the claim's diagnosis and the package's exclusion
+    line; the messages are not — one is a paragraph naming a remedy for a single
+    item, the other is one line inside a list. Spelled twice, it cost the mutation
+    harness three anchors the day the second copy was written: an anchor is a
+    SUBSTRING count, so a second site carrying the same text silently stops the
+    entry from proving anything.
+
+    The discriminator is where the MARKER sits, never how far the chain reached.
+    "The chain has no Class" is the broader condition, and it also catches an item
+    whose fields ARE on the first line and whose Class merely lost its period —
+    which then got a message saying its fields sat elsewhere (false) and a remedy
+    that rewrote the item and left the same refusal standing.
+    """
+    if not FIELD_MARKER_RE["Class"].search(block):
+        return CLASS_SHAPE_NONE
+    if not FIELD_MARKER_RE["Class"].search(block.split("\n", 1)[0]):
+        return CLASS_SHAPE_OFF_LINE
+    return CLASS_SHAPE_BROKEN
+
+
 def claim_unwritable_message(iid, block, candidate):
     """Why the item cannot hold a claim the reader would find, and the remedy that
     actually works for its shape.
@@ -849,14 +884,10 @@ def claim_unwritable_message(iid, block, candidate):
             "segment written after **Class:**, and on this item it would not land there. "
             "Nothing was changed — written anyway, the item is held in the file, shown "
             "FREE by `list` and impossible to release. ")
-    if not FIELD_MARKER_RE["Class"].search(block):
+    shape = class_shape(block)
+    if shape == CLASS_SHAPE_NONE:
         return head + f"Give it a class first: `tk-queue edit {label} --class AUTONOMOUS`."
-    # the discriminator is where the Class MARKER is, not whether the chain reached
-    # it: "the chain has no Class" is the broader condition, and it also catches an
-    # item whose fields ARE on the first line and whose Class value merely lacks its
-    # period — which then got a message saying its fields sat elsewhere (false) and a
-    # remedy that rewrote the item and left the same refusal standing
-    if not FIELD_MARKER_RE["Class"].search(block.split("\n", 1)[0]):
+    if shape == CLASS_SHAPE_OFF_LINE:
         return head + (
             "Its fields sit OUTSIDE the first line, which already blocks every per-field "
             f"`edit` on this item (it did before `claim` existed). Fold them onto the first "
@@ -926,7 +957,7 @@ def claim_value(segment):
     m = CLAIM_VALUE_RE.match(segment.group(0))
     if m:
         return m.group(1), m.group(2)
-    return re.sub(r"\A\*\*[^*]+:\*\*\s*", "", segment.group(0)).strip(), None
+    return FIELD_BODY_RE.sub("", segment.group(0)).strip(), None
 
 
 def claim_mark(owner, since):
@@ -1197,9 +1228,12 @@ PACK_TITLE = 60   # excluded lines carry a reason after the text; `list`'s 100 w
 # continuation-line defect, and repeating a remedy that long six times buries the
 # six reasons it sits beside — in output whose reader is a skill's prose. The IDs
 # are in the lines above; the repair names the shape it lifts.
-REPAIR_CANCEL = ("a chain no gate can read: `tk-queue cancel <id>` + re-add it clean. No "
-                 "per-field `edit` repairs this reliably — several are refused on the very "
-                 "field at fault")
+# `--why` is not decoration in this line: `cancel` REQUIRES it, so the remedy
+# without it is refused by argparse — a dead end printed as an answer, which is
+# the failure this whole block exists to avoid. The suite runs it verbatim
+REPAIR_CANCEL = ("a chain no gate can read: `tk-queue cancel <id> --why \"<why>\"` + re-add "
+                 "it clean. No per-field `edit` repairs this reliably — several are refused "
+                 "on the very field at fault")
 REPAIR_FOLD = ("fields off the first line: fold them up with `tk-queue edit <id> --text "
                "\"<the item's whole text>\"` — it lifted 29 of the 31 items carrying this "
                "shape on the real queues. Where a marker and its value sit on different "
@@ -1211,23 +1245,31 @@ REPAIR_MIGRATE = "an item with no ID: `tk-queue migrate` assigns one"
 
 # The stable shape, in the help because a skill's prose reads this output: a
 # format that drifts silently is a skill reading the wrong column and never
-# saying so.
-PACK_FORMAT = """output format (stable — a skill's prose reads it):
+# saying so. The sample is a REAL run and the suite asserts it character for
+# character against the queue that produces it — a documented shape nothing
+# executes is the one that goes stale first, and this one documents an AC.
+PACK_SAMPLE = """eligible (1 of 3, in queue order):
+T007  S (~20min)    the item's text
 
-  eligible (<n> of <total>, in queue order):
-  T007  S (~20min)  the item's text, truncated
+excluded (2):
+T012  another item  — class is DECISION
+T031  a legacy item  — no **Class:** field
 
-  excluded (<n>):
-  T001  the item's text, truncated  — class is DECISION
+repairs:
+- no **Class:** at all: `tk-queue edit <id> --class AUTONOMOUS`
+"""
 
-  repairs:
-  - <one line per defect SHAPE above, listed once, whatever the item count>
+PACK_FORMAT = """output format (stable — a skill's prose reads it). The sample below is a real
+run, on a queue of three items, asserted character for character by the suite:
 
-Eligible: ID, Effort, text — Effort raw, never summed, because summing free text
-is the hidden heuristic this queue's order deliberately has none of. Excluded:
-ID, text, and the reason, which always carries the VALUE the filter read ("Env
-is desktop, ...", "Risk: <the line>"): a marker absorbed from an item's prose
-then reads as an obviously wrong line instead of a silently missing item.
+""" + PACK_SAMPLE + """
+Eligible: ID, Effort, text — Effort raw and never summed, because summing free
+text is the hidden heuristic this queue's order deliberately has none of.
+Excluded: ID, text, and the reason, which always carries the VALUE the filter
+read (`Env is 'desktop', this machine is server`; `Risk: <the line>`): a marker
+absorbed out of an item's prose then reads as an obviously wrong line instead of
+a silently missing item. Repairs are listed once per defect SHAPE, whatever the
+number of items carrying it.
 
 Exclusion rules, in the order they are asked; the FIRST that applies is the
 reason. Every field is read at the position a WRITER puts it — after **Class:**,
@@ -1239,9 +1281,10 @@ in the chain that ends the first line — never by searching the block:
   claimed    not held by a sibling session
   id         an item `migrate` never gave an ID to cannot be closed by ID
 
-A marker the position rule may not read excludes the item too, saying so: "there
-is a **Risk:** marker I am not allowed to read" is not "there is no risk", and
-unattended execution is the wrong place to guess.
+A marker the position rule may not read excludes the item too, and is reported
+BEFORE any value, whichever field carries it: "there is a **Risk:** marker I am
+not allowed to read" is not "there is no risk", unattended execution is the wrong
+place to guess, and a defect outranks an ordinary state as the thing to say.
 
 **Deferred:** is deliberately NOT read here. `--deferred` is refused on every
 class but DECISION and leaving that class drops it, so no path through this CLI
@@ -1254,7 +1297,7 @@ def field_value(segment):
 
     One period, not `rstrip('.')`: a value ending in an ellipsis is a value, and a
     reader that eats all three prints something the file does not contain."""
-    body = re.sub(r"\A\*\*[^*]+:\*\*\s*", "", segment.group(0)).strip()
+    body = FIELD_BODY_RE.sub("", segment.group(0)).strip()
     return re.sub(r"\.\Z", "", body).strip()
 
 
@@ -1294,12 +1337,10 @@ def pack_classless_reason(block):
         # that is not there
         return (f"{len(found)} **Class:** fields in the chain, so its value is "
                 "ambiguous", REPAIR_CANCEL)
-    if not FIELD_MARKER_RE["Class"].search(block):
+    shape = class_shape(block)
+    if shape == CLASS_SHAPE_NONE:
         return "no **Class:** field", REPAIR_CLASSLESS
-    # where the MARKER is, not where the chain reached: an item whose fields are on
-    # the first line and whose Class merely lost its period is the third shape, and
-    # telling it its fields sit elsewhere would be false
-    if not FIELD_MARKER_RE["Class"].search(block.split("\n", 1)[0]):
+    if shape == CLASS_SHAPE_OFF_LINE:
         return "**Class:** sits off the first line, where no gate reads it", REPAIR_FOLD
     return "the field chain breaks before **Class:**, so no gate reads it", REPAIR_CANCEL
 
@@ -1327,26 +1368,32 @@ def pack_exclusion(iid, block, identity):
     if cls != "AUTONOMOUS":
         return pack_classless_reason(block) if cls is None else (f"class is {cls}", None)
 
-    for field in ("Risk", "Env"):
-        segs, markers = qualified_fields(block, field)
+    # what the two gate fields have in common is asked once, for both, BEFORE either
+    # value: a field the position rule cannot read is a defect, and a defect outranks
+    # an ordinary state as the thing to say about the item
+    field = {}
+    for name in ("Risk", "Env"):
+        segs, markers = qualified_fields(block, name)
         if markers > len(segs):
-            return (f"a **{field}:** marker sits where no gate reads it, so what the item "
+            return (f"a **{name}:** marker sits where no gate reads it, so what the item "
                     "really carries cannot be told", REPAIR_CANCEL)
         if len(segs) > 1:
-            return (f"{len(segs)} **{field}:** fields in the chain, so its value is "
+            return (f"{len(segs)} **{name}:** fields in the chain, so its value is "
                     "ambiguous", REPAIR_CANCEL)
-        if segs and field == "Risk":
-            return "Risk: " + field_value(segs[0]), None
-        if segs and field == "Env":
-            value = field_value(segs[0])
-            if value != identity:
-                where = f"this machine is {identity}" if identity else "there is no site file"
-                # QUOTED, the way `--env` is quoted when the roster refuses it: this
-                # value is the one the position rule may have read out of absorbed
-                # prose, and unquoted an empty one prints "Env is , ..." while a
-                # trailing blank prints as a clean name. The whole reason the value is
-                # here is to make a wrong one obviously wrong
-                return f"Env is {value!r}, {where}", None
+        field[name] = segs[0] if segs else None
+
+    if field["Risk"] is not None:
+        return "Risk: " + field_value(field["Risk"]), None
+    if field["Env"] is not None:
+        value = field_value(field["Env"])
+        if value != identity:
+            where = f"this machine is {identity}" if identity else "there is no site file"
+            # QUOTED, the way `--env` is quoted when the roster refuses it: this value
+            # is the one the position rule may have read out of absorbed prose, and
+            # unquoted an empty one prints "Env is , ..." while a trailing blank prints
+            # as a clean name. The whole reason the value is in the line is to make a
+            # wrong one look wrong
+            return f"Env is {value!r}, {where}", None
 
     # asked of `displayed_claim`, so `list` and the package cannot disagree about who
     # holds an item — the package has always been built from exactly that display
@@ -1372,7 +1419,7 @@ def pack_effort(block):
     cost the caller has to estimate — not an item to drop over a field the filter
     was never about."""
     segs, markers = qualified_fields(block, "Effort")
-    if len(segs) != 1 or markers > 1:
+    if len(segs) != 1 or markers > len(segs):
         return "?"
     return field_value(segs[0])
 
@@ -1388,7 +1435,10 @@ def cmd_pack(args):
         if kind != "item-open":
             continue
         iid = item_id(text)
-        label = f"T{iid:03d}" if iid else "----"
+        # `is not None`, not truthiness: the rule below asks `iid is None`, and an
+        # item numbered T000 would otherwise be packaged under the label of an item
+        # with no ID at all
+        label = f"T{iid:03d}" if iid is not None else "----"
         verdict = pack_exclusion(iid, text, identity)
         if verdict is None:
             # Effort is free text, so the column is padded and never TRUNCATED: a

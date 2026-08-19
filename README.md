@@ -26,7 +26,7 @@ The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (de
 `tk/skills/kickoff/SKILL.md`): two files per project in auto-memory — `next-steps.md`
 (open items only) and `done-log.md` (what left the queue, when, and how) — written ONLY
 through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / bump /
-list / report / migrate), which moves a resolved item to the log in one command and enforces a
+claim / release / list / pack / report / migrate), which moves a resolved item to the log in one command and enforces a
 two size ceilings whose scope follows each flag's nature: the whole ITEM is measured
 whenever a prose flag (`--text`, `--criterion`, `--risk`, `--deferred`) grows it, while the
 short fields (`--class`, `--effort`, `--project`) answer only to a small per-VALUE ceiling — that

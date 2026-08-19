@@ -52,10 +52,10 @@ metadata:
 """
 
 
-def item(iid, text, project=None, klass="AUTONOMOUS", risk=None):
+def item(iid, text, project=None, klass="AUTONOMOUS", risk=None, effort="S"):
     tag = f" **Project:** {project}." if project else ""
     risk_field = f" **Risk:** {risk}." if risk else ""
-    return (f"- [ ] **T{iid:03d}** — {text} **Class:** {klass}. **Effort:** S."
+    return (f"- [ ] **T{iid:03d}** — {text} **Class:** {klass}. **Effort:** {effort}."
             f"{risk_field} **Criterion:** A: x.{tag} **Source:** 2026-08-13\n")
 
 
@@ -2674,8 +2674,34 @@ class TestPack(QueueTest):
         the shape it reads is written where the script itself carries it."""
         r = self.run_tk("pack", "--help")
         self.assertEqual(r.returncode, 0, r.stderr)
-        for fragment in ("eligible (", "excluded (", "repairs:", "in queue order"):
-            self.assertIn(fragment, r.stdout)
+        self.assertIn(load_tk().PACK_SAMPLE, r.stdout)
+
+    def test_the_documented_sample_IS_what_the_command_prints(self):
+        """Character for character, against the queue the sample describes. A sample
+        asserted only by substrings drifts from the code the moment a column or a
+        quote changes — and drifting is exactly what a STABLE format may not do, in
+        output whose consumer is a skill's prose rather than a person who would
+        notice. Both halves of the AC are here: the shape is documented, and the
+        documentation is executed."""
+        self.seed(item(7, "the item's text", effort="S (~20min)")
+                  + decision_item(12, "another item")
+                  + "- [ ] **T031** — a legacy item **Effort:** S. **Criterion:** A: x. "
+                    "**Source:** 2026-08-13\n")
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, load_tk().PACK_SAMPLE)
+
+    def test_the_CANCEL_repair_is_printed_and_the_command_ACCEPTS_it(self):
+        """Run verbatim, as printed. `cancel` requires `--why`, so the line without it
+        is refused by argparse — a remedy that cannot be run is a dead end dressed as
+        an answer, and this was the one repair of the five that no test executed."""
+        self.seed("- [ ] **T001** — um. **Class:** DECISION. **Class:** AUTONOMOUS. "
+                  "**Effort:** S. **Criterion:** A: x. **Source:** 2026-08-13\n")
+        printed = self.repairs(self.pack())
+        self.assertIn("`tk-queue cancel <id> --why", printed)
+        r = self.run_tk("cancel", "T001", "--why", "cadeia ilegível")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("excluded (0)", self.pack())
 
     # --- rule: the class, read from the CHAIN ------------------------------
     def test_every_class_but_AUTONOMOUS_is_excluded_by_name(self):

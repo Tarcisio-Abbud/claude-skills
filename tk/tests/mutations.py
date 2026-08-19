@@ -960,7 +960,7 @@ MUTATIONS = [
       "TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
 
     ("T121 a claim that does not parse is reported as somebody unnamed",
-     '    return re.sub(r"\\A\\*\\*[^*]+:\\*\\*\\s*", "", segment.group(0)).strip(), None',
+     '    return FIELD_BODY_RE.sub("", segment.group(0)).strip(), None',
      '    return "somebody", None',
      ["TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
 
@@ -994,13 +994,17 @@ MUTATIONS = [
     # a refusal that prescribes a command which is ITSELF refused is a dead end: for
     # the continuation-line shape `edit --class` is refused too, and for the missing
     # period it repairs nothing
-    ("T121 every shape gets the --class remedy, refused or useless for two of them",
-     '    if not FIELD_MARKER_RE["Class"].search(block):\n        return head + '
-     'f"Give it a class first: `tk-queue edit {label} --class AUTONOMOUS`."',
-     '    if True:\n        return head + '
-     'f"Give it a class first: `tk-queue edit {label} --class AUTONOMOUS`."',
-     ["TestClaim.test_an_item_whose_fields_sit_off_the_first_line_is_told_how_to_fold_them",
-      "TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it"]),
+    ("T121/T126 an item with NO class at all is classified as one whose fields moved",
+     '    if not FIELD_MARKER_RE["Class"].search(block):\n        return CLASS_SHAPE_NONE',
+     "    if False:\n        return CLASS_SHAPE_NONE",
+     ["TestClaim.test_an_item_whose_chain_has_no_class_refuses_the_claim",
+      "TestPack.test_no_class_at_all_is_named_and_the_CLASS_repair_works"]),
+
+    ("T121/T126 the class shape stops discriminating: everything is 'no class'",
+     '    if not FIELD_MARKER_RE["Class"].search(block):\n        return CLASS_SHAPE_NONE',
+     "    if True:\n        return CLASS_SHAPE_NONE",
+     ["TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it",
+      "TestPack.test_a_class_off_the_first_line_is_named_and_the_FOLD_repair_works"]),
 
     # WRITING a claim needs a chain that can hold one; READING one does not. A
     # release that demanded a host would refuse a diagnosis about a claim the item
@@ -1029,12 +1033,13 @@ MUTATIONS = [
 
     # "the chain has no Class" is BROADER than "the fields are elsewhere": it also
     # catches an item whose fields are on line 1 and whose Class merely lost its period
-    ("T121 the fold remedy is printed for an item whose fields ARE on the first line",
+    ("T121/T126 the fold shape is decided by the CHAIN, not by where the marker is",
      '    if not FIELD_MARKER_RE["Class"].search(block.split("\\n", 1)[0]):\n'
-     "        return head + (",
+     "        return CLASS_SHAPE_OFF_LINE",
      '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
-     "        return head + (",
-     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix"]),
+     "        return CLASS_SHAPE_OFF_LINE",
+     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix",
+      "TestPack.test_a_chain_that_never_reaches_the_class_is_named_as_that"]),
 
     ("T121 the refusal names where the chain STARTS instead of where it stops",
      "    before = [m for m in FIELD_SEGMENT_RE.finditer(line) if m.start() < chain[0].start()]\n"
@@ -1165,44 +1170,45 @@ MUTATIONS = [
      "    if False:",
      ["TestPack.test_two_classes_in_the_chain_are_ambiguous_not_guessed"]),
 
-    # the three classless shapes collapse into one, so two of the three items get a
-    # remedy that is refused for them — the dead end the whole discrimination exists
-    # to avoid
-    ("T126 pack prescribes the fold for an item that carries no class at all",
-     "    if not FIELD_MARKER_RE[\"Class\"].search(block):\n"
-     "        return \"no **Class:** field\", REPAIR_CLASSLESS",
-     "    if False:\n"
-     "        return \"no **Class:** field\", REPAIR_CLASSLESS",
-     ["TestPack.test_no_class_at_all_is_named_and_the_CLASS_repair_works"]),
-
-    ("T126 pack prescribes `cancel` where folding the fields up would lift it",
-     "    if not FIELD_MARKER_RE[\"Class\"].search(block.split(\"\\n\", 1)[0]):\n"
-     "        return \"**Class:** sits off the first line, where no gate reads it\", REPAIR_FOLD",
-     "    if False:\n"
-     "        return \"**Class:** sits off the first line, where no gate reads it\", REPAIR_FOLD",
+    # the shape each message maps to: the classification above is shared, the mapping
+    # from shape to line is not
+    ("T126 the package maps two of the three class shapes to the wrong line",
+     '        return "**Class:** sits off the first line, where no gate reads it", REPAIR_FOLD',
+     '        return "no **Class:** field", REPAIR_CLASSLESS',
      ["TestPack.test_a_class_off_the_first_line_is_named_and_the_FOLD_repair_works"]),
 
-    ("T126 pack tells an item whose fields ARE on the first line that they are not",
-     "    if not FIELD_MARKER_RE[\"Class\"].search(block.split(\"\\n\", 1)[0]):\n"
-     "        return \"**Class:** sits off the first line, where no gate reads it\", REPAIR_FOLD",
-     "    if True:\n"
-     "        return \"**Class:** sits off the first line, where no gate reads it\", REPAIR_FOLD",
-     ["TestPack.test_a_chain_that_never_reaches_the_class_is_named_as_that"]),
+    # the remedy printed for a broken chain has to be one `cancel` ACCEPTS: without
+    # `--why` argparse refuses it, and the line is a dead end dressed as an answer
+    ("T126 the cancel remedy drops the flag the command requires",
+     'REPAIR_CANCEL = ("a chain no gate can read: `tk-queue cancel <id> --why \\"<why>\\"` + re-add "',
+     'REPAIR_CANCEL = ("a chain no gate can read: `tk-queue cancel <id>` + re-add "',
+     ["TestPack.test_the_CANCEL_repair_is_printed_and_the_command_ACCEPTS_it"]),
+
+    # the AC itself: the shape a skill's prose reads, documented where the script
+    # carries it — and asserted against a real run, so it cannot drift
+    ("T126 the output format leaves the help",
+     "                   epilog=PACK_FORMAT,\n", "",
+     ["TestPack.test_the_output_format_is_documented_in_the_help"]),
+
+    ("T126 the documented sample drifts from what the command prints",
+     'PACK_SAMPLE = """eligible (1 of 3, in queue order):',
+     'PACK_SAMPLE = """eligible (1 of 3, in file order):',
+     ["TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     # --- the Risk rule -------------------------------------------------------
 
     ("T126 pack packages an item carrying a Risk line",
-     "        if segs and field == \"Risk\":\n"
-     "            return \"Risk: \" + field_value(segs[0]), None",
-     "        if False:\n"
-     "            return \"Risk: \" + field_value(segs[0]), None",
+     '    if field["Risk"] is not None:\n'
+     '        return "Risk: " + field_value(field["Risk"]), None',
+     "    if False:\n"
+     '        return "Risk: " + field_value(field["Risk"]), None',
      ["TestPack.test_a_Risk_excludes_the_item_and_the_reason_carries_the_LINE"]),
 
     # the reason without the VALUE: the verdict alone sends the reader back to the
     # file for the one line they re-triage the item from
     ("T126 the Risk reason drops the line it read",
-     "            return \"Risk: \" + field_value(segs[0]), None",
-     "            return \"carries a Risk\", None",
+     '        return "Risk: " + field_value(field["Risk"]), None',
+     '        return "carries a Risk", None',
      ["TestPack.test_a_Risk_excludes_the_item_and_the_reason_carries_the_LINE"]),
 
     ("T126 the value reader eats every trailing period, not the field terminator",
@@ -1220,21 +1226,21 @@ MUTATIONS = [
 
     ("T126 pack guesses a value where the chain names two",
      "        if len(segs) > 1:\n"
-     "            return (f\"{len(segs)} **{field}:** fields in the chain, so its value is \"",
+     '            return (f"{len(segs)} **{name}:** fields in the chain, so its value is "',
      "        if False:\n"
-     "            return (f\"{len(segs)} **{field}:** fields in the chain, so its value is \"",
+     '            return (f"{len(segs)} **{name}:** fields in the chain, so its value is "',
      ["TestPack.test_two_Env_fields_are_ambiguous_not_guessed"]),
 
     # --- the Env rule --------------------------------------------------------
 
     ("T126 pack packages an item bound to another machine",
-     "            if value != identity:", "            if False:",
+     "        if value != identity:", "        if False:",
      ["TestPack.test_an_item_bound_to_ANOTHER_machine_is_out_naming_BOTH_names"]),
 
     # over-trigger: an Env rule that never matches the local identity excludes every
     # item that names WHERE it runs, including the ones that name this machine
     ("T126 an item bound to THIS machine is excluded too",
-     "            if value != identity:", "            if value or True:",
+     "        if value != identity:", "        if value or True:",
      ["TestPack.test_an_item_bound_to_this_machine_is_eligible"]),
 
     ("T126 a missing site file becomes a refusal instead of an empty roster",
@@ -1257,17 +1263,17 @@ MUTATIONS = [
     # roster, and the day the roster changes this one starts refusing items that
     # were already in the file
     ("T126 pack revalidates the Env against the roster on the way out",
-     "            value = field_value(segs[0])\n"
-     "            if value != identity:",
-     "            value = field_value(segs[0])\n"
-     "            validate_env(value)\n"
-     "            if value != identity:",
+     '        value = field_value(field["Env"])\n'
+     "        if value != identity:",
+     '        value = field_value(field["Env"])\n'
+     "        validate_env(value)\n"
+     "        if value != identity:",
      ["TestPack.test_the_roster_is_NOT_revalidated_on_the_way_out"]),
 
     # unquoted, a field a hand-edit left empty prints "Env is , this machine is X"
     ("T126 the Env value is printed unquoted, so an empty one reads as no value",
-     "                return f\"Env is {value!r}, {where}\", None",
-     "                return f\"Env is {value}, {where}\", None",
+     '            return f"Env is {value!r}, {where}", None',
+     '            return f"Env is {value}, {where}", None',
      ["TestPack.test_an_EMPTY_Env_reads_as_an_empty_value_and_not_as_no_value"]),
 
     # --- the claim rule ------------------------------------------------------
@@ -1322,16 +1328,10 @@ MUTATIONS = [
       "TestPack.test_bump_moves_an_item_to_the_top_of_the_package_too"]),
 
     ("T126 pack packages the items already closed",
-     "        if kind != \"item-open\":\n"
-     "            continue\n"
-     "        iid = item_id(text)\n"
-     "        label = f\"T{iid:03d}\" if iid else \"----\"\n"
-     "        verdict = pack_exclusion(iid, text, identity)",
-     "        if kind == \"other\":\n"
-     "            continue\n"
-     "        iid = item_id(text)\n"
-     "        label = f\"T{iid:03d}\" if iid else \"----\"\n"
-     "        verdict = pack_exclusion(iid, text, identity)",
+     '        if kind != "item-open":\n            continue\n        iid = item_id(text)\n'
+     "        # `is not None`, not truthiness:",
+     '        if kind == "other":\n            continue\n        iid = item_id(text)\n'
+     "        # `is not None`, not truthiness:",
      ["TestPack.test_a_checked_item_is_not_a_candidate"]),
 
     ("T126 the repair is repeated once per item instead of once per shape",
@@ -1339,9 +1339,9 @@ MUTATIONS = [
      ["TestPack.test_a_repair_is_printed_ONCE_however_many_items_need_it"]),
 
     ("T126 an unreadable Effort raises instead of answering '?'",
-     "    if len(segs) != 1 or markers > 1:\n"
-     "        return \"?\"", "    if False:\n"
-     "        return \"?\"",
+     "    if len(segs) != 1 or markers > len(segs):\n"
+     '        return "?"', "    if False:\n"
+     '        return "?"',
      ["TestPack.test_an_unreadable_Effort_does_not_cost_the_item_its_place"]),
 
     ("T126 pack stops being a reader, so it takes the lock and names the queue",

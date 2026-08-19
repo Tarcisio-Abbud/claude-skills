@@ -19,8 +19,8 @@ the item forever; an Env that named a machine the item needed before it was
 sliced goes the same way, with `--env none`. An item reported as claimed belongs
 to another session — if that session is known to be gone, hand it back with
 `tk-queue release <id>`, which prints whose claim it dropped. An item excluded
-over a malformed field carries its repair in the `repairs:` block. Re-run `pack`
-after any of these.
+over a malformed field carries its repair in the `repairs:` block. Re-run
+`tk-queue pack` after any of these.
 
 **Then cut.** Take the eligible in the order printed — priority IS the order of
 the file, and `tk-queue bump <id>` is what moves an item to the top — then add
@@ -32,7 +32,7 @@ long to verify its own work.
 
 **Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45"),
 and every item left out is noted with the reason — the eligible ones dropped for size AND
-the ones `pack` excluded, which are not eligible at all and would otherwise leave no
+the ones `tk-queue pack` excluded, which are not eligible at all and would otherwise leave no
 trace anywhere.
 
 ## 2. `pack` only: confirm

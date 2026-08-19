@@ -133,8 +133,9 @@ tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [
 tk-queue bump <id>                             # move the item to the top of the global order
 tk-queue claim <id> --as <session/host label>  # take it, so a sibling session does not work it too
 tk-queue release <id>                          # hand a claimed item back, WITHOUT closing it
-tk-queue pack                                  # candidates for an unattended package: eligible items
-                                               # in queue order + every exclusion with its reason
+tk-queue pack                                  # candidates for an unattended package:
+                                               # eligible items in queue order, plus every
+                                               # exclusion with the value that caused it
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
 tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
 ```
