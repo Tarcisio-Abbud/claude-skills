@@ -130,6 +130,18 @@ CEILING_FORCED = 2000
 #           ONE call, took an item to 709 chars past a 700 block ceiling with no
 #           --force. So these also put the resulting BLOCK through the block
 #           ceiling, exactly as --text does.
+#   NEITHER --env, alone, answers to no ceiling here, and that is not an oversight: its
+#           value must EQUAL an entry of the site file's roster, and a roster entry is a
+#           bounded slug (tk_site.NAME_RE) — a gate strictly tighter than either ceiling
+#           above, applied to the file the value comes from rather than to the flag. Do
+#           not add it to check_field_ceilings "for consistency": that would put a
+#           second, looser bound on a value the roster already decides, and the day a
+#           legitimate machine name crossed it the queue would refuse a name its own
+#           roster accepts. Like the short fields, it is exempt from the block ceiling
+#           (it is absent from FREE_TEXT_FLAGS), for the same T071 reason. The same
+#           answer covers ensure_single_line and ensure_no_embedded_marker, which it
+#           also skips: a newline and a `**Field:**` shape are both unspellable inside
+#           NAME_RE, so those guards would be re-checking what the roster settled.
 FIELD_CEILING_SHORT = 60
 FIELD_CEILING_SHORT_FORCED = 150
 FIELD_CEILING = 200
