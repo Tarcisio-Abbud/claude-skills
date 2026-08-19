@@ -27,15 +27,25 @@ rewrite) → an equivalence artefact: output byte-compared against real data, a 
 fuzz across the two implementations, dumps compared on a copy of the real database. A green
 suite there proves the suite still runs, which is not what the item promised.
 
+## Prove it can fail
+
+The first time a criterion A is run at all, prove once that it **can** fail: put the defect
+back and watch it fall. A criterion that passes with the defect back proves nothing, and it
+would carry a green evidence block all the way to the user.
+
 ## Outcomes of the hard gate
 
-Exactly one holds. Type A and type B split the items; within A, the three cases partition
-every run. Fewer than three failed attempts is not an outcome — it is a retry.
+Exactly one holds, and the fit check above runs FIRST: a criterion that does not fit the
+promise is rotten whatever its exit code, so a satisfiable-but-wrong criterion never reaches
+"approved". **Rotten** then covers both types — a criterion of either type that cannot
+execute, or whose artefact cannot be assembled, lands there. What is left splits by type:
+within A, passed · failed 3× ; within B, proof ready. Fewer than three failed attempts is
+not an outcome — it is a retry.
 
 | Outcome | Holds when | What it emits |
 |---|---|---|
-| **Approved** | a type-A criterion executed and passed on the final tree, re-run by the caller | the evidence block; the item can close and the PR can be merged |
-| **Proof ready** | type B: the artefact plus a one-line claim ("this proves X") is assembled | the evidence block with the artefact attached. The verdict is the user's, so a **type-B item never merges inside an unattended package** — the package ends at an open PR carrying the proof |
+| **Approved** | a type-A criterion that fits the promise executed and passed on the final tree, re-run by the caller | the evidence block; the item can close. Merging stays the caller's decision, taken at its own gate |
+| **Proof ready** | type B: the artefact plus a one-line claim ("this proves X") is assembled | the evidence block with the artefact attached. The verdict is the user's, so a **type-B item never merges inside an unattended package** — it waits with its proof until the user gives it |
 | **Failed 3×** | a type-A criterion executed and failed on three attempts | the item becomes a DECISION carrying its attempt history, and leaves the package |
 | **Rotten criterion** | the criterion cannot execute, or executes and proves something other than what the item promised | a DECISION naming the contradiction and proposing the criterion that carries the same guarantee; the delivered code is left as it stands |
 
@@ -58,15 +68,17 @@ anything from that item on.
 The ceiling of three applies at the hard gate. Attempt 1 fails → fix the delivery and rerun;
 same for attempt 2. On the third failure, in this order:
 
-1. `tk-queue edit <id> --class DECISION --deferred "<why the decision could not be asked>"`
-   (an unattended session passes `--deferred afk`), plus `tk-queue release <id>` when the
-   item was claimed, so the dead package's ownership does not outlive it.
-2. Write the handoff beside the queue files (`handoff-<id>.md`, same directory the
-   `tk-queue` resolves for `next-steps.md`) and point the item at `[[handoff-<id>]]`. It
-   carries the destination, the state, and the **attempt history**: per attempt, what
-   changed, the command, the exit code and the tail of the output. The history lives there
-   rather than in the item because the item is capped at 700 chars.
-3. The branch and the PR stay exactly as they are. The next session starts from the handoff.
+1. Write the handoff beside the queue files — `handoff-<id>.md`, in the same directory
+   `tk-queue` resolves `next-steps.md` in. Five fields, the first three required:
+   destination · state · blockers and notes · suggested skills · known traps. The **attempt
+   history** goes in state — per attempt: what changed, the command, the exit code and the
+   tail of the output. It lives there rather than in the item because the queue item is
+   size-capped.
+2. `tk-queue edit <id> --class DECISION --deferred "<why the decision could not be asked> —
+   [[handoff-<id>]]"` (an unattended session passes `--deferred afk`). The `--deferred`
+   field is where the item gets its pointer to the handoff.
+3. `tk-queue release <id>` when the item was claimed, so the dead package's ownership does
+   not outlive it. The next session starts from the handoff.
 
 ## The caller re-runs it
 
@@ -78,8 +90,10 @@ an empty return is a failure that reads as success.
 
 ## The evidence block
 
-Lives in the **body of the PR**; a session with no PR puts it in `tk-queue done <id>
---note "..."`. The wrap-up's digest reads it and displays it — it is written once, here.
+Lives in the **body of the PR**. A session with no PR puts it on the item as it closes:
+`tk-queue done <id> --how "<pointer>" --note "<the block>" --force` — `--how` is required,
+and `--force` is what lets the block past the field ceiling. Either way it is written once,
+here, so every later reader quotes it instead of re-deriving it.
 
 ```
 ### Verify — <item id>
@@ -96,13 +110,11 @@ Type B adds the artefact and its one-line claim in the same block.
 ## Promoting the criterion to a test
 
 A criterion A already in the shape of the target repo's suite is **promoted**: commit it as
-an acceptance test named `acceptance_*`, and add one line to that repo's
-`CODING_STANDARDS.md` — "every delivered item carries its acceptance test; `acceptance_*`
-tests only get stronger". From then on the Standards axis of any code review watches it for
-free. A criterion that is not in suite shape stays ephemeral, living in the evidence block.
-
-On the first promotion of a criterion, prove once that it **can fail**: put the defect back
-and watch the test fall. A test that passes with the defect back protects nothing.
+an acceptance test named `acceptance_*`, and add one line where that repo documents its
+standards (`CODING_STANDARDS.md` where it exists) — "every delivered item carries its
+acceptance test; `acceptance_*` tests only get stronger". From then on the Standards axis
+of any code review watches it for free. A criterion that is not in suite shape stays
+ephemeral, living in the evidence block.
 
 **Done when:** exactly one outcome above is named for the item, its evidence block sits in
 the PR body (or the item's `--note`), and — for a 3× failure or a rotten criterion — the
