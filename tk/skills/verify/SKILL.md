@@ -35,18 +35,17 @@ would carry a green evidence block all the way to the user.
 
 ## Outcomes of the hard gate
 
-Exactly one holds, and the fit check above runs FIRST: a criterion that does not fit the
-promise is rotten whatever its exit code, so a satisfiable-but-wrong criterion never reaches
-"approved". **Rotten** then covers both types — a criterion of either type that cannot
-execute, or whose artefact cannot be assembled, lands there. What is left splits by type:
-within A, passed · failed 3× ; within B, proof ready. Fewer than three failed attempts is
-not an outcome — it is a retry.
+Exactly one holds, and the fit check in *The proof fits the promise* runs FIRST: a criterion
+that does not fit the promise is **rotten** whatever its exit code, so a satisfiable-but-wrong
+criterion reaches neither "approved" nor "proof ready", of either type. What survives the fit
+check splits by type — within A, passed or failed 3×; within B, proof ready or failed 3×.
+Fewer than three failed attempts is not an outcome — it is a retry.
 
 | Outcome | Holds when | What it emits |
 |---|---|---|
 | **Approved** | a type-A criterion that fits the promise executed and passed on the final tree, re-run by the caller | the evidence block; the item can close. Merging stays the caller's decision, taken at its own gate |
-| **Proof ready** | type B: the artefact plus a one-line claim ("this proves X") is assembled | the evidence block with the artefact attached. The verdict is the user's, so a **type-B item never merges inside an unattended package** — it waits with its proof until the user gives it |
-| **Failed 3×** | a type-A criterion executed and failed on three attempts | the item becomes a DECISION carrying its attempt history, and leaves the package |
+| **Proof ready** | type B, criterion fitting the promise: the artefact plus a one-line claim ("this proves X") is assembled | the evidence block with the artefact attached. The verdict is the user's, so a **type-B item never merges inside an unattended package** — that package ends at an open PR carrying the proof, and waits |
+| **Failed 3×** | the criterion fits the promise and executes, and three attempts fail to satisfy it — for type B, the artefact could not be produced | the item becomes a DECISION carrying its attempt history, and leaves the package |
 | **Rotten criterion** | the criterion cannot execute, or executes and proves something other than what the item promised | a DECISION naming the contradiction and proposing the criterion that carries the same guarantee; the delivered code is left as it stands |
 
 ## A rotten criterion has two shapes
@@ -75,8 +74,9 @@ same for attempt 2. On the third failure, in this order:
    tail of the output. It lives there rather than in the item because the queue item is
    size-capped.
 2. `tk-queue edit <id> --class DECISION --deferred "<why the decision could not be asked> —
-   [[handoff-<id>]]"` (an unattended session passes `--deferred afk`). The `--deferred`
-   field is where the item gets its pointer to the handoff.
+   [[handoff-<id>]]"` — an unattended session has no one to ask, so it passes
+   `--deferred "afk — [[handoff-<id>]]"`. The pointer rides in that field either way, and an
+   item already near its size ceiling takes `--force` to accept the edit.
 3. `tk-queue release <id>` when the item was claimed, so the dead package's ownership does
    not outlive it. The next session starts from the handoff.
 
@@ -92,8 +92,9 @@ an empty return is a failure that reads as success.
 
 Lives in the **body of the PR**. A session with no PR puts it on the item as it closes:
 `tk-queue done <id> --how "<pointer>" --note "<the block>" --force` — `--how` is required,
-and `--force` is what lets the block past the field ceiling. Either way it is written once,
-here, so every later reader quotes it instead of re-deriving it.
+and `--force` raises the field ceiling without removing it, so that form keeps the output to
+a single line. Either way the block is written once, here: a wrap-up digest, a reviewer or
+the next session reads and displays it rather than re-deriving it.
 
 ```
 ### Verify — <item id>
@@ -110,9 +111,9 @@ Type B adds the artefact and its one-line claim in the same block.
 ## Promoting the criterion to a test
 
 A criterion A already in the shape of the target repo's suite is **promoted**: commit it as
-an acceptance test named `acceptance_*`, and add one line where that repo documents its
-standards (`CODING_STANDARDS.md` where it exists) — "every delivered item carries its
-acceptance test; `acceptance_*` tests only get stronger". From then on the Standards axis
+an acceptance test named `acceptance_*`, and add one line to that repo's
+`CODING_STANDARDS.md` (or wherever it documents its standards) — "every delivered item
+carries its acceptance test; `acceptance_*` tests only get stronger". From then on the Standards axis
 of any code review watches it for free. A criterion that is not in suite shape stays
 ephemeral, living in the evidence block.
 
