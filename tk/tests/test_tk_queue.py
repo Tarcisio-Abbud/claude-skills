@@ -15,6 +15,7 @@ and hand-editing them is exactly what the contract forbids.
 import importlib.machinery
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1125,6 +1126,8 @@ class TestTargetQueueAnnounced(QueueTest):
                      ("done", "T001", "--how", "PR #1"),
                      ("cancel", "T001", "--why", "n/a"),
                      ("bump", "T001"),
+                     ("claim", "T001", "--as", "alpha"),
+                     ("release", "T001"),
                      ("migrate",)):
             with self.subTest(cmd=argv[0]):
                 self.seed(item(1, "um"))
@@ -2044,6 +2047,515 @@ class TestEnvField(QueueTest):
         r = self.run_tk("edit", "T001", "--env", "bravo")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("**Env:** bravo.", self.body())
+
+
+# --- T121: who is working on the item, so a sibling session does not too ---
+
+CLAIMED = "**Claimed:** alpha since 2026-08-19T10:00:00Z."
+STAMP_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
+
+
+class TestClaim(QueueTest):
+    """`claim` marks an item as taken, under the exclusive lock the queue already
+    has, so two sibling sessions on one queue stop executing the same item —
+    collisions measured 2026-08-18.
+
+    The mark is a field like any other (**Claimed:**), which is what gives it the
+    chain reader, the embedded-marker guard and the ambiguity refusal for free. It
+    is NOT an `edit` flag: a flag that can set it takes a held item in a second
+    command, which is what `claim` refuses in one.
+    """
+
+    def item_line(self, prefix="- [ ]"):
+        """The item's first line — located, never counted: the frontmatter's height
+        is not this test's business, and an index makes the assertion pass on the
+        wrong line the day HEADER gains one."""
+        return next(ln for ln in self.body().splitlines() if ln.startswith(prefix))
+
+    def stamp_of(self, stdout):
+        m = STAMP_RE.search(stdout)
+        self.assertIsNotNone(m, f"no timestamp in {stdout!r}")
+        return m.group(0)
+
+    # --- the mark itself -------------------------------------------------
+    def test_claim_writes_the_field_where_the_readers_look_for_it(self):
+        """At the END of the first line, after the last field — the one place
+        field_chain reads a field back from."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        stamp = self.stamp_of(r.stdout)
+        self.assertIn(f"**Source:** 2026-08-13 **Claimed:** alpha since {stamp}.\n",
+                      self.body())
+
+    def test_the_moment_is_recorded_to_the_second_and_in_UTC(self):
+        """A date is not enough: two sessions collide within minutes, which is the
+        only interval this field is ever read over — and the queue is shared by
+        more than one machine, so two local times do not compare."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(self.body(), r"\*\*Claimed:\*\* alpha since "
+                                      r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\.")
+
+    def test_the_claim_lands_in_the_chain_on_an_item_with_a_continuation_line(self):
+        """Appending at the end of the BLOCK would put the field after the note,
+        i.e. outside the chain — where the next `claim` cannot see it, and the item
+        is claimed twice with nothing to say so."""
+        self.seed(item(1, "um").rstrip("\n") + "\n  nota: contexto durável\n")
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Claimed:** alpha since", self.item_line())
+        second = self.run_tk("claim", "T001", "--as", "bravo")
+        self.assertEqual(second.returncode, 1, second.stdout)
+        self.assertIn("already claimed by alpha", second.stderr)
+
+    # --- exclusivity ------------------------------------------------------
+    def test_a_second_claim_is_refused_naming_the_owner_and_the_moment(self):
+        """`assertNotIn("Traceback")` is doing real work: with the guard off the
+        item gains a SECOND **Claimed:** field, and the next read dies on the
+        ambiguity refusal — whose text also names the item."""
+        self.seed(item(1, "um"))
+        first = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        stamp, before = self.stamp_of(first.stdout), self.body()
+        r = self.run_tk("claim", "T001", "--as", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("already claimed by alpha", r.stderr)   # WHO
+        self.assertIn(stamp, r.stderr)                        # and WHEN
+        self.assertEqual(self.body(), before)                 # nothing was changed
+
+    def test_the_same_owner_cannot_reclaim_it_either(self):
+        """Letting it through would only refresh the timestamp — and the timestamp
+        is how a reader tells a live claim from one a dead session left behind."""
+        self.seed(item(1, "um"))
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha").returncode, 0)
+        before = self.body()
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("already claimed by alpha", r.stderr)
+        self.assertEqual(self.body(), before)
+
+    def test_two_writers_racing_for_one_item_and_exactly_one_wins(self):
+        """The criterion's own scenario. It is timing-dependent by nature, so it is
+        NOT named as any mutation's proof (the deterministic proofs are the second
+        claim above and TestConcurrency's lock test) — but it is what says the
+        guard and the lock hold together under real contention."""
+        self.seed(item(1, "um"))
+        n = 6
+        with ThreadPoolExecutor(n) as ex:
+            res = list(ex.map(lambda i: self.run_tk("claim", "T001", "--as", f"sess-{i}"),
+                              range(n)))
+        won = [r for r in res if r.returncode == 0]
+        self.assertEqual(len(won), 1, "more than one session took the same item: "
+                                      f"{[r.stdout.strip() for r in won]}")
+        winner = won[0].stdout.split()[3]
+        for r in res:
+            self.assertNotIn("Traceback", r.stderr)
+            if r.returncode != 0:
+                self.assertIn(f"already claimed by {winner}", r.stderr)
+        self.assertEqual(self.body().count("**Claimed:**"), 1)
+
+    # --- release ----------------------------------------------------------
+    def test_release_gives_the_item_back_and_leaves_the_file_INTACT(self):
+        """The whole file is asserted, not `assertNotIn("**Claimed:**")`: a clearing
+        branch that corrupted the frontmatter and duplicated the item satisfied an
+        assertNotIn once, with the suite green (see TestClearingKeepsTheFileIntact).
+        Claim is always the LAST field on its line, so it hits the dangling-blank
+        repair every single time."""
+        before = HEADER + item(1, "um") + item(2, "dois")
+        self.write("next-steps.md", before)
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha").returncode, 0)
+        r = self.run_tk("release", "T001")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), before)
+
+    def test_release_names_the_claim_it_dropped(self):
+        """`release` does not demand the owner's name — a session that died holding
+        one would otherwise leave the item unreachable, a lock with no timeout. What
+        keeps a wrongful release visible is this report."""
+        self.seed(item(1, "um"))
+        first = self.run_tk("claim", "T001", "--as", "alpha")
+        r = self.run_tk("release", "T001")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("alpha", r.stdout)
+        self.assertIn(self.stamp_of(first.stdout), r.stdout)
+
+    def test_releasing_an_unclaimed_item_says_so_and_changes_nothing(self):
+        """An honest no-op, like `bump` on an item already at the top: reporting a
+        release that did not happen is what sends the caller on to work an item
+        somebody else is still holding."""
+        self.seed(item(1, "um"))
+        before = self.body()
+        r = self.run_tk("release", "T001")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("no claim", r.stdout)
+        self.assertNotIn("released", r.stdout)
+        self.assertEqual(self.body(), before)
+
+    # --- the closes release implicitly ------------------------------------
+    def test_done_takes_the_claim_with_the_item(self):
+        """The mark is coordination between live sessions, not history: it must not
+        reach the done-log, which is the record that outlives the item."""
+        self.seed(item(1, "um"))
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha").returncode, 0)
+        r = self.run_tk("done", "T001", "--how", "PR #1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("**Claimed:**", self.body())
+        self.assertNotIn("**Claimed:**", self.body("done-log.md"))
+        self.assertNotIn("alpha", self.body("done-log.md"))
+        self.assertIn("T001", self.body("done-log.md"))
+
+    def test_cancel_takes_the_claim_with_the_item(self):
+        self.seed(item(1, "um"))
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha").returncode, 0)
+        r = self.run_tk("cancel", "T001", "--why", "obsoleto")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("**Claimed:**", self.body())
+        self.assertNotIn("**Claimed:**", self.body("done-log.md"))
+        self.assertNotIn("alpha", self.body("done-log.md"))
+
+    # --- `list` shows it --------------------------------------------------
+    def test_list_marks_the_claimed_item_and_only_that_one(self):
+        self.seed(item(1, "um"), item(2, "dois"))
+        first = self.run_tk("claim", "T001", "--as", "alpha")
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        um, dois = [ln for ln in r.stdout.splitlines() if ln.startswith("T")]
+        self.assertIn("claimed by alpha", um)
+        self.assertIn(self.stamp_of(first.stdout), um)
+        self.assertNotIn("claimed", dois)
+
+    # --- the owner is a bounded token -------------------------------------
+    def test_an_empty_owner_is_refused(self):
+        """argparse's required=True only proves --as was typed: an empty string
+        satisfies it and would claim the item for nobody."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("claim", "T001", "--as=")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("**Claimed:**", self.body())
+
+    def test_a_malformed_owner_is_refused(self):
+        """A blank in the name makes owner and moment unreadable apart; the rest
+        would break the block format outright."""
+        for bad in ("duas palavras", "-alpha", "a" * 33, "alpha\nbravo", "**Class:**"):
+            with self.subTest(bad=bad):
+                self.seed(item(1, "um"))
+                # `--as=<value>`, glued: a value starting with '-' is an OPTION to
+                # argparse otherwise, and the subtest would prove argparse's parser
+                # instead of this script's guard
+                r = self.run_tk("claim", "T001", f"--as={bad}")
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("owner name", r.stderr)
+                self.assertNotIn("**Claimed:**", self.body())
+
+    def test_the_reserved_clear_word_cannot_be_an_owner(self):
+        """`none` DELETES a field everywhere in this script, so an item claimed
+        under it reads as one nobody holds."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("claim", "T001", "--as", "none")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("release", r.stderr)          # and it says how to hand one back
+        self.assertNotIn("**Claimed:**", self.body())
+
+    def test_an_ordinary_session_label_is_still_accepted(self):
+        """The over-refusal direction: a gate that only ever refuses would make the
+        command unusable, and the refusal tests above cannot see it."""
+        for good in ("alpha", "alpha.local", "sess-3", "Tarcisio_2"):
+            with self.subTest(good=good):
+                self.seed(item(1, "um"))
+                r = self.run_tk("claim", "T001", "--as", good)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn(f"**Claimed:** {good} since", self.body())
+
+    # --- a claim that cannot be read is still a claim ---------------------
+    def test_a_claim_that_does_not_parse_still_holds_the_item(self):
+        """"Held, and I cannot tell by whom" is still held. Reading it as free is
+        exactly how the second session takes an item the first is working — and the
+        refusal quotes the raw value, which is all there is to report."""
+        self.seed(item(1, "um").rstrip("\n") + " **Claimed:** lixo.\n")
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("lixo", r.stderr)
+        self.assertNotIn("alpha", self.body())
+
+    def test_a_claim_that_does_not_parse_can_still_be_released(self):
+        """The other half: a garbled value that could not be released would be an
+        item locked forever, which is the failure the release command exists for."""
+        before = HEADER + item(1, "um")
+        self.write("next-steps.md", before.rstrip("\n") + " **Claimed:** lixo.\n")
+        r = self.run_tk("release", "T001")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), before)
+
+    # --- ambiguity is refused, never guessed ------------------------------
+    def test_two_claim_fields_in_the_chain_are_refused_as_ambiguous(self):
+        """Which one holds the item is unanswerable, and picking either lets the
+        other be silently overwritten."""
+        two = ("- [ ] **T001** — um **Class:** AUTONOMOUS. **Effort:** S. "
+               "**Criterion:** A: x. " + CLAIMED + " **Claimed:** bravo since "
+               "2026-08-19T11:00:00Z.\n")
+        self.seed(two)
+        before = self.body()
+        for argv in (("claim", "T001", "--as", "charlie"), ("release", "T001")):
+            with self.subTest(cmd=argv[0]):
+                r = self.run_tk(*argv)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("ambiguous", r.stderr)
+                self.assertEqual(self.body(), before)
+
+    def test_a_marker_only_outside_the_chain_is_refused_not_guessed(self):
+        """The item carries the marker on a continuation line and no real claim:
+        reading it as the field would let prose hold the item forever, and clearing
+        it would DELETE that prose."""
+        self.seed(item(1, "um").rstrip("\n") + "\n  nota: **Claimed:** ver depois\n")
+        before = self.body()
+        for argv in (("claim", "T001", "--as", "alpha"), ("release", "T001")):
+            with self.subTest(cmd=argv[0]):
+                r = self.run_tk(*argv)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertEqual(self.body(), before)       # the prose survives whole
+
+    def test_an_item_whose_chain_has_no_class_refuses_the_claim(self):
+        """A claim is POSITIONED against **Class:**, so a chain carrying none cannot
+        host one. Measured before this guard, on the legacy population `chain_class`
+        already names (fields on a continuation line, or an item that never had a
+        Class): `claim` returned 0 and wrote the field, `list` then showed the item
+        FREE — the exact collision the command exists to prevent, now permanent —
+        and `release` refused it forever, leaving the queue fixable only by the hand
+        the contract forbids.
+
+        A gate that cannot read back what it writes must refuse to write."""
+        self.seed("- [ ] **T001** — algo. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        before = self.body()
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("**Class:**", r.stderr)
+        self.assertIn("--class AUTONOMOUS", r.stderr)   # the remedy that works HERE
+        self.assertEqual(self.body(), before)
+        self.assertNotIn("claimed", self.run_tk("list").stdout)
+        # the over-refusal direction: the way out is ONE command, and it works
+        self.assertEqual(self.run_tk("edit", "T001", "--class", "AUTONOMOUS").returncode, 0)
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("claimed by alpha", self.run_tk("list").stdout)
+        self.assertEqual(self.run_tk("release", "T001").returncode, 0)
+
+    def test_an_item_whose_fields_sit_off_the_first_line_is_told_how_to_fold_them(self):
+        """The remedy a refusal prints has to be one that WORKS. For this shape
+        `edit --class` is itself refused (the marker-outside-the-chain guard), so
+        naming it sends the caller to a second refusal — and this is not a rare
+        shape: 31 of the 155 open items across the real queues carry it.
+
+        It also predates this command — a continuation-line item already refused
+        every per-field `edit` on `main`, measured — so the message says so and
+        names the one command that lifts both at once."""
+        self.seed("- [ ] **T001** — algo\n  **Class:** AUTONOMOUS. **Effort:** S. "
+                  "**Criterion:** A: x. **Source:** 2026-08-13\n")
+        before = self.body()
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("--text", r.stderr)
+        self.assertNotIn("--class AUTONOMOUS", r.stderr)   # the one that would refuse
+        self.assertEqual(self.body(), before)
+        # the same shape CARRYING a marker is answered by the stray guard instead —
+        # one terminal refusal, never two in a row
+        self.write("next-steps.md", before.replace("**Source:** 2026-08-13",
+                                                   "**Source:** 2026-08-13 **Claimed:** x."))
+        r = self.run_tk("release", "T001")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("cancel", r.stderr)
+        # and the printed remedy really does make the item claimable
+        self.write("next-steps.md", before)
+        self.assertEqual(self.run_tk("edit", "T001", "--text", "algo").returncode, 0)
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_a_last_field_missing_its_period_refuses_the_claim_and_names_it(self):
+        """The gate has to be asked of what would be WRITTEN, and three fixes in a row
+        asked a proxy instead. field_chain gives its LAST segment a free pass on the
+        period rule, so appending the claim MOVES that pass onto the claim — and the
+        previous last field, if its value does not end in a period, then truncates the
+        chain and drops **Class:** out of it. Class was in the chain before the write
+        and gone after it, so every pre-write check passed.
+
+        Measured on a real queue item carrying `**Esforço:** L,` (a typed comma): the
+        item came back claimed in the FILE, shown FREE by `list` — the collision the
+        command exists to prevent, made permanent — and unreleasable forever."""
+        self.seed("- [ ] **T001** — algo **Class:** AUTONOMOUS. **Esforço:** L,\n")
+        before = self.body()
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("**Effort:**", r.stderr)      # WHICH field, not just that one is wrong
+        self.assertIn("PERIOD", r.stderr)
+        self.assertEqual(self.body(), before)
+        self.assertNotIn("claimed", self.run_tk("list").stdout)
+        # and the remedy it printed round-trips the item
+        self.assertEqual(self.run_tk("edit", "T001", "--effort", "L").returncode, 0)
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha").returncode, 0)
+        self.assertIn("claimed by alpha", self.run_tk("list").stdout)
+        self.assertEqual(self.run_tk("release", "T001").returncode, 0)
+
+    def test_a_broken_chain_is_told_WHERE_it_stops_and_never_guesses_why(self):
+        """The message names what it can prove — where the run of fields stops — and
+        prescribes the one remedy that always works. It does NOT diagnose the cause or
+        prescribe a per-field `edit`: three rewrites tried, and each was wrong for some
+        shape. "Does not end in a PERIOD" was read onto a break that is a GAP of prose,
+        and onto **Source:**, which is period-exempt by design; and the `edit --<field>`
+        prescribed is itself refused when the field is duplicated in the chain, is a
+        deferral on a non-DECISION item, or is an Env on a machine with no site file —
+        besides repairing one broken field per run out of however many there are.
+
+        The three shapes below break for three different reasons and every assertion
+        here is true of all of them, which is the point."""
+        cases = {
+            "value with no period": "algo **Class:** AUTONOMOUS. **Esforço:** L,",
+            "an earlier field broken": "algo **Class:** AUTONOMOUS, **Effort:** M.",
+            "a gap of prose": "algo **Class:** A. *nota* **Effort:** M.",
+        }
+        for label, line in cases.items():
+            with self.subTest(shape=label):
+                self.seed(f"- [ ] **T001** — {line}\n")
+                before = self.body()
+                r = self.run_tk("claim", "T001", "--as", "alpha")
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertIn("stops at", r.stderr)              # WHERE, provably
+                self.assertIn("cancel", r.stderr)                # the remedy that works
+                self.assertNotIn("OUTSIDE the first line", r.stderr)   # they are ON it
+                self.assertNotIn("--text", r.stderr)
+                # no per-field edit is prescribed — each of these is refused for a
+                # different reason on the very field at fault
+                for flag in ("--class \"", "--effort \"", "--deferred \"", "--env \""):
+                    self.assertNotIn(flag, r.stderr)
+                self.assertEqual(self.body(), before)
+
+    def test_the_refusal_names_where_the_chain_STOPS_not_where_it_starts(self):
+        """The field it names has to be the one the run does not reach past — naming
+        the run's own last segment names the claim itself, which tells the reader
+        nothing about their item."""
+        self.seed("- [ ] **T001** — algo **Class:** AUTONOMOUS. **Esforço:** L,\n")
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("stops at **Effort:**", r.stderr)
+        self.assertNotIn("stops at **Claimed:**", r.stderr)
+
+    def test_a_stray_marker_is_answered_BEFORE_the_missing_host(self):
+        """Both are refusals; only the stray one is TERMINAL. Measured with the order
+        the other way round: `claim` printed `edit --class AUTONOMOUS`, the caller ran
+        it, the FILE WAS MUTATED — and the stray refusal landed anyway. A remedy that
+        costs a write and fixes nothing is worse than the refusal it replaced."""
+        self.seed("- [ ] **T001** — algo\n  nota: **Claimed:** ver depois\n")
+        before = self.body()
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("cancel", r.stderr)                  # the terminal answer
+        self.assertNotIn("--class AUTONOMOUS", r.stderr)   # not the one that mutates
+        self.assertNotIn("--text", r.stderr)
+        self.assertEqual(self.body(), before)
+
+    def test_release_on_a_chainless_item_with_no_marker_is_still_an_honest_no_op(self):
+        """The other side of that asymmetry: WRITING a claim needs a host, reading
+        one does not. An item that simply holds no claim must not be answered with a
+        diagnosis about its shape."""
+        self.seed("- [ ] **T001** — algo\n  **Class:** AUTONOMOUS. **Effort:** S.\n")
+        before = self.body()
+        r = self.run_tk("release", "T001")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("no claim", r.stdout)
+        self.assertEqual(self.body(), before)
+
+    def test_list_never_shows_an_ambiguously_claimed_item_as_free(self):
+        """Two owners on the record and both commands refusing: printing no mark
+        would show the item FREE — to a reader, and to the afk package built from
+        exactly this display. Tolerance is safe for a stray marker and dangerous
+        here."""
+        self.seed("- [ ] **T001** — um **Class:** AUTONOMOUS. **Effort:** S. "
+                  "**Criterion:** A: x. " + CLAIMED + " **Claimed:** bravo since "
+                  "2026-08-19T11:00:00Z.\n")
+        out = self.run_tk("list").stdout
+        self.assertIn("ambigu", out)
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "charlie").returncode, 1)
+
+    def test_prose_ending_in_a_period_before_the_fields_is_not_a_claim(self):
+        """The item's own text carries the marker, ends in a period and sits right
+        against the fields — so field_chain absorbs it and the chain says the item
+        is claimed. Measured on this very command before the position rule:
+        `release` reported success and CUT four words out of the item's title, and
+        `claim` refused the item naming an owner made of three words of it.
+
+        A real claim is written AFTER the **Class:** compose_item writes first;
+        anything before that is prose, whatever the chain says."""
+        prose = ("- [ ] **T001** — ver a **Posse:** do item com alguém. "
+                 "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                 "**Source:** 2026-08-13\n")
+        self.seed(prose)
+        before = self.body()
+        for argv in (("claim", "T001", "--as", "alpha"), ("release", "T001")):
+            with self.subTest(cmd=argv[0]):
+                r = self.run_tk(*argv)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertEqual(self.body(), before)   # the title survives whole
+        # and the display does not invent an owner out of those words either
+        self.assertNotIn("claimed by", self.run_tk("list").stdout)
+
+    def test_the_marker_shape_is_refused_in_free_text(self):
+        """Registering Claimed in FIELD_VARIANTS is what puts it under the existing
+        guard: an item whose TEXT carries the shape would hold itself forever."""
+        for shape in ("**Claimed:**", "**Posse:**"):
+            with self.subTest(shape=shape):
+                self.seed()
+                r = self.run_tk("add", f"levar o {shape} ao pacote", "--class",
+                                "AUTONOMOUS", "--effort", "S", "--criterion", "A: x")
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("field-marker shape", r.stderr)
+                self.assertNotIn("- [ ]", self.body())
+
+    # --- the mark is not an `edit` flag -----------------------------------
+    def test_edit_cannot_set_a_claim(self):
+        """The two-command bypass: a flag that can WRITE this field takes an item
+        somebody else holds, which is what `claim` refuses in one command."""
+        self.seed(item(1, "um"))
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha").returncode, 0)
+        before = self.body()
+        r = self.run_tk("edit", "T001", "--claimed", "bravo")
+        self.assertEqual(r.returncode, 2, r.stdout)      # argparse: no such flag
+        self.assertEqual(self.body(), before)
+
+    def test_the_claim_survives_an_unrelated_edit_and_is_still_readable(self):
+        """An `edit` appends a field it did not find at the end of the first line —
+        i.e. AFTER the claim — so the chain has to keep reading it there."""
+        self.seed(item(1, "um"))
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha").returncode, 0)
+        self.assertEqual(self.run_tk("edit", "T001", "--effort", "L").returncode, 0)
+        self.assertEqual(self.run_tk("edit", "T001", "--project", "tk").returncode, 0)
+        r = self.run_tk("claim", "T001", "--as", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("already claimed by alpha", r.stderr)
+        # and releasing it from the MIDDLE of the chain leaves the rest whole
+        self.assertEqual(self.run_tk("release", "T001").returncode, 0)
+        self.assertNotIn("**Claimed:**", self.body())
+        self.assertIn("**Effort:** L.", self.body())
+        self.assertIn("**Project:** tk.", self.body())
+        self.assertNotIn("  ", self.item_line())              # no dangling blank
+
+    def test_claiming_a_legacy_oversized_item_needs_no_force(self):
+        """The claim is bounded by construction (a 32-char owner plus a fixed-width
+        stamp), so it answers to the short fields' rule (T071): an item already over
+        the block ceiling is exactly the one a session must be able to take without
+        being taught to type --force."""
+        self.seed(item(1, "x" * 800))
+        self.assertGreater(len(self.body()), load_tk().CEILING)
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Claimed:** alpha since", self.body())
 
 
 if __name__ == "__main__":
