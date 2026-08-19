@@ -79,6 +79,27 @@ def queues(root):
             if os.path.isfile(os.path.join(root, name, MEMORY_DIR, QUEUE_FILE))]
 
 
+def encodes_a_posix_path(name):
+    """Whether this sweep can resolve `name` at all.
+
+    A queue directory encodes an ABSOLUTE path, so it opens with the leading
+    '/' turned into a '-'. A name that does not is not one of ours to resolve —
+    a queue written by another machine's tk (a Windows one is `C--Users-...`)
+    belongs to that machine's sweep, and resolving it here would drop its first
+    character and match a SHORTER path: `foo` would resolve as if it read `-oo`.
+    """
+    return name.startswith("-")
+
+
+def blind_reason(name, paths):
+    """Why a queue that exists cannot be dispatched — never a guess."""
+    if paths:
+        return f"{len(paths)} directories encode to it: {', '.join(paths)}"
+    if not encodes_a_posix_path(name):
+        return "the name encodes no POSIX absolute path, so another machine wrote it"
+    return "the project directory is gone"
+
+
 def project_paths(name):
     """Every directory whose slug is `name`, found by walking the filesystem.
 
@@ -91,11 +112,7 @@ def project_paths(name):
     spelling of a directory already reachable, and turn a real answer into an
     ambiguous one (a link pointing at its own ancestor turns it into a hang).
     """
-    if not name.startswith("-"):
-        # every queue directory encodes an ABSOLUTE path, so it opens with the
-        # leading '/'. A name that does not is not one of ours to resolve, and
-        # walking it anyway would match a shorter path by dropping its first
-        # character: `foo` would be resolved as if it read `-oo`
+    if not encodes_a_posix_path(name):
         return []
     found, stack = [], [(name, "/")]
     while stack:
@@ -196,9 +213,7 @@ def main(argv=None):
     if blind:
         print("\n## not dispatchable — no single directory encodes to the name\n")
         for name, memdir, paths in blind:
-            why = (f"{len(paths)} directories encode to it: {', '.join(paths)}"
-                   if paths else "the project directory is gone")
-            print(f"{name}\n  queue: {memdir}\n  {why}")
+            print(f"{name}\n  queue: {memdir}\n  {blind_reason(name, paths)}")
 
     if held:
         print("\n## excluded by the site file\n")

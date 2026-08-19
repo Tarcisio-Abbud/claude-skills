@@ -5,8 +5,9 @@ keys it adds (`fleet-allow`, `fleet-deny`, parsed in ../bin/tk_site.py).
 Run: python3 -m unittest discover -s tk/tests   (stdlib only, no deps)
 
 Every test here is proved by MUTATION: the defect is put back in the source and
-the test must fail. `mutations.py` in this directory replays each mutation
-mechanically.
+the test must fail. `mutations_roster.py` in this directory replays each one
+mechanically (a second harness only until `mutations.py` can name a test outside
+`test_tk_queue` — its own docstring says why).
 
 The suite drives the real script as a subprocess with HOME pointed at a
 throwaway tree, so it sweeps fixtures and never the machine's own projects. The
@@ -48,7 +49,7 @@ def encode(path):
 
 class RosterTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
+        self.tmp = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.home = os.path.join(self.tmp, "home")
         self.projects = os.path.join(self.home, ".claude", "projects")
@@ -161,15 +162,18 @@ class TestProjectPath(RosterTest):
         r = self.run_roster()
         self.assertEqual(self.block(r.stdout, "roster"), [f"{name}  {nested}"])
 
-    def test_a_name_that_is_not_an_encoded_path_is_not_dispatchable(self):
+    def test_a_name_another_machine_wrote_is_not_resolved_as_a_shorter_path(self):
         # every queue directory encodes an ABSOLUTE path, so it opens with '-'.
-        # `Xtmp` does not — and resolving it anyway drops the first character
-        # and lands the roster on /tmp, a directory nobody asked about
-        self.queue("Xtmp")
+        # This name does not — and resolving it anyway would drop the first
+        # character and land on the fixture directory itself, which is the bait:
+        # the whole discrimination is local to the fixtures, never to the host
+        bait = "X" + encode(self.tmp)[1:]
+        self.queue(bait)
         r = self.run_roster()
         self.assertEqual(self.names(r.stdout, "roster"), [])
-        self.assertIn("the project directory is gone",
-                      "\n".join(self.block(r.stdout, "not dispatchable")))
+        blind = "\n".join(self.block(r.stdout, "not dispatchable"))
+        self.assertIn("another machine wrote it", blind)
+        self.assertNotIn(self.tmp + "\n", blind)
 
     def test_a_queue_whose_project_directory_is_gone_is_not_dispatchable(self):
         name = encode(os.path.join(self.tmp, "vanished"))

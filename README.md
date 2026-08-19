@@ -176,9 +176,11 @@ tk/
                                   and the fleet's allow/denylist of projects
   bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
                                   where their projects are, minus the site file's lists
-  tests/test_tk_queue.py          regression suite for that CLI (stdlib only)
+  tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
   tests/mutations.py              puts each defect back; every test must fall
+  tests/mutations_roster.py       the same, for the roster suite (one harness once
+                                  mutations.py can name a test outside test_tk_queue)
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
