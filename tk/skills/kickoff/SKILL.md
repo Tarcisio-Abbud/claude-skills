@@ -83,7 +83,8 @@ the user sees nothing was lost before checking (BLOCKED/EXTERNAL show up here; t
 waits for the final report).
 
 Then one multiSelect `AskUserQuestion` with the actionable items (AUTONOMOUS + RECURRING)
-prioritized by impact/urgency, recommendation first with "(Recommended)". DECISION items
+in the queue's own order — that order IS the priority, and `tk-queue bump <id>` is what
+changes it — recommendation first with "(Recommended)". DECISION items
 become their own questions — the options are the choices themselves, not "yes/no". Tool
 limit: 4 questions × 4 options; what doesn't fit becomes a line in the final report, not an
 option. BLOCKED and EXTERNAL are never options.
@@ -231,7 +232,7 @@ An item is a pending action, not an essay — the script enforces **two** size c
 durable context goes to a memory file or wiki page, linked from the item with `[[slug]]`:
 
 - **the block ceiling**, on the whole item. `add` always. `edit` whenever a **prose** flag
-  is used — `--text`, `--criterion`, `--risk` — and the edit grows the item.
+  is used — `--text`, `--criterion`, `--risk`, `--deferred` — and the edit grows the item.
 - **the field ceiling**, on each field VALUE, on `add`, `edit` and the closes
   (`--how`/`--why`/`--summary`/`--note`) alike. It comes in two sizes: a small one for the
   fields that are short by construction (`--class` an enum, `--effort` "M (~30min)",

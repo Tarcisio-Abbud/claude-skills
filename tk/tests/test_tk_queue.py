@@ -1414,6 +1414,60 @@ class TestDecisionDeferralGate(QueueTest):
                 self.assertIn("--deferred", r.stderr)
                 self.assertNotIn("**Deferred:**", self.body())
 
+    def test_prose_that_looks_like_a_deferral_never_satisfies_the_gate(self):
+        """`field_chain` absorbs any run of `**Field:** value.` segments that ends
+        the line, so an item's own prose can OPEN that run and be read as fields.
+        Trusting it let `edit --class DECISION` through with no justification at
+        all, and the later clear DELETED the prose it had misread."""
+        legacy = ("- [ ] **T001** — item, ver a **Deferred:** nota de contexto. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--class", "DECISION")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("**Class:** AUTONOMOUS.", self.body())          # class unchanged
+        self.assertIn("nota de contexto", self.body())                # prose intact
+        # and the same marker cannot be deleted by clearing it either
+        r = self.run_tk("edit", "T001", "--class", "BLOCKED", "--deferred", "none")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("nota de contexto", self.body())
+
+    def test_an_edit_that_never_consults_the_deferral_stays_allowed(self):
+        """The over-refusal direction: refusing that item outright would make it
+        uneditable, which is worse than the shape it protects against."""
+        legacy = ("- [ ] **T001** — item, ver a **Deferred:** nota de contexto. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Effort:** L.", self.body())
+        self.assertIn("nota de contexto", self.body())
+
+    def test_the_justification_goes_through_the_free_text_guards_on_add(self):
+        """--deferred is prose, so it answers to the same guards as the other
+        free-text flags. Wired but unproven is not wired: each of these was a
+        surviving mutation until it had a case of its own."""
+        for value, expected in (("linha um\nlinha dois", "single-line"),
+                                ("motivo **Project:** falso", "field-marker shape")):
+            with self.subTest(value=value):
+                self.seed()
+                r = self.run_tk(*self.ADD, "--class", "DECISION", "--deferred", value)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(expected, r.stderr)
+                self.assertNotIn("- [ ]", self.body())
+
+    def test_the_justification_goes_through_the_free_text_guards_on_edit(self):
+        for value, expected in (("", "cannot be blank"), ("   ", "cannot be blank"),
+                                ("linha um\nlinha dois", "single-line"),
+                                ("motivo **Project:** falso", "field-marker shape")):
+            with self.subTest(value=repr(value)):
+                self.seed(item(1, "um"))
+                r = self.run_tk("edit", "T001", "--class", "DECISION", "--deferred", value)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(expected, r.stderr)
+                self.assertIn("**Class:** AUTONOMOUS.", self.body())
+
     def test_a_typo_in_the_class_is_answered_before_the_gate(self):
         """A gate reasoning about the RESULTING class answers a typo'd class with
         "T001 is DECISON — pass --class DECISION", which sends the caller after
@@ -1515,6 +1569,54 @@ class TestBump(QueueTest):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("never allocated", r.stderr)
         self.assertEqual(self.body(), before)
+
+
+# --- 2nd pair of eyes: an item's TEXT is not its ADDRESS -------------------
+
+class TestBlockAddressing(QueueTest):
+    """A queue about the queue quotes item lines verbatim in its notes, so an
+    item's block text really does occur twice in the same file. Locating it with
+    `content.index(block)` found the QUOTED copy first: `done` deleted that copy
+    and left the real item open while reporting it closed, `bump` spliced a
+    phantom duplicate at the top, and `edit` rewrote the quotation. Measured on
+    this script — the `done` half predates `bump` and was reachable all along."""
+
+    def seed_quoted(self):
+        """T001 quotes T002's line verbatim in a continuation note (indented, so
+        it is part of T001's block), and the real T002 follows."""
+        quoted = item(2, "corrigir o bug")
+        self.seed("- [ ] **T001** — documentar o formato do item, exemplo abaixo.\n  "
+                  + quoted + "\n", quoted)
+        return quoted
+
+    def test_done_closes_the_real_item_and_spares_the_quoted_copy(self):
+        quoted = self.seed_quoted()
+        r = self.run_tk("done", "T002", "--how", "PR #1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertEqual(body.count("**T002**"), 1)          # only the quotation left
+        self.assertIn("  " + quoted, body)                   # and it is intact
+        self.assertIn("T002", self.body("done-log.md"))
+
+    def test_bump_moves_the_real_item_and_leaves_no_phantom(self):
+        quoted = self.seed_quoted()
+        r = self.run_tk("bump", "T002")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertEqual(body.count("**T002**"), 2)          # the real one + the quotation
+        self.assertIn("  " + quoted, body)
+        self.assertLess(body.index("**T002**"), body.index("**T001**"))
+        self.assertEqual(len([l for l in body.splitlines() if l.startswith("- [ ]")]), 2)
+
+    def test_edit_rewrites_the_real_item_and_not_the_quotation(self):
+        self.seed_quoted()
+        r = self.run_tk("edit", "T002", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertEqual(body.count("**Effort:** L."), 1)
+        for line in body.splitlines():
+            if line.startswith("  - [ ]"):                   # the quotation
+                self.assertIn("**Effort:** S.", line)
 
 
 if __name__ == "__main__":

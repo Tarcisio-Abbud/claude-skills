@@ -39,8 +39,8 @@ belongs in a memory file or the wiki, linked from the item. TWO ceilings, and
 which one a flag answers to depends on the flag's NATURE:
 
   block (CEILING)   the whole item. `add` always. `edit` whenever a PROSE flag
-                    is used (--text, --criterion, --risk) and the edit grows the
-                    item. Exempt: the short fields below — that exemption is
+                    is used (--text, --criterion, --risk, --deferred) and the edit
+                    grows the item. Exempt: the short fields below — that exemption is
                     what keeps a legacy oversized item taggable without --force.
   field             each field VALUE, on add, edit and the closes alike.
                     FIELD_CEILING_SHORT for --class/--effort/--project, which
@@ -528,11 +528,35 @@ def item_class(block):
     return m.group(1) if m else None
 
 
-def has_field(block, field):
-    """Whether the item really carries this field — asked of its FIELD CHAIN, the
-    same run of segments `edit` writes into, never of a marker its prose or a
-    continuation note happens to quote (see field_chain)."""
-    return any(canonical_field(m.group(1)) == field for m in field_chain(block))
+DEFERRED_MARKER_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Deferred"] + r"):\*\*")
+
+
+def deferral_field(block):
+    """(segment, stray) — the item's REAL Deferred field, and whether a
+    `**Deferred:**` marker sits anywhere else in the block.
+
+    The real one is the chain segment that FOLLOWS the **Class:** it qualifies,
+    which is where compose_item writes it. "Somewhere in the chain" is not
+    enough, and the difference is a bypass: field_chain absorbs any run of
+    `**Field:** value.` segments that ends the line, so an item's own prose can
+    OPEN that run — `— item, ver a **Deferred:** nota de contexto. **Class:**
+    AUTONOMOUS. …` parses as a five-field chain. Measured on this script before
+    the position rule: `edit <id> --class DECISION` was let through with no
+    justification at all (the gate read the prose as the field), and the later
+    auto-clear then DELETED that prose from the item's text.
+
+    `stray` is what keeps the other direction honest: a marker the position rule
+    refuses to read is not thereby harmless — the caller is told, and nothing is
+    guessed (see deferral_for_edit).
+    """
+    chain = field_chain(block)
+    names = [canonical_field(m.group(1)) for m in chain]
+    seg = None
+    if "Class" in names:
+        after = names.index("Class")
+        seg = next((m for i, m in enumerate(chain)
+                    if names[i] == "Deferred" and i > after), None)
+    return seg, len(DEFERRED_MARKER_RE.findall(block)) > (1 if seg else 0)
 
 
 def deferral_gate_message(cmd):
@@ -640,10 +664,18 @@ def append_done_line(memdir, line, today):
     write_atomic(path, content)
 
 
-def excise(content, block):
-    """Remove block, collapsing surplus blank lines ONLY at the removal site —
-    spacing elsewhere in the file is not ours to touch."""
-    idx = content.index(block)
+def excise(content, block, idx):
+    """Remove the block AT `idx`, collapsing surplus blank lines ONLY at the
+    removal site — spacing elsewhere in the file is not ours to touch.
+
+    The offset is passed in, never re-derived with `content.index(block)`: an
+    item's text is NOT unique in the file. An item that documents the queue's own
+    format quotes another item's line verbatim in its note, and the substring
+    search finds THAT copy first — measured on this script: `done T002` deleted
+    the quoted copy out of T001's note and left the real T002 open, reporting
+    success, and `bump T002` produced a phantom duplicate. Positions come from
+    find_open_item, which walks the blocks.
+    """
     before, after = content[:idx], content[idx + len(block):]
     if not after.strip():
         return before.rstrip("\n") + "\n"
@@ -654,12 +686,12 @@ def excise(content, block):
     return before + after
 
 
-def remove_block(memdir, block_text):
-    path = os.path.join(memdir, "next-steps.md")
-    content = read(path)
-    if block_text not in content:
-        fail("internal error: block vanished from next-steps.md mid-operation")
-    write_atomic(path, excise(content, block_text))
+def remove_block(memdir, content, block, start):
+    """`content` is the read find_open_item already made under the lock — the
+    authoritative one. Re-reading here would only open a window for the file to
+    have changed between the two reads, and re-finding the block by text is the
+    bug excise() documents."""
+    write_atomic(os.path.join(memdir, "next-steps.md"), excise(content, block, start))
 
 
 def id_in_done_log(memdir, wanted_id):
@@ -701,14 +733,25 @@ def missing_item_message(memdir, content, wanted_id):
 
 
 def find_open_item(memdir, wanted_id):
-    # Called under queue_lock by every mutating command, so THIS read is the
-    # authoritative one: no writer can have moved the item since it was taken.
+    """(content, block, start) — the file, the item's block, and WHERE it starts.
+
+    Called under queue_lock by every mutating command, so THIS read is the
+    authoritative one: no writer can have moved the item since it was taken, and
+    every caller writes from this same `content`.
+
+    The offset is what makes the item addressable. Its TEXT is not: split_blocks
+    walks the file in order, so the position is exact, while searching the text
+    back out finds whichever copy comes first — including one quoted inside
+    another item's note (see excise).
+    """
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
         fail("next-steps.md not found in " + memdir)
+    pos = 0
     for kind, text in split_blocks(content):
         if kind == "item-open" and item_id(text) == wanted_id:
-            return text
+            return content, text, pos
+        pos += len(text)
     fail(missing_item_message(memdir, content, wanted_id))
 
 
@@ -859,7 +902,7 @@ def cmd_add(args):
 
 def close_item(args, marker, outcome, marker_flag):
     memdir = memory_dir(args.dir)
-    block = find_open_item(memdir, args.id)
+    content, block, start = find_open_item(memdir, args.id)
     ensure_single_line(outcome=outcome, summary=args.summary)
     # --summary and the outcome share the log entry's FIRST line with the project
     # tag appended below, so a marker in them can be read as that tag. --note is
@@ -885,7 +928,7 @@ def close_item(args, marker, outcome, marker_flag):
     if args.note:
         line += "\n  " + args.note.replace("\n", "\n  ")
     append_done_line(memdir, line, today)
-    remove_block(memdir, block)
+    remove_block(memdir, content, block, start)
     print(f"T{args.id:03d} → done-log as {marker} ({today})")
 
 
@@ -913,7 +956,19 @@ def deferral_for_edit(args, block):
     """
     setting = args.deferred is not None and not clears_field(args.deferred)
     clearing = args.deferred is not None and clears_field(args.deferred)
-    has = has_field(block, "Deferred")
+    seg, stray = deferral_field(block)
+    # Refused, not guessed — and only when the command's outcome depends on the
+    # deferral (a --class or a --deferred). Reading a stray marker as the field
+    # would let prose satisfy the gate; clearing it would delete that prose. An
+    # edit that touches neither flag never consults the deferral, so it stays
+    # allowed: over-refusing here would make the item uneditable instead.
+    if stray and (args.classe or args.deferred is not None):
+        fail(f"T{args.id:03d} carries a **Deferred:** marker away from the position a "
+             "deferral is written in (right after **Class:**) — in the item's own prose, "
+             "or on a continuation line. Nothing was changed: reading it as the field "
+             "would let prose satisfy the gate, and clearing it would DELETE that prose. "
+             "Close the item with `cancel` and re-add it clean.")
+    has = seg is not None
     result_class = args.classe or item_class(block)
     if args.classe == DEFERRABLE_CLASS and not (setting or (has and not clearing)):
         fail(deferral_gate_message("edit"))
@@ -935,7 +990,7 @@ def deferral_for_edit(args, block):
 
 def cmd_edit(args):
     memdir = memory_dir(args.dir)
-    block = find_open_item(memdir, args.id)
+    content, block, start = find_open_item(memdir, args.id)
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
                        criterion=args.criterion, project=args.project,
                        deferred=args.deferred)
@@ -1034,8 +1089,10 @@ def cmd_edit(args):
     # ONE call still took an item to 709 past a 700 ceiling.
     if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):
         check_ceiling(new, args.force)
-    path = os.path.join(memdir, "next-steps.md")
-    write_atomic(path, read(path).replace(block, new, 1))
+    # spliced at the block's own offset — `.replace(block, new, 1)` would rewrite
+    # whichever copy of that text comes first, which is not always this item
+    write_atomic(os.path.join(memdir, "next-steps.md"),
+                 content[:start] + new + content[start + len(block):])
     print(f"T{args.id:03d} updated")
 
 
@@ -1051,16 +1108,15 @@ def cmd_bump(args):
     headings, prose between items — is preserved verbatim.
     """
     memdir = memory_dir(args.dir)
-    block = find_open_item(memdir, args.id)
+    content, block, start = find_open_item(memdir, args.id)
     path = os.path.join(memdir, "next-steps.md")
-    content = read(path)
     first = ITEM_START.search(content)
-    if first and first.start() == content.index(block):
+    if first and first.start() == start:
         # already there: return without writing, so a no-op bump cannot churn the
         # file's spacing (repeat it ten times and the file is still byte-identical)
         print(f"T{args.id:03d} is already at the top of the queue")
         return
-    without = excise(content, block)
+    without = excise(content, block, start)
     dest = ITEM_START.search(without)
     at = dest.start() if dest else len(without)
     tail = without[at:]

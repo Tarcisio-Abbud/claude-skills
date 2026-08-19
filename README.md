@@ -28,8 +28,8 @@ The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (de
 through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / bump /
 list / report / migrate), which moves a resolved item to the log in one command and enforces a
 two size ceilings whose scope follows each flag's nature: the whole ITEM is measured
-whenever a prose flag (`--text`, `--criterion`, `--risk`) grows it, while the short fields
-(`--class`, `--effort`, `--project`) answer only to a small per-VALUE ceiling — that
+whenever a prose flag (`--text`, `--criterion`, `--risk`, `--deferred`) grows it, while the
+short fields (`--class`, `--effort`, `--project`) answer only to a small per-VALUE ceiling — that
 exemption is what keeps a legacy oversized item taggable without `--force`, and the
 per-value ceiling is what keeps the exemption from becoming a bypass. `edit` also locates
 the field it changes by the item's field CHAIN, refusing to guess when a legacy item quotes

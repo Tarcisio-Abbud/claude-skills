@@ -499,7 +499,7 @@ MUTATIONS = [
      ["TestDecisionDeferralGate.test_edit_to_decision_passes_the_same_gate"]),
 
     ("T119 edit's gate stops seeing the deferral already on the item",
-     '    has = has_field(block, "Deferred")', "    has = False",
+     "    has = seg is not None", "    has = False",
      ["TestDecisionDeferralGate.test_a_deferral_already_on_the_item_satisfies_the_gate"]),
 
     # over-trigger on edit: a gate on the item's CURRENT class makes every legacy
@@ -547,11 +547,11 @@ MUTATIONS = [
       "TestBump.test_the_other_items_keep_their_relative_order"]),
 
     ("T119 bump copies the item instead of moving it",
-     "    without = excise(content, block)", "    without = content",
+     "    without = excise(content, block, start)", "    without = content",
      ["TestBump.test_the_item_is_moved_whole_and_not_duplicated"]),
 
     ("T119 bumping the top item rewrites the file anyway",
-     "    if first and first.start() == content.index(block):", "    if False:",
+     "    if first and first.start() == start:", "    if False:",
      ["TestBump.test_bumping_the_top_item_leaves_the_file_byte_identical"]),
 
     ("T119 edit accepts a deferral on an item that is not a DECISION",
@@ -576,13 +576,12 @@ MUTATIONS = [
      ["TestBump.test_the_whole_file_comes_out_exactly_as_the_move_implies"]),
 
     ("T119 bump acts without checking the item is really open",
-     "    block = find_open_item(memdir, args.id)\n"
+     "    content, block, start = find_open_item(memdir, args.id)\n"
+     '    path = os.path.join(memdir, "next-steps.md")',
      '    path = os.path.join(memdir, "next-steps.md")\n'
-     "    content = read(path)",
-     '    path = os.path.join(memdir, "next-steps.md")\n'
-     "    content = read(path)\n"
-     '    block = next((t for k, t in split_blocks(content or "")\n'
-     '                  if k == "item-open" and item_id(t) == args.id), "")',
+     "    content = read(path) or \"\"\n"
+     '    block, start = next(((t, 0) for k, t in split_blocks(content)\n'
+     '                         if k == "item-open" and item_id(t) == args.id), ("", 0))',
      ["TestBump.test_an_unknown_id_is_diagnosed_and_nothing_moves"]),
 
     ("T119 list orders its groups alphabetically, so a bump is invisible",
@@ -594,6 +593,79 @@ MUTATIONS = [
      'READERS = frozenset(("list", "report"))',
      'READERS = frozenset(("list", "report", "bump"))',
      ["TestTargetQueueAnnounced.test_every_mutating_command_names_the_memdir_on_stderr"]),
+
+    # --- 2nd pair of eyes: the free-text guards, ON THE NEW FLAG --------------
+    # Wiring `deferred=` into a generic checker is not proof that the checker sees
+    # it: each kwarg below was dropped on its own, and the whole suite stayed green.
+
+    ("2ª review add stops measuring the justification for newlines",
+     "    ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,\n"
+     "                       criterion=args.criterion, source=args.source, "
+     "project=args.project,\n"
+     "                       deferred=args.deferred)",
+     "    ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,\n"
+     "                       criterion=args.criterion, source=args.source, "
+     "project=args.project)",
+     ["TestDecisionDeferralGate."
+      "test_the_justification_goes_through_the_free_text_guards_on_add"]),
+
+    ("2ª review add stops refusing a field marker inside the justification",
+     "                              criterion=args.criterion, source=args.source,\n"
+     "                              deferred=args.deferred)",
+     "                              criterion=args.criterion, source=args.source)",
+     ["TestDecisionDeferralGate."
+      "test_the_justification_goes_through_the_free_text_guards_on_add"]),
+
+    ("2ª review edit stops refusing a blank justification",
+     "    if args.deferred is not None:\n        ensure_filled(deferred=args.deferred)",
+     "    pass",
+     ["TestDecisionDeferralGate."
+      "test_the_justification_goes_through_the_free_text_guards_on_edit"]),
+
+    ("2ª review edit stops measuring the justification for newlines and markers",
+     "    ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,\n"
+     "                              criterion=args.criterion, deferred=args.deferred)",
+     "    ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,\n"
+     "                              criterion=args.criterion)",
+     ["TestDecisionDeferralGate."
+      "test_the_justification_goes_through_the_free_text_guards_on_edit"]),
+
+    # --- 2nd pair of eyes: prose absorbed into the field chain ---------------
+
+    ("2ª review a Deferred anywhere in the chain counts, so prose satisfies the gate",
+     '        seg = next((m for i, m in enumerate(chain)\n'
+     '                    if names[i] == "Deferred" and i > after), None)',
+     '        seg = next((m for i, m in enumerate(chain)\n'
+     '                    if names[i] == "Deferred"), None)',
+     ["TestDecisionDeferralGate."
+      "test_prose_that_looks_like_a_deferral_never_satisfies_the_gate"]),
+
+    ("2ª review the stray marker is ignored instead of refused (prose gets deleted)",
+     "    if stray and (args.classe or args.deferred is not None):", "    if False:",
+     ["TestDecisionDeferralGate."
+      "test_prose_that_looks_like_a_deferral_never_satisfies_the_gate"]),
+
+    # the over-refusal direction: a guard that fires on every edit of such an item
+    # makes it uneditable, which is worse than the shape it protects against
+    ("2ª review the stray guard fires even when the edit never touches the deferral",
+     "    if stray and (args.classe or args.deferred is not None):", "    if stray:",
+     ["TestDecisionDeferralGate.test_an_edit_that_never_consults_the_deferral_stays_allowed"]),
+
+    # --- 2nd pair of eyes: an item's TEXT is not its ADDRESS ------------------
+
+    ("2ª review the block is addressed by its TEXT again (a quoted copy wins)",
+     "            return content, text, pos",
+     "            return content, text, content.index(text)",
+     ["TestBlockAddressing.test_done_closes_the_real_item_and_spares_the_quoted_copy",
+      "TestBlockAddressing.test_bump_moves_the_real_item_and_leaves_no_phantom",
+      "TestBlockAddressing.test_edit_rewrites_the_real_item_and_not_the_quotation"]),
+
+    ("2ª review edit splices by search-and-replace again",
+     "    write_atomic(os.path.join(memdir, \"next-steps.md\"),\n"
+     "                 content[:start] + new + content[start + len(block):])",
+     "    write_atomic(os.path.join(memdir, \"next-steps.md\"), "
+     "content.replace(block, new, 1))",
+     ["TestBlockAddressing.test_edit_rewrites_the_real_item_and_not_the_quotation"]),
 ]
 
 
@@ -611,7 +683,8 @@ def main():
                                   "TestTargetQueueAnnounced", "TestFieldChain",
                                   "TestCloseFieldCeilings", "TestIdAllocationScope",
                                   "TestDoneLogLineGrammar", "TestCanonicalHead",
-                                  "TestDecisionDeferralGate", "TestBump"])
+                                  "TestDecisionDeferralGate", "TestBump",
+                                  "TestBlockAddressing"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
