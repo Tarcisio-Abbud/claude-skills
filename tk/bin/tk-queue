@@ -548,6 +548,16 @@ def deferral_gate_message(cmd):
         "(an afk session passes --deferred afk).")
 
 
+def deferral_class_message(subject_is):
+    """Why a deferral was refused on a class that is not DECISION. One wording for
+    `add` and `edit` alike: two sites saying this in two ways is how one of them
+    came to be guarded and tested while the other was neither."""
+    return (f"--deferred qualifies --class {DEFERRABLE_CLASS} and nothing else — it records "
+            f"why a decision could not be asked, and no reader honours it elsewhere. "
+            f"{subject_is} Pass `--class {DEFERRABLE_CLASS}` in the same command, or drop "
+            "--deferred.")
+
+
 def validate_project(tag):
     if not PROJECT_RE.match(tag):
         fail(f"--project must be a short lowercase slug (letters, digits, '-'/'_', "
@@ -566,22 +576,32 @@ def open_project_tags(content):
     return tags
 
 
-def group_by_tag(pairs):
-    """(tag, payload) pairs → ordered [(tag, [payload, ...])], tags sorted and
-    the untagged group LAST — that group is a residue, not a project. Returns
-    None when nothing carries a tag, so the caller prints its flat form and an
-    untagged queue looks exactly as it did before tags existed.
+def group_by_tag(pairs, by_position=False):
+    """(tag, payload) pairs → ordered [(tag, [payload, ...])], the untagged group
+    LAST — that group is a residue, not a project. Returns None when nothing
+    carries a tag, so the caller prints its flat form and an untagged queue looks
+    exactly as it did before tags existed.
 
     `list` and `report` group on different things (open items vs done-log
     entries) under different heading levels, but the ordering rule is one rule
-    and belongs in one place.
+    and belongs in one place. Where they part is WHICH order the groups come in,
+    and each follows the axis its file is ordered by:
+
+      by_position   `list`. The queue's order IS its priority, so the groups
+                    follow the file: each one sits where its top item sits.
+                    Sorting them alphabetically instead made `bump` INVISIBLE on
+                    any tagged queue — the item reached the top of the file and
+                    still rendered under the third heading.
+      sorted        `report`. A done-log has no priority to reflect; alphabetical
+                    is the stable reading order there.
     """
     if not any(tag for tag, _ in pairs):
         return None
     groups = {}
     for tag, payload in pairs:
         groups.setdefault(tag, []).append(payload)
-    order = sorted(k for k in groups if k is not None) + ([None] if None in groups else [])
+    named = [k for k in groups if k is not None]      # dict order == file order
+    order = (named if by_position else sorted(named)) + ([None] if None in groups else [])
     return [(tag, groups[tag]) for tag in order]
 
 
@@ -712,7 +732,7 @@ def cmd_list(args):
         print("(queue empty)")
         return
     grouped = group_by_tag([(project, (label, cls, title))
-                            for label, cls, title, project in rows])
+                            for label, cls, title, project in rows], by_position=True)
     if grouped is None:
         for label, cls, title, _ in rows:
             print(f"{label}  {cls:<10}  {title}")
@@ -797,9 +817,7 @@ def cmd_add(args):
     if args.classe == DEFERRABLE_CLASS and (args.deferred is None or clears_field(args.deferred)):
         fail(deferral_gate_message("add"))
     if args.deferred is not None and args.classe != DEFERRABLE_CLASS:
-        fail(f"--deferred qualifies --class {DEFERRABLE_CLASS} and nothing else: it records "
-             f"why a decision could not be asked. On a {args.classe} item it is a field no "
-             "reader honours.")
+        fail(deferral_class_message(f"This add is --class {args.classe}."))
     ensure_no_embedded_marker(text=args.text, effort=args.effort, risk=args.risk,
                               criterion=args.criterion, source=args.source,
                               deferred=args.deferred)
@@ -900,9 +918,8 @@ def deferral_for_edit(args, block):
     if args.classe == DEFERRABLE_CLASS and not (setting or (has and not clearing)):
         fail(deferral_gate_message("edit"))
     if setting and result_class != DEFERRABLE_CLASS:
-        fail(f"--deferred qualifies a {DEFERRABLE_CLASS} item and nothing else. T"
-             f"{args.id:03d} is {result_class or 'carrying no class'} — pass "
-             f"`--class {DEFERRABLE_CLASS}` in the same command, or drop --deferred.")
+        fail(deferral_class_message(
+            f"T{args.id:03d} is {result_class or 'carrying no class'}."))
     if clearing and result_class == DEFERRABLE_CLASS:
         fail(f"T{args.id:03d} would stay a {DEFERRABLE_CLASS} with no deferral on the "
              "record. A deferral is dropped by leaving the class: pass the new "
@@ -931,6 +948,12 @@ def cmd_edit(args):
                          deferred=args.deferred)
     if args.project:
         validate_project(args.project)
+    # before the deferral gate, which reasons about the resulting CLASS: a typo'd
+    # class reaching the gate first is answered "T001 is DECISON — pass --class
+    # DECISION", which sends the caller after the wrong mistake. `add` validates
+    # the class first for the same reason
+    if args.classe and args.classe not in CLASSES:
+        fail(f"--class must be one of {', '.join(CLASSES)}")
     deferred_flag = deferral_for_edit(args, block)
     new = block
     if args.text:
@@ -948,8 +971,6 @@ def cmd_edit(args):
                         (args.project, "Project"), (deferred_flag, "Deferred")):
         if not flag:
             continue
-        if field == "Class" and flag not in CLASSES:
-            fail(f"--class must be one of {', '.join(CLASSES)}")
         # the real field is the one in the item's FIELD CHAIN — never merely the
         # last marker in the block, which lands on a continuation note (see
         # field_chain). Ambiguity is refused, not guessed: the caller fixes a

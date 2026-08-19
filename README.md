@@ -25,8 +25,8 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (defined in
 `tk/skills/kickoff/SKILL.md`): two files per project in auto-memory — `next-steps.md`
 (open items only) and `done-log.md` (what left the queue, when, and how) — written ONLY
-through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / list /
-report / migrate), which moves a resolved item to the log in one command and enforces a
+through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / bump /
+list / report / migrate), which moves a resolved item to the log in one command and enforces a
 two size ceilings whose scope follows each flag's nature: the whole ITEM is measured
 whenever a prose flag (`--text`, `--criterion`, `--risk`) grows it, while the short fields
 (`--class`, `--effort`, `--project`) answer only to a small per-VALUE ceiling — that
@@ -36,7 +36,11 @@ the field it changes by the item's field CHAIN, refusing to guess when a legacy 
 the marker shape in prose. Every mutating command prints the
 memory dir it resolved on **stderr** before acting, since that target is inferred from
 `--dir` or the cwd and an unseen inference is an unchecked one. Each item carries an ID
-(T001…), **Class** (AUTONOMOUS / DECISION / BLOCKED / EXTERNAL / RECURRING), **Effort**
+(T001…), **Class** (AUTONOMOUS / DECISION / BLOCKED / EXTERNAL / RECURRING) — the DECISION
+class parks the queue until the user is back, so it is never reached by omission: `add` and
+any `edit` that sets it demand `--deferred <justification>`, kept in the item as a
+**Deferred** field, and the default path is asking the decision at birth so the item is born
+AUTONOMOUS —, **Effort**
 (S/M/L + rough wall-clock time), an optional **Risk** line naming what unsupervised
 execution could damage — an item with a Risk line never enters an afk package, and
 `--risk none` DELETES the field, which is how an obsolete Risk gets re-triaged — a
@@ -45,7 +49,9 @@ deterministic check, `B:` the user's verdict; required on `add`, still optional 
 for legacy items), and an optional **Project** slug tagging which project an item belongs
 to, for a workspace-root queue that mixes several projects — `add` warns (not errors) when
 a tag is unprecedented in the queue, naming the tags already in use, and `list` groups by
-tag once any item carries one, else it stays flat. Wrap-up settles the queue at close;
+tag once any item carries one, else it stays flat. Priority is the file's own order — `add`
+puts a new item at the end, `bump <id>` moves one to the top, `list`'s groups follow the
+file, and the afk package takes the filtered top. Wrap-up settles the queue at close;
 kickoff verifies and dispatches it at open. The queue has three
 dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, and `/loop` over the
 project's `loop.md` — spelled out in `tk/skills/dispatch/SKILL.md`, which also single-sources

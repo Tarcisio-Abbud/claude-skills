@@ -1402,6 +1402,28 @@ class TestDecisionDeferralGate(QueueTest):
         self.assertIn("**Class:** AUTONOMOUS.", self.body())
         self.assertIn("Deferred", r.stderr)     # the removal is announced, not silent
 
+    def test_edit_refuses_a_deferral_on_an_item_that_is_not_a_decision(self):
+        """The same refusal as on `add`, on the side that could otherwise reach in
+        two commands what one command refuses."""
+        self.seed(item(1, "um"))
+        for argv in (("edit", "T001", "--deferred", "afk"),
+                     ("edit", "T001", "--class", "AUTONOMOUS", "--deferred", "afk")):
+            with self.subTest(argv=" ".join(argv)):
+                r = self.run_tk(*argv)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("--deferred", r.stderr)
+                self.assertNotIn("**Deferred:**", self.body())
+
+    def test_a_typo_in_the_class_is_answered_before_the_gate(self):
+        """A gate reasoning about the RESULTING class answers a typo'd class with
+        "T001 is DECISON — pass --class DECISION", which sends the caller after
+        the wrong mistake. The class is validated first, as `add` does."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("edit", "T001", "--class", "DECISON", "--deferred", "afk")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("must be one of", r.stderr)
+        self.assertIn("**Class:** AUTONOMOUS.", self.body())
+
     def test_the_justification_is_measured_against_the_field_ceiling(self):
         tk = load_tk()
         big = "x" * (tk.FIELD_CEILING + 1)
@@ -1446,20 +1468,24 @@ class TestBump(QueueTest):
         self.assertEqual(self.body(), before)
         self.assertIn("already at the top", r.stdout)
 
-    def test_headings_and_prose_between_items_survive_verbatim(self):
+    def test_the_whole_file_comes_out_exactly_as_the_move_implies(self):
         """Items sit under `##` project headings in a real queue, with prose
-        paragraphs between them. `bump` moves ONE block; everything else in the
-        file is not its to touch."""
+        paragraphs between them, and blank lines separating the items. `bump`
+        moves ONE block: it lands above the first ITEM (not above the file's
+        frontmatter), it keeps the blank line that separates it from the item it
+        now precedes, and every heading, paragraph and blank line elsewhere is
+        left where it was. Asserted as the whole file, because each of those is a
+        way the move can go subtly wrong while every "is it still there?" check
+        passes."""
+        prose = "Um parágrafo de contexto que ninguém pediu para mexer.\n"
         self.write("next-steps.md",
                    HEADER + "## projeto a\n\n" + item(1, "um")
-                   + "\nUm parágrafo de contexto que ninguém pediu para mexer.\n\n"
-                   + "## projeto b\n\n" + item(2, "dois"))
+                   + "\n" + prose + "\n## projeto b\n\n" + item(2, "dois"))
         self.assertEqual(self.run_tk("bump", "T002").returncode, 0)
-        body = self.body()
-        self.assertEqual(self.ids(), ["T002", "T001"])
-        self.assertIn("## projeto a\n", body)
-        self.assertIn("## projeto b\n", body)
-        self.assertIn("Um parágrafo de contexto que ninguém pediu para mexer.", body)
+        self.assertEqual(
+            self.body(),
+            HEADER + "## projeto a\n\n" + item(2, "dois") + "\n" + item(1, "um")
+            + "\n" + prose + "\n## projeto b\n")
 
     def test_the_item_is_moved_whole_and_not_duplicated(self):
         self.seed(item(1, "um"), item(2, "dois", project="tk"))
@@ -1468,6 +1494,19 @@ class TestBump(QueueTest):
         self.assertEqual(body.count("**T002**"), 1)
         self.assertIn("**Project:** tk.", body)
         self.assertEqual(len([l for l in body.splitlines() if l.startswith("- [ ]")]), 2)
+
+    def test_a_bump_shows_in_list_on_a_tagged_queue_too(self):
+        """`list` groups by the **Project:** tag, and a queue that mixes projects
+        is the shape those tags exist for. Ordering the groups alphabetically
+        made `bump` INVISIBLE there: the item reached the top of the file and
+        still rendered under a later heading, which reads as a bump that failed.
+        The groups follow the file, so the bumped item is the first line."""
+        self.seed(item(1, "um", project="a"), item(2, "dois", project="a"),
+                  item(3, "tres", project="b"))
+        self.assertEqual(self.run_tk("bump", "T003").returncode, 0)
+        out = self.run_tk("list").stdout
+        self.assertEqual(self.ids(), ["T003", "T001", "T002"])
+        self.assertLess(out.index("## b"), out.index("## a"))
 
     def test_an_unknown_id_is_diagnosed_and_nothing_moves(self):
         self.seed(item(1, "um"), item(2, "dois"))

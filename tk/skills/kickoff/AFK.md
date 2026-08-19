@@ -9,12 +9,12 @@ run unattended. `afk` fires it with zero interaction: the user typed the command
 Eligible: items triaged **AUTONOMOUS** that carry **no Risk line** — a Risk the triage
 finds OBSOLETE (it names a branch since merged, a migration since run) is cleared on the
 spot with `tk-queue edit <id> --risk none`, which is what keeps a stale line from
-excluding the item forever. Take them in the
-queue's own order — priority IS the order of the file, and `tk-queue bump <id>` is what
-moves an item to the top — then add items while the package still fits ONE session: the parent only
-orchestrates and verifies — yet each item still costs context to dispatch, monitor and
-check. Guidance: stop around 3–6 items or ~2h of summed Effort; leaving an eligible item
-out beats a session too long to verify its own work.
+excluding the item forever. Take them in the queue's own order — priority IS the order of
+the file, and `tk-queue bump <id>` is what moves an item to the top — then add items while
+the package still fits ONE session: the parent only orchestrates and verifies, yet each
+item still costs context to dispatch, monitor and check. Guidance: stop around 3–6 items
+or ~2h of summed Effort; leaving an eligible item out beats a session too long to verify
+its own work.
 **Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45"),
 and every eligible item left out is noted with the reason.
 

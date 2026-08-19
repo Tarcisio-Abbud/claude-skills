@@ -93,7 +93,7 @@ MUTATIONS = [
      ["TestProjectTagInDoneLog.test_report_groups_by_tag_untagged_last"]),
 
     ("T064/T065 the untagged group stops going last",
-     "    order = sorted(k for k in groups if k is not None) + "
+     "    order = (named if by_position else sorted(named)) + "
      "([None] if None in groups else [])",
      "    order = sorted(groups, key=lambda k: (k is not None, k or ''))",
      ["TestProjectTagInDoneLog.test_report_groups_by_tag_untagged_last"]),
@@ -553,6 +553,42 @@ MUTATIONS = [
     ("T119 bumping the top item rewrites the file anyway",
      "    if first and first.start() == content.index(block):", "    if False:",
      ["TestBump.test_bumping_the_top_item_leaves_the_file_byte_identical"]),
+
+    ("T119 edit accepts a deferral on an item that is not a DECISION",
+     "    if setting and result_class != DEFERRABLE_CLASS:", "    if False:",
+     ["TestDecisionDeferralGate."
+      "test_edit_refuses_a_deferral_on_an_item_that_is_not_a_decision"]),
+
+    ("T119 the typo'd class reaches the deferral gate before it is validated",
+     "    if args.classe and args.classe not in CLASSES:\n"
+     "        fail(f\"--class must be one of {', '.join(CLASSES)}\")\n"
+     "    deferred_flag = deferral_for_edit(args, block)",
+     "    deferred_flag = deferral_for_edit(args, block)",
+     ["TestDecisionDeferralGate.test_a_typo_in_the_class_is_answered_before_the_gate"]),
+
+    ("T119 bump lands above the frontmatter instead of above the first item",
+     "    at = dest.start() if dest else len(without)", "    at = 0",
+     ["TestBump.test_the_whole_file_comes_out_exactly_as_the_move_implies"]),
+
+    ("T119 bump glues the moved item to the one it now precedes",
+     '    moved = block if block.endswith("\\n\\n") or not tail else block + "\\n"',
+     "    moved = block",
+     ["TestBump.test_the_whole_file_comes_out_exactly_as_the_move_implies"]),
+
+    ("T119 bump acts without checking the item is really open",
+     "    block = find_open_item(memdir, args.id)\n"
+     '    path = os.path.join(memdir, "next-steps.md")\n'
+     "    content = read(path)",
+     '    path = os.path.join(memdir, "next-steps.md")\n'
+     "    content = read(path)\n"
+     '    block = next((t for k, t in split_blocks(content or "")\n'
+     '                  if k == "item-open" and item_id(t) == args.id), "")',
+     ["TestBump.test_an_unknown_id_is_diagnosed_and_nothing_moves"]),
+
+    ("T119 list orders its groups alphabetically, so a bump is invisible",
+     "                            for label, cls, title, project in rows], by_position=True)",
+     "                            for label, cls, title, project in rows])",
+     ["TestBump.test_a_bump_shows_in_list_on_a_tagged_queue_too"]),
 
     ("T119 bump counts as a reader, so it takes no lock and names no queue",
      'READERS = frozenset(("list", "report"))',
