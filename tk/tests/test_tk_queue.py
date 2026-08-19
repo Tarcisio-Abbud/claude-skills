@@ -2318,6 +2318,32 @@ class TestClaim(QueueTest):
                 self.assertEqual(r.returncode, 1, r.stdout)
                 self.assertEqual(self.body(), before)       # the prose survives whole
 
+    def test_an_item_whose_chain_has_no_class_refuses_the_claim(self):
+        """A claim is POSITIONED against **Class:**, so a chain carrying none cannot
+        host one. Measured before this guard, on the legacy population `chain_class`
+        already names (fields on a continuation line, or an item that never had a
+        Class): `claim` returned 0 and wrote the field, `list` then showed the item
+        FREE — the exact collision the command exists to prevent, now permanent —
+        and `release` refused it forever, leaving the queue fixable only by the hand
+        the contract forbids.
+
+        A gate that cannot read back what it writes must refuse to write."""
+        self.seed("- [ ] **T001** — algo. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        before = self.body()
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("**Class:**", r.stderr)
+        self.assertEqual(self.body(), before)
+        self.assertNotIn("claimed", self.run_tk("list").stdout)
+        # the over-refusal direction: the way out is ONE command, and it works
+        self.assertEqual(self.run_tk("edit", "T001", "--class", "AUTONOMOUS").returncode, 0)
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("claimed by alpha", self.run_tk("list").stdout)
+        self.assertEqual(self.run_tk("release", "T001").returncode, 0)
+
     def test_prose_ending_in_a_period_before_the_fields_is_not_a_claim(self):
         """The item's own text carries the marker, ends in a period and sits right
         against the fields — so field_chain absorbs it and the chain says the item

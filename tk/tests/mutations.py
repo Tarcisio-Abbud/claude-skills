@@ -976,6 +976,12 @@ MUTATIONS = [
      ["TestClaim.test_a_marker_only_outside_the_chain_is_refused_not_guessed",
       "TestClaim.test_prose_ending_in_a_period_before_the_fields_is_not_a_claim"]),
 
+    # the write site has to know the READ site's position rule: without this the
+    # item comes back held in the file, shown FREE by `list`, and unreleasable
+    ("T121 a claim is written into a chain that cannot host it",
+     "    if not chain_hosts_class(block):", "    if False:",
+     ["TestClaim.test_an_item_whose_chain_has_no_class_refuses_the_claim"]),
+
     ("T121 two claims in the chain are guessed (the first wins) instead of refused",
      "    if len(segs) > 1:", "    if False:",
      ["TestClaim.test_two_claim_fields_in_the_chain_are_refused_as_ambiguous"]),

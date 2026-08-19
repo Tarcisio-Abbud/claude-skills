@@ -665,6 +665,20 @@ def qualified_fields(block, field):
     return segs, len(FIELD_MARKER_RE[field].findall(block))
 
 
+def chain_hosts_class(block):
+    """Whether the item's field chain carries the **Class:** that qualified_fields
+    positions every real field against.
+
+    A writer has to ask this BEFORE writing such a field: a chain with no Class
+    qualifies nothing, so a field written into one can never be read back. Measured
+    on `claim`, before this existed — the item came back held in the FILE, shown
+    FREE by `list` (which is the collision the command exists to prevent, made
+    permanent), and refused by `release` forever, leaving the queue editable only by
+    the hand the contract forbids.
+    """
+    return any(canonical_field(m.group(1)) == "Class" for m in field_chain(block))
+
+
 def deferral_field(block):
     """(segment, stray) — the item's REAL Deferred field, and whether a
     `**Deferred:**` marker sits anywhere else in the block. The position rule that
@@ -846,11 +860,15 @@ def displayed_claim(block):
 
     Tolerant where the gate refuses, and that is the difference between a reader
     and a gate: `list` must not die on one malformed item and stop showing the
-    other twenty. An item claim_segment would refuse carries no mark here — which
-    is true, it carries no readable claim; what it carries is a defect, and the
-    refusal is where that gets said. The POSITION rule is not relaxed with it: a
-    display that read the item's own prose as a claim would show an owner made of
-    three words of the title.
+    other twenty. What the two DO agree on is the only thing that matters here —
+    the POSITION rule, which is not relaxed: a display reading the item's own prose
+    as a claim would show an owner made of three words of the title.
+
+    Where they part is the STRAY marker, and only in the safe direction. An item
+    carrying a real claim AND a marker elsewhere is displayed as claimed — which is
+    true, somebody holds it — while `claim`/`release` refuse it over the marker,
+    which is a defect in the item rather than an answer about who holds it. A
+    reader who skips it loses nothing, and one who tries to take it is refused.
     """
     segs, _ = qualified_fields(block, "Claimed")
     return claim_mark(*claim_value(segs[0])) if len(segs) == 1 else None
@@ -1405,6 +1423,14 @@ def cmd_claim(args):
     validate_owner(args.owner)
     content, block, start = find_open_item(memdir, args.id)
     held = claim_segment(args.id, block)
+    # a gate that cannot read back what it writes must refuse to write: see
+    # chain_hosts_class for the state this produced before the check existed
+    if not chain_hosts_class(block):
+        fail(f"T{args.id:03d} carries no **Class:** field in its field chain, and a claim "
+             "is positioned against that field — one written here could not be read back, "
+             "so the item would be held in the file, shown FREE by `list` and impossible "
+             "to release. Nothing was changed. Give it a class first: "
+             f"`tk-queue edit T{args.id:03d} --class AUTONOMOUS`.")
     if held is not None:
         fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. Nothing was "
              "changed: a claim is how two sessions on one queue avoid executing the same "
