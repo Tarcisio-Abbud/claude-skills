@@ -43,6 +43,15 @@ item no machine ever picks up with no error to say why. No roster, no `--env`:
 the flag is refused with the file to create, because the plugin ships no
 machine's name of its own.
 
+WHO is working on it is a third field, and the only one this script writes on
+its own: `claim <id> --as <name>` marks the item under the queue's exclusive
+lock, and a second `claim` is REFUSED naming the owner and the moment — that is
+how two sibling sessions on one queue stop executing the same item (collisions
+measured 2026-08-18). The mark leaves with the item on `done`/`cancel`, and
+`release <id>` hands it back to the queue without closing it. It is deliberately
+NOT an `edit` flag: `edit --claimed <other>` would take a held item in a second
+command, which is precisely what `claim` refuses in one.
+
 Size ceilings: an item is a PENDING ACTION, not an essay. Durable context
 belongs in a memory file or the wiki, linked from the item. TWO ceilings, and
 which one a flag answers to depends on the flag's NATURE:
@@ -104,6 +113,12 @@ FIELD_CLEAR = "none"
 # stale: a Risk whose branch has since merged, a deferral whose class has since
 # changed, an Env naming the machine an item needed before it was re-sliced.
 # None is ever deleted in a way that opens a gate — see cmd_edit.
+#
+# **Claimed:** ages exactly like these and is deliberately ABSENT: this set is
+# consulted by `edit`'s field loop, and a field that loop can CLEAR is one it can
+# also SET — `edit <id> --claimed bravo` would take an item somebody else holds,
+# in one command, which is the thing `claim` exists to refuse. It is cleared by
+# `release`, which reads the same chain and splices with the same helper.
 CLEARABLE = frozenset(("Risk", "Deferred", "Env"))
 READERS = frozenset(("list", "report"))   # everything else mutates and takes the queue lock
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
@@ -464,6 +479,7 @@ FIELD_VARIANTS = {
     "Source": r"(?:Source|Fonte)",
     "Deferred": r"(?:Deferred|Adiado)",
     "Env": r"(?:Env|Ambiente)",
+    "Claimed": r"(?:Claimed|Posse)",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
 # the marker SHAPE alone, with no trailing value — every other use of ANY_FIELD
@@ -544,6 +560,35 @@ def clears_field(value):
     is the word for "no risk" is never what the caller meant.
     """
     return (value or "").strip().lower() == FIELD_CLEAR
+
+
+def clear_field_segment(block, segment):
+    """`block` with one field SEGMENT removed, and the removal site repaired.
+
+    ONE implementation, two callers — `edit --<field> none` and `release` — because
+    neither half below is obvious, and a second copy is how one caller would keep a
+    rule the other had already dropped.
+
+    Local names only, and that is not style: the caller's `start` holds the item's
+    offset in the FILE, and its final splice is computed from it. A branch that put
+    the field's own offsets into names spelled the same way truncated the
+    frontmatter mid-word and duplicated the item — measured on `--risk none`, with
+    the whole suite still green, because every clearing test asserted
+    `assertNotIn("**Risk:**")` and a corrupted file satisfies that too.
+
+    The repair: FIELD_SEGMENT_RE's body is greedy, so the match has already
+    swallowed the blank that separated this field from the next one — but when the
+    field was the LAST on its line there is nothing after it, and the blank BEFORE
+    it is left dangling at end of line. It is repaired exactly at the removal site:
+    a sweep over the whole block would also eat a two-space Markdown hard break on
+    an unrelated continuation line, silently rewrapping text this command was never
+    asked to touch.
+    """
+    f_start, f_end = segment.span()
+    head, tail = block[:f_start], block[f_end:]
+    if tail[:1] in ("", "\n"):
+        head = head.rstrip(" \t")
+    return head + tail
 
 
 CLASS_VALUE_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Class"] + r"):\*\*\s*([A-Za-zÀ-ÿ]+)")
@@ -663,6 +708,124 @@ def validate_env(value):
              "a near-miss would pin the item to an environment that does not exist, and "
              "no machine would ever pick it up. Fix the value, or add the environment to "
              "the roster.")
+
+
+# --- claim: who holds the item, and since when ----------------------------
+# A claim is COORDINATION between sibling sessions on one queue — it is not a
+# security boundary. That is what decides the two liberties below, and both are
+# deliberate: `release` does not demand the owner's name, because a session that
+# died holding a claim would otherwise leave the item unreachable (a lock with no
+# timeout); and `done`/`cancel` do not consult it either, because they already
+# record the outcome in the done-log, and demanding `--as` on every close would
+# make a crashed session's item unclosable. What keeps a wrongful release honest
+# is that the command PRINTS whose claim it dropped.
+#
+# An owner is a bounded token, and that bound IS the validation: the value is
+# written verbatim into a one-line field right beside a timestamp, so a name
+# carrying a blank could not be told apart from the moment it was claimed, and one
+# carrying a newline or a `**Field:**` shape would break the block format. The
+# shape gate is strictly tighter than the single-line, embedded-marker and field
+# ceilings the prose flags answer to — the same answer `--env` gets from the
+# roster — so those are not repeated on it. Capitals, dots and underscores are
+# allowed where a roster name refuses them: an owner is a session or host label
+# ("alpha.local", "sess-3"), not a name matched by equality against a file.
+OWNER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}\Z")
+# ONE spelling of the value's grammar, composed and read back from the same
+# constant: two of them is how a refusal comes to name an owner the file never
+# carried.
+CLAIM_SINCE = " since "
+CLAIM_VALUE_RE = re.compile(r"\*\*[^*]+:\*\*\s*(\S+)" + CLAIM_SINCE + r"(\S+?)\.?\s*\Z")
+CLAIMED_MARKER_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Claimed"] + r"):\*\*")
+
+
+def now_stamp():
+    """UTC, to the second.
+
+    Not the date-only stamp the rest of the script writes: a claim is read over
+    the interval two sessions collide in, which is minutes, and a field that says
+    only "today" answers none of the questions it exists for. UTC because one
+    queue is shared by more than one machine by construction — that is what
+    **Env:** is for — and two local times from two machines do not compare.
+    """
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def validate_owner(name):
+    """argparse's required=True only proves --as was typed; an empty string
+    satisfies it and would claim the item for nobody."""
+    if not OWNER_RE.match(name or ""):
+        fail(f"--as {name!r} is not a valid owner name: letters, digits, '.', '-' or "
+             "'_', at most 32 chars, no spaces and not empty. The name sits beside the "
+             "timestamp in a one-line field, and one with a blank in it cannot be told "
+             "apart from the moment it was claimed.")
+    if clears_field(name):
+        fail(f"--as {FIELD_CLEAR!r} is refused: {FIELD_CLEAR!r} is the word that DELETES a "
+             "field everywhere in this script, so an item claimed under it would read as "
+             "one nobody holds. Hand an item back with `tk-queue release <id>`.")
+
+
+def claim_segment(iid, block):
+    """The item's REAL **Claimed:** field — the one in its FIELD CHAIN — or None.
+
+    Refuses rather than guessing, in both directions, because this reader decides a
+    GATE and the deferral field has already paid for both lessons:
+
+      ambiguous   two Claimed fields in the chain: which one holds the item is
+                  unanswerable, and picking either lets the other be overwritten.
+      stray       a `**Claimed:**` marker OUTSIDE the chain — in the item's own
+                  prose, or on a continuation line. Reading it as the field would
+                  let prose hold an item forever; ignoring it would have `release`
+                  report a free item while that text still says it is taken.
+
+    Both populations are legacy only: ensure_no_embedded_marker refuses the marker
+    shape in every free-text flag, and Claimed is a field it knows.
+    """
+    chain = [m for m in field_chain(block) if canonical_field(m.group(1)) == "Claimed"]
+    if len(chain) > 1:
+        fail(f"T{iid:03d} carries {len(chain)} **Claimed:** fields in its field chain, so "
+             "who holds it is ambiguous. Nothing was changed. Close it with `cancel` and "
+             "re-add it clean.")
+    if len(CLAIMED_MARKER_RE.findall(block)) > len(chain):
+        fail(f"T{iid:03d} carries a **Claimed:** marker away from its field chain — in the "
+             "item's own prose, or on a continuation line. Nothing was changed: reading it "
+             "as the claim would let prose hold the item forever, and ignoring it would "
+             "report a free item while that text says otherwise. Close it with `cancel` "
+             "and re-add it clean.")
+    return chain[0] if chain else None
+
+
+def claim_value(segment):
+    """(owner, since) carried by a Claimed segment.
+
+    A value that does not parse comes back as (the raw value, None) and NEVER as
+    "unclaimed": "held, and I cannot tell by whom" is still held, and reading it as
+    free is exactly how the second session takes an item the first is working.
+    """
+    m = CLAIM_VALUE_RE.match(segment.group(0))
+    if m:
+        return m.group(1), m.group(2)
+    return re.sub(r"\A\*\*[^*]+:\*\*\s*", "", segment.group(0)).strip(), None
+
+
+def claim_mark(owner, since):
+    """One wording for the refusal, the release report and `list` alike."""
+    return f"claimed by {owner}" + (f" since {since}" if since
+                                    else " (with no readable timestamp)")
+
+
+def displayed_claim(block):
+    """The claim `list` shows, or None — read from the FIELD CHAIN, the same place
+    the gate reads it from, so the display and the refusal cannot disagree about
+    who holds an item.
+
+    Tolerant where the gate refuses, and that is the difference between a reader
+    and a gate: `list` must not die on one malformed item and stop showing the
+    other twenty. An item claim_segment would refuse carries no mark here — which
+    is true, it carries no readable claim; what it carries is a defect, and the
+    refusal is where that gets said.
+    """
+    chain = [m for m in field_chain(block) if canonical_field(m.group(1)) == "Claimed"]
+    return claim_mark(*claim_value(chain[0])) if len(chain) == 1 else None
 
 
 def validate_project(tag):
@@ -853,24 +1016,32 @@ def cmd_list(args):
         label = f"T{iid:03d}" if iid else "----"
         pm = PROJECT_TAG_RE.search(text)
         rows.append((label, item_class(text) or "?", item_title(text),
-                     pm.group(1) if pm else None))
+                     pm.group(1) if pm else None, displayed_claim(text)))
     if not rows:
         print("(queue empty)")
         return
-    grouped = group_by_tag([(project, (label, cls, title))
-                            for label, cls, title, project in rows], by_position=True)
+    grouped = group_by_tag([(project, (label, cls, title, mark))
+                            for label, cls, title, project, mark in rows],
+                           by_position=True)
     if grouped is None:
-        for label, cls, title, _ in rows:
-            print(f"{label}  {cls:<10}  {title}")
+        for label, cls, title, _, mark in rows:
+            print(list_line(label, cls, title, mark))
     else:
         for n, (project, entries) in enumerate(grouped):
             if n:
                 print()
             print(f"## {project or 'no project'}")
-            for label, cls, title in entries:
-                print(f"{label}  {cls:<10}  {title}")
+            for label, cls, title, mark in entries:
+                print(list_line(label, cls, title, mark))
     if any(r[0] == "----" for r in rows):
         print("\nitems without ID: run `tk-queue migrate` to assign them.")
+
+
+def list_line(label, cls, title, mark):
+    """The claim is appended, not given a column of its own: it is the exception
+    (most items are free), and a column would indent every line of every queue for
+    a field almost none of them carry."""
+    return f"{label}  {cls:<10}  {title}" + (f"  [{mark}]" if mark else "")
 
 
 def compose_item(args, iid):
@@ -1076,6 +1247,24 @@ def deferral_for_edit(args, block):
     return args.deferred
 
 
+def splice_item(memdir, content, block, start, new):
+    """Write `new` in place of the block AT `start`.
+
+    NEVER `content.replace(block, new, 1)`: an item's text is not unique in the
+    file — one that documents the queue's own format quotes another item's line
+    verbatim — and the substring search rewrites whichever copy comes first (see
+    excise). The offset comes from find_open_item, which walks the blocks.
+
+    Three callers now (`edit`, `claim`, `release`), one splice: the addressing bug
+    above cost a real corruption once, and it is not a bug each command should get
+    its own chance to reintroduce.
+    """
+    if not new.endswith("\n"):
+        new += "\n"
+    write_atomic(os.path.join(memdir, "next-steps.md"),
+                 content[:start] + new + content[start + len(block):])
+
+
 def cmd_edit(args):
     memdir = memory_dir(args.dir)
     content, block, start = find_open_item(memdir, args.id)
@@ -1133,24 +1322,7 @@ def cmd_edit(args):
                  "`cancel` and re-add it clean.")
         if field in CLEARABLE and clears_field(flag):
             if found:
-                # NOT `start`: that name holds the item's offset in the FILE, and the
-                # final write splices with it. Shadowing it with a position inside
-                # `new` truncated the frontmatter mid-word and duplicated the item —
-                # measured on `--risk none`, with the whole suite still green, because
-                # every clearing test asserted `assertNotIn("**Risk:**")` and a
-                # corrupted file satisfies that too
-                f_start, f_end = found[0].span()
-                head, tail = new[:f_start], new[f_end:]
-                # the body is greedy, so the match already swallowed the blank that
-                # separated Risk from the next field — but when Risk was the last
-                # field on the line there is nothing after it, and the blank BEFORE
-                # it is left dangling at end of line. Repair exactly at the removal
-                # site: a sweep over the whole block would also eat a two-space
-                # Markdown hard break on an unrelated continuation line, silently
-                # rewrapping text this command was never asked to touch
-                if tail[:1] in ("", "\n"):
-                    head = head.rstrip(" \t")
-                new = head + tail
+                new = clear_field_segment(new, found[0])
             continue
         if found:
             m = found[0]
@@ -1165,8 +1337,6 @@ def cmd_edit(args):
             # write, right now, the very shape the guard above refuses to touch later
             head, sep, rest = new.partition("\n")
             new = head.rstrip() + f" **{field}:** {flag}." + sep + rest
-    if not new.endswith("\n"):
-        new += "\n"
     # The BLOCK ceiling guards the item's prose, so every PROSE flag is measured
     # against it — --text and the free-text fields alike — and only when the edit
     # grows the item, since shrinking a legacy oversized item must always be allowed.
@@ -1185,11 +1355,68 @@ def cmd_edit(args):
     # ONE call still took an item to 709 past a 700 ceiling.
     if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):
         check_ceiling(new, args.force)
-    # spliced at the block's own offset — `.replace(block, new, 1)` would rewrite
-    # whichever copy of that text comes first, which is not always this item
-    write_atomic(os.path.join(memdir, "next-steps.md"),
-                 content[:start] + new + content[start + len(block):])
+    splice_item(memdir, content, block, start, new)
     print(f"T{args.id:03d} updated")
+
+
+def cmd_claim(args):
+    """Take the item, so a sibling session on the same queue does not work it too.
+
+    The check and the write happen under the SAME queue lock every mutating command
+    takes (see main), and that is what makes "exactly one of two racing sessions
+    wins" true rather than merely likely: find_open_item's read is authoritative
+    while the lock is held, so no second writer can land between reading that the
+    item is free and marking it.
+
+    A second claim is refused even when it comes from the SAME owner. Letting it
+    through would only refresh the timestamp, and the timestamp is how a reader
+    tells a live claim from one a dead session left behind — a claim that renews
+    itself on every attempt never looks stale.
+    """
+    memdir = memory_dir(args.dir)
+    validate_owner(args.owner)
+    content, block, start = find_open_item(memdir, args.id)
+    held = claim_segment(args.id, block)
+    if held is not None:
+        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. Nothing was "
+             "changed: a claim is how two sessions on one queue avoid executing the same "
+             "item. Take another one — or, if that session is gone, hand this one back "
+             f"with `tk-queue release T{args.id:03d}`.")
+    stamp = now_stamp()
+    # appended at the end of the FIRST line, where the chain lives — the same place
+    # `edit` puts a field it did not find, and the only place claim_segment reads
+    # one back from
+    head, sep, rest = block.partition("\n")
+    new = head.rstrip() + f" **Claimed:** {args.owner}{CLAIM_SINCE}{stamp}." + sep + rest
+    # NOT measured against the BLOCK ceiling, on the same rule as the short fields
+    # (T071): the value is bounded by construction — OWNER_RE plus a fixed-width
+    # stamp — and a legacy oversized item is precisely the one a session must be
+    # able to take without being taught to type --force on ordinary commands.
+    splice_item(memdir, content, block, start, new)
+    print(f"T{args.id:03d} claimed by {args.owner} ({stamp})")
+
+
+def cmd_release(args):
+    """Hand a claimed item back to the queue WITHOUT closing it.
+
+    Does not demand the owner's name, deliberately: a session that died holding a
+    claim would otherwise leave the item unreachable by anyone, which is the
+    failure mode of a lock with no timeout — and this queue's whole point is that
+    nothing goes silently unreachable. What keeps a wrongful release visible is the
+    report below, which names WHOSE claim was dropped.
+    """
+    memdir = memory_dir(args.dir)
+    content, block, start = find_open_item(memdir, args.id)
+    held = claim_segment(args.id, block)
+    if held is None:
+        # an honest no-op, like `bump` on an item already at the top. Reporting a
+        # release that did not happen is what would send the caller on to work an
+        # item somebody else is still holding
+        print(f"T{args.id:03d} carries no claim — nothing to release")
+        return
+    mark = claim_mark(*claim_value(held))
+    splice_item(memdir, content, block, start, clear_field_segment(block, held))
+    print(f"T{args.id:03d} released — it was {mark}")
 
 
 def cmd_bump(args):
@@ -1365,6 +1592,18 @@ def main():
     e.add_argument("--project", help="assign/change the project tag")
     e.add_argument("--force", action="store_true")
 
+    cl = sub.add_parser("claim", parents=[common],
+                        help="take an item, so a sibling session does not work it too")
+    cl.add_argument("id", type=parse_id)
+    cl.add_argument("--as", dest="owner", required=True,
+                    help="who is taking it — a session or host label (letters, digits, "
+                         "'.', '-', '_', at most 32 chars, no spaces): it is written "
+                         "beside the moment of the claim and both are read back")
+
+    rl = sub.add_parser("release", parents=[common],
+                        help="hand a claimed item back to the queue without closing it")
+    rl.add_argument("id", type=parse_id)
+
     b = sub.add_parser("bump", parents=[common],
                        help="move an item to the top of the queue's global order")
     b.add_argument("id", type=parse_id)
@@ -1383,6 +1622,8 @@ def main():
         "done": cmd_done,
         "cancel": cmd_cancel,
         "edit": cmd_edit,
+        "claim": cmd_claim,
+        "release": cmd_release,
         "bump": cmd_bump,
         "report": cmd_report,
         "migrate": cmd_migrate,

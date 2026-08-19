@@ -15,7 +15,10 @@ machine's name is the `identity` line of the site file `~/.claude/tk/env`. An it
 to another environment is **not dispatchable here** — it goes in the left-out list with
 "runs on: X", never into the package, because nothing in this session can run it. The
 same re-triage applies as for Risk: an Env that named a machine the item needed before it
-was sliced is cleared with `tk-queue edit <id> --env none`. Take them in the queue's own
+was sliced is cleared with `tk-queue edit <id> --env none`. An item `list` shows as
+**claimed** is another session's and stays out of the package for the same reason — if
+that session is known to be gone, hand the item back with `tk-queue release <id>` first,
+which prints whose claim it dropped. Take them in the queue's own
 order — priority IS the order of
 the file, and `tk-queue bump <id>` is what moves an item to the top — then add items while
 the package still fits ONE session: the parent only orchestrates and verifies, yet each

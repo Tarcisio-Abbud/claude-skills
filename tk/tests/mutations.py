@@ -313,15 +313,15 @@ MUTATIONS = [
      ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
 
     ("T070 clearing leaves the separator blank dangling at end of line",
-     '                if tail[:1] in ("", "\\n"):', "                if False:",
+     '    if tail[:1] in ("", "\\n"):', "    if False:",
      ["TestRiskDeletion.test_no_trailing_blank_is_left_when_risk_was_the_last_field"]),
 
     # the same repair in the other direction: too WIDE instead of absent
     ("review#2 the blank repair sweeps the whole block again, eating a hard break",
-     '                if tail[:1] in ("", "\\n"):\n'
-     '                    head = head.rstrip(" \\t")\n'
-     "                new = head + tail",
-     '                new = re.sub(r"[ \\t]+(?=\\n|\\Z)", "", head + tail)',
+     '    if tail[:1] in ("", "\\n"):\n'
+     '        head = head.rstrip(" \\t")\n'
+     "    return head + tail",
+     '    return re.sub(r"[ \\t]+(?=\\n|\\Z)", "", head + tail)',
      ["TestRiskDeletion.test_a_hard_break_elsewhere_in_the_block_survives"]),
 
     # the block-ceiling exemption (T071) is only safe because the field ceiling
@@ -590,8 +590,8 @@ MUTATIONS = [
      ["TestBump.test_an_unknown_id_is_diagnosed_and_nothing_moves"]),
 
     ("T119 list orders its groups alphabetically, so a bump is invisible",
-     "                            for label, cls, title, project in rows], by_position=True)",
-     "                            for label, cls, title, project in rows])",
+     "                           by_position=True)",
+     "                           )",
      ["TestBump.test_a_bump_shows_in_list_on_a_tagged_queue_too"]),
 
     ("T119 bump counts as a reader, so it takes no lock and names no queue",
@@ -668,10 +668,11 @@ MUTATIONS = [
     # --- re-check of the FIX: the corruption the fix itself shipped -----------
 
     ("re-check the clearing branch shadows the item's offset in the FILE",
-     "                f_start, f_end = found[0].span()\n"
-     "                head, tail = new[:f_start], new[f_end:]",
+     "            if found:\n"
+     "                new = clear_field_segment(new, found[0])",
+     "            if found:\n"
      "                start, end = found[0].span()\n"
-     "                head, tail = new[:start], new[end:]",
+     "                new = clear_field_segment(new, found[0])",
      ["TestClearingKeepsTheFileIntact.test_clearing_a_risk_rewrites_only_that_field",
       "TestClearingKeepsTheFileIntact.test_clearing_a_deferral_rewrites_only_that_field"]),
 
@@ -926,12 +927,127 @@ MUTATIONS = [
      ["TestEnvField.test_the_ceilings_are_optional"],
      "bin/tk_site.py"),
 
-    ("2ª review edit splices by search-and-replace again",
+    ("2ª review edit/claim/release splice by search-and-replace again",
      "    write_atomic(os.path.join(memdir, \"next-steps.md\"),\n"
      "                 content[:start] + new + content[start + len(block):])",
      "    write_atomic(os.path.join(memdir, \"next-steps.md\"), "
      "content.replace(block, new, 1))",
      ["TestBlockAddressing.test_edit_rewrites_the_real_item_and_not_the_quotation"]),
+
+    # --- T121: the claim, and everything that must not be able to take it ----
+
+    ("T121 a second claim is let through (two sessions hold the same item)",
+     '    if held is not None:\n'
+     '        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. '
+     'Nothing was "',
+     '    if False:\n'
+     '        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. '
+     'Nothing was "',
+     ["TestClaim.test_a_second_claim_is_refused_naming_the_owner_and_the_moment",
+      "TestClaim.test_the_same_owner_cannot_reclaim_it_either",
+      "TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
+
+    # the refusal is the whole product of the guard: "already claimed" with no name
+    # tells the caller nothing to act on, and no session to go ask
+    ("T121 the refusal stops naming the owner and the moment",
+     '        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. '
+     'Nothing was "',
+     '        fail(f"T{args.id:03d} is already claimed. Nothing was "',
+     ["TestClaim.test_a_second_claim_is_refused_naming_the_owner_and_the_moment",
+      "TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
+
+    ("T121 a claim that does not parse is reported as somebody unnamed",
+     '    return re.sub(r"\\A\\*\\*[^*]+:\\*\\*\\s*", "", segment.group(0)).strip(), None',
+     '    return "somebody", None',
+     ["TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
+
+    ("T121 the claim is appended to the BLOCK, landing outside the field chain",
+     '    head, sep, rest = block.partition("\\n")\n'
+     '    new = head.rstrip() + f" **Claimed:** {args.owner}{CLAIM_SINCE}{stamp}." '
+     '+ sep + rest',
+     '    new = block.rstrip("\\n") + f" **Claimed:** {args.owner}{CLAIM_SINCE}{stamp}."',
+     ["TestClaim.test_the_claim_lands_in_the_chain_on_an_item_with_a_continuation_line"]),
+
+    ("T121 a **Claimed:** marker outside the chain is guessed instead of refused",
+     "    if len(CLAIMED_MARKER_RE.findall(block)) > len(chain):", "    if False:",
+     ["TestClaim.test_a_marker_only_outside_the_chain_is_refused_not_guessed"]),
+
+    ("T121 two claims in the chain are guessed (the first wins) instead of refused",
+     "    if len(chain) > 1:", "    if False:",
+     ["TestClaim.test_two_claim_fields_in_the_chain_are_refused_as_ambiguous"]),
+
+    ("T121 Claimed stops being a field the readers know (it leaves FIELD_VARIANTS)",
+     '    "Claimed": r"(?:Claimed|Posse)",', '    "Claimed": r"(?!x)x",',
+     ["TestClaim.test_a_second_claim_is_refused_naming_the_owner_and_the_moment",
+      "TestClaim.test_list_marks_the_claimed_item_and_only_that_one",
+      "TestClaim.test_the_marker_shape_is_refused_in_free_text"]),
+
+    ("T121 the owner's shape stops being validated",
+     '    if not OWNER_RE.match(name or ""):', "    if False:",
+     ["TestClaim.test_a_malformed_owner_is_refused",
+      "TestClaim.test_an_empty_owner_is_refused"]),
+
+    # the over-refusal direction: a gate that fires on every name makes the command
+    # unusable, and no refusal test can see it
+    ("T121 the owner gate refuses every name",
+     '    if not OWNER_RE.match(name or ""):', "    if True:",
+     ["TestClaim.test_an_ordinary_session_label_is_still_accepted"]),
+
+    ("T121 the reserved clear word is accepted as an owner",
+     "    if clears_field(name):", "    if False:",
+     ["TestClaim.test_the_reserved_clear_word_cannot_be_an_owner"]),
+
+    ("T121 the claim is stamped with the date only (no time, no UTC)",
+     '    return datetime.datetime.now(datetime.timezone.utc).strftime'
+     '("%Y-%m-%dT%H:%M:%SZ")',
+     "    return datetime.date.today().isoformat()",
+     ["TestClaim.test_the_moment_is_recorded_to_the_second_and_in_UTC"]),
+
+    # T071 in the other direction: a bounded field measured against the BLOCK
+    # ceiling makes a legacy oversized item unclaimable without --force
+    ("T121 claiming is measured against the block ceiling",
+     "    splice_item(memdir, content, block, start, new)\n"
+     '    print(f"T{args.id:03d} claimed by {args.owner} ({stamp})")',
+     "    check_ceiling(new, False)\n"
+     "    splice_item(memdir, content, block, start, new)\n"
+     '    print(f"T{args.id:03d} claimed by {args.owner} ({stamp})")',
+     ["TestClaim.test_claiming_a_legacy_oversized_item_needs_no_force"]),
+
+    ("T121 release splices the field out without the removal-site repair",
+     "    splice_item(memdir, content, block, start, clear_field_segment(block, held))",
+     '    splice_item(memdir, content, block, start, '
+     'block.replace(held.group(0), "", 1))',
+     ["TestClaim.test_release_gives_the_item_back_and_leaves_the_file_INTACT",
+      "TestClaim.test_a_claim_that_does_not_parse_can_still_be_released"]),
+
+    ("T121 release reports a release it did not perform",
+     '        print(f"T{args.id:03d} carries no claim — nothing to release")',
+     '        print(f"T{args.id:03d} released")',
+     ["TestClaim.test_releasing_an_unclaimed_item_says_so_and_changes_nothing"]),
+
+    ("T121 release stops naming the claim it dropped (a silent steal)",
+     '    print(f"T{args.id:03d} released — it was {mark}")',
+     '    print(f"T{args.id:03d} released")',
+     ["TestClaim.test_release_names_the_claim_it_dropped"]),
+
+    ("T121 list stops showing the mark",
+     '    return f"{label}  {cls:<10}  {title}" + (f"  [{mark}]" if mark else "")',
+     '    return f"{label}  {cls:<10}  {title}"',
+     ["TestClaim.test_list_marks_the_claimed_item_and_only_that_one"]),
+
+    # the two-command bypass: a flag that can WRITE this field takes an item
+    # somebody else holds, which is what `claim` refuses in one command
+    ("T121 edit gains a --claimed flag",
+     '    e.add_argument("--project", help="assign/change the project tag")',
+     '    e.add_argument("--project", help="assign/change the project tag")\n'
+     '    e.add_argument("--claimed")',
+     ["TestClaim.test_edit_cannot_set_a_claim"]),
+
+    ("T121 the close carries the item's fields, so the claim reaches the done-log",
+     "    text = args.summary or item_title(block, limit=400)",
+     "    text = args.summary or block.strip()",
+     ["TestClaim.test_done_takes_the_claim_with_the_item",
+      "TestClaim.test_cancel_takes_the_claim_with_the_item"]),
 ]
 
 
@@ -951,7 +1067,7 @@ def main():
                                   "TestDoneLogLineGrammar", "TestCanonicalHead",
                                   "TestDecisionDeferralGate", "TestBump",
                                   "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
-                                  "TestEnvField"])
+                                  "TestEnvField", "TestClaim"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

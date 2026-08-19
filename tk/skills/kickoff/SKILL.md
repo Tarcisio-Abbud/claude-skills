@@ -131,6 +131,8 @@ tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."] [--force]
 tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--env ...|none] [--criterion ...] [--deferred ...] [--project slug] [--force]
 tk-queue bump <id>                             # move the item to the top of the global order
+tk-queue claim <id> --as <session/host label>  # take it, so a sibling session does not work it too
+tk-queue release <id>                          # hand a claimed item back, WITHOUT closing it
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
 tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
 ```
@@ -142,6 +144,17 @@ new item at the end; `bump <id>` moves one to the top; the package modes take th
 top. Re-prioritising means bumping, in that order (the last bump wins the top). The `##`
 headings a real queue carries are cosmetic: `list` groups by the **Project:** field, so a
 bumped item landing under a foreign heading changes nothing a reader acts on.
+
+**Who is working on an item** — `claim <id> --as <name>` marks it under the exclusive
+lock the queue already has, and a second `claim` is REFUSED naming the owner and the
+moment: that is how two sibling sessions on one queue stop executing the same item
+(collisions measured 2026-08-18). `list` shows the mark. `done`/`cancel` take it with the
+item, and `release <id>` hands the item back to the queue without closing it. Release does
+NOT demand the owner's name — a session that died holding a claim would otherwise leave
+the item unreachable by anyone — so it prints WHOSE claim it dropped, which is what keeps
+a wrongful release visible. There is deliberately no `edit --claimed`: a flag that could
+write the field would take a held item in a second command, which is what `claim` refuses
+in one.
 
 **Which IDs are taken** — the script counts an ID as allocated only where a WRITER puts
 one: at an item's marker in either file (`- [ ] **T007** — …`) and in a done-log entry's
