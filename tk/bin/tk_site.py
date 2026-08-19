@@ -31,14 +31,28 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
   max-cloud-subagents   optional. Concurrent CLOUD subagents — a concurrency
                         ceiling only; it says nothing about quota, which is one
                         window shared by both venues.
+  fleet-allow           optional. If present, the ONLY projects the fleet may
+                        sweep. Absent means every queue on the machine enters.
+  fleet-deny            optional. Projects the fleet must not touch. Applied
+                        after `fleet-allow`, and it WINS over it: a name in both
+                        is denied, because a "do not touch" that a second list
+                        can overrule protects nothing.
+
+A PROJECT is named either by the directory `~/.claude/projects/<name>` its queue
+lives in, or by its absolute path — the two are the same name, since the first is
+the second with every character outside `[A-Za-z0-9-]` replaced by `-`. Both are
+matched by exact equality, the path after that encoding; nothing is normalised
+here either. Which form to write is a matter of taste: the path is the readable
+one, the directory name the one that survives a project being moved.
 
 An environment NAME is a lowercase slug (`[a-z0-9][a-z0-9_-]*`, at most 32
 chars), and never the word `none`, which every tk flag reserves for DELETING a
 field: a roster entry spelled that way could be written into an item and never
 removed from it.
 
-UNKNOWN KEYS ARE IGNORED, so a later reader can add its own (a fleet
-allow/denylist, another ceiling) without an older tk refusing the whole file.
+UNKNOWN KEYS ARE IGNORED, so a later reader can add its own without an older tk
+refusing the whole file — `fleet-allow` and `fleet-deny` below arrived exactly
+that way, and the next key will too.
 The cost is that a MISTYPED key reads as an absent one — so a missing required
 key is reported together with the keys the file does carry, which puts the typo
 in the message itself.
@@ -61,6 +75,19 @@ NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}\Z")
 RESERVED_NAME = "none"
 REQUIRED = ("identity", "environments")
 CEILINGS = ("max-local-subagents", "max-cloud-subagents")
+# The fleet's allow/denylist. Both optional, both comma-separated like
+# `environments`, and both read by the roster sweep rather than by this module,
+# which only says whether the file is trustworthy.
+FLEET_LISTS = ("fleet-allow", "fleet-deny")
+# The alphabet a project's queue DIRECTORY is spelled in, defined once and used
+# both ways: `project_slug` encodes a path into it, and PROJECT_NAME_RE is what a
+# name written by hand has to already be. Two spellings of one alphabet drift
+# into a validator that accepts names the encoder can never produce.
+PROJECT_ALPHABET = "A-Za-z0-9-"
+UNSAFE_IN_PATH = re.compile(f"[^{PROJECT_ALPHABET}]")
+# a name outside the alphabet (a relative path, a `~`, a Windows drive) is
+# refused rather than encoded: encoding it would invent a project nobody has
+PROJECT_NAME_RE = re.compile(f"[{PROJECT_ALPHABET}]+\\Z")
 
 TEMPLATE = """  identity = <this machine's environment name>
   environments = <name>, <name>
@@ -74,11 +101,33 @@ class SiteError(Exception):
 
 
 class Site:
-    def __init__(self, path, identity, environments, ceilings):
+    def __init__(self, path, identity, environments, ceilings,
+                 fleet_allow=(), fleet_deny=()):
         self.path = path
         self.identity = identity          # str, always a member of environments
         self.environments = environments  # tuple, in the file's own order
         self.ceilings = ceilings          # {key: int}, only the keys present
+        # both tuples, in the file's own order, EMPTY when the key is absent —
+        # and an absent `fleet-allow` means every project enters, which is the
+        # opposite of an empty one. That is why a present-but-empty list is
+        # refused below instead of read as this same tuple
+        self.fleet_allow = fleet_allow
+        self.fleet_deny = fleet_deny
+
+
+def project_slug(path):
+    """The directory under ~/.claude/projects that holds `path`'s queue.
+
+    The rule is `tk-queue`'s — it derives its own queue directory from the
+    working directory this way, inline in memory_dir(). It lives here because
+    two readers of the site file now need it (this module, to validate a
+    fleet list; the roster sweep, to run it backwards), and a rule copied per
+    reader is a rule that stops agreeing. The copy still in tk-queue is one
+    import away from this one, and merges the day that file is free to edit.
+
+    It is ONE-WAY: `/w/p/x-y` and `/w/p/x/y` produce the same name.
+    """
+    return UNSAFE_IN_PATH.sub("-", path)
 
 
 def site_path():
@@ -166,7 +215,35 @@ def parse(text, path):
             raise SiteError(f"{path}: {key} is {value} — a ceiling of zero lets nothing "
                             "run at all. Use 1 or more, or drop the line to leave it unset.")
         ceilings[key] = int(value)
-    return Site(path, identity, tuple(names), ceilings)
+    lists = {}
+    for key in FLEET_LISTS:
+        raw = pairs.get(key)
+        if raw is None:
+            # deliberately not the ceilings loop's `if key not in pairs: continue`
+            # above: that literal is a mutation anchor, and a second copy of it in
+            # this file makes the mutation match twice and stop running at all
+            continue
+        entries = [p.strip() for p in raw.split(",") if p.strip()]
+        if not entries:
+            # an absent list and an empty one mean OPPOSITE things (see Site):
+            # read as the absent one, `fleet-allow =` would silently sweep every
+            # project the line was written to keep out
+            raise SiteError(f"{path}: `{key}` is empty. Absent, it lets every project "
+                            "through; written, it is a list. Name a project, or delete "
+                            "the line.")
+        for entry in entries:
+            if entry.startswith("/"):
+                continue          # a path, encoded to a directory name by the reader
+            if not PROJECT_NAME_RE.match(entry):
+                raise SiteError(
+                    f"{path}: {entry!r} in `{key}` is neither a project directory under "
+                    "~/.claude/projects (letters, digits and '-') nor an absolute path "
+                    "starting with '/'. A relative path names no project: write the path "
+                    "the project is opened at, or the directory its queue lives in.")
+        lists[key] = tuple(entries)
+    return Site(path, identity, tuple(names), ceilings,
+                fleet_allow=lists.get("fleet-allow", ()),
+                fleet_deny=lists.get("fleet-deny", ()))
 
 
 def load(path=None):

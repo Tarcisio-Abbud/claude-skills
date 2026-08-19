@@ -173,17 +173,23 @@ tk/
                                   table is parseable, schema declared in the file
   bin/tk-queue                    deterministic CLI: only writer of the queue files
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
-                                  identity, the roster of environments, the two ceilings
+                                  identity, the roster of environments, the two ceilings,
+                                  and the fleet's allow/denylist of projects
   bin/tk-contract                 generates the block a dispatched subagent is handed,
                                   from the site file and the role table — never written
                                   from memory, and carrying no copy of either
-  tests/test_tk_queue.py          regression suite for that CLI (stdlib only)
-  tests/mutations.py              puts each defect back; every test must fall
+  bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
+                                  where their projects are, minus the site file's lists
+  tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
+  tests/test_tk_roster.py         regression suite for the sweep and the two list keys
+  tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
                                   names, since a green score counts only the mutants
                                   someone wrote
+  tests/mutations_roster.py       the same, for the roster suite — folds into that
+                                  runner, which already takes the suite as an argument
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
