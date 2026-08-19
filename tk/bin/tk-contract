@@ -335,9 +335,28 @@ def main():
         # file, the other names the line that is wrong in the one they wrote
         fail(tk_site.missing_file_message())
 
+    if not os.path.exists(args.policy):
+        # absent and defective are different cases here too, exactly as they
+        # are for the site file: one says the path is wrong, the other says
+        # the file is
+        fail(f"the role table {args.policy} does not exist. It ships with this plugin, "
+             "beside the bin — a --policy pointing elsewhere is the likelier cause than "
+             "a missing checkout.")
+    if not os.path.isfile(args.policy):
+        # `open()` on a FIFO with no writer does not raise, it BLOCKS: the
+        # session hangs with no output at all, and no timeout anywhere would
+        # explain it. The same guard, for the same measured reason, is in
+        # tk_site.load() — and --policy is a path a caller types
+        fail(f"the role table {args.policy} is not a plain file (it is a directory, a "
+             "device or a pipe). It is Markdown checked into this repo — check the path.")
     try:
         with open(args.policy, encoding="utf-8") as f:
-            text = f.read()
+            # the BOM is stripped EVERYWHERE, not decoded away with utf-8-sig:
+            # one glued to the opening marker makes the table unfindable while
+            # it sits in plain view, and utf-8-sig removes exactly one, at the
+            # very start. U+FEFF has no legitimate use in this file, and
+            # str.strip() does not remove it — it is not whitespace
+            text = f.read().replace("\ufeff", "")
     except OSError as e:
         fail(f"the role table {args.policy} cannot be read: {e.strerror}. It is the source "
              "of the model, effort and venue this block states, and there is no copy of "

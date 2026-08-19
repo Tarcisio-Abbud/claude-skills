@@ -180,7 +180,9 @@ tk/
   tests/mutations.py              puts each defect back; every test must fall
   tests/test_tk_contract.py       regression suite for the generator
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
-                                  an argument
+                                  an argument — and that reports a test no mutation
+                                  names, since a green score counts only the mutants
+                                  someone wrote
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills

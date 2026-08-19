@@ -80,11 +80,11 @@ class ContractTest(unittest.TestCase):
         with open(self.policy, "w", encoding="utf-8") as f:
             f.write(text)
 
-    def run_tk(self, *argv, cwd=None, policy=True):
+    def run_tk(self, *argv, cwd=None, policy=True, timeout=None):
         env = dict(os.environ, HOME=self.home)
         args = list(argv) + (["--policy", self.policy] if policy else [])
         return subprocess.run([sys.executable, BIN, *args], capture_output=True,
-                              text=True, cwd=cwd or self.dir, env=env)
+                              text=True, cwd=cwd or self.dir, env=env, timeout=timeout)
 
     def block(self, *argv, **kw):
         r = self.run_tk(*argv, **kw)
@@ -262,12 +262,47 @@ class TestRoleTable(ContractTest):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("at least three", r.stderr)
 
-    def test_a_table_that_cannot_be_read_is_refused_not_defaulted(self):
+    def test_a_table_that_is_not_there_is_refused_not_defaulted(self):
         r = self.run_tk("--role", "implementer", "--policy",
                         os.path.join(self.dir, "nowhere.md"), policy=False)
         self.assertNotEqual(r.returncode, 0)
+        self.assertIn("does not exist", r.stderr)
+        self.assertNotIn("not a plain file", r.stderr)
+
+    @unittest.skipUnless(os.path.isfile("/proc/self/mem"), "no /proc on this platform")
+    def test_a_table_that_cannot_be_read_is_refused_not_defaulted(self):
+        # a plain file that exists and still fails on read. It is exotic on
+        # purpose: after the two guards above, only the read itself can fail,
+        # and the branch that catches it needs an input a test can produce
+        r = self.run_tk("--role", "implementer", "--policy", "/proc/self/mem", policy=False)
+        self.assertNotEqual(r.returncode, 0)
         self.assertIn("cannot be read", r.stderr)
         self.assertIn("no copy of those values here", r.stderr)
+
+    def test_a_table_that_is_not_a_plain_file_is_refused(self):
+        os.remove(self.policy)
+        os.makedirs(self.policy)
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not a plain file", r.stderr)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "no FIFOs on this platform")
+    def test_a_table_that_is_a_pipe_does_not_hang(self):
+        # the reason the guard above is an isfile() check and not an except:
+        # open() on a FIFO with no writer BLOCKS. A run that hangs with no
+        # output is worse than any traceback, and a timeout is the only way a
+        # test can tell the difference
+        os.remove(self.policy)
+        os.mkfifo(self.policy)
+        r = self.run_tk("--role", "implementer", timeout=20)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not a plain file", r.stderr)
+
+    def test_a_byte_order_mark_does_not_hide_the_table(self):
+        # an editor that writes one glues it onto the opening marker, and the
+        # table becomes unfindable while sitting in plain view
+        self.table("\ufeff" + TABLE.replace("<!-- tk:roles", "\ufeff<!-- tk:roles"))
+        self.assertIn("| implementer |", self.block("--role", "implementer"))
 
     def test_a_table_that_is_not_utf8_is_refused(self):
         with open(self.policy, "wb") as f:

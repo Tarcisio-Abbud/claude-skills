@@ -181,6 +181,24 @@ MUTATIONS = [
      "is not valid UTF-8",
      ["TestRoleTable.test_a_table_that_is_not_utf8_is_refused"]),
 
+    ("--fleet gains a default, so a run without one no longer gets the whole ceiling",
+     '    p.add_argument("--fleet", type=fleet_size, default=None,',
+     '    p.add_argument("--fleet", type=fleet_size, default=2,',
+     ["TestFleetDivisor.test_without_a_fleet_the_whole_ceiling_is_this_run_s"]),
+
+    ("a table path that does not exist is reported as a defective file",
+     "    if not os.path.exists(args.policy):", "    if False:",
+     ["TestRoleTable.test_a_table_that_is_not_there_is_refused_not_defaulted"]),
+
+    ("the plain-file guard goes, and a table that is a pipe HANGS the run",
+     "    if not os.path.isfile(args.policy):", "    if False:",
+     ["TestRoleTable.test_a_table_that_is_not_a_plain_file_is_refused",
+      "TestRoleTable.test_a_table_that_is_a_pipe_does_not_hang"]),
+
+    ("a byte order mark on the opening marker hides the whole table",
+     '            text = f.read().replace("\\ufeff", "")', "            text = f.read()",
+     ["TestRoleTable.test_a_byte_order_mark_does_not_hide_the_table"]),
+
     ("the default table is looked for somewhere it is not",
      '    os.path.join(BIN_DIR, os.pardir, "reference", "subagent-policy.md"))',
      '    os.path.join(BIN_DIR, os.pardir, "references", "subagent-policy.md"))',
@@ -245,6 +263,26 @@ def run_suite(tk_dir, module, names):
     return subprocess.run(argv, cwd=tests, capture_output=True, text=True)
 
 
+def unproved(mutations, module, classes, tk_dir):
+    """Tests that no entry names — the hole a green score cannot show you.
+
+    A run reports `N/N killed` and means it: N is the number of mutants SOMEONE
+    WROTE. A guard whose test nobody mutated is invisible to that number, and
+    the suite reads as fully proved while one test is protecting nothing. So the
+    tests are enumerated from the module itself and checked against the entries,
+    rather than trusted to be in sync."""
+    sys.path.insert(0, os.path.join(tk_dir, "tests"))
+    module_obj = __import__(module)
+    named = {name for entry in mutations for name in entry[3]}
+    missing = []
+    for cls_name in classes:
+        cls = getattr(module_obj, cls_name)
+        for attr in dir(cls):
+            if attr.startswith("test_") and f"{cls_name}.{attr}" not in named:
+                missing.append(f"{cls_name}.{attr}")
+    return sorted(missing)
+
+
 def run(mutations=MUTATIONS, module=TEST_MODULE, classes=CLASSES, tk_dir=TK_DIR,
         default_src=DEFAULT_SRC):
     """Replay every mutation. Returns the process exit code.
@@ -257,6 +295,12 @@ def run(mutations=MUTATIONS, module=TEST_MODULE, classes=CLASSES, tk_dir=TK_DIR,
         print(baseline.stderr[-4000:])
         return 1
     print(f"baseline green ({module})\n")
+
+    orphans = unproved(mutations, module, classes, tk_dir)
+    for name in orphans:
+        print(f"UNPROVED   {name} — no mutation entry names this test")
+    if orphans:
+        print()
 
     sources = {}
     for entry in mutations:
@@ -292,10 +336,11 @@ def run(mutations=MUTATIONS, module=TEST_MODULE, classes=CLASSES, tk_dir=TK_DIR,
         else:
             print(f"killed     {label}")
 
-    print(f"\n{len(mutations) - len(survived) - len(unrunnable)}/{len(mutations)} killed")
-    for line in survived + unrunnable:
+    print(f"\n{len(mutations) - len(survived) - len(unrunnable)}/{len(mutations)} killed"
+          f", {len(orphans)} test(s) no entry proves")
+    for line in survived + unrunnable + [f"UNPROVED {n}" for n in orphans]:
         print(f"  ! {line}")
-    return 1 if survived or unrunnable else 0
+    return 1 if survived or unrunnable or orphans else 0
 
 
 if __name__ == "__main__":
