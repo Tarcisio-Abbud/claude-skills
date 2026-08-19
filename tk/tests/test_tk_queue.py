@@ -2318,6 +2318,29 @@ class TestClaim(QueueTest):
                 self.assertEqual(r.returncode, 1, r.stdout)
                 self.assertEqual(self.body(), before)       # the prose survives whole
 
+    def test_prose_ending_in_a_period_before_the_fields_is_not_a_claim(self):
+        """The item's own text carries the marker, ends in a period and sits right
+        against the fields — so field_chain absorbs it and the chain says the item
+        is claimed. Measured on this very command before the position rule:
+        `release` reported success and CUT four words out of the item's title, and
+        `claim` refused the item naming an owner made of three words of it.
+
+        A real claim is written AFTER the **Class:** compose_item writes first;
+        anything before that is prose, whatever the chain says."""
+        prose = ("- [ ] **T001** — ver a **Posse:** do item com alguém. "
+                 "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                 "**Source:** 2026-08-13\n")
+        self.seed(prose)
+        before = self.body()
+        for argv in (("claim", "T001", "--as", "alpha"), ("release", "T001")):
+            with self.subTest(cmd=argv[0]):
+                r = self.run_tk(*argv)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertEqual(self.body(), before)   # the title survives whole
+        # and the display does not invent an owner out of those words either
+        self.assertNotIn("claimed by", self.run_tk("list").stdout)
+
     def test_the_marker_shape_is_refused_in_free_text(self):
         """Registering Claimed in FIELD_VARIANTS is what puts it under the existing
         guard: an item whose TEXT carries the shape would hold itself forever."""

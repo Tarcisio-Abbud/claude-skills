@@ -637,13 +637,14 @@ MUTATIONS = [
 
     # --- 2nd pair of eyes: prose absorbed into the field chain ---------------
 
-    ("2ª review a Deferred anywhere in the chain counts, so prose satisfies the gate",
-     '        seg = next((m for i, m in enumerate(chain)\n'
-     '                    if names[i] == "Deferred" and i > after), None)',
-     '        seg = next((m for i, m in enumerate(chain)\n'
-     '                    if names[i] == "Deferred"), None)',
+    # one position rule, two gates: prose absorbed into the chain satisfies the
+    # deferral gate in one direction and gets DELETED by `release` in the other
+    ("2ª review a field anywhere in the chain counts, so prose satisfies the gate",
+     '        segs = [m for i, m in enumerate(chain) if names[i] == field and i > after]',
+     '        segs = [m for i, m in enumerate(chain) if names[i] == field]',
      ["TestDecisionDeferralGate."
-      "test_prose_that_looks_like_a_deferral_never_satisfies_the_gate"]),
+      "test_prose_that_looks_like_a_deferral_never_satisfies_the_gate",
+      "TestClaim.test_prose_ending_in_a_period_before_the_fields_is_not_a_claim"]),
 
     ("2ª review the stray marker is ignored instead of refused (prose gets deleted)",
      "    if stray and (args.classe or args.deferred is not None):", "    if False:",
@@ -667,6 +668,8 @@ MUTATIONS = [
 
     # --- re-check of the FIX: the corruption the fix itself shipped -----------
 
+    # the shadow can no longer live INSIDE clear_field_segment (its offsets are
+    # local names), so the defect is put back where it still can: the call site
     ("re-check the clearing branch shadows the item's offset in the FILE",
      "            if found:\n"
      "                new = clear_field_segment(new, found[0])",
@@ -968,12 +971,13 @@ MUTATIONS = [
      '    new = block.rstrip("\\n") + f" **Claimed:** {args.owner}{CLAIM_SINCE}{stamp}."',
      ["TestClaim.test_the_claim_lands_in_the_chain_on_an_item_with_a_continuation_line"]),
 
-    ("T121 a **Claimed:** marker outside the chain is guessed instead of refused",
-     "    if len(CLAIMED_MARKER_RE.findall(block)) > len(chain):", "    if False:",
-     ["TestClaim.test_a_marker_only_outside_the_chain_is_refused_not_guessed"]),
+    ("T121 a **Claimed:** marker the position rule will not read is guessed",
+     "    if markers > (1 if seg else 0):", "    if False:",
+     ["TestClaim.test_a_marker_only_outside_the_chain_is_refused_not_guessed",
+      "TestClaim.test_prose_ending_in_a_period_before_the_fields_is_not_a_claim"]),
 
     ("T121 two claims in the chain are guessed (the first wins) instead of refused",
-     "    if len(chain) > 1:", "    if False:",
+     "    if len(segs) > 1:", "    if False:",
      ["TestClaim.test_two_claim_fields_in_the_chain_are_refused_as_ambiguous"]),
 
     ("T121 Claimed stops being a field the readers know (it leaves FIELD_VARIANTS)",

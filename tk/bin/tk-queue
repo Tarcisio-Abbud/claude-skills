@@ -485,6 +485,10 @@ ANY_FIELD = "|".join(FIELD_VARIANTS.values())
 # the marker SHAPE alone, with no trailing value — every other use of ANY_FIELD
 # parses a real field; this one refuses the shape inside free text
 EMBEDDED_MARKER_RE = re.compile(r"\*\*(?:" + ANY_FIELD + r"):\*\*")
+# the same shape, per field: what a reader asks when the question is "does a marker
+# for THIS field sit anywhere in the block, including where no reader may use it?"
+FIELD_MARKER_RE = {name: re.compile(r"\*\*(?:" + variants + r"):\*\*")
+                   for name, variants in FIELD_VARIANTS.items()}
 PROJECT_RE = re.compile(r"\A[a-z0-9][a-z0-9_-]*\Z")
 # single source for reading a tag back out: the warning and the grouping must
 # see the same tag, or an item warns as unprecedented and then groups elsewhere
@@ -602,9 +606,6 @@ def item_class(block):
     return m.group(1) if m else None
 
 
-DEFERRED_MARKER_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Deferred"] + r"):\*\*")
-
-
 def chain_class(block):
     """The class the item really carries, read from its FIELD CHAIN — the stricter
     reader the deferral gate uses, and deliberately not `item_class`.
@@ -629,32 +630,48 @@ def chain_class(block):
     return value.group(1) if value else None
 
 
-def deferral_field(block):
-    """(segment, stray) — the item's REAL Deferred field, and whether a
-    `**Deferred:**` marker sits anywhere else in the block.
+def qualified_fields(block, field):
+    """(the chain segments of `field` that QUALIFY, how many `field` markers the
+    whole block carries) — the position rule every gate reads its field through.
 
-    The real one is the chain segment that FOLLOWS the **Class:** it qualifies,
-    which is where compose_item writes it. "Somewhere in the chain" is not
-    enough, and the difference is a bypass: field_chain absorbs any run of
+    A real field is a chain segment that FOLLOWS the **Class:** compose_item writes
+    first. "Somewhere in the chain" is not enough, and the difference is a bypass
+    in one direction and a DELETION in the other: field_chain absorbs any run of
     `**Field:** value.` segments that ends the line, so an item's own prose can
     OPEN that run — `— item, ver a **Deferred:** nota de contexto. **Class:**
-    AUTONOMOUS. …` parses as a five-field chain. Measured on this script before
-    the position rule: `edit <id> --class DECISION` was let through with no
-    justification at all (the gate read the prose as the field), and the later
-    auto-clear then DELETED that prose from the item's text.
+    AUTONOMOUS. …` parses as a five-field chain. Both halves are measured, on this
+    script, one slice apart:
 
-    `stray` is what keeps the other direction honest: a marker the position rule
-    refuses to read is not thereby harmless — the caller is told, and nothing is
-    guessed (see deferral_for_edit).
+      the gate     `edit <id> --class DECISION` went through with no justification
+                   at all, the gate having read the prose as the field — and the
+                   later auto-clear then DELETED that prose from the item's text.
+      the deletion `release` on `— ver a **Posse:** do item com alguém. **Class:**
+                   …` reported success and cut those four words out of the item's
+                   own title, while `claim` had refused the item naming an owner
+                   made of three words of that same title.
+
+    The marker COUNT is what keeps the other direction honest: a marker the
+    position rule refuses to read is not thereby harmless. The caller is told, and
+    nothing is guessed — see deferral_for_edit and claim_segment, which is where
+    the two gates part company (one refuses only when the command depends on the
+    field; the other always does, since every claim command depends on it).
     """
     chain = field_chain(block)
     names = [canonical_field(m.group(1)) for m in chain]
-    seg = None
+    segs = []
     if "Class" in names:
         after = names.index("Class")
-        seg = next((m for i, m in enumerate(chain)
-                    if names[i] == "Deferred" and i > after), None)
-    return seg, len(DEFERRED_MARKER_RE.findall(block)) > (1 if seg else 0)
+        segs = [m for i, m in enumerate(chain) if names[i] == field and i > after]
+    return segs, len(FIELD_MARKER_RE[field].findall(block))
+
+
+def deferral_field(block):
+    """(segment, stray) — the item's REAL Deferred field, and whether a
+    `**Deferred:**` marker sits anywhere else in the block. The position rule that
+    decides "real", and the two incidents that bought it: qualified_fields."""
+    segs, markers = qualified_fields(block, "Deferred")
+    seg = segs[0] if segs else None
+    return seg, markers > (1 if seg else 0)
 
 
 def deferral_gate_message(cmd):
@@ -735,7 +752,6 @@ OWNER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}\Z")
 # carried.
 CLAIM_SINCE = " since "
 CLAIM_VALUE_RE = re.compile(r"\*\*[^*]+:\*\*\s*(\S+)" + CLAIM_SINCE + r"(\S+?)\.?\s*\Z")
-CLAIMED_MARKER_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Claimed"] + r"):\*\*")
 
 
 def now_stamp():
@@ -767,31 +783,41 @@ def validate_owner(name):
 def claim_segment(iid, block):
     """The item's REAL **Claimed:** field — the one in its FIELD CHAIN — or None.
 
-    Refuses rather than guessing, in both directions, because this reader decides a
-    GATE and the deferral field has already paid for both lessons:
+    Read through qualified_fields, so a marker sitting BEFORE the **Class:** — the
+    item's own prose, absorbed into the chain because it happens to end in a period
+    — is not the claim. That is not a hypothetical: `release` on such an item cut
+    four words out of its title and reported success.
 
-      ambiguous   two Claimed fields in the chain: which one holds the item is
+    Refuses rather than guessing, in both directions, because this reader decides a
+    GATE and the deferral field had already paid for both lessons:
+
+      ambiguous   two qualifying Claimed fields: which one holds the item is
                   unanswerable, and picking either lets the other be overwritten.
-      stray       a `**Claimed:**` marker OUTSIDE the chain — in the item's own
-                  prose, or on a continuation line. Reading it as the field would
-                  let prose hold an item forever; ignoring it would have `release`
-                  report a free item while that text still says it is taken.
+      stray       a `**Claimed:**` marker anywhere the position rule will not read
+                  — the item's own prose, or a continuation line. Reading it as the
+                  field would let prose hold an item forever; ignoring it would have
+                  `release` report a free item while that text still says otherwise.
+
+    Unlike `edit`, this refuses UNCONDITIONALLY rather than only when the command
+    depends on the field: `claim` and `release` are commands about the claim and
+    nothing else, so there is no unrelated edit here to over-refuse.
 
     Both populations are legacy only: ensure_no_embedded_marker refuses the marker
     shape in every free-text flag, and Claimed is a field it knows.
     """
-    chain = [m for m in field_chain(block) if canonical_field(m.group(1)) == "Claimed"]
-    if len(chain) > 1:
-        fail(f"T{iid:03d} carries {len(chain)} **Claimed:** fields in its field chain, so "
+    segs, markers = qualified_fields(block, "Claimed")
+    if len(segs) > 1:
+        fail(f"T{iid:03d} carries {len(segs)} **Claimed:** fields in its field chain, so "
              "who holds it is ambiguous. Nothing was changed. Close it with `cancel` and "
              "re-add it clean.")
-    if len(CLAIMED_MARKER_RE.findall(block)) > len(chain):
-        fail(f"T{iid:03d} carries a **Claimed:** marker away from its field chain — in the "
-             "item's own prose, or on a continuation line. Nothing was changed: reading it "
-             "as the claim would let prose hold the item forever, and ignoring it would "
-             "report a free item while that text says otherwise. Close it with `cancel` "
-             "and re-add it clean.")
-    return chain[0] if chain else None
+    seg = segs[0] if segs else None
+    if markers > (1 if seg else 0):
+        fail(f"T{iid:03d} carries a **Claimed:** marker away from the position a claim is "
+             "written in (after **Class:**) — in the item's own prose, or on a continuation "
+             "line. Nothing was changed: reading it as the claim would let prose hold the "
+             "item forever, and ignoring it would report a free item while that text says "
+             "otherwise. Close it with `cancel` and re-add it clean.")
+    return seg
 
 
 def claim_value(segment):
@@ -822,10 +848,12 @@ def displayed_claim(block):
     and a gate: `list` must not die on one malformed item and stop showing the
     other twenty. An item claim_segment would refuse carries no mark here — which
     is true, it carries no readable claim; what it carries is a defect, and the
-    refusal is where that gets said.
+    refusal is where that gets said. The POSITION rule is not relaxed with it: a
+    display that read the item's own prose as a claim would show an owner made of
+    three words of the title.
     """
-    chain = [m for m in field_chain(block) if canonical_field(m.group(1)) == "Claimed"]
-    return claim_mark(*claim_value(chain[0])) if len(chain) == 1 else None
+    segs, _ = qualified_fields(block, "Claimed")
+    return claim_mark(*claim_value(segs[0])) if len(segs) == 1 else None
 
 
 def validate_project(tag):
