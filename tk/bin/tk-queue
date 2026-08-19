@@ -665,27 +665,22 @@ def qualified_fields(block, field):
     return segs, len(FIELD_MARKER_RE[field].findall(block))
 
 
-def chain_hosts_class(block):
-    """Whether the item's field chain carries the **Class:** that qualified_fields
-    positions every real field against.
+def chain_breaker(candidate):
+    """The field segment that stops the chain from reaching back to **Class:** — the
+    one a refusal has to NAME, because it is the one the caller must repair.
 
-    A DIAGNOSTIC, not the gate — and the difference cost three fixes. Asked of the
-    block as READ, this question is not the one a writer needs: field_chain gives its
-    LAST segment a free pass on the period rule, so appending a field MOVES that pass
-    onto the new one, and a previous last field whose value does not end in a period
-    (a real queue carries `**Esforço:** L,`) then truncates the chain and drops
-    **Class:** out of it. Class was in the chain before the write and gone after it.
-    The gate is claim_readback, which asks of the block that would be WRITTEN; this
-    only helps the refusal say WHICH shape the item has.
+    Asked of the CANDIDATE, like the gate itself: the segment that breaks the chain
+    is only identifiable once the claim is in place, since appending it is what moves
+    the period rule's free pass. Naming "the last field on the line" instead was
+    wrong whenever the break sat further left — on `**Class:** AUTONOMOUS, **Effort:**
+    M.` the culprit is Class, and the last field is Effort, which is already correct.
     """
-    return any(canonical_field(m.group(1)) == "Class" for m in field_chain(block))
-
-
-def last_chain_field(block):
-    """Canonical name of the last field on the item's chain — the one that loses the
-    period rule's free pass the moment anything is appended after it."""
-    chain = field_chain(block)
-    return canonical_field(chain[-1].group(1)) if chain else None
+    line = candidate.split("\n", 1)[0]
+    chain = field_chain(candidate)
+    if not chain:
+        return None
+    before = [m for m in FIELD_SEGMENT_RE.finditer(line) if m.start() < chain[0].start()]
+    return canonical_field(before[-1].group(1)) if before else None
 
 
 def claim_readback(candidate):
@@ -823,7 +818,7 @@ EDIT_FLAG = {"Class": "class", "Effort": "effort", "Risk": "risk",
              "Env": "env"}
 
 
-def claim_unwritable_message(iid, block):
+def claim_unwritable_message(iid, block, candidate):
     """Why the item cannot hold a claim the reader would find, and the remedy that
     actually works for its shape.
 
@@ -850,7 +845,12 @@ def claim_unwritable_message(iid, block):
             "FREE by `list` and impossible to release. ")
     if not FIELD_MARKER_RE["Class"].search(block):
         return head + f"Give it a class first: `tk-queue edit {label} --class AUTONOMOUS`."
-    if not chain_hosts_class(block):
+    # the discriminator is where the Class MARKER is, not whether the chain reached
+    # it: "the chain has no Class" is the broader condition, and it also catches an
+    # item whose fields ARE on the first line and whose Class value merely lacks its
+    # period — which then got a message saying its fields sat elsewhere (false) and a
+    # remedy that rewrote the item and left the same refusal standing
+    if not FIELD_MARKER_RE["Class"].search(block.split("\n", 1)[0]):
         return head + (
             "Its fields sit OUTSIDE the first line, which already blocks every per-field "
             f"`edit` on this item (it did before `claim` existed). Fold them onto the first "
@@ -859,14 +859,26 @@ def claim_unwritable_message(iid, block):
             "field, continuation prose included. If the item's own text carries a "
             "`**Field:**` shape, --text duplicates it instead of folding: close that one "
             "with `cancel` and re-add it clean.")
-    last = last_chain_field(block)
-    flag = EDIT_FLAG.get(last)
-    fix = (f"`tk-queue edit {label} --{flag} \"<value>\"`, which writes the period back"
-           if flag else "rewrite that field so its value ends in a period")
-    return head + (f"Its last field on that line, **{last}:**, does not end in a PERIOD — "
-                   "and the period is what tells a field from prose, so appending the claim "
-                   f"after it breaks the chain and drops **Class:** out of it. Fix it with "
-                   f"{fix}.")
+    culprit = chain_breaker(candidate)
+    flag = EDIT_FLAG.get(culprit)
+    # `edit --<field>` refuses a field that is not in the block's OWN chain (the
+    # marker-outside-the-chain guard), so naming it there is another dead end — and
+    # the culprit is outside that chain exactly when a later field took the period
+    # rule's free pass from it. Measured: on `**Class:** AUTONOMOUS, **Effort:** M.`
+    # the culprit is Class and `edit --class` is refused
+    reachable = any(canonical_field(m.group(1)) == culprit for m in field_chain(block))
+    if not (flag and reachable):
+        return head + (f"**{culprit}:** does not end in a PERIOD, and the period is what "
+                       "tells a field from prose — so the chain stops there and never "
+                       "reaches **Class:**. No per-field `edit` reaches that field either "
+                       "(it sits outside the chain `edit` reads), so close this one with "
+                       "`cancel` and re-add it clean.")
+    return head + (f"**{culprit}:** does not end in a PERIOD, and the period is what tells "
+                   "a field from prose — so the chain stops there and never reaches "
+                   f"**Class:**. Rewrite it: `tk-queue edit {label} --{flag} \"<value>\"`, "
+                   "which writes the period back. Read the item first: that rewrite also "
+                   "DELETES any prose sitting after the field on the same line (it does on "
+                   "`main` too — the field's match runs to end of line).")
 
 
 def claim_segment(iid, block):
@@ -1523,7 +1535,7 @@ def cmd_claim(args):
     # and ambiguity refusals, which are the terminal ones: preempting those printed a
     # remedy the caller ran, MUTATING the file, with the real refusal landing anyway.
     if len(claim_readback(new)) != 1:
-        fail(claim_unwritable_message(args.id, block))
+        fail(claim_unwritable_message(args.id, block, new))
     # NOT measured against the BLOCK ceiling, on the same rule as the short fields
     # (T071): the value is bounded by construction — OWNER_RE plus a fixed-width
     # stamp — and a legacy oversized item is precisely the one a session must be

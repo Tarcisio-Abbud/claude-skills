@@ -2402,6 +2402,34 @@ class TestClaim(QueueTest):
         self.assertIn("claimed by alpha", self.run_tk("list").stdout)
         self.assertEqual(self.run_tk("release", "T001").returncode, 0)
 
+    def test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix(self):
+        """Two shapes, and the difference is which field lost the period. The message
+        has to name the one that BREAKS the chain (not simply the last one), and then
+        only prescribe a per-field `edit` when `edit` can actually reach it: a culprit
+        that a later field took the free pass from sits OUTSIDE the chain `edit` reads,
+        and naming it there is another dead end — measured on
+        `**Class:** AUTONOMOUS, **Effort:** M.`, where `edit --class` is refused."""
+        # culprit reachable: the chain's own last field
+        self.seed("- [ ] **T001** — algo **Class:** AUTONOMOUS. **Esforço:** L,\n")
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("**Effort:**", r.stderr)
+        self.assertIn("--effort", r.stderr)
+        self.assertIn("DELETES", r.stderr)      # the rewrite eats prose after the field
+        # culprit NOT reachable: a later field holds the free pass
+        self.seed("- [ ] **T001** — algo **Class:** AUTONOMOUS, **Effort:** M.\n")
+        before = self.body()
+        r = self.run_tk("claim", "T001", "--as", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("**Class:**", r.stderr)          # the field that breaks it
+        self.assertNotIn("OUTSIDE the first line", r.stderr)   # its fields are ON it
+        self.assertNotIn("--text", r.stderr)
+        self.assertNotIn("--class \"", r.stderr)       # the edit that would be refused
+        self.assertIn("cancel", r.stderr)              # the answer that is terminal
+        self.assertEqual(self.body(), before)
+        # and that is not defeatism: the prescribed `edit --class` really is refused
+        self.assertEqual(self.run_tk("edit", "T001", "--class", "AUTONOMOUS").returncode, 1)
+
     def test_a_stray_marker_is_answered_BEFORE_the_missing_host(self):
         """Both are refusals; only the stray one is TERMINAL. Measured with the order
         the other way round: `claim` printed `edit --class AUTONOMOUS`, the caller ran

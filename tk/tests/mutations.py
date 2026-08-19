@@ -987,7 +987,8 @@ MUTATIONS = [
     # the proxy question three fixes asked instead: it passes on the item below,
     # because appending the claim CHANGES the chain it is asked about
     ("T121 the gate asks the chain it READ instead of the one it would WRITE",
-     "    if len(claim_readback(new)) != 1:", "    if not chain_hosts_class(block):",
+     "    if len(claim_readback(new)) != 1:",
+     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):',
      ["TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it"]),
 
     # a refusal that prescribes a command which is ITSELF refused is a dead end: for
@@ -1003,8 +1004,8 @@ MUTATIONS = [
     # does not even have
     ("T121 release demands a host it does not need",
      "    held = claim_segment(args.id, block)\n    if held is None:",
-     "    if not chain_hosts_class(block):\n"
-     "        fail(claim_unhostable_message(args.id, block))\n"
+     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
+     '        fail(f"T{args.id:03d} cannot hold a claim")\n'
      "    held = claim_segment(args.id, block)\n    if held is None:",
      ["TestClaim.test_release_on_a_chainless_item_with_no_marker_is_still_an_honest_no_op"]),
 
@@ -1012,8 +1013,9 @@ MUTATIONS = [
     # printed a remedy that MUTATED the file and left the real refusal standing
     ("T121 the missing-host refusal preempts the terminal stray one",
      "    held = claim_segment(args.id, block)\n    if held is not None:",
-     "    if not chain_hosts_class(block):\n"
-     "        fail(claim_unhostable_message(args.id, block))\n"
+     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
+     '        fail(f"T{args.id:03d}: give it a class first: `tk-queue edit '
+     'T{args.id:03d} --class AUTONOMOUS`")\n'
      "    held = claim_segment(args.id, block)\n    if held is not None:",
      ["TestClaim.test_a_stray_marker_is_answered_BEFORE_the_missing_host"]),
 
@@ -1021,6 +1023,31 @@ MUTATIONS = [
      '    return "claimed ambiguously — `tk-queue claim` says why" if segs else None',
      "    return None",
      ["TestClaim.test_list_never_shows_an_ambiguously_claimed_item_as_free"]),
+
+    # "the chain has no Class" is BROADER than "the fields are elsewhere": it also
+    # catches an item whose fields are on line 1 and whose Class merely lost its period
+    ("T121 the fold remedy is printed for an item whose fields ARE on the first line",
+     '    if not FIELD_MARKER_RE["Class"].search(block.split("\\n", 1)[0]):',
+     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):',
+     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix"]),
+
+    ("T121 the refusal names the chain's last field, not the one that BREAKS it",
+     "    before = [m for m in FIELD_SEGMENT_RE.finditer(line) if m.start() < chain[0].start()]\n"
+     "    return canonical_field(before[-1].group(1)) if before else None",
+     "    return canonical_field(chain[-1].group(1))",
+     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix"]),
+
+    # naming a per-field edit that `edit` itself refuses is the dead end again
+    ("T121 a per-field edit is prescribed for a culprit outside the chain edit reads",
+     "    if not (flag and reachable):", "    if not flag:",
+     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix"]),
+
+    ("T121 the period remedy stops warning that it deletes prose after the field",
+     '                   "which writes the period back. Read the item first: that rewrite also "\n'
+     '                   "DELETES any prose sitting after the field on the same line (it does on "\n'
+     '                   "`main` too — the field\'s match runs to end of line).")',
+     '                   "which writes the period back.")',
+     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix"]),
 
     ("T121 two claims in the chain are guessed (the first wins) instead of refused",
      "    if len(segs) > 1:", "    if False:",
