@@ -63,6 +63,14 @@ class QueueTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="tk-queue-test.")
         self.mem = os.path.join(self.dir, "memory")
         os.makedirs(self.mem)
+        # HOME is redirected for EVERY test, not only the ones that write a site
+        # file: `~/.claude/tk/env` is a real file on a real machine, and a suite
+        # that reads it answers differently depending on whose machine runs it —
+        # `--env` refused here and accepted there, with nothing in the test
+        # saying so. Hermetic by default; a test that wants a roster calls
+        # self.site()
+        self.home = os.path.join(self.dir, "home")
+        os.makedirs(self.home)
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
 
     # --- helpers ---------------------------------------------------------
@@ -75,6 +83,13 @@ class QueueTest(unittest.TestCase):
         with open(os.path.join(self.mem, name), "w", encoding="utf-8") as f:
             f.write(text)
 
+    def site(self, text):
+        """Write the site file this test's subprocesses will read."""
+        d = os.path.join(self.home, ".claude", "tk")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "env"), "w", encoding="utf-8") as f:
+            f.write(text)
+
     def body(self, name="next-steps.md"):
         path = os.path.join(self.mem, name)
         if not os.path.exists(path):
@@ -82,9 +97,14 @@ class QueueTest(unittest.TestCase):
         with open(path, encoding="utf-8") as f:
             return f.read()
 
-    def run_tk(self, *argv, cwd=None):
+    def run_tk(self, *argv, cwd=None, timeout=None):
+        # `timeout` is not decoration: a command that BLOCKS (a FIFO where a file
+        # was expected) would otherwise hang the whole suite instead of failing
+        # one test, and a suite that never finishes reports nothing at all
+        env = dict(os.environ, HOME=self.home)
         return subprocess.run([sys.executable, TK, *argv, "--dir", self.mem],
-                              capture_output=True, text=True, cwd=cwd or self.dir)
+                              capture_output=True, text=True, cwd=cwd or self.dir,
+                              env=env, timeout=timeout)
 
 
 # --- T025: the displayed ID form must be accepted ------------------------
@@ -1679,6 +1699,351 @@ class TestBlockAddressing(QueueTest):
         for line in body.splitlines():
             if line.startswith("  - [ ]"):                   # the quotation
                 self.assertIn("**Effort:** S.", line)
+
+
+# --- T120: an item may name WHERE it runs, and the roster says what exists ---
+
+# The roster used by these fixtures is deliberately made up: the plugin is
+# public and ships no machine of ours. `alpha` is the machine running the suite.
+SITE = """# fixture site file
+identity = alpha
+environments = alpha, bravo, charlie-2
+max-local-subagents = 3
+max-cloud-subagents = 4
+"""
+
+
+class TestEnvField(QueueTest):
+    """`**Env:**` says where an item can run — orthogonal to the class, which
+    says what it is waiting for. Absent means "the machine that owns this
+    queue", so the field appears only in the exception, like Risk.
+
+    The value is validated against the site file's roster by EXACT equality:
+    an unvalidated environment name is a phantom one — an item that no machine
+    ever picks up, and no error anywhere to say why.
+    """
+
+    ADD = ("add", "rodar a coleta", "--class", "AUTONOMOUS", "--effort", "S",
+           "--criterion", "A: x")
+
+    def setUp(self):
+        super().setUp()
+        # an EMPTY queue file, always — without it `add` fails with "next-steps.md
+        # not found", which is also exit 1, and every refusal test in this class
+        # would pass without the guard it names ever running
+        self.seed()
+
+    def test_add_writes_the_field_where_the_readers_look_for_it(self):
+        """The composed order is the format four sibling readers parse, so it is
+        asserted with the neighbouring gate field PRESENT — with `--risk`
+        omitted, Risk and Env could swap places and every assertion still held."""
+        self.site(SITE)
+        r = self.run_tk(*self.ADD, "--risk", "apaga dado", "--env", "bravo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Class:** AUTONOMOUS. **Effort:** S. **Risk:** apaga dado. "
+                      "**Env:** bravo. **Criterion:** A: x.", self.body())
+
+    def test_edit_sets_the_field_and_then_REPLACES_it(self):
+        """A second `--env` must rewrite the field, not append a second one: two
+        **Env:** fields in one chain is the ambiguity `edit` refuses forever
+        after, and the item becomes uneditable."""
+        self.site(SITE)
+        self.seed(item(1, "um"))
+        self.assertEqual(self.run_tk("edit", "T001", "--env", "bravo").returncode, 0)
+        r = self.run_tk("edit", "T001", "--env", "charlie-2")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body().count("**Env:**"), 1)
+        self.assertIn("**Env:** charlie-2.", self.body())
+
+    def test_add_refuses_a_value_outside_the_roster(self):
+        """Refused, not warned: the whole point of the roster is that a typo
+        cannot create an environment."""
+        self.site(SITE)
+        r = self.run_tk(*self.ADD, "--env", "delta")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("delta", r.stderr)
+        self.assertIn("alpha, bravo, charlie-2", r.stderr)   # what IS valid
+        self.assertNotIn("- [ ]", self.body())               # nothing written
+
+    def test_edit_refuses_it_too(self):
+        """`add` clean + `edit --env delta` is the two-command route to the same
+        phantom, and it is the one a re-triage takes."""
+        self.site(SITE)
+        self.seed(item(1, "um"))
+        r = self.run_tk("edit", "T001", "--env", "delta")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("delta", r.stderr)
+        self.assertNotIn("**Env:**", self.body())
+
+    def test_a_case_difference_is_a_different_name(self):
+        self.site(SITE)
+        r = self.run_tk(*self.ADD, "--env", "Bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("roster", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_a_prefix_of_a_roster_name_is_not_that_name(self):
+        self.site(SITE)
+        r = self.run_tk(*self.ADD, "--env", "brav")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("roster", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_no_site_file_refuses_the_flag_and_says_what_to_create(self):
+        """The message has to carry the format: this file is written by hand,
+        once, and "not found" alone sends the reader hunting for its shape."""
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn(os.path.join(".claude", "tk", "env"), r.stderr)
+        self.assertIn("identity", r.stderr)
+        self.assertIn("environments", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_a_mistyped_roster_key_is_refused_and_the_keys_present_are_listed(self):
+        """Unknown keys are ignored, so a MISTYPED key looks exactly like an
+        absent one — listing the keys present puts the typo in the message."""
+        self.site("identity = alpha\nenviroments = alpha, bravo\n")
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("environments", r.stderr)
+        self.assertIn("enviroments", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_an_empty_roster_is_refused_like_an_absent_one(self):
+        """It validates nothing, so it gets the same answer — one message, not a
+        second and subtler failure mode. The assertion names THIS message, not
+        merely the word 'environments': with the guard off the identity check
+        fires instead, and its wording carries that word too — the test passed
+        on the wrong error (measured by mutation)."""
+        self.site("identity = alpha\nenvironments =\n")
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("`environments` is empty", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_an_absent_identity_is_refused(self):
+        """`assertNotIn("Traceback")` is doing real work here: with the required-key
+        check off, the reader dies on a KeyError whose text ALSO says 'identity'
+        — the test passed on the crash and proved nothing (measured by mutation).
+        A defect in a hand-written file has to come back as a diagnosis."""
+        self.site("environments = alpha, bravo\n")
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("declares no", r.stderr)
+        self.assertIn("identity", r.stderr)
+
+    def test_an_identity_outside_its_own_roster_is_refused(self):
+        """A machine absent from its own roster is one where nothing is local:
+        every item would read as another machine's, and the package would come
+        back empty with no error to explain it."""
+        self.site("identity = zulu\nenvironments = alpha, bravo\n")
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("zulu", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_a_malformed_roster_entry_is_refused(self):
+        for bad in ("Bravo", "two words", "bravo.local", "-bravo", "b" * 33):
+            with self.subTest(bad=bad):
+                self.site(f"identity = alpha\nenvironments = alpha, {bad}\n")
+                r = self.run_tk(*self.ADD, "--env", "alpha")
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("environment name", r.stderr)
+                self.assertNotIn("- [ ]", self.body())
+
+    def test_the_reserved_clear_word_cannot_be_an_environment(self):
+        """`none` DELETES a field everywhere in this script. A roster carrying it
+        could write an Env into an item that no command could ever remove."""
+        self.site("identity = alpha\nenvironments = alpha, none\n")
+        r = self.run_tk(*self.ADD, "--env", "alpha")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("none", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_a_file_that_cannot_be_READ_is_reported_and_not_crashed(self):
+        """The defect does not have to be in the file's TEXT. A site file that is
+        a directory, or one carrying a byte that is not UTF-8, never reaches the
+        parser at all — and an unguarded `open()` answers a hand-written-file
+        mistake with a Python traceback, which names a line of OUR code and not
+        the line of THEIR file that has to change."""
+        d = os.path.join(self.home, ".claude", "tk")
+        os.makedirs(d, exist_ok=True)
+        cases = {"a directory": lambda: os.mkdir(os.path.join(d, "env")),
+                 "a non-UTF-8 byte": lambda: open(os.path.join(d, "env"), "wb").write(
+                     b"identity = alpha\nenvironments = alpha, bravo\n# caf\xe9\n")}
+        for label, make in cases.items():
+            with self.subTest(case=label):
+                path = os.path.join(d, "env")
+                if os.path.isdir(path):
+                    os.rmdir(path)
+                elif os.path.exists(path):
+                    os.remove(path)
+                make()
+                r = self.run_tk(*self.ADD, "--env", "bravo")
+                self.assertEqual(r.returncode, 1, r.stdout)
+                # the ONLY assertion here that separates a diagnosis from a crash —
+                # measured: on a raw traceback the other two pass anyway, one on the
+                # `tk-queue: queue: …` line printed before the crash, the other on the
+                # path embedded in the traceback itself. They check the message's
+                # CONTENT and are not redundant, but neither can stand in for this one
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertIn("tk-queue:", r.stderr)      # our diagnosis, not the interpreter's
+                self.assertIn("env", r.stderr)            # and it names the file
+                self.assertNotIn("- [ ]", self.body())
+
+    def test_a_byte_order_mark_does_not_swallow_a_key(self):
+        """An editor that writes a BOM glues it to the following key, and that
+        key then reads as ABSENT while sitting in plain view — a diagnosis that
+        sends the reader hunting a line that is already correct.
+
+        Three placements, because `utf-8-sig` would only answer the first: one
+        BOM at the head of the file, TWO (a file saved twice, or two files
+        concatenated), and one at the head of a later line."""
+        for label, text in (
+                ("leading", "﻿identity = alpha\nenvironments = alpha, bravo\n"),
+                ("doubled", "﻿﻿identity = alpha\nenvironments = alpha, bravo\n"),
+                ("mid-file", "identity = alpha\n﻿environments = alpha, bravo\n")):
+            with self.subTest(placement=label):
+                self.seed()
+                self.site(text)
+                r = self.run_tk(*self.ADD, "--env", "bravo")
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("**Env:** bravo.", self.body())
+
+    def test_a_site_file_that_is_not_a_plain_file_is_refused_and_never_HANGS(self):
+        """`open()` on a FIFO with no writer does not raise — it blocks, and the
+        session stops with no output at all. A hang is worse than the traceback
+        the read guards replace: nothing on screen names the cause."""
+        d = os.path.join(self.home, ".claude", "tk")
+        os.makedirs(d, exist_ok=True)
+        os.mkfifo(os.path.join(d, "env"))
+        try:
+            r = self.run_tk(*self.ADD, "--env", "bravo", timeout=20)
+        except subprocess.TimeoutExpired:
+            self.fail("tk-queue hung reading a FIFO site file instead of refusing it")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("not a plain file", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
+
+    def test_a_duplicate_key_is_refused(self):
+        """Last-wins is how a line the user believes they replaced keeps
+        deciding where their work runs."""
+        self.site("identity = alpha\nidentity = bravo\nenvironments = alpha, bravo\n")
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("duplicate", r.stderr)
+
+    def test_a_line_that_is_not_key_value_is_refused_with_its_number(self):
+        self.site("identity = alpha\nenvironments = alpha, bravo\nlixo\n")
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn(":3:", r.stderr)          # the line, not just the file
+
+    def test_a_ceiling_that_is_not_a_number_is_refused(self):
+        self.site(SITE.replace("max-local-subagents = 3", "max-local-subagents = três"))
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("max-local-subagents", r.stderr)
+
+    def test_a_ceiling_of_zero_is_refused(self):
+        """Zero is a number and it is not a ceiling: it lets nothing run, which
+        reads as "the fleet is idle" rather than as a misconfigured file."""
+        self.site(SITE.replace("max-cloud-subagents = 4", "max-cloud-subagents = 0"))
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("max-cloud-subagents", r.stderr)
+
+    def test_comments_blank_lines_and_unknown_keys_are_tolerated(self):
+        """The over-refusal direction. Unknown keys are what lets a later reader
+        add its own without an older tk refusing the file — a suite that only
+        proves refusals would let that tolerance be lost silently."""
+        self.site("# comment\n\nidentity = alpha   # trailing comment\n"
+                  "environments = alpha, bravo\nfleet-deny = something\n")
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Env:** bravo.", self.body())
+
+    def test_the_ceilings_are_optional(self):
+        self.site("identity = alpha\nenvironments = alpha, bravo\n")
+        r = self.run_tk(*self.ADD, "--env", "bravo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_the_reserved_word_clears_the_field_and_leaves_the_file_intact(self):
+        """The whole file is asserted, not `assertNotIn("**Env:**")`: a clearing
+        branch that corrupted the frontmatter and duplicated the item satisfied
+        an assertNotIn once, with the suite still green (see
+        TestClearingKeepsTheFileIntact)."""
+        self.site(SITE)
+        before = HEADER + item(1, "um") + item(2, "dois")
+        with_env = before.replace("**Effort:** S. **Criterion:** A: x.",
+                                  "**Effort:** S. **Env:** bravo. **Criterion:** A: x.", 1)
+        self.write("next-steps.md", with_env)
+        r = self.run_tk("edit", "T001", "--env", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), before)
+
+    def test_clearing_needs_no_site_file_at_all(self):
+        """Deleting a field names no environment, so it consults no roster — and
+        a machine with no site file must still be able to un-pin an item."""
+        before = HEADER + item(1, "um")
+        with_env = before.replace("**Effort:** S.", "**Effort:** S. **Env:** bravo.", 1)
+        self.write("next-steps.md", with_env)
+        r = self.run_tk("edit", "T001", "--env", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), before)
+
+    def test_add_writes_no_field_for_the_reserved_word(self):
+        r = self.run_tk(*self.ADD, "--env", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("**Env:**", self.body())
+
+    def test_the_field_is_read_from_the_chain_never_from_prose(self):
+        """Registering Env as a real field is what makes the existing chain
+        reader cover it: the edit lands on the item's REAL Env and spares prose
+        that merely carries the marker."""
+        self.site(SITE)
+        legacy = ("- [ ] **T001** — levar o campo **Env:** para o pacote "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Env:** bravo. "
+                  "**Criterion:** A: x. **Source:** 2026-08-13\n")
+        self.seed(legacy)
+        r = self.run_tk("edit", "T001", "--env", "charlie-2")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("levar o campo **Env:** para o pacote", self.body())
+        self.assertIn("**Env:** charlie-2.", self.body())
+        self.assertNotIn("**Env:** bravo.", self.body())
+        # and the DELETION path, where guessing wrong destroys text: the whole
+        # file is asserted, since assertNotIn passes on a corrupted one too
+        r = self.run_tk("edit", "T001", "--env", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + legacy.replace(" **Env:** bravo.", "", 1))
+
+    def test_a_marker_only_outside_the_chain_is_refused_not_guessed(self):
+        """The item carries the marker on a continuation line and no real Env:
+        rewriting it would edit prose nobody pointed at, and `none` would DELETE
+        it. The refusal is the existing guard — it covers Env only because Env
+        is a field the readers know."""
+        self.site(SITE)
+        self.seed(item(1, "um").rstrip("\n") + "\n  nota: **Env:** decidir depois\n")
+        before = self.body()
+        for value in ("bravo", "none"):
+            with self.subTest(value=value):
+                r = self.run_tk("edit", "T001", "--env", value)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertEqual(self.body(), before)       # the prose survives whole
+
+    def test_tagging_a_legacy_oversized_item_needs_no_force(self):
+        """Env is bounded by the roster, so it answers to the same rule as the
+        other short fields: an item already over the block ceiling — the exact
+        population that has to stay taggable — gains one without --force."""
+        self.site(SITE)
+        self.seed(item(1, "x" * 800))
+        self.assertGreater(len(self.body()), load_tk().CEILING)
+        r = self.run_tk("edit", "T001", "--env", "bravo")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Env:** bravo.", self.body())
 
 
 if __name__ == "__main__":

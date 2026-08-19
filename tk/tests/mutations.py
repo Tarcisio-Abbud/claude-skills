@@ -33,9 +33,13 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TK_DIR = os.path.dirname(HERE)
-SRC = os.path.join(TK_DIR, "bin", "tk-queue")
+DEFAULT_SRC = os.path.join("bin", "tk-queue")
 
-# (label, old, new, [test names that must fail])
+# (label, old, new, [test names that must fail]) — plus an optional 5th element,
+# the source file the anchor lives in, relative to tk/ (default: bin/tk-queue).
+# The queue's guards are not all in one file any more: the site file's reader is
+# a module of its own, because the sibling bins read the same file and a second
+# parser for it would be a second answer to "which environments exist".
 MUTATIONS = [
     ("T025 done/cancel/edit reject the displayed T-form again",
      'd.add_argument("id", type=parse_id)', 'd.add_argument("id", type=int)',
@@ -522,7 +526,8 @@ MUTATIONS = [
      ["TestDecisionDeferralGate.test_leaving_the_decision_class_takes_the_deferral_with_it"]),
 
     ("T119 Deferred stops being clearable, so leaving the class WRITES 'none'",
-     'CLEARABLE = frozenset(("Risk", "Deferred"))', 'CLEARABLE = frozenset(("Risk",))',
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env"))',
+     'CLEARABLE = frozenset(("Risk", "Env"))',
      ["TestDecisionDeferralGate.test_leaving_the_decision_class_takes_the_deferral_with_it"]),
 
     ("T119 add stops measuring the justification against the field ceiling",
@@ -690,6 +695,237 @@ MUTATIONS = [
      "    if stray and args.classe:",
      ["TestDecisionDeferralGate.test_the_stray_refusal_fires_for_a_bare_deferred_too"]),
 
+    # --- T120: the Env field, and the site file that says what an Env may be ---
+
+    ("T120 an env outside the roster is accepted (the phantom environment)",
+     "    if value not in site.environments:", "    if False:",
+     ["TestEnvField.test_add_refuses_a_value_outside_the_roster",
+      "TestEnvField.test_edit_refuses_it_too"]),
+
+    ("T120 the roster match stops being exact about case",
+     "    if value not in site.environments:",
+     "    if value.lower() not in [e.lower() for e in site.environments]:",
+     ["TestEnvField.test_a_case_difference_is_a_different_name"]),
+
+    ("T120 the roster match loosens to a prefix",
+     "    if value not in site.environments:",
+     "    if not any(e.startswith(value) for e in site.environments):",
+     ["TestEnvField.test_a_prefix_of_a_roster_name_is_not_that_name"]),
+
+    ("T120 a missing site file stops refusing the flag",
+     '    if site is None:\n        fail("--env: " + tk_site.missing_file_message())',
+     "    if site is None:\n        return",
+     ["TestEnvField.test_no_site_file_refuses_the_flag_and_says_what_to_create"]),
+
+    # the over-refusal direction: DELETING the field names no environment, so a
+    # machine with no site file at all must still be able to un-pin an item
+    ("T120 the reserved clear word is validated against the roster too",
+     "    if value is None or clears_field(value):\n        return",
+     "    if value is None:\n        return",
+     ["TestEnvField.test_clearing_needs_no_site_file_at_all",
+      "TestEnvField.test_add_writes_no_field_for_the_reserved_word"]),
+
+    ("T120 add stops validating the env",
+     "    validate_env(args.env)\n    path = os.path.join(memdir, \"next-steps.md\")",
+     '    path = os.path.join(memdir, "next-steps.md")',
+     ["TestEnvField.test_add_refuses_a_value_outside_the_roster"]),
+
+    ("T120 edit stops validating the env",
+     "    validate_env(args.env)\n    # before the deferral gate",
+     "    # before the deferral gate",
+     ["TestEnvField.test_edit_refuses_it_too"]),
+
+    ("T120 add writes an Env line for the reserved clear word",
+     "    if args.env and not clears_field(args.env):", "    if args.env:",
+     ["TestEnvField.test_add_writes_no_field_for_the_reserved_word"]),
+
+    ("T120 the field moves out of the position the package filter reads",
+     '    if args.env and not clears_field(args.env):\n'
+     '        fields.append(f"**Env:** {args.env}.")\n'
+     '    fields.append(f"**Criterion:** {args.criterion}.")',
+     '    fields.append(f"**Criterion:** {args.criterion}.")\n'
+     '    if args.env and not clears_field(args.env):\n'
+     '        fields.append(f"**Env:** {args.env}.")',
+     ["TestEnvField.test_add_writes_the_field_where_the_readers_look_for_it"]),
+
+    # the neighbouring gate field, which the assertion above only sees because the
+    # test passes --risk too: with it omitted the two could swap and nothing fell
+    ("T120 Env and Risk swap places in the composed item",
+     '    if args.risk and not clears_field(args.risk):\n'
+     '        fields.append(f"**Risk:** {args.risk}.")\n'
+     '    # beside Risk: the two fields that decide whether this item can be picked up\n'
+     '    # unattended, and where. Absent = it runs wherever the queue lives\n'
+     '    if args.env and not clears_field(args.env):\n'
+     '        fields.append(f"**Env:** {args.env}.")',
+     '    if args.env and not clears_field(args.env):\n'
+     '        fields.append(f"**Env:** {args.env}.")\n'
+     '    if args.risk and not clears_field(args.risk):\n'
+     '        fields.append(f"**Risk:** {args.risk}.")',
+     ["TestEnvField.test_add_writes_the_field_where_the_readers_look_for_it"]),
+
+    ("T120 site a missing file is read as a defective one instead of as absent",
+     "    if not os.path.exists(path):\n        return None", "    if False:\n        return None",
+     ["TestEnvField.test_no_site_file_refuses_the_flag_and_says_what_to_create"],
+     "bin/tk_site.py"),
+
+    ("T120 Env stops being a field the readers know (it leaves FIELD_VARIANTS)",
+     '    "Env": r"(?:Env|Ambiente)",', '    "Env": r"(?!x)x",',
+     ["TestEnvField.test_edit_sets_the_field_and_then_REPLACES_it",
+      "TestEnvField.test_a_marker_only_outside_the_chain_is_refused_not_guessed"]),
+
+    ("T120 Env stops being clearable (the stale pin nobody can remove)",
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env"))',
+     'CLEARABLE = frozenset(("Risk", "Deferred"))',
+     ["TestEnvField.test_the_reserved_word_clears_the_field_and_leaves_the_file_intact",
+      "TestEnvField.test_clearing_needs_no_site_file_at_all"]),
+
+    ("T120 edit stops writing the field at all",
+     "                        (args.risk, \"Risk\"), (args.env, \"Env\"),",
+     '                        (args.risk, "Risk"),',
+     ["TestEnvField.test_edit_sets_the_field_and_then_REPLACES_it"]),
+
+    # Env is bounded by the roster, so it answers to the short fields' rule: a
+    # legacy oversized item must stay taggable without --force (T071)
+    ("T120 tagging an item with an Env is measured against the block ceiling",
+     'FREE_TEXT_FLAGS = ("text", "criterion", "risk", "deferred")',
+     'FREE_TEXT_FLAGS = ("text", "criterion", "risk", "deferred", "env")',
+     ["TestEnvField.test_tagging_a_legacy_oversized_item_needs_no_force"]),
+
+    # --- T120: the site file's own guards (a different source file) ----------
+
+    ("T120 site a line that is not `key = value` is skipped instead of refused",
+     "        if not sep:", "        if False:",
+     ["TestEnvField.test_a_line_that_is_not_key_value_is_refused_with_its_number"],
+     "bin/tk_site.py"),
+
+    ("T120 site a duplicate key silently wins with the last line",
+     "        if key in pairs:", "        if False:",
+     ["TestEnvField.test_a_duplicate_key_is_refused"],
+     "bin/tk_site.py"),
+
+    ("T120 site a missing required key is not reported",
+     "        if key not in pairs:\n            raise SiteError(missing_key_message(path, key, pairs))",
+     "        if False:\n            raise SiteError(missing_key_message(path, key, pairs))",
+     ["TestEnvField.test_an_absent_identity_is_refused",
+      "TestEnvField.test_a_mistyped_roster_key_is_refused_and_the_keys_present_are_listed"],
+     "bin/tk_site.py"),
+
+    ("T120 site the message stops listing the keys the file does carry",
+     '    have = ", ".join(sorted(keys)) or "(no keys at all)"',
+     '    have = "(not listed)"',
+     ["TestEnvField.test_a_mistyped_roster_key_is_refused_and_the_keys_present_are_listed"],
+     "bin/tk_site.py"),
+
+    ("T120 site an empty roster passes as a roster",
+     "    if not names:", "    if False:",
+     ["TestEnvField.test_an_empty_roster_is_refused_like_an_absent_one"],
+     "bin/tk_site.py"),
+
+    ("T120 site the reserved clear word is allowed as an environment name",
+     "        if name == RESERVED_NAME:", "        if False:",
+     ["TestEnvField.test_the_reserved_clear_word_cannot_be_an_environment"],
+     "bin/tk_site.py"),
+
+    ("T120 site a malformed environment name is allowed",
+     "        if not NAME_RE.match(name):", "        if False:",
+     ["TestEnvField.test_a_malformed_roster_entry_is_refused"],
+     "bin/tk_site.py"),
+
+    ("T120 site the name loses its length bound",
+     'NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}\\Z")',
+     'NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*\\Z")',
+     ["TestEnvField.test_a_malformed_roster_entry_is_refused"],
+     "bin/tk_site.py"),
+
+    ("T120 site the machine may sit outside its own roster (nothing is local)",
+     "    if identity not in names:", "    if False:",
+     ["TestEnvField.test_an_identity_outside_its_own_roster_is_refused"],
+     "bin/tk_site.py"),
+
+    ("T120 site a ceiling that is not a number passes",
+     '        if not re.fullmatch(r"[0-9]+", value):', "        if False:",
+     ["TestEnvField.test_a_ceiling_that_is_not_a_number_is_refused"],
+     "bin/tk_site.py"),
+
+    ("T120 site a ceiling of zero passes",
+     "        if int(value) < 1:", "        if False:",
+     ["TestEnvField.test_a_ceiling_of_zero_is_refused"],
+     "bin/tk_site.py"),
+
+    # the two over-refusal directions: a file the sibling bins must be able to
+    # extend, and ceilings that a machine which runs no fleet never writes
+    ("T120 site an unknown key becomes fatal (no sibling bin may extend the file)",
+     "    for key in REQUIRED:",
+     "    for key in set(pairs) - set(REQUIRED) - set(CEILINGS):\n"
+     "        raise SiteError(f'{path}: unknown key {key!r}')\n"
+     "    for key in REQUIRED:",
+     ["TestEnvField.test_comments_blank_lines_and_unknown_keys_are_tolerated"],
+     "bin/tk_site.py"),
+
+    # a defect does not have to be in the file's TEXT: a site file that is a
+    # directory, or one byte that is not UTF-8, never reaches the parser at all.
+    #
+    # NO ENTRY for tk_site.load's `except OSError`, deliberately, and this note is
+    # the entry's place. Once the regular-file check went in front of the open(),
+    # every failure a test can CREATE is intercepted before it — a directory, a
+    # FIFO, a socket, a device. What is left for that clause is permission denied
+    # (the suite cannot produce it: the container runs as root, and root bypasses
+    # the mode bits) and the file vanishing between the check and the open (no
+    # hook to drive it). Measured, not assumed: with the clause disabled, the
+    # whole suite stays green. It stays in the source because neither case is
+    # hypothetical for a reader who is not root, and because a traceback on a
+    # permission-denied site file is the exact failure this group of guards
+    # exists to prevent. An entry naming a test that falls for another reason
+    # would be worse than this gap: it would report a proof nobody made.
+    ("T120 site a byte that is not UTF-8 crashes instead of being reported",
+     "    except UnicodeDecodeError as e:", "    except ZeroDivisionError as e:",
+     ["TestEnvField.test_a_file_that_cannot_be_READ_is_reported_and_not_crashed"],
+     "bin/tk_site.py"),
+
+    ("T120 site a BOM is glued to the following key (that key reads as absent)",
+     '            text = f.read().replace("﻿", "")', "            text = f.read()",
+     ["TestEnvField.test_a_byte_order_mark_does_not_swallow_a_key"],
+     "bin/tk_site.py"),
+
+    # the half `utf-8-sig` would have missed: it strips exactly one BOM, at the
+    # very start, so the doubled and mid-file placements put the bug straight back
+    ("T120 site only the FIRST leading BOM is stripped",
+     '            text = f.read().replace("﻿", "")',
+     '            text = f.read().replace("﻿", "", 1)',
+     ["TestEnvField.test_a_byte_order_mark_does_not_swallow_a_key"],
+     "bin/tk_site.py"),
+
+    # open() on a FIFO does not raise, it BLOCKS — the guards above never fire and
+    # the session stops with nothing on screen
+    ("T120 site a file that is not a plain file is opened anyway (the FIFO hang)",
+     "    if not os.path.isfile(path):", "    if False:",
+     ["TestEnvField.test_a_site_file_that_is_not_a_plain_file_is_refused_and_never_HANGS"],
+     "bin/tk_site.py"),
+
+    ("T120 site a trailing comment becomes part of the value",
+     '        line = raw.split("#", 1)[0].strip()', "        line = raw.strip()",
+     ["TestEnvField.test_comments_blank_lines_and_unknown_keys_are_tolerated"],
+     "bin/tk_site.py"),
+
+    ("T120 site the whitespace around a value is kept",
+     "        pairs[key] = value.strip()", "        pairs[key] = value",
+     ["TestEnvField.test_comments_blank_lines_and_unknown_keys_are_tolerated"],
+     "bin/tk_site.py"),
+
+    # a defect in a hand-written file must come back as a DIAGNOSIS: a traceback
+    # names a line of Python, and the reader has to fix a line of THEIR file
+    ("T120 a bad site file crashes instead of being reported",
+     "    try:\n        site = tk_site.load()\n    except tk_site.SiteError as e:\n"
+     "        fail(str(e))",
+     "    site = tk_site.load()",
+     ["TestEnvField.test_an_absent_identity_is_refused"]),
+
+    ("T120 site the ceilings become mandatory",
+     "        if key not in pairs:\n            continue",
+     "        if key not in pairs:\n            raise SiteError(missing_key_message(path, key, pairs))",
+     ["TestEnvField.test_the_ceilings_are_optional"],
+     "bin/tk_site.py"),
+
     ("2ª review edit splices by search-and-replace again",
      "    write_atomic(os.path.join(memdir, \"next-steps.md\"),\n"
      "                 content[:start] + new + content[start + len(block):])",
@@ -714,15 +950,23 @@ def main():
                                   "TestCloseFieldCeilings", "TestIdAllocationScope",
                                   "TestDoneLogLineGrammar", "TestCanonicalHead",
                                   "TestDecisionDeferralGate", "TestBump",
-                                  "TestBlockAddressing", "TestClearingKeepsTheFileIntact"])
+                                  "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
+                                  "TestEnvField"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
 
-    with open(SRC, encoding="utf-8") as f:
-        src = f.read()
+    sources = {}
+    for entry in MUTATIONS:
+        rel = entry[4] if len(entry) > 4 else DEFAULT_SRC
+        if rel not in sources:
+            with open(os.path.join(TK_DIR, rel), encoding="utf-8") as f:
+                sources[rel] = f.read()
     survived, unrunnable = [], []
-    for label, old, new, names in MUTATIONS:
+    for entry in MUTATIONS:
+        label, old, new, names = entry[:4]
+        rel = entry[4] if len(entry) > 4 else DEFAULT_SRC
+        src = sources[rel]
         if src.count(old) != 1:
             # NOT a survivor: the mutation never ran, so it says nothing about the
             # suite. It is still a failure — a stale anchor silently stops proving
@@ -733,8 +977,12 @@ def main():
         tmp = tempfile.mkdtemp(prefix="tk-mutation.")
         try:
             dst = os.path.join(tmp, "tk")
-            shutil.copytree(TK_DIR, dst)
-            with open(os.path.join(dst, "bin", "tk-queue"), "w", encoding="utf-8") as f:
+            # NOT the bytecode cache. copytree preserves mtimes, so a copied
+            # __pycache__ entry still matches its (copied) source's mtime and
+            # size — and Python then imports the PRE-MUTATION bytecode, which
+            # reports a guard as unprotected when it is merely unmutated
+            shutil.copytree(TK_DIR, dst, ignore=shutil.ignore_patterns("__pycache__"))
+            with open(os.path.join(dst, rel), "w", encoding="utf-8") as f:
                 f.write(src.replace(old, new, 1))
             # EACH named test must fall on its own. Running them as one batch only
             # proves that SOME test failed, so a listed test that quietly still

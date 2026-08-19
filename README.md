@@ -43,7 +43,16 @@ any `edit` that sets it demand `--deferred <justification>`, kept in the item as
 AUTONOMOUS —, **Effort**
 (S/M/L + rough wall-clock time), an optional **Risk** line naming what unsupervised
 execution could damage — an item with a Risk line never enters an afk package, and
-`--risk none` DELETES the field, which is how an obsolete Risk gets re-triaged — a
+`--risk none` DELETES the field, which is how an obsolete Risk gets re-triaged —, an
+optional **Env** naming WHERE the item runs when that is not here (orthogonal to the class:
+the class says what the item waits for, Env says which machine can execute it; absent = the
+machine that owns the queue, and `--env none` deletes it). Its value is matched by exact
+equality against the roster in the SITE FILE `~/.claude/tk/env`, and a value outside it is
+refused rather than warned — an environment nothing validated is one no machine ever picks
+up. Without that file there is no `--env` at all: the plugin ships no machine name of its
+own, the way git ships no `user.name`. The same file carries this machine's identity and its
+two subagent ceilings, local and cloud; its format lives in `tk/bin/tk_site.py`, which reads
+it. Then a
 required **Criterion** (acceptance: `A:` a
 deterministic check, `B:` the user's verdict; required on `add`, still optional on `edit`
 for legacy items), and an optional **Project** slug tagging which project an item belongs
@@ -153,6 +162,8 @@ tk/
   skills/<name>/SKILL.md          one directory per skill
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   bin/tk-queue                    deterministic CLI: only writer of the queue files
+  bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
+                                  identity, the roster of environments, the two ceilings
   tests/test_tk_queue.py          regression suite for that CLI (stdlib only)
   tests/mutations.py              puts each defect back; every test must fall
 tk-cowork/

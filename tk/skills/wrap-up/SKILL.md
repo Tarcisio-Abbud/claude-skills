@@ -42,7 +42,9 @@ duplicating; delete what proved wrong. Convert relative dates to absolute. Link 
 **Pending items go through `tk-queue`** (`../../bin/tk-queue` relative to this file) — the
 only writer of `next-steps.md` and `done-log.md`. Every change to either file arrives as one
 of its subcommands, run from this session: new items enter via `add` (with **Class**,
-**Effort** and **Criterion**, plus **Risk** and **Project** where they apply — the criterion
+**Effort** and **Criterion**, plus **Risk**, **Env** and **Project** where they apply — the
+**Env** only when the item runs on a machine that is NOT this one, since an item that names
+another environment is never dispatchable here; the criterion
 is required, so decide it here rather than leaving "done" as the next closer's self-report;
 a DECISION also demands `--deferred`, so ask the decision here and register the item
 AUTONOMOUS wherever the user is still in the room);

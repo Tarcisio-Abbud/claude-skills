@@ -34,6 +34,15 @@ by omission: `add --class DECISION` and any `edit` that sets that class demand
 The default path is the other one — ask the decision at birth, write it into the
 item's text and Criterion, and the item is AUTONOMOUS.
 
+WHERE an item runs is a field of its own, orthogonal to the class: **Env:**
+names an environment from the site file's roster (`~/.claude/tk/env`, read by
+tk_site.py beside this script), and its ABSENCE means the machine that owns the
+queue. The value is validated by exact equality against that roster, and refused
+when it is not in it — an environment nothing validated is a phantom one, an
+item no machine ever picks up with no error to say why. No roster, no `--env`:
+the flag is refused with the file to create, because the plugin ships no
+machine's name of its own.
+
 Size ceilings: an item is a PENDING ACTION, not an essay. Durable context
 belongs in a memory file or the wiki, linked from the item. TWO ceilings, and
 which one a flag answers to depends on the flag's NATURE:
@@ -70,6 +79,12 @@ try:
 except ImportError:      # non-POSIX; see queue_lock
     fcntl = None
 
+# the site file's reader, beside this script. Inserted explicitly rather than
+# relied on: sys.path[0] is the script's directory only when Python launched
+# THIS file, and the suite also loads it as a module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tk_site      # noqa: E402  (the path above is what makes it importable)
+
 CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
 # The class that PARKS the queue: nothing moves on a DECISION item until the user
 # is back. So it may not be reached by omission — `add --class DECISION` and any
@@ -85,10 +100,11 @@ DEFERRABLE_CLASS = "DECISION"
 # A reserved value reuses the existing parser: no new flag to forget, no new
 # precedence rule between "set" and "clear".
 FIELD_CLEAR = "none"
-# Fields the reserved word may DELETE. Both are true-when-written and go stale:
-# a Risk whose branch has since merged, a deferral whose class has since changed.
-# Neither is ever deleted in a way that opens a gate — see cmd_edit.
-CLEARABLE = frozenset(("Risk", "Deferred"))
+# Fields the reserved word may DELETE. All three are true-when-written and go
+# stale: a Risk whose branch has since merged, a deferral whose class has since
+# changed, an Env naming the machine an item needed before it was re-sliced.
+# None is ever deleted in a way that opens a gate — see cmd_edit.
+CLEARABLE = frozenset(("Risk", "Deferred", "Env"))
 READERS = frozenset(("list", "report"))   # everything else mutates and takes the queue lock
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
 # read once, at import: os.umask can only be read by setting it, and doing that
@@ -114,6 +130,18 @@ CEILING_FORCED = 2000
 #           ONE call, took an item to 709 chars past a 700 block ceiling with no
 #           --force. So these also put the resulting BLOCK through the block
 #           ceiling, exactly as --text does.
+#   NEITHER --env, alone, answers to no ceiling here, and that is not an oversight: its
+#           value must EQUAL an entry of the site file's roster, and a roster entry is a
+#           bounded slug (tk_site.NAME_RE) — a gate strictly tighter than either ceiling
+#           above, applied to the file the value comes from rather than to the flag. Do
+#           not add it to check_field_ceilings "for consistency": that would put a
+#           second, looser bound on a value the roster already decides, and the day a
+#           legitimate machine name crossed it the queue would refuse a name its own
+#           roster accepts. Like the short fields, it is exempt from the block ceiling
+#           (it is absent from FREE_TEXT_FLAGS), for the same T071 reason. The same
+#           answer covers ensure_single_line and ensure_no_embedded_marker, which it
+#           also skips: a newline and a `**Field:**` shape are both unspellable inside
+#           NAME_RE, so those guards would be re-checking what the roster settled.
 FIELD_CEILING_SHORT = 60
 FIELD_CEILING_SHORT_FORCED = 150
 FIELD_CEILING = 200
@@ -435,6 +463,7 @@ FIELD_VARIANTS = {
     "Project": r"(?:Project|Projeto)",
     "Source": r"(?:Source|Fonte)",
     "Deferred": r"(?:Deferred|Adiado)",
+    "Env": r"(?:Env|Ambiente)",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
 # the marker SHAPE alone, with no trailing value — every other use of ANY_FIELD
@@ -604,6 +633,36 @@ def deferral_class_message(subject_is):
             f"why a decision could not be asked, and no reader honours it elsewhere. "
             f"{subject_is} Pass `--class {DEFERRABLE_CLASS}` in the same command, or drop "
             "--deferred.")
+
+
+def validate_env(value):
+    """Refuse an `--env` the site file's roster does not carry.
+
+    EXACT equality, and nothing is normalised. The roster is the only thing that
+    says an environment exists, so a value outside it is a typo — and a typo
+    accepted is worse than one refused: the item is filtered out of every
+    package on every machine, forever, with no error anywhere to say why. That
+    is the phantom environment the roster exists to prevent, which is why the
+    answer here is a refusal and not a warning.
+
+    The reserved clear word is let through untouched: DELETING the field names
+    no environment, so it consults no roster — a machine with no site file at
+    all must still be able to un-pin an item.
+    """
+    if value is None or clears_field(value):
+        return
+    try:
+        site = tk_site.load()
+    except tk_site.SiteError as e:
+        fail(str(e))
+    if site is None:
+        fail("--env: " + tk_site.missing_file_message())
+    if value not in site.environments:
+        fail(f"--env {value!r} is not in the roster of {site.path}: "
+             f"{', '.join(site.environments)}. The match is exact, capitals included — "
+             "a near-miss would pin the item to an environment that does not exist, and "
+             "no machine would ever pick it up. Fix the value, or add the environment to "
+             "the roster.")
 
 
 def validate_project(tag):
@@ -822,6 +881,10 @@ def compose_item(args, iid):
     fields.append(f"**Effort:** {args.effort}.")
     if args.risk and not clears_field(args.risk):
         fields.append(f"**Risk:** {args.risk}.")
+    # beside Risk: the two fields that decide whether this item can be picked up
+    # unattended, and where. Absent = it runs wherever the queue lives
+    if args.env and not clears_field(args.env):
+        fields.append(f"**Env:** {args.env}.")
     fields.append(f"**Criterion:** {args.criterion}.")
     if args.project:
         fields.append(f"**Project:** {args.project}.")
@@ -893,6 +956,7 @@ def cmd_add(args):
                          deferred=args.deferred)
     if args.project:
         validate_project(args.project)
+    validate_env(args.env)
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:
@@ -1027,6 +1091,7 @@ def cmd_edit(args):
                          deferred=args.deferred)
     if args.project:
         validate_project(args.project)
+    validate_env(args.env)
     # before the deferral gate, which reasons about the resulting CLASS: a typo'd
     # class reaching the gate first is answered "T001 is DECISON — pass --class
     # DECISION", which sends the caller after the wrong mistake. `add` validates
@@ -1046,7 +1111,8 @@ def cmd_edit(args):
         tail = tail_m.group(0) if tail_m else ""
         new = head_m.group(0) + args.text.strip() + (" " + tail if tail else "\n")
     for flag, field in ((args.classe, "Class"), (args.effort, "Effort"),
-                        (args.risk, "Risk"), (args.criterion, "Criterion"),
+                        (args.risk, "Risk"), (args.env, "Env"),
+                        (args.criterion, "Criterion"),
                         (args.project, "Project"), (deferred_flag, "Deferred")):
         if not flag:
             continue
@@ -1260,6 +1326,9 @@ def main():
     a.add_argument("--deferred", help=f"why the decision could not be asked — REQUIRED by "
                    f"--class {DEFERRABLE_CLASS}, refused on every other class ('afk' in an "
                    "unattended session)")
+    a.add_argument("--env", help="environment the item runs in — a name from the site "
+                   "file's roster (~/.claude/tk/env), matched exactly; omit it for the "
+                   "machine that owns this queue ('none' writes no Env line)")
     a.add_argument("--project", help="optional short slug tagging which project this item "
                    "belongs to, e.g. 'ambiente', 'tk' (warns on stderr if unseen in this queue)")
     a.add_argument("--source", help="origin (default: today's date)")
@@ -1290,6 +1359,9 @@ def main():
     e.add_argument("--deferred", help=f"justification demanded by `--class "
                    f"{DEFERRABLE_CLASS}`; it is dropped by leaving that class, never by "
                    "'none'")
+    e.add_argument("--env", help="new environment (a name from the site file's roster), "
+                   "or 'none' to DELETE the field — the item then runs wherever the "
+                   "queue does")
     e.add_argument("--project", help="assign/change the project tag")
     e.add_argument("--force", action="store_true")
 
