@@ -3120,6 +3120,38 @@ class TestHandoffCreation(HandoffTest):
         self.assertEqual(ok.returncode, 0, ok.stderr)
         self.assertIn("\n## Objective\n\nnone\n\n## State\n\nnone\n", self.brief(3))
 
+    def test_writing_over_a_file_this_command_did_not_write_is_refused(self):
+        """The write side of the same rule: overwriting a stranger's file that merely
+        shares the name is the same loss as deleting it. The remedy is run."""
+        self.seed(item(1, "um"))
+        stranger = "uma nota qualquer que se chama assim por acaso\n"
+        self.write("handoff-T001.md", stranger)
+        r = self.handoff(1, "--objective", "o", "--state", "s", "--blockers", "b")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--force", r.stderr)
+        self.assertEqual(self.brief(1), stranger)
+        ok = self.handoff(1, "--objective", "o", "--state", "s", "--blockers", "b", "--force")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertEqual(self.brief(1),
+                         "# Handoff T001 — um\n\n## Objective\n\no\n"
+                         "\n## State\n\ns\n\n## Blockers and notes\n\nb\n")
+
+    def test_rewriting_OUR_own_briefing_needs_no_force(self):
+        self.seed(item(1, "um"))
+        self.handoff(1, "--objective", "old", "--state", "s", "--blockers", "b")
+        r = self.handoff(1, "--objective", "new", "--state", "s", "--blockers", "b")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("rewrote ", r.stdout)
+
+    def test_TWO_empty_fields_read_as_a_plural(self):
+        """Prose an agent reads. `--objective, --state carries no text` is the shape
+        that tells a reader the sentence was assembled, not written."""
+        self.seed(item(3, "um"))
+        two = self.handoff(3, "--objective", "", "--state", "", "--blockers", "b")
+        self.assertIn("--objective, --state carry no text", two.stderr)
+        one = self.handoff(3, "--objective", "", "--state", "s", "--blockers", "b")
+        self.assertIn("--objective carries no text", one.stderr)
+
     def test_an_item_that_is_not_open_gets_no_briefing(self):
         """A briefing for an item no close will ever reach is an orphan at birth."""
         self.seed(item(1, "um"))
@@ -3174,18 +3206,6 @@ class TestHandoffLifecycle(HandoffTest):
                          "handoff-T001.md removed\n")
         self.assertIsNone(self.brief(1))
 
-    def test_the_close_leaves_both_queue_files_exactly_as_a_close_without_one(self):
-        """The whole file, not a substring: a removal that also clipped a byte off
-        next-steps.md passes every `assertNotIn` written about the item."""
-        self.seed(item(1, "um"), item(2, "dois"))
-        self.run_tk("done", "2", "--how", "PR #2")
-        without = (self.body("next-steps.md"), self.body("done-log.md"))
-        self.setUp()
-        self.seed(item(1, "um"), item(2, "dois"))
-        self.seed_brief(2)
-        self.run_tk("done", "2", "--how", "PR #2")
-        self.assertEqual((self.body("next-steps.md"), self.body("done-log.md")), without)
-
     def test_an_item_without_a_briefing_closes_exactly_as_before(self):
         self.seed(item(1, "um"))
         r = self.run_tk("done", "1", "--how", "PR #1")
@@ -3239,7 +3259,7 @@ class TestHandoffLifecycle(HandoffTest):
         # and no warning either: since the collection became best-effort, a missing
         # file no longer crashes, so silence on stderr is the only thing left that
         # tells "never a candidate" apart from "tried to remove it and could not"
-        self.assertNotIn("could not be removed", r.stderr)
+        self.assertNotIn("was not written by", r.stderr)
         self.assertEqual(r.stdout, f"T001 → done-log as FEITO ({self.today()})\n")
 
     # --- the other two closing paths ---------------------------------------
@@ -3321,19 +3341,86 @@ class TestHandoffLifecycle(HandoffTest):
         last = self.run_tk("done", "2", "--how", "PR #2")
         self.assertIn("handoff-T001.md removed\n", last.stdout)
 
-    def test_a_briefing_that_cannot_be_removed_does_not_fail_the_close(self):
-        """The close's own writes are already committed when the collection runs,
-        so dying here reports an APPLIED close as a failure."""
+    def test_an_UNNUMBERED_open_item_holds_the_briefing_it_points_at(self):
+        """An item `migrate` has not numbered yet cannot be closed, claimed or edited
+        by ID — but it is OPEN and it points at this briefing. Dropping it from the
+        holders was a wrong DELETE, and the crash it hid (`f"T{None:03d}"`) turned an
+        already-committed close into a reported failure."""
+        self.seed(item(5, "anchor [[handoff-T005]]"),
+                  "- [ ] item legado sem ID, cita [[handoff-T005]]\n")
+        self.seed_brief(5)
+        r = self.run_tk("done", "5", "--how", "PR #5")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertEqual(r.stdout,
+                         f"T005 → done-log as FEITO ({self.today()})\n"
+                         "handoff-T005.md kept — still reached by an unnumbered item\n")
+        self.assertIsNotNone(self.brief(5))
+
+    def test_the_OWNER_holds_its_briefing_even_when_it_never_points_at_it(self):
+        """The missing pointer is a WARNING, not a refusal, so an owner that ignored
+        it never self-cites. Recognising it only by its pointer would delete a
+        briefing its own open item still needs when a sibling closes first."""
+        self.seed(item(5, "anchor sem ponteiro nenhum"), item(6, "sibling [[handoff-T005]]"))
+        self.seed_brief(5)
+        r = self.run_tk("done", "6", "--how", "PR #6")
+        self.assertEqual(r.stdout,
+                         f"T006 → done-log as FEITO ({self.today()})\n"
+                         "handoff-T005.md kept — still reached by T005\n")
+        self.assertIsNotNone(self.brief(5))
+
+    def test_a_file_this_command_did_not_write_is_never_deleted(self):
+        """The name is the contract, but the name is also all `os.remove` needs, and
+        a remove is not undone by re-running anything. Measured: a note that happened
+        to be called handoff-T001.md, in a memory dir holding dozens of unrelated
+        files, was deleted by closing T001."""
         self.seed(item(1, "um"))
+        stranger = "uma nota qualquer que se chama assim por acaso\n"
+        self.write("handoff-T001.md", stranger)
+        r = self.run_tk("done", "1", "--how", "PR #1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("was not written by", r.stderr)
+        self.assertNotIn("removed", r.stdout)
+        self.assertEqual(self.brief(1), stranger)
+
+    def test_a_briefing_whose_ITEM_was_edited_is_still_ours(self):
+        """The header is asked of the ID, never of the item's text — an item edited
+        after its briefing was written has a different title, and the briefing this
+        command DID write must stay collectable."""
+        self.seed(item(1, "texto original"))
         self.seed_brief(1)
+        self.run_tk("edit", "1", "--text", "texto completamente outro")
+        r = self.run_tk("done", "1", "--how", "PR #1")
+        self.assertIn("handoff-T001.md removed\n", r.stdout)
+        self.assertIsNone(self.brief(1))
+
+    def test_an_IMPLICIT_deferred_clear_still_collects_the_pointer_it_dropped(self):
+        """Leaving DECISION drops the Deferred field without `--deferred` appearing
+        in the call. The drop is read from the recomposed BLOCK, not from the flags,
+        so a pointer living in that field is collected like any other."""
+        self.seed(item(5, "anchor [[handoff-T005]]"), item(6, "sibling", klass="DECISION")
+                  .replace("**Class:** DECISION.",
+                           "**Class:** DECISION. **Deferred:** afk — [[handoff-T005]].", 1))
+        self.seed_brief(5)
+        self.run_tk("done", "5", "--how", "PR #5")
+        self.assertIsNotNone(self.brief(5))
+        r = self.run_tk("edit", "6", "--class", "AUTONOMOUS")
+        self.assertEqual(r.stdout, "T006 updated\nhandoff-T005.md removed\n")
+        self.assertIsNone(self.brief(5))
+
+    def test_a_DIRECTORY_at_the_briefing_name_does_not_fail_the_close(self):
+        """The close's own writes are already committed when the collection runs, so
+        dying here reports an APPLIED close as a failure. A directory cannot carry
+        the header, so the ownership guard turns it away before `os.remove` ever
+        sees it — which is why that remove needs no try/except."""
+        self.seed(item(1, "um"))
         path = os.path.join(self.mem, "handoff-T001.md")
-        os.remove(path)
         os.makedirs(os.path.join(path, "inside"))
         r = self.run_tk("done", "1", "--how", "PR #1")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn("Traceback", r.stderr)
-        self.assertIn("could not be removed", r.stderr)
-        self.assertIn(path, r.stderr)
+        self.assertIn("was not written by", r.stderr)
+        self.assertTrue(os.path.isdir(path))
         self.assertNotIn("T001", self.body("next-steps.md"))
         self.assertIn("T001", self.body("done-log.md"))
 

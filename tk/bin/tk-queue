@@ -1674,12 +1674,18 @@ and one inside a value moves a boundary — the composed file is read back and
 refused when its headings are not the ones it was composed with. `###` or deeper
 is sub-structure, and passes.
 
-LIFECYCLE. The briefing dies with the item: `done` and `cancel` delete it in the
-same command that moves the item to the log. It survives that close only while an
-OPEN item still reaches it — its own item, or one pointing at it with
-`[[handoff-T007]]` — which is what keeps a campaign's briefing alive until its
-last item closes. There is no path through this CLI that leaves a briefing
-nothing reaches."""
+LIFECYCLE. The briefing dies with the item: `done`, `cancel`, `migrate` and an
+`edit` that drops the last pointer to it all delete it in the same command. It
+survives that close only while an OPEN item still reaches it — its own item, or one
+pointing at it with `[[handoff-T007]]`, in the text or in any field — which is what
+keeps a campaign's briefing alive until its last item closes. No path through this
+CLI leaves behind a briefing this command WROTE and nothing reaches.
+
+Only what this command wrote. A file already sitting at that name without a
+`# Handoff T007` first line is never deleted and never overwritten — the write is
+refused (`--force` overrides it) and the collection prints a warning and leaves it
+where it is, because a memory dir holds unrelated files and `os.remove` is not
+undone by re-running anything."""
 
 
 def handoff_name(iid):
@@ -1688,6 +1694,34 @@ def handoff_name(iid):
 
 def handoff_path(memdir, iid):
     return os.path.join(memdir, handoff_name(iid))
+
+
+def handoff_ours(memdir, n):
+    """Whether the file at this briefing's name was written HERE.
+
+    The name is the contract, but the name is also all `os.remove` needs, and a
+    remove is not undone by re-running anything: measured — a note that happened to
+    be called `handoff-T001.md`, in a memory dir that holds dozens of unrelated
+    files, was deleted by closing T001, and this command never wrote it.
+
+    The header is asked of the ID only, never of the item's text: an item edited
+    after its briefing was written has a different title, and a briefing this
+    command DID write must stay collectable. Unreadable counts as NOT ours — the
+    safe direction, since the cost of keeping a stranger's file is a file kept.
+
+    KNOWN LIMIT, under a DUPLICATE ID. Everything here addresses a briefing by ID,
+    so two open items sharing one ID share a briefing: closing the first keeps the
+    file (the second still reaches it) and the second then reads a briefing written
+    about the first. The residue is the safe one — a file kept, never a wrong
+    delete — and no refusal is offered because none could name a remedy that WORKS:
+    `cancel <id>` resolves to the first occurrence too, and hand-editing the queue
+    is what this script exists to replace. It is the duplicate ID that has to go.
+    """
+    try:
+        with open(handoff_path(memdir, n), encoding="utf-8") as f:
+            return f.readline().startswith(f"# Handoff T{n:03d}")
+    except OSError:
+        return False
 
 
 def handoff_refs(block):
@@ -1747,24 +1781,30 @@ def handoff_gate(candidate, iid, block, values):
         # --state "none"` reads as a list and argparse refuses it for the very flag
         # it names. Two empty fields is the case the suite now runs
         remedy = " ".join(f'{f} "none"' for f in empty)
-        fail(f"{', '.join(empty)} carries no text. The briefing's mandatory fields are "
+        verb = "carries" if len(empty) == 1 else "carry"
+        fail(f"{', '.join(empty)} {verb} no text. The briefing's mandatory fields are "
              "the three the next session cannot work without, and an empty one is not "
              "'nothing to say' — it is a field nobody filled. Re-run spelling the empty "
              f"answer out: {remedy}. Nothing was written.")
 
 
 def handoff_holders(content, n):
-    """The OPEN items that still reach the briefing named for T<n>: the item it is
-    named for, if it is still open, and every open item pointing at it."""
+    """The labels of the OPEN items that still reach the briefing named for T<n>:
+    the item it is named for, if it is still open, and every open item pointing at
+    it. Labels, not IDs, because an item `migrate` has not numbered yet holds a
+    briefing exactly as much as a numbered one."""
     out = []
     for kind, text in split_blocks(content):
         if kind != "item-open":
             continue
         iid = item_id(text)
-        if iid is None:
-            continue
         if iid == n or n in handoff_refs(text):
-            out.append(iid)
+            # an item `migrate` has not numbered yet cannot be closed, claimed or
+            # edited by ID — but it is OPEN and it points at this briefing, so it
+            # HOLDS it. Skipping it was a wrong delete, the one direction this
+            # reader may not fail in, so it is labelled rather than dropped (and
+            # `f"T{None:03d}"` is the crash that skipping was hiding)
+            out.append(f"T{iid:03d}" if iid is not None else "an unnumbered item")
     return out
 
 
@@ -1798,23 +1838,23 @@ def handoff_collect(memdir, after, ids):
     for n in sorted(ids):
         if not os.path.exists(handoff_path(memdir, n)):
             continue
+        if not handoff_ours(memdir, n):
+            print(f"tk-queue: warning: {handoff_name(n)} was not written by "
+                  f"`tk-queue handoff` (no `# Handoff T{n:03d}` header), so it is left "
+                  f"alone: {handoff_path(memdir, n)}", file=sys.stderr)
+            continue
         holders = handoff_holders(after, n)
         (kept if holders else remove).append((n, holders))
     for n, holders in kept:
-        print(f"{handoff_name(n)} kept — still reached by "
-              + ", ".join(f"T{i:03d}" for i in holders))
+        print(f"{handoff_name(n)} kept — still reached by " + ", ".join(holders))
     for n, _ in remove:
-        path = handoff_path(memdir, n)
-        try:
-            os.remove(path)
-        except OSError as e:
-            # the command's own writes are already committed, so dying here reports
-            # an APPLIED close as a failure — measured with a directory sitting at
-            # the briefing's name. The collection is best-effort; the close is not
-            print(f"tk-queue: warning: {handoff_name(n)} could not be removed ({e.strerror}) "
-                  f"— the item is closed either way. Remove it by hand: {path}",
-                  file=sys.stderr)
-            continue
+        # a plain remove, and deliberately not a best-effort one: everything that
+        # reaches here is a regular readable file whose header was just read, this
+        # command holds the queue's exclusive lock, and tk-queue is the only writer
+        # of this directory. A directory or a stranger's file sitting at the name —
+        # the case that argued for a try/except — is turned away by handoff_ours
+        # above, and a guard no test can reach is the one that rots
+        os.remove(handoff_path(memdir, n))
         print(f"{handoff_name(n)} removed")
 
 
@@ -1828,6 +1868,15 @@ def cmd_handoff(args):
     handoff_gate(candidate, args.id, block, values)
     path = handoff_path(memdir, args.id)
     existed = os.path.exists(path)
+    # the write side of the same rule: overwriting a stranger's file that merely
+    # shares the name is the same loss as deleting it, and `os.replace` also eats a
+    # symlink sitting there. A re-write of OUR briefing is the idempotent case and
+    # passes untouched
+    if existed and not handoff_ours(memdir, args.id) and not args.force:
+        fail(f"{handoff_name(args.id)} already exists and was not written by this "
+             f"command (no `# Handoff T{args.id:03d}` header) — writing the briefing "
+             f"would destroy it. Nothing was written. Move it out of the way, or "
+             f"overwrite it on purpose with --force: {path}")
     write_atomic(path, candidate)
     print(("rewrote " if existed else "wrote ") + path)
     # the item is the briefing's only discovery path, and the only thing a close
@@ -2357,6 +2406,8 @@ def main():
     hf.add_argument("--skills", help="field 4 (optional) — skills the next "
                     "session should reach for")
     hf.add_argument("--pitfalls", help="field 5 (optional) — known traps")
+    hf.add_argument("--force", action="store_true",
+                    help="overwrite a file of this name that this command did not write")
 
     b = sub.add_parser("bump", parents=[common],
                        help="move an item to the top of the queue's global order")

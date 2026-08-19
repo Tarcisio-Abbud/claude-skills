@@ -1391,9 +1391,9 @@ MUTATIONS = [
 
     ("T122 a CLOSED item still counts as reaching the briefing, so it is kept forever",
      '        if kind != "item-open":\n            continue\n        iid = item_id(text)\n'
-     '        if iid is None:\n            continue\n        if iid == n or n in handoff_refs(text):',
+     '        if iid == n or n in handoff_refs(text):',
      '        if kind == "other":\n            continue\n        iid = item_id(text)\n'
-     '        if iid is None:\n            continue\n        if iid == n or n in handoff_refs(text):',
+     '        if iid == n or n in handoff_refs(text):',
      ["TestHandoffLifecycle.test_a_TICKED_sibling_no_longer_holds_the_briefing_open"]),
 
     ("T122 the existence check is inverted: an existing briefing is skipped",
@@ -1416,6 +1416,49 @@ MUTATIONS = [
      'HANDOFF_REF_RE = re.compile(r"\\[\\[handoff-T([0-9]{3,})\\]\\]")',
      ["TestHandoffLifecycle.test_a_link_without_the_writers_zero_padding_still_holds"]),
 
+    ("T122 the collection stops asking whether the file is OURS",
+     "        if not handoff_ours(memdir, n):", "        if handoff_ours(memdir, n):",
+     ["TestHandoffLifecycle.test_a_file_this_command_did_not_write_is_never_deleted",
+      "TestHandoffLifecycle.test_done_removes_the_briefing_in_the_same_command"]),
+
+    ("T122 the ownership header is asked without the writer's zero-padding",
+     '            return f.readline().startswith(f"# Handoff T{n:03d}")',
+     '            return f.readline().startswith(f"# Handoff T{n}")',
+     ["TestHandoffLifecycle.test_done_removes_the_briefing_in_the_same_command"]),
+
+    ("T122 an UNREADABLE file counts as ours, so a directory reaches os.remove",
+     "    except OSError:\n        return False", "    except OSError:\n        return True",
+     ["TestHandoffLifecycle.test_a_DIRECTORY_at_the_briefing_name_does_not_fail_the_close"]),
+
+    ("T122 --force stops overriding the write guard, so the remedy is a dead end",
+     "    if existed and not handoff_ours(memdir, args.id) and not args.force:",
+     "    if existed and not handoff_ours(memdir, args.id):",
+     ["TestHandoffCreation.test_writing_over_a_file_this_command_did_not_write_is_refused"]),
+
+    ("T122 the write guard fires on OUR briefing and spares the stranger's file",
+     "    if existed and not handoff_ours(memdir, args.id) and not args.force:",
+     "    if existed and handoff_ours(memdir, args.id) and not args.force:",
+     ["TestHandoffCreation.test_rewriting_OUR_own_briefing_needs_no_force",
+      "TestHandoffCreation.test_writing_over_a_file_this_command_did_not_write_is_refused"]),
+
+    ("T122 an unnumbered open item is dropped from the holders (a wrong DELETE)",
+     '            out.append(f"T{iid:03d}" if iid is not None else "an unnumbered item")',
+     '            out.append(f"T{iid:03d}") if iid is not None else None',
+     ["TestHandoffLifecycle.test_an_UNNUMBERED_open_item_holds_the_briefing_it_points_at"]),
+
+    ("T122 an unnumbered holder is formatted as an ID and crashes an applied close",
+     '            out.append(f"T{iid:03d}" if iid is not None else "an unnumbered item")',
+     '            out.append(f"T{iid:03d}")',
+     ["TestHandoffLifecycle.test_an_UNNUMBERED_open_item_holds_the_briefing_it_points_at"]),
+
+    ("T122 the OWNER is recognised only by a pointer it was never forced to write",
+     "        if iid == n or n in handoff_refs(text):", "        if n in handoff_refs(text):",
+     ["TestHandoffLifecycle.test_the_OWNER_holds_its_briefing_even_when_it_never_points_at_it"]),
+
+    ("T122 the empty-field refusal reads as a singular whatever the count",
+     '        verb = "carries" if len(empty) == 1 else "carry"', '        verb = "carries"',
+     ["TestHandoffCreation.test_TWO_empty_fields_read_as_a_plural"]),
+
     ("T122 the two-field remedy is printed as a LIST argparse refuses",
      "        remedy = \" \".join(f'{f} \"none\"' for f in empty)",
      "        remedy = ', '.join(empty) + ' \"none\"'",
@@ -1425,10 +1468,6 @@ MUTATIONS = [
      '        forced = " --force" if len(block) + len(link) + 1 > CEILING else ""',
      '        forced = ""',
      ["TestHandoffCreation.test_the_remedy_never_truncates_the_item_it_rewrites"]),
-
-    ("T122 a briefing that cannot be removed kills an ALREADY APPLIED close",
-     "        except OSError as e:", "        except FileNotFoundError as e:",
-     ["TestHandoffLifecycle.test_a_briefing_that_cannot_be_removed_does_not_fail_the_close"]),
 
     ("T122 an ABSENT optional field writes an empty section instead of none",
      "        if not body and not mandatory:", "        if not body and mandatory:",
@@ -1450,7 +1489,8 @@ MUTATIONS = [
     ("T122 `edit` stops collecting the briefing it dropped the last pointer to",
      "    dropped = handoff_refs(block) - handoff_refs(new)",
      "    dropped = handoff_refs(new) - handoff_refs(block)",
-     ["TestHandoffLifecycle.test_edit_collects_a_briefing_it_stops_pointing_at"]),
+     ["TestHandoffLifecycle.test_edit_collects_a_briefing_it_stops_pointing_at",
+      "TestHandoffLifecycle.test_an_IMPLICIT_deferred_clear_still_collects_the_pointer_it_dropped"]),
 
     ("T122 `edit` collects a briefing another OPEN item still points at",
      "        handoff_collect(memdir, splice(content, block, start, new), dropped)",
