@@ -126,10 +126,10 @@ tk-queue list                                  # open items with IDs (T001…)
 tk-queue add "<action>" --class AUTONOMOUS --effort "M (~30min)" \
          --criterion "A: <command that proves it> | B: user verdict" \
          [--deferred "<why the decision could not be asked>"]   # REQUIRED by --class DECISION
-         [--risk "..."|none] [--project slug] [--source "..."]
+         [--risk "..."|none] [--env <name from the site roster>|none] [--project slug] [--source "..."]
 tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."] [--force]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."] [--force]
-tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--criterion ...] [--deferred ...] [--project slug] [--force]
+tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--env ...|none] [--criterion ...] [--deferred ...] [--project slug] [--force]
 tk-queue bump <id>                             # move the item to the top of the global order
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
 tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs
@@ -209,6 +209,20 @@ re-triages; tracker tickets are referenced, not mirrored):
   migration it fears already ran — and a stale Risk keeps the item out of every afk package
   forever. `--risk ''` cannot do that job: it is indistinguishable from "flag not passed",
   so it is a silent no-op. Re-triaging a Risk means clearing it, not rewording it.
+- **Env** — WHERE the item runs, when that is not "here". Orthogonal to the class: the
+  class says what the item is waiting for, Env says which machine can execute it. Absent =
+  the machine that owns this queue (queues are per machine and do not sync, so that is the
+  natural default and the field appears only in the exception). One environment per item —
+  an item that is half here and half elsewhere is SLICED in triage, one item per machine.
+  The value is validated by exact equality against the roster in the **site file**
+  (`~/.claude/tk/env`), and a value outside it is refused, never warned: an environment
+  nothing validated is a phantom one — an item no machine ever picks up, with no error to
+  say why. No site file, no `--env`: the flag is refused with the file to create, since the
+  plugin ships no machine name of its own (same design as git's `user.name`). That file also
+  carries this machine's identity and its two subagent ceilings, local and cloud; its format
+  is documented in `bin/tk_site.py`. **`--env none` DELETES the field** (on `add`, writes
+  none in the first place) — the stale-Risk failure again: an item pinned to a machine it
+  needed before it was re-sliced would sit out every package here forever.
 - **Criterion** — acceptance criterion, required on `add` (and it must not be blank): `A:`
   a deterministic check (a command whose pass proves the item done) or `B:` the user's
   verdict. `edit` keeps it optional, because items created before the field was mandatory
