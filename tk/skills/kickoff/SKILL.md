@@ -133,6 +133,10 @@ tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [
 tk-queue bump <id>                             # move the item to the top of the global order
 tk-queue claim <id> --as <session/host label>  # take it, so a sibling session does not work it too
 tk-queue release <id>                          # hand a claimed item back, WITHOUT closing it
+tk-queue handoff <id> --objective "..." --state "..." --blockers "..." \
+         [--skills "..."] [--pitfalls "..."]   # the item's full briefing, in handoff-T<id>.md
+                                               # beside next-steps.md; DELETED when the item
+                                               # is closed (`tk-queue handoff --help`)
 tk-queue pack                                  # candidates for an unattended package:
                                                # eligible items in queue order, plus every
                                                # exclusion with the value that caused it

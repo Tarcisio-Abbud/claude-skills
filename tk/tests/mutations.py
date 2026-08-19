@@ -1348,6 +1348,81 @@ MUTATIONS = [
      "READERS = frozenset((\"list\", \"report\", \"pack\"))",
      "READERS = frozenset((\"list\", \"report\"))",
      ["TestTargetQueueAnnounced.test_readers_stay_silent"]),
+
+    # --- T122 handoff: the briefing that lives and dies with the item --------
+    ("T122 the write gate asks a PROXY instead of the composed briefing",
+     "    if heads != composed:", "    if heads != heads:",
+     ["TestHandoffCreation.test_a_heading_inside_a_value_is_refused_and_the_remedy_runs",
+      "TestHandoffCreation.test_a_level_one_heading_inside_a_value_is_refused_too"]),
+
+    ("T122 an empty mandatory field composes a briefing nobody filled",
+     "    blank = [h for h, body in got[1:] if not body]",
+     "    blank = [h for h, body in got[1:] if body is None]",
+     ["TestHandoffCreation.test_a_mandatory_field_with_no_text_is_refused_and_the_remedy_runs",
+      "TestHandoffCreation.test_the_blockers_field_is_mandatory_too"]),
+
+    ("T122 a blank MANDATORY field is dropped from the file, so the gate never sees it",
+     "        if not body and not mandatory:", "        if not body:",
+     ["TestHandoffCreation.test_a_mandatory_field_with_no_text_is_refused_and_the_remedy_runs"]),
+
+    ("T122 **Blockers and notes** stops being mandatory",
+     '    ("blockers", "Blockers and notes", True),',
+     '    ("blockers", "Blockers and notes", False),',
+     ["TestHandoffCreation.test_the_blockers_field_is_mandatory_too"]),
+
+    ("T122 sub-structure inside a field is framed like a field",
+     'HANDOFF_HEADING_RE = re.compile(r"^#{1,2} .*$", re.M)',
+     'HANDOFF_HEADING_RE = re.compile(r"^#+ .*$", re.M)',
+     ["TestHandoffCreation.test_a_deeper_heading_is_sub_structure_and_passes"]),
+
+    ("T122 the briefing's fate is read from the queue BEFORE the close, not after",
+     "    dead, kept = handoff_disposition(memdir, excise(content, block, start), args.id, block)",
+     "    dead, kept = handoff_disposition(memdir, content, args.id, block)",
+     ["TestHandoffLifecycle.test_done_removes_the_briefing_in_the_same_command",
+      "TestHandoffLifecycle.test_cancel_removes_it_too"]),
+
+    ("T122 a campaign's briefing is never a candidate, so the last item leaves it orphaned",
+     "    for n in sorted({iid} | handoff_refs(block)):", "    for n in sorted({iid}):",
+     ["TestHandoffLifecycle.test_a_campaign_briefing_outlives_its_anchor_and_dies_with_the_last_item"]),
+
+    ("T122 the item's OWN briefing is not a candidate",
+     "    for n in sorted({iid} | handoff_refs(block)):", "    for n in sorted(handoff_refs(block)):",
+     ["TestHandoffLifecycle.test_cancel_removes_it_too"]),
+
+    ("T122 a CLOSED item still counts as reaching the briefing, so it is kept forever",
+     '        if kind != "item-open":\n            continue\n        iid = item_id(text)\n'
+     '        if iid is None:\n            continue\n        if iid == n or n in handoff_refs(text):',
+     '        if kind == "other":\n            continue\n        iid = item_id(text)\n'
+     '        if iid is None:\n            continue\n        if iid == n or n in handoff_refs(text):',
+     ["TestHandoffLifecycle.test_a_TICKED_sibling_no_longer_holds_the_briefing_open"]),
+
+    ("T122 the existence check is inverted: an existing briefing is skipped",
+     "        if not os.path.exists(path):\n            continue\n        holders = handoff_holders(after, n)",
+     "        if os.path.exists(path):\n            continue\n        holders = handoff_holders(after, n)",
+     ["TestHandoffLifecycle.test_done_removes_the_briefing_in_the_same_command",
+      "TestHandoffLifecycle.test_a_pointer_to_a_briefing_that_was_never_written_closes_cleanly"]),
+
+    ("T122 an overwrite reports itself as a first write",
+     "    existed = os.path.exists(path)", "    existed = False",
+     ["TestHandoffCreation.test_writing_it_again_overwrites_and_never_accumulates"]),
+
+    ("T122 the discovery-path warning fires even when the item DOES point at it",
+     "    if args.id not in handoff_refs(block):", "    if args.id not in set():",
+     ["TestHandoffCreation.test_the_missing_pointer_warning_names_a_remedy_that_runs"]),
+
+    ("T122 the printed remedy is not quoted for a shell",
+     "f\"{shlex.quote(fixed)}`.\", file=sys.stderr)", "f\"{fixed}`.\", file=sys.stderr)",
+     ["TestHandoffCreation.test_the_missing_pointer_warning_names_a_remedy_that_runs"]),
+
+    ("T122 the remedy prints an ABBREVIATED copy of the text it tells you to write back",
+     "        fixed = f\"{item_title(block, limit=10 ** 6)} [[handoff-T{args.id:03d}]]\"",
+     "        fixed = f\"{item_title(block, limit=400)} [[handoff-T{args.id:03d}]]\"",
+     ["TestHandoffCreation.test_the_remedy_never_truncates_the_item_it_rewrites"]),
+
+    ("T122 a briefing is written for an item that is not open (an orphan at birth)",
+     "    content, block, start = find_open_item(memdir, args.id)\n    values = {dest:",
+     '    content, block, start = "", "", 0\n    values = {dest:',
+     ["TestHandoffCreation.test_an_item_that_is_not_open_gets_no_briefing"]),
 ]
 
 
