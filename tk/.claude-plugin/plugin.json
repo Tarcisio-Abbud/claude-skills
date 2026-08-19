@@ -1,7 +1,7 @@
 {
   "name": "tk",
-  "version": "2.0.0",
-  "description": "Session and engineering flow: kickoff (session open, dispatches the next-steps queue; afk/pack package modes), wrap-up (session close with a versioning gate; afk mode), dispatch (task → execution mechanism), docs-audit (docs vs. code). Site-specific integrations plug in via ~/.claude/tk/<skill>.md extension files.",
+  "version": "2.1.0",
+  "description": "Session and engineering flow: kickoff (session open, dispatches the next-steps queue; afk/pack package modes), wrap-up (session close with a versioning gate; afk mode), dispatch (task → execution mechanism), docs-audit (docs vs. code), verify (the item's acceptance criterion as the ruler of the delivery). Site-specific integrations plug in via ~/.claude/tk/<skill>.md extension files.",
   "author": {
     "name": "Tarcisio-Abbud"
   }
