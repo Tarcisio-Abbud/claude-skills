@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""tk-roster — which projects on this machine have a queue, and where to open one.
+
+The fleet orchestrates whatever has pending work, and it finds that out by
+SWEEPING the disk: there is no hand-kept list of projects anywhere, because a
+hand-kept list is wrong the day a project is added and nobody notices until the
+work in it is never dispatched.
+
+WHAT COUNTS AS A PROJECT WITH A QUEUE: a directory under `~/.claude/projects`
+whose `memory/next-steps.md` exists. That file is the queue `/tk:kickoff`
+dispatches, so its absence means there is nothing to dispatch — a directory
+carrying only `done-log.md` is a project whose work is FINISHED, and it is
+skipped, not reported as empty. Nothing here reads INSIDE the file: what an item
+says is `tk-queue`'s grammar, and a second reader of it would be a second answer
+to what an item is. This bin answers one question — which queues exist and where
+their projects are — and hands `tk-queue` the directory to answer the rest.
+
+THE PROJECT'S PATH is not stored anywhere: `tk-queue` derives the queue's
+directory NAME from the working directory, by replacing every character outside
+`[A-Za-z0-9-]` with `-`, and that encoding is one-way (`/workspace/projects/x-y`
+and `/workspace/projects/x/y` both encode to `-workspace-projects-x-y`). So the
+path is recovered by walking the filesystem for directories that encode to the
+name — exact when one directory matches, and reported as NOT DISPATCHABLE when
+none or several do, which is the honest answer: a fleet that guesses opens a
+session in the wrong project.
+
+THE ALLOW/DENYLIST is `fleet-allow` / `fleet-deny` in the site file
+(`~/.claude/tk/env`, parsed by tk_site.py beside this script). Absent, every
+queue enters — the sweep is the default and the lists are the exception. A
+listed project may be named by its directory or by its absolute path, and an
+entry that matched NOTHING is reported: an unknown key in that file is ignored
+by design, so a mistyped `fleet-deny` would otherwise sweep exactly the project
+it was written to keep out, silently.
+"""
+
+import argparse
+import os
+import re
+import sys
+
+# the site file's reader, beside this script. Inserted explicitly rather than
+# relied on: sys.path[0] is the script's directory only when Python launched
+# THIS file, and the suite also loads it as a module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tk_site      # noqa: E402  (the path above is what makes it importable)
+
+PROJECTS_DIR = os.path.join("~", ".claude", "projects")
+MEMORY_DIR = "memory"
+QUEUE_FILE = "next-steps.md"
+# the encoding `tk-queue` applies to the working directory to find its queue.
+# The rule lives there too, inline in memory_dir(); it is repeated here because
+# this bin has to run the SAME rule backwards, and the two copies are the same
+# three characters — see the delivery note on the ticket for the merge
+UNSAFE = re.compile(r"[^A-Za-z0-9-]")
+
+
+def fail(msg):
+    sys.exit(f"tk-roster: {msg}")
+
+
+def projects_root():
+    """Resolved at call time, never at import: a caller may set HOME (the test
+    suite does, to sweep a tree of its own instead of the real machine's)."""
+    return os.path.expanduser(PROJECTS_DIR)
+
+
+def project_slug(path):
+    """The directory name `tk-queue` keeps a queue for `path` under."""
+    return UNSAFE.sub("-", path)
+
+
+def queues(root):
+    """(name, memory dir) for every project directory that HAS a queue."""
+    try:
+        names = sorted(os.listdir(root))
+    except OSError as e:
+        # not a failure of this machine's setup: a machine where no session ever
+        # ran has no such directory, and an empty roster is the true answer
+        if isinstance(e, FileNotFoundError):
+            return []
+        fail(f"{root} cannot be listed: {e.strerror}. That is where every project's "
+             "queue lives, so there is nothing to sweep until it is readable.")
+    return [(name, os.path.join(root, name, MEMORY_DIR))
+            for name in names
+            if os.path.isfile(os.path.join(root, name, MEMORY_DIR, QUEUE_FILE))]
+
+
+def project_paths(name, root="/"):
+    """Every directory whose slug is `name`, found by walking the filesystem.
+
+    Symlinked directories are stepped over: `os.getcwd()` — what the encoding
+    was applied to — never contains one, so a symlink can only add a second
+    spelling of a directory already reachable, and turn a real answer into an
+    ambiguous one (a link pointing at its own ancestor turns it into a hang).
+    """
+    if not name.startswith("-"):
+        # every queue directory encodes an ABSOLUTE path, so it opens with the
+        # leading '/'. A name that does not is not one of ours to resolve
+        return []
+    found = []
+
+    def walk(rest, here):
+        rest = rest[1:]              # the separator this level was reached by
+        if not rest:
+            found.append(here)
+            return
+        try:
+            entries = sorted(os.scandir(here), key=lambda e: e.name)
+        except OSError:
+            return                   # unreadable branch: no candidate, no crash
+        for entry in entries:
+            try:
+                if not entry.is_dir(follow_symlinks=False):
+                    continue
+            except OSError:
+                continue
+            encoded = project_slug(entry.name)
+            if rest == encoded:
+                found.append(os.path.join(here, entry.name))
+            elif rest.startswith(encoded + "-"):
+                walk(rest[len(encoded):], os.path.join(here, entry.name))
+
+    walk(name, root)
+    return found
+
+
+def list_key(entry):
+    """The queue directory name a site-file list entry names."""
+    return project_slug(entry) if entry.startswith("/") else entry
+
+
+def excluded_by(name, allow, deny):
+    """Which list keeps `name` out of the sweep, or None when nothing does.
+
+    `fleet-deny` is consulted FIRST: a project in both lists is denied, because
+    a "do not touch" a second list can overrule protects nothing.
+    """
+    if any(list_key(e) == name for e in deny):
+        return "fleet-deny"
+    if allow and not any(list_key(e) == name for e in allow):
+        return "fleet-allow"
+    return None
+
+
+def load_site():
+    """The site file, or None when there is none — reported and NOT fatal.
+
+    The two cases are answered differently on purpose: a file that does not
+    exist is a machine that never needed one, and the sweep has a defined
+    answer without it (no lists, every queue enters). A file that exists and is
+    unusable is a defect with a line number, and running the fleet off a
+    half-read one is how a project the user excluded gets swept anyway.
+    """
+    try:
+        site = tk_site.load()
+    except tk_site.SiteError as e:
+        fail(str(e))
+    if site is None:
+        print(f"tk-roster: no site file at {tk_site.site_path()}, so no allow/denylist "
+              "— every queue on this machine enters.", file=sys.stderr)
+    return site
+
+
+def main(argv=None):
+    argparse.ArgumentParser(
+        prog="tk-roster",
+        description="The projects on this machine that have a queue, and the "
+                    "directory to open a session in for each.",
+    ).parse_args(argv)
+
+    site = load_site()
+    allow = site.fleet_allow if site else ()
+    deny = site.fleet_deny if site else ()
+
+    root = projects_root()
+    swept, held, blind, listed = [], [], [], set()
+    for name, memdir in queues(root):
+        keeper = excluded_by(name, allow, deny)
+        if keeper:
+            held.append((name, keeper))
+            listed.add(name)
+            continue
+        listed.add(name)
+        paths = project_paths(name)
+        if len(paths) == 1:
+            swept.append((name, paths[0]))
+        else:
+            blind.append((name, memdir, paths))
+
+    if swept:
+        print(f"## roster — {len(swept)} project(s) to sweep\n")
+        width = max(len(name) for name, _ in swept)
+        for name, path in swept:
+            print(f"{name.ljust(width)}  {path}")
+    else:
+        print("## roster — no project on this machine has a queue to sweep")
+
+    if blind:
+        print("\n## not dispatchable — no single directory encodes to the name\n")
+        for name, memdir, paths in blind:
+            why = (f"{len(paths)} directories encode to it: {', '.join(paths)}"
+                   if paths else "the project directory is gone")
+            print(f"{name}\n  queue: {memdir}\n  {why}")
+
+    if held:
+        print("\n## excluded by the site file\n")
+        for name, keeper in held:
+            print(f"{name}  ({keeper})")
+
+    # an entry that matched nothing, reported because the site file IGNORES an
+    # unknown key: `fleet-denny = x` reads as no list at all, and the project it
+    # names would be swept with no sign that a line meant to stop it exists
+    for key, entries in (("fleet-allow", allow), ("fleet-deny", deny)):
+        unmatched = [e for e in entries if list_key(e) not in listed]
+        if unmatched:
+            print(f"\n## `{key}` names no queue on this machine\n")
+            for entry in unmatched:
+                shown = f"{entry} → {list_key(entry)}" if entry.startswith("/") else entry
+                print(f"{shown}  (nothing under {root} has that name)")
+
+
+if __name__ == "__main__":
+    main()
