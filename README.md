@@ -70,8 +70,8 @@ Every subagent an orchestrator dispatches gets its model, reasoning effort and *
 (local × cloud) from `tk/reference/subagent-policy.md` — one row per role, the hybrid rule
 that lets the orchestrator deviate by logging one line, and the venue eligibility test
 (cloud only where the proof fits in the pushed repo). Its role table is delimited and
-carries its own parsing schema, so the bin that generates the subagent contract block reads
-those cells verbatim instead of keeping a second copy.
+carries its own parsing schema, so a generator injecting those cells into a subagent's
+contract block reads them verbatim instead of keeping a second copy.
 
 ## The `tk-cowork` plugin
 

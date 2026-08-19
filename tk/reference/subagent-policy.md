@@ -4,8 +4,8 @@ The default for every subagent an orchestrator dispatches: which model runs it, 
 reasoning effort, and in which **venue** (local × cloud). One role, one row.
 
 The policy is **hybrid**. The table below is the default, and the orchestrator may deviate in
-any direction — it is the one holding the case in front of it. Every deviation is logged in
-the digest as one line, so the reader sees the choice next to its reason:
+any direction — it is the one holding the case in front of it. Every deviation is logged as
+one line in the summary the run hands back, so the reader sees the choice next to its reason:
 
 ```
 role: default→used — reason
@@ -24,8 +24,9 @@ A consumer that copies the values into itself has forked the policy — read the
 
 - The rows live between the literal lines `<!-- tk:roles schema=1 -->` and `<!-- /tk:roles -->`.
   A parser reads only what sits between them.
-- Inside, every line beginning with `|` is a row. The first is the **header**, the second is
-  the Markdown alignment row (`|---|`) and is skipped; the rest are **data rows**, one per role.
+- Inside, every line beginning with `|` is a row, in fixed positions: the first is the
+  **header**, the second is the Markdown alignment row (one `---` cell per column) and is
+  skipped, and every row after those two is a **data row**, one per role.
 - A row is split on `|`; the leading and trailing empty fields from the outer pipes are
   dropped, and each cell is stripped of surrounding whitespace. Cells never contain `|`.
 - Columns, in this order: **role**, **model**, **effort**, **venue**, **note**.
@@ -45,9 +46,9 @@ A consumer that copies the values into itself has forked the policy — read the
 | verifier-1 | sonnet | session | local | Refutes a finding. A finding that would edit a spec or a ticket goes on to verifier-2. |
 | verifier-2 | parent | high | local | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
 | tiebreak | parent | high | local | Settles a split verdict. Effort is pinned. |
-| implementer | parent | session | local | Downgradable to sonnet on a mechanical, fully specified ticket — one artifact, kill criterion given. Log the downgrade. |
+| implementer | parent | session | local | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
 | research | sonnet | session | cloud | Rises to parent when the question turns on fine judgement. Log the rise. |
-| review | sonnet | session | cloud | Second pair of eyes. Returns text to the orchestrator, which relays it — a cloud agent reaches no tracker of its own. |
+| review | sonnet | session | cloud | Second pair of eyes. Follows the finder rows: it returns findings for someone else to judge, not a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
 | explore | haiku | session | local | Pure search and file location, no verdict. |
 <!-- /tk:roles -->
 
