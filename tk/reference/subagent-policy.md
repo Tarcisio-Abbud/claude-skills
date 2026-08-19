@@ -4,8 +4,9 @@ The default for every subagent an orchestrator dispatches: which model runs it, 
 reasoning effort, and in which **venue** (local × cloud). One role, one row.
 
 The policy is **hybrid**. The table below is the default, and the orchestrator may deviate in
-any direction — it is the one holding the case in front of it. Every deviation is logged as
-one line in the summary the run hands back, so the reader sees the choice next to its reason:
+any direction — it is the one holding the case in front of it. Every deviation costs one
+line, written where the orchestrator hands the run back to the human, so the reader sees the
+choice next to its reason:
 
 ```
 role: default→used — reason
@@ -48,7 +49,7 @@ A consumer that copies the values into itself has forked the policy — read the
 | tiebreak | parent | high | local | Settles a split verdict. Effort is pinned. |
 | implementer | parent | session | local | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
 | research | sonnet | session | cloud | Rises to parent when the question turns on fine judgement. Log the rise. |
-| review | sonnet | session | cloud | Second pair of eyes. Follows the finder rows: it returns findings for someone else to judge, not a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
+| review | sonnet | session | cloud | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
 | explore | haiku | session | local | Pure search and file location, no verdict. |
 <!-- /tk:roles -->
 
