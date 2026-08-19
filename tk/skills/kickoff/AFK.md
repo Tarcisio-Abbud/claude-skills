@@ -9,8 +9,9 @@ run unattended. `afk` fires it with zero interaction: the user typed the command
 Eligible: items triaged **AUTONOMOUS** that carry **no Risk line** — a Risk the triage
 finds OBSOLETE (it names a branch since merged, a migration since run) is cleared on the
 spot with `tk-queue edit <id> --risk none`, which is what keeps a stale line from
-excluding the item forever. Order by
-impact/urgency, then add items while the package still fits ONE session: the parent only
+excluding the item forever. Take them in the
+queue's own order — priority IS the order of the file, and `tk-queue bump <id>` is what
+moves an item to the top — then add items while the package still fits ONE session: the parent only
 orchestrates and verifies — yet each item still costs context to dispatch, monitor and
 check. Guidance: stop around 3–6 items or ~2h of summed Effort; leaving an eligible item
 out beats a session too long to verify its own work.
@@ -52,5 +53,7 @@ reflects it.
 The user returns to ONE message: (a) what was done, with the verifying evidence; (b)
 eligible items left out for size — the ready line to run them is another `/tk:kickoff afk`;
 (c) DECISION/BLOCKED/EXTERNAL items untouched, as in a normal kickoff close. Settle any
-remaining queue changes through `tk-queue` (`add`/`edit`/`done`/`cancel`) last.
+remaining queue changes through `tk-queue` (`add`/`edit`/`done`/`cancel`) last — a DECISION
+registered with nobody to ask carries `--deferred afk`, which is the only thing that
+distinguishes it from a decision nobody bothered to ask.
 **Done when:** the report covers (a)–(c) and `next-steps.md` matches the post-run queue.
