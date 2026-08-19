@@ -23,7 +23,9 @@ item still costs context to dispatch, monitor and check. Guidance: stop around 3
 or ~2h of summed Effort; leaving an eligible item out beats a session too long to verify
 its own work.
 **Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45"),
-and every eligible item left out is noted with the reason.
+and every item left out is noted with the reason — the eligible ones dropped for size AND
+the ones ruled out by Risk or by Env, which are not eligible at all and would otherwise
+leave no trace anywhere.
 
 ## 2. `pack` only: confirm
 
@@ -59,8 +61,13 @@ reflects it.
 
 The user returns to ONE message: (a) what was done, with the verifying evidence; (b)
 eligible items left out for size — the ready line to run them is another `/tk:kickoff afk`;
-(c) DECISION/BLOCKED/EXTERNAL items untouched, as in a normal kickoff close. Settle any
+(c) DECISION/BLOCKED/EXTERNAL items untouched, as in a normal kickoff close; (d) items
+bound to ANOTHER environment, in a block of their own beside (c), each marked "runs on: X".
+(d) is not a variant of (b): those items were never eligible here, so a report shaped only
+around (b) drops them silently — and an item nothing on this machine can run is precisely
+the one the user has to see, since only they can take it to the machine that runs it.
+Settle any
 remaining queue changes through `tk-queue` (`add`/`edit`/`done`/`cancel`) last — a DECISION
 registered with nobody to ask carries `--deferred afk`, which is the only thing that
 distinguishes it from a decision nobody bothered to ask.
-**Done when:** the report covers (a)–(c) and `next-steps.md` matches the post-run queue.
+**Done when:** the report covers (a)–(d) and `next-steps.md` matches the post-run queue.

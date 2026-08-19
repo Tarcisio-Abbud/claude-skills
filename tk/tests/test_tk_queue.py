@@ -97,11 +97,14 @@ class QueueTest(unittest.TestCase):
         with open(path, encoding="utf-8") as f:
             return f.read()
 
-    def run_tk(self, *argv, cwd=None):
+    def run_tk(self, *argv, cwd=None, timeout=None):
+        # `timeout` is not decoration: a command that BLOCKS (a FIFO where a file
+        # was expected) would otherwise hang the whole suite instead of failing
+        # one test, and a suite that never finishes reports nothing at all
         env = dict(os.environ, HOME=self.home)
         return subprocess.run([sys.executable, TK, *argv, "--dir", self.mem],
                               capture_output=True, text=True, cwd=cwd or self.dir,
-                              env=env)
+                              env=env, timeout=timeout)
 
 
 # --- T025: the displayed ID form must be accepted ------------------------
@@ -1879,19 +1882,50 @@ class TestEnvField(QueueTest):
                 make()
                 r = self.run_tk(*self.ADD, "--env", "bravo")
                 self.assertEqual(r.returncode, 1, r.stdout)
+                # the ONLY assertion here that separates a diagnosis from a crash —
+                # measured: on a raw traceback the other two pass anyway, one on the
+                # `tk-queue: queue: …` line printed before the crash, the other on the
+                # path embedded in the traceback itself. They check the message's
+                # CONTENT and are not redundant, but neither can stand in for this one
                 self.assertNotIn("Traceback", r.stderr)
                 self.assertIn("tk-queue:", r.stderr)      # our diagnosis, not the interpreter's
                 self.assertIn("env", r.stderr)            # and it names the file
                 self.assertNotIn("- [ ]", self.body())
 
-    def test_a_byte_order_mark_does_not_swallow_the_first_key(self):
-        """An editor that writes a BOM glues it to the first key, and `identity`
-        then reads as ABSENT while sitting in plain view on line 1 — a diagnosis
-        that sends the reader hunting a line that is already correct."""
-        self.site("﻿identity = alpha\nenvironments = alpha, bravo\n")
-        r = self.run_tk(*self.ADD, "--env", "bravo")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("**Env:** bravo.", self.body())
+    def test_a_byte_order_mark_does_not_swallow_a_key(self):
+        """An editor that writes a BOM glues it to the following key, and that
+        key then reads as ABSENT while sitting in plain view — a diagnosis that
+        sends the reader hunting a line that is already correct.
+
+        Three placements, because `utf-8-sig` would only answer the first: one
+        BOM at the head of the file, TWO (a file saved twice, or two files
+        concatenated), and one at the head of a later line."""
+        for label, text in (
+                ("leading", "﻿identity = alpha\nenvironments = alpha, bravo\n"),
+                ("doubled", "﻿﻿identity = alpha\nenvironments = alpha, bravo\n"),
+                ("mid-file", "identity = alpha\n﻿environments = alpha, bravo\n")):
+            with self.subTest(placement=label):
+                self.seed()
+                self.site(text)
+                r = self.run_tk(*self.ADD, "--env", "bravo")
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("**Env:** bravo.", self.body())
+
+    def test_a_site_file_that_is_not_a_plain_file_is_refused_and_never_HANGS(self):
+        """`open()` on a FIFO with no writer does not raise — it blocks, and the
+        session stops with no output at all. A hang is worse than the traceback
+        the read guards replace: nothing on screen names the cause."""
+        d = os.path.join(self.home, ".claude", "tk")
+        os.makedirs(d, exist_ok=True)
+        os.mkfifo(os.path.join(d, "env"))
+        try:
+            r = self.run_tk(*self.ADD, "--env", "bravo", timeout=20)
+        except subprocess.TimeoutExpired:
+            self.fail("tk-queue hung reading a FIFO site file instead of refusing it")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("not a plain file", r.stderr)
+        self.assertNotIn("- [ ]", self.body())
 
     def test_a_duplicate_key_is_refused(self):
         """Last-wins is how a line the user believes they replaced keeps

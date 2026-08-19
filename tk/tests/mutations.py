@@ -863,25 +863,43 @@ MUTATIONS = [
      "bin/tk_site.py"),
 
     # a defect does not have to be in the file's TEXT: a site file that is a
-    # directory, or one byte that is not UTF-8, never reaches the parser at all
-    ("T120 site an unreadable file crashes instead of being reported",
-     "    except OSError as e:\n"
-     '        raise SiteError(f"{path} cannot be read: {e.strerror}. It has to be a plain "\n'
-     '                        "text file — check that the path is not a directory and that "\n'
-     '                        "it is readable.")',
-     "    except ZeroDivisionError:\n        raise",
-     ["TestEnvField.test_a_file_that_cannot_be_READ_is_reported_and_not_crashed"],
-     "bin/tk_site.py"),
-
+    # directory, or one byte that is not UTF-8, never reaches the parser at all.
+    #
+    # NO ENTRY for tk_site.load's `except OSError`, deliberately, and this note is
+    # the entry's place. Once the regular-file check went in front of the open(),
+    # every failure a test can CREATE is intercepted before it — a directory, a
+    # FIFO, a socket, a device. What is left for that clause is permission denied
+    # (the suite cannot produce it: the container runs as root, and root bypasses
+    # the mode bits) and the file vanishing between the check and the open (no
+    # hook to drive it). Measured, not assumed: with the clause disabled, the
+    # whole suite stays green. It stays in the source because neither case is
+    # hypothetical for a reader who is not root, and because a traceback on a
+    # permission-denied site file is the exact failure this group of guards
+    # exists to prevent. An entry naming a test that falls for another reason
+    # would be worse than this gap: it would report a proof nobody made.
     ("T120 site a byte that is not UTF-8 crashes instead of being reported",
      "    except UnicodeDecodeError as e:", "    except ZeroDivisionError as e:",
      ["TestEnvField.test_a_file_that_cannot_be_READ_is_reported_and_not_crashed"],
      "bin/tk_site.py"),
 
-    ("T120 site a BOM is glued to the first key (identity reads as absent)",
-     '        with open(path, encoding="utf-8-sig") as f:',
-     '        with open(path, encoding="utf-8") as f:',
-     ["TestEnvField.test_a_byte_order_mark_does_not_swallow_the_first_key"],
+    ("T120 site a BOM is glued to the following key (that key reads as absent)",
+     '            text = f.read().replace("﻿", "")', "            text = f.read()",
+     ["TestEnvField.test_a_byte_order_mark_does_not_swallow_a_key"],
+     "bin/tk_site.py"),
+
+    # the half `utf-8-sig` would have missed: it strips exactly one BOM, at the
+    # very start, so the doubled and mid-file placements put the bug straight back
+    ("T120 site only the FIRST leading BOM is stripped",
+     '            text = f.read().replace("﻿", "")',
+     '            text = f.read().replace("﻿", "", 1)',
+     ["TestEnvField.test_a_byte_order_mark_does_not_swallow_a_key"],
+     "bin/tk_site.py"),
+
+    # open() on a FIFO does not raise, it BLOCKS — the guards above never fire and
+    # the session stops with nothing on screen
+    ("T120 site a file that is not a plain file is opened anyway (the FIFO hang)",
+     "    if not os.path.isfile(path):", "    if False:",
+     ["TestEnvField.test_a_site_file_that_is_not_a_plain_file_is_refused_and_never_HANGS"],
      "bin/tk_site.py"),
 
     ("T120 site a trailing comment becomes part of the value",

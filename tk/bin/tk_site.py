@@ -182,17 +182,30 @@ def load(path=None):
     a path or save from the wrong editor, and the module's whole contract is
     that a defect comes back as a diagnosis.
 
-    `utf-8-sig` for the same reason: an editor that writes a BOM glues it onto
-    the first key, so `identity` read as ABSENT while sitting in plain view on
-    line 1 — the diagnosis was honest about what it saw and useless to the
-    reader, who has no reason to suspect an invisible character.
+    The BOM is stripped for the same reason: an editor that writes one glues it
+    onto the first key, so `identity` read as ABSENT while sitting in plain view
+    on line 1 — a diagnosis honest about what it saw and useless to the reader,
+    who has no reason to suspect an invisible character. It is removed
+    EVERYWHERE rather than by decoding with `utf-8-sig`, which strips exactly
+    one, at the very start: two of them (a file saved twice, or two files
+    concatenated) put the bug straight back, and so does one at the head of any
+    later line. U+FEFF has no legitimate use in a file of slugs and numbers, and
+    `str.strip()` does not remove it — it is not whitespace.
+
+    The regular-file check is the third of these: `open()` on a FIFO with no
+    writer does not raise, it BLOCKS — the session hangs with no output at all,
+    which is worse than the traceback the guards above replace, and no timeout
+    anywhere would explain it.
     """
     path = path or site_path()
     if not os.path.exists(path):
         return None
+    if not os.path.isfile(path):
+        raise SiteError(f"{path} is not a plain file (it is a directory, a device or a "
+                        "pipe). The site file is hand-written text — check the path.")
     try:
-        with open(path, encoding="utf-8-sig") as f:
-            text = f.read()
+        with open(path, encoding="utf-8") as f:
+            text = f.read().replace("﻿", "")
     except OSError as e:
         raise SiteError(f"{path} cannot be read: {e.strerror}. It has to be a plain "
                         "text file — check that the path is not a directory and that "
