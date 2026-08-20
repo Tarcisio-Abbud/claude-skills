@@ -27,13 +27,16 @@ to another session — if that session is known to be gone, hand it back with
 over a malformed field carries its repair in the `repairs:` block. Re-run
 `tk-queue pack` after any of these.
 
-An exclusion naming a value the script has no name for — a field written in
-another language, a class typed by hand — is the one no flag repairs: `edit`
-finds a field by the marker the script itself writes, and the fold the
-`repairs:` block prints is refused outright when the item's own text carries
-markers of its own. The queue contract's remedy for that item is `cancel` +
-`add`, which re-creates it in the contract's own names. Queues older than the
-contract are full of them, so meeting one is ordinary.
+An exclusion naming a class the filter does not recognise — one written in
+another language, which queues older than the contract are full of — takes ONE
+command: `tk-queue edit <id> --class AUTONOMOUS` reaches the field through the
+variants the script already knows (`Classe`, `Esforço`, `Risco`, `Fonte`, …)
+and rewrites it in the contract's own name, keeping the item's id, its place in
+the order and every other field. Reach for `cancel` + `add` only where the field
+chain itself cannot be read, and reach knowing the cost: a new id, the place in
+the order lost, and any prose past the done-log's title cut gone with it. The
+fold the `repairs:` block prints has a limit of its own — it is refused outright
+when the item's text carries a field marker inside it.
 
 **Then cut.** Take the eligible in the order printed — priority IS the order of
 the file, and `tk-queue bump <id>` is what moves an item to the top — then add
@@ -147,7 +150,9 @@ DECISION stays, carrying its handoff.
 
 **Done when:** every package item carries exactly one verify outcome with its evidence block
 in the PR body or on the item, every claim this package took has either left with its item or
-been released, and `tk-queue list` shows the queue as the run left it.
+been released, and `tk-queue list` shows exactly the items the run left open — every item it
+closed gone from that list, every claim it did not close released — or the queue file itself is
+gone, and the report says so instead of a criterion nobody could meet.
 
 ## 5. Measure, and hand the package to the close
 
@@ -182,11 +187,13 @@ An item verify ended at **proof ready**, and one it turned into a **DECISION**, 
 what verify already wrote into them and owe nothing further here: the close is where a
 proof-ready item becomes the DECISION that carries its digest reference.
 
-Items this package never touched owe nothing here: the close's own groups cover the whole
-queue's balance, and this ladder covers only what the package handled.
+The ladder covers what the package handled. The queue items it never visited — the DECISION,
+BLOCKED and EXTERNAL ones — are handed over too, by class: no step of this run looked at them,
+and a close shaped only around what the package touched is where they go silent.
 
 **Done when:** the measurement line and the deviation lines are written, and every item the
-package did not close carries the first rung that applies to it.
+package did not close carries the first rung that applies to it, and the items it never
+visited are handed over by class.
 
 ## 6. Chain the afk wrap-up
 
@@ -220,5 +227,5 @@ queued is listed in the close under the gate that kept it, for the user's **veto
 return — `tk-queue cancel <id> --why "..."` is that veto, and it is one command against a
 finding that would otherwise have been lost to nobody's judgement.
 
-**Done when:** every session finding this session raised sits in the queue behind a named
-gate and is listed in the close for that veto — none discarded, none resolved on the spot.
+**Done when:** the close carries one line per session finding, each matching an item this run
+added to the queue with its gate named — none discarded, none resolved on the spot.
