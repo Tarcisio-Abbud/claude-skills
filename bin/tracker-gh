@@ -2,8 +2,8 @@
 # Runs one `gh` command against the PRIVATE tracker, resolving the tracker and the gh identity
 # in the SAME process that runs it.
 #
-# The indivisibility is the whole point. A shell guard such as `${TRACKER:?}` protects only
-# inside one shell process, and the primary reader of these docs is an agent whose cwd
+# The indivisibility is one half of the point. A shell guard such as `${TRACKER:?}` protects
+# only inside one shell process, and the primary reader of these docs is an agent whose cwd
 # persists between tool calls while its shell state does not: resolve in one call, run `gh` in
 # the next, and the variable is gone. `gh` DISCARDS an empty `-R` and falls back to the cwd's
 # remote — which here is a PUBLIC repo — so the gap does not fail, it silently retargets, for
@@ -13,9 +13,25 @@
 #   bin/tracker-gh issue list -R '{tracker}' --state open
 #   bin/tracker-gh api "repos/{tracker}/issues/66/sub_issues" --paginate
 #
-# `{tracker}` is substituted in every argument. A command that names it nowhere is REFUSED
-# rather than run against the cwd's repo, because forgetting `-R` is the same accident wearing
-# a different hat. Exit 78 is this script refusing; any other status is `gh`'s own.
+# The other half is WHICH repo the command acts on. An earlier version asked only whether
+# `{tracker}` appeared somewhere in the argv, and that is presence, not governance: it
+# accepted `issue create -R other/repo --title "about {tracker}"`, an authenticated WRITE to
+# an arbitrary repo. So every argument that can decide the target is read back after
+# substitution — the value of `-R`/`--repo`, any `repos/<owner>/<repo>` path, any
+# `github.com/<owner>/<repo>` URL — and the command runs only when at least one names the
+# tracker and NONE names anything else. A command that mentions `{tracker}` ten times in a
+# body still goes nowhere if its target is another repo.
+#
+# Exit 78 is this script refusing; any other status is `gh`'s own.
+
+fail() {
+  echo "tracker-gh: $1" >&2
+  shift
+  for line in "$@"; do
+    echo "  $line" >&2
+  done
+  exit 78
+}
 
 tracker=$(git config tk.tracker 2>/dev/null) || tracker=
 gh_dir=$(git config tk.ghConfigDir 2>/dev/null) || gh_dir=
@@ -28,13 +44,27 @@ if [ -z "$gh_dir" ]; then
   missing="$missing tk.ghConfigDir"
 fi
 if [ -n "$missing" ]; then
-  echo "tracker-gh: this clone is not configured —$missing" >&2
-  echo "  git config tk.tracker <owner>/<repo>" >&2
-  echo "  git config tk.ghConfigDir <path to the gh config directory>" >&2
-  echo "Refusing to run gh: with the value empty it would target this repo, which is PUBLIC." >&2
-  exit 78
+  fail "this clone is not configured —$missing" \
+    "git config tk.tracker <owner>/<repo>" \
+    "git config tk.ghConfigDir <path to the gh config directory>" \
+    "Refusing to run gh: with the value empty it would target this repo, which is PUBLIC."
 fi
 
+# The value is compared against argv and pasted into it, so its SHAPE is checked before either.
+# A slug outside this alphabet is not a GitHub slug, and a value carrying `|`, `&` or `\` used
+# to reach `sed`'s replacement text, where `&` means "the whole match" and `|` ended the
+# expression — one corrupted the argument in silence, the other emptied all of them while the
+# run still exited 0.
+if ! printf '%s' "$tracker" |
+    LC_ALL=C grep -q '^[A-Za-z0-9._-][A-Za-z0-9._-]*/[A-Za-z0-9._-][A-Za-z0-9._-]*$'; then
+  fail "tk.tracker is not a GitHub slug: [$tracker]" \
+    "Expected <owner>/<repo>, letters, digits, dot, dash and underscore only." \
+    "git config tk.tracker <owner>/<repo>"
+fi
+
+# Typing the slug into a command line puts it in shell history and in the session transcript,
+# which is the leak this whole arrangement exists to avoid. The placeholder is HYGIENE; the
+# target check below is the safety property, and neither stands in for the other.
 placeholder=no
 for arg in "$@"; do
   case $arg in
@@ -42,19 +72,88 @@ for arg in "$@"; do
   esac
 done
 if [ "$placeholder" = no ]; then
-  echo "tracker-gh: nothing in this command names {tracker}." >&2
-  echo "Say where it goes — 'issue list -R {tracker}', 'api repos/{tracker}/...'." >&2
-  echo "For a command that belongs to THIS repo, such as anything under 'gh pr', run gh directly." >&2
-  exit 78
+  fail "nothing in this command names {tracker}." \
+    "Say where it goes — 'issue list -R {tracker}', 'api repos/{tracker}/...'." \
+    "For a command that belongs to THIS repo, such as anything under 'gh pr', run gh directly."
 fi
+
+# Substitution by shell expansion only. Handing the value to `sed` as replacement text is what
+# made a metacharacter in it corrupt or empty the argument.
+substituted=
+substitute() {
+  rest=$1
+  substituted=
+  while :; do
+    case $rest in
+      *'{tracker}'*)
+        substituted="$substituted${rest%%\{tracker\}*}$tracker"
+        rest=${rest#*\{tracker\}}
+        ;;
+      *)
+        substituted="$substituted$rest"
+        return 0
+        ;;
+    esac
+  done
+}
 
 count=$#
 while [ "$count" -gt 0 ]; do
   arg=$1
   shift
-  set -- "$@" "$(printf '%s' "$arg" | sed "s|{tracker}|$tracker|g")"
+  substitute "$arg"
+  set -- "$@" "$substituted"
   count=$((count - 1))
 done
+
+# Every reference in the final argv that could decide the target. Read from the arguments, so
+# a metacharacter in them is data here, never expression.
+refs=
+add_ref() {
+  if [ -n "$1" ]; then
+    refs="$refs$1
+"
+  fi
+}
+
+previous=
+for arg in "$@"; do
+  case $previous in
+    -R|--repo) add_ref "$arg" ;;
+  esac
+  case $arg in
+    --repo=*) add_ref "${arg#--repo=}" ;;
+    -R=*) add_ref "${arg#-R=}" ;;
+    -R?*) add_ref "${arg#-R}" ;;
+  esac
+  add_ref "$(printf '%s' "$arg" |
+    sed -n 's|.*github\.com/\([A-Za-z0-9._-]\{1,\}\)/\([A-Za-z0-9._-]\{1,\}\).*|\1/\2|p')"
+  add_ref "$(printf '%s' "$arg" |
+    sed -n 's|.*repos/\([A-Za-z0-9._-]\{1,\}\)/\([A-Za-z0-9._-]\{1,\}\).*|\1/\2|p')"
+  previous=$arg
+done
+
+wanted=$(printf '%s' "$tracker" | tr 'A-Z' 'a-z')
+names_tracker=no
+foreign=
+for ref in $refs; do
+  if [ "$(printf '%s' "$ref" | tr 'A-Z' 'a-z')" = "$wanted" ]; then
+    names_tracker=yes
+  elif [ -z "$foreign" ]; then
+    foreign=$ref
+  fi
+done
+
+if [ -n "$foreign" ]; then
+  fail "this command would act on [$foreign], which is not the tracker." \
+    "Naming {tracker} somewhere in the arguments does not make it the target." \
+    "For a command against another repo, run gh directly — without this clone's identity."
+fi
+if [ "$names_tracker" = no ]; then
+  fail "nothing in this command decides the target repo." \
+    "Give it one that does: '-R {tracker}', or an 'api repos/{tracker}/...' path." \
+    "Without one, gh falls back to the cwd's remote, which is PUBLIC."
+fi
 
 GH_CONFIG_DIR=$gh_dir
 export GH_CONFIG_DIR

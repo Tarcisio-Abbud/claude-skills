@@ -50,11 +50,14 @@ branch_name() {
 
 # A branch rarely carries the value's punctuation intact — the idiom is to transliterate the
 # separators, and `leak/Owner-repo` publishes the identity as surely as `leak/Owner/repo`.
-# `/` and `_` are folded to `-` on BOTH sides, which also covers the branch that spells the
-# value intact — so the branch is read through the folded comparison only, never twice. The
-# folding stays on this surface: applied to prose it would refuse ordinary hyphenated phrases.
+# Folding `/` and `_` to `-` was not enough: a dot is not either of them, and a name that
+# drops the separators altogether (`leakOwnerrepo`) still spells the identity. So every
+# character that is not a letter or a digit is REMOVED, on both sides, which collapses all of
+# those to one comparison. The stripping stays on this surface — applied to prose it would
+# start refusing ordinary hyphenated phrases, and a branch name is one short token where the
+# alphanumeric run of a slug does not occur by accident.
 fold_separators() {
-  tr '/_' '--'
+  LC_ALL=C tr -dc 'A-Za-z0-9'
 }
 
 # The added lines of ONE file, joined, so a value the author wrapped across two lines is one

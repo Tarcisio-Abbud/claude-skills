@@ -284,6 +284,26 @@ class GuardTest(unittest.TestCase):
         r.write("a.txt", "entirely innocent\n")
         self.assertRefused(r.commit())
 
+    def test_branch_name_with_other_separators_is_refused(self):
+        """A dot is neither `/` nor `_`, and folding only those two let it through."""
+        r = self.repo()
+        r.write("seed.txt", "seed\n")
+        self.assertAccepted(r.commit())
+        r.git("checkout", "-q", "-b", "leak.%s" % SLUG.replace("/", "."))
+        r.write("a.txt", "entirely innocent\n")
+        result = r.commit()
+        self.assertRefused(result)
+        self.assertIn("BRANCH NAME", result.stderr)
+
+    def test_branch_name_with_no_separators_at_all_is_refused(self):
+        """`leakOwnerrepo` spells the identity as surely as `leak/Owner/repo`."""
+        r = self.repo()
+        r.write("seed.txt", "seed\n")
+        self.assertAccepted(r.commit())
+        r.git("checkout", "-q", "-b", "leak%s" % SLUG.replace("/", ""))
+        r.write("a.txt", "entirely innocent\n")
+        self.assertRefused(r.commit())
+
     def test_an_ordinary_branch_name_is_accepted(self):
         """Folding separators must not start refusing ordinary hyphenated branches."""
         r = self.repo()
@@ -357,7 +377,10 @@ class GuardTest(unittest.TestCase):
         r.write("a.txt", "first\nsecond\n")
         self.assertAccepted(r.commit())
         r.write("a.txt", "first\nsecond\nsee %s\n" % SLUG)
-        self.assertRefused(r.commit(message="add it now"))
+        result = r.commit(message="add it now")
+        self.assertRefused(result)
+        # The joined reading would catch it too; the line-wise surface earns the diagnosis.
+        self.assertIn("in a line this commit adds", result.stderr)
 
 
 if __name__ == "__main__":

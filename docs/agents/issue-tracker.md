@@ -31,9 +31,26 @@ Since `issue create`, `comment`, `edit --add-label` and `close` are all built th
 the accident WRITES to the public repo, it does not merely read it. An empty
 `GH_CONFIG_DIR` degrades just as quietly, to whatever identity the environment carries.
 
-The wrapper closes both because there is no gap: no separate resolution step to lose, and a
-command that names `{tracker}` nowhere is refused rather than aimed at the cwd's repo —
-forgetting `-R` is the same accident wearing a different hat.
+The wrapper closes that because there is no gap: no separate resolution step to lose.
+
+**Naming `{tracker}` is not the same as going there**, and treating it as such was its own
+hole — `issue create -R other/repo --title "about {tracker}"` satisfied a presence check and
+performed an authenticated WRITE to an arbitrary repo, stamping the private slug into the
+title it created. So the wrapper reads back, after substitution, every argument that can
+decide the target — the value of `-R`/`--repo`, any `repos/<owner>/<repo>` path, any
+`github.com/<owner>/<repo>` URL — and runs only when at least one names the tracker and none
+names anything else. A command mentioning `{tracker}` ten times in a body still goes nowhere
+if its target is another repo, and a command that decides no target at all is refused too,
+because that is where `gh` falls back to the cwd's remote.
+
+The placeholder requirement stays, as HYGIENE rather than safety: typing the slug on a command
+line puts it in shell history and in the session transcript, which is the leak this whole
+arrangement exists to avoid.
+
+`tk.tracker` is also checked for SHAPE before it is compared or pasted. A value carrying `|`
+or `&` used to reach a `sed` replacement, where one emptied every argument while the run still
+exited 0 and the other corrupted an argument in silence. Substitution is plain shell expansion
+now, and a value outside `<owner>/<repo>` is refused rather than interpreted.
 
 An unconfigured clone gets exit 78 and these two lines to hand the user:
 
@@ -115,8 +132,9 @@ surfaces — the lines a commit adds, the paths it introduces, the commit messag
 branch name, which is pushed and public exactly like a path — and names the one that fired. A
 value is recognised through the disguises that defeated earlier versions of it: a different
 case, `%2F` and `%252F` in place of the slash, a value wrapped across two lines, a value
-inside a staged binary, a pure rename INTO a leaky path, and a branch that transliterates the
-separators (`Owner-repo` for `Owner/repo`).
+inside a staged binary, a pure rename INTO a leaky path, and a branch name spelling the
+identity through any punctuation or none — `Owner-repo`, `Owner.repo`, `Ownerrepo` — since on
+that surface every character that is not a letter or a digit is dropped before comparing.
 
 **What it does not catch. Read this before trusting it.**
 
@@ -155,41 +173,46 @@ Zero rows means no package is live; add `--state all` to reach a concluded one. 
 row means more than one package is live — pick the map that owns the ticket you were handed,
 and say which one you picked.
 
-### Count the OPEN children before trusting the frontier
+### The frontier is a heuristic, and it rests on data that is often absent
 
-The tickets are meant to be the map's children through GitHub sub-issues, but **the edge is
-often missing**: measured on this tracker, a map carried 19 children, every one of them
-closed, while five open tickets of the same package carried `parent: null` and were never
-linked at all. So the question that decides is how many children are OPEN — not how many
-exist, and not what a filtered query returns:
+Read this before using it, because the failure is silent: it returns an empty list, which
+reads as "no work left".
+
+The frontier — the package's open tickets that nobody has claimed — is computed from the
+map's **sub-issue edges**:
 
 ```bash
 bin/tracker-gh api "repos/{tracker}/issues/<map>/sub_issues" --paginate \
   --jq '[.[] | select(.state == "open")] | length'
 ```
 
-**More than zero** — the edges are live. The frontier is the open children with no assignee:
+**More than zero** — the edges are live, and the frontier is trustworthy:
 
 ```bash
 bin/tracker-gh api "repos/{tracker}/issues/<map>/sub_issues" --paginate \
   --jq '.[] | select(.state == "open" and .assignee == null) | "\(.number)\t\(.title)"'
 ```
 
-**Zero** — this does NOT mean the package is finished, and it is the case that actually
-occurs. It means the map has no open child, which happens both when the work is done and when
-the tickets were never linked. Tell the two apart against the tracker's own open list:
+**Zero** — stop. It does NOT mean the package is finished, and this is the case that actually
+occurs. Measured on this tracker: a map carried 19 children, every one of them closed, while
+five open tickets of the same package carried `parent: null` — never linked at all. The count
+was truthful and the conclusion drawn from it would have been wrong.
 
-```bash
-bin/tracker-gh issue list -R '{tracker}' --state open \
-  --search "no:assignee -label:wayfinder:map" --json number,title
-```
+Nothing queryable distinguishes the two, because the heuristic depends on data that may simply
+not exist. It needs **one** of these, and on the measured map neither held:
 
-`-label:wayfinder:map` matters: without it the maps come back as candidates for their own
-frontier. Read the map's body to see which of those rows belong to this package. Rows that
-belong to it and are not children are unlinked work — the package is live, the edges are not.
+- the **parent-child edge**, which is what `sub_issues` reads; or
+- the **map's body listing its tickets**. On the measured map the body cited none of the five
+  open ones — they appear only in the comments, and their titles share a prefix that is
+  written down in no contract, so matching on it would be guessing dressed as a query.
 
-Say which of the two routes produced your list, so the next reader can tell a real empty
-frontier from a missing one.
+So when the count is zero, do not write a fourth query. **Ask the user which tickets belong to
+the package**, and say that you are asking because the map's edges are missing. If they want
+the guessing removed for good, the fix is in the DATA, not here: linking the tickets as
+sub-issues of their map is an action on the tracker, outside this repo.
+
+Whatever route produced your list, say which one it was, so the next reader can tell a
+frontier that is empty from one that was never found.
 
 Claim a ticket with `bin/tracker-gh issue edit <n> -R '{tracker}' --add-assignee @me`; resolve
 it with a comment and a close. Edges between tickets go through `gh api`:

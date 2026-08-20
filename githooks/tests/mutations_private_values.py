@@ -132,11 +132,12 @@ MUTATIONS = [
         ],
     ),
     (
-        'separators are not folded, so a transliterated branch walks through',
+        'only `/` and `_` are folded, so a dot or no separator at all walks through',
+        "  LC_ALL=C tr -dc 'A-Za-z0-9'\n",
         "  tr '/_' '--'\n",
-        '  cat\n',
         [
-            'test_branch_name_transliterating_the_value_is_refused',
+            'test_branch_name_with_other_separators_is_refused',
+            'test_branch_name_with_no_separators_at_all_is_refused',
         ],
     ),
     (
@@ -149,7 +150,7 @@ MUTATIONS = [
     ),
     (
         'the joined reading is never taken, so a wrapped value walks through',
-        '    row=$(joined_per_file |\n',
+        '    row=$(joined_per_file |\n      NEEDLE="$needle" awk -F\'\\t\' \'index(tolower($2), tolower(ENVIRON["NEEDLE"])) { print; exit }\')\n',
         '    row=\n',
         [
             'test_value_wrapped_across_two_lines_is_refused',
@@ -304,9 +305,14 @@ def main():
             with open(GUARD, "w", encoding="utf-8") as fh:
                 fh.write(original.replace(needle, replacement))
 
-            survived, _ = run_tests(targets, ids)
-            if survived:
-                problems.append("%s: SURVIVED — %s still pass with the defect back" % (label, targets))
+            # One at a time. Running the named tests together lets a survivor hide behind a
+            # sibling that failed: the batch reports non-zero either way, and the mutation
+            # books a kill it did not earn.
+            survivors = [t for t in targets if run_tests([t], ids)[0]]
+            if survivors:
+                problems.append(
+                    "%s: SURVIVED — %s still pass with the defect back" % (label, survivors)
+                )
             else:
                 print("killed: %s" % label)
     finally:
