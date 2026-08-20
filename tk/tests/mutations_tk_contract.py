@@ -263,7 +263,7 @@ MUTATIONS = [
     # --- the pointer to the rules, and the file it points at ---------------
     ("the block stops naming the rules file and gestures at it instead",
      '        f"Before you write a file, a proof, or prose another agent reads: '
-     '`{rules_path}`.",',
+     '`{RULES_FILE}`.",',
      '        "Before you write a file, a proof, or prose another agent reads the reference.",',
      ["TestBlockContent.test_it_points_at_the_rules_earlier_slices_paid_for"]),
 

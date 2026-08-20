@@ -13,8 +13,8 @@ you do; none of them restates care you would take anyway.
 first, hand it to the same reader the rest of the code uses, and require that reader to give
 back exactly what you composed. Every proxy question — "does the text still carry the marker?",
 asked of the block as it arrived — passes while the write corrupts, because adding a field
-moves the boundaries the reader uses. Four corrections in one slice asked the proxy; the fifth
-composed first and the defect died.
+moves the boundaries the reader uses. Three corrections in one slice asked the proxy and the
+first round's bug outlived all three; the fourth composed first and it died.
 
 **A field a command CLEARS is located by position, not by membership.** "It appears in the
 chain" is true of prose that merely quotes the marker, and clearing on that answer eats the

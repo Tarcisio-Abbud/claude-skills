@@ -413,8 +413,8 @@ class TestBlockContent(ContractTest):
         # silence, and the block would go on naming it at every dispatch. This
         # is the one test besides the policy-path one that reads the real repo
         self.assertTrue(os.path.isfile(RULES), RULES)
-        self.assertIn("# Rules earlier slices paid for",
-                      io.open(RULES, encoding="utf-8").read())
+        with io.open(RULES, encoding="utf-8") as fh:
+            self.assertIn("# Rules earlier slices paid for", fh.read())
 
     def test_it_asks_for_the_deviation_log_in_the_policy_s_format(self):
         out = self.block("--role", "explore")

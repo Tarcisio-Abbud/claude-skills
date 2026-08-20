@@ -233,7 +233,7 @@ def ceiling_lines(site, fleet):
     return lines
 
 
-def render(row, site, fleet, policy_path, rules_path=RULES_FILE):
+def render(row, site, fleet, policy_path):
     out = [
         f"<!-- tk:contract schema=1 role={row.role} -->",
         f"## Subagent contract — `{row.role}`",
@@ -302,7 +302,7 @@ def render(row, site, fleet, policy_path, rules_path=RULES_FILE):
         "",
         "### Rules earlier slices paid for",
         "",
-        f"Before you write a file, a proof, or prose another agent reads: `{rules_path}`.",
+        f"Before you write a file, a proof, or prose another agent reads: `{RULES_FILE}`.",
         "Each rule there cost a defect that a green suite or a passing review had already",
         "called healthy, so the terrain does not warn you — the file does.",
         "",
