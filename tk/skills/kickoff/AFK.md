@@ -4,6 +4,11 @@ Both arguments build the same **package** — the largest set of queue items thi
 run unattended. `afk` fires it with zero interaction: the user typed the command and left.
 `pack` shows it once and waits for a single confirmation. Everything else is identical.
 
+The session running a package is an **orchestrator**: it claims, dispatches, verifies and
+closes, and implements nothing inline. Every run it dispatches takes its model, effort and
+venue from the role table in `../../reference/subagent-policy.md` — which also fixes the
+one-line format a departure from that table costs.
+
 ## 1. Build the package
 
 `tk-queue pack` (`../../bin/tk-queue`) hands over the candidates: the eligible
@@ -30,6 +35,12 @@ candidate line carries its Effort, raw and unsummed. Guidance: stop around 3–6
 items or ~2h of summed Effort; leaving an eligible item out beats a session too
 long to verify its own work.
 
+Those numbers open a heuristic that step 5 recalibrates; the shapes behind them were
+measured against one 5-hour quota window — a survey ≈5% of the window, one
+implement + review + fix lane ≈15–20%, a full-method second pair of eyes ≈8%. What
+multiplies a lane is the number of correction cycles, not the size of the diff: budgeting a
+lane by its diff has been measured underestimating by ~3×.
+
 **Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45"),
 and every item left out is noted with the reason — the eligible ones dropped for size AND
 the ones `tk-queue pack` excluded, which are not eligible at all and would otherwise leave no
@@ -43,39 +54,136 @@ confirms once. The check IS the authorization. (`afk` skips this step: invoking 
 authorization.)
 **Done when:** the confirmed package is fixed.
 
-## 3. Execute
+## 3. Claim, then dispatch
 
-The parent is an **orchestrator**: it dispatches, watches and verifies — it implements
-nothing inline.
+### The claim is the first line of the concurrent-session guard
 
-- **Concurrent-session guard:** before any subagent touches a repo, check
-  `git worktree list` (session ids appear in worktree paths) and the `+` marks in
-  `git branch -v`. Another live session in the repo → the item stays in the queue,
-  untouched, and enters the report.
-- One background subagent per item, **in series** — items from one queue usually share a
-  repo. Parallel only when two items touch disjoint repos/areas. A code-editing item runs
-  in an isolated worktree.
-- Pick each subagent's model by the task's nature: mechanical, well-specified work → a
-  cheaper model; judgment work → the parent's model; in doubt, the stronger one.
-- **Verify by artifact, not by summary:** read the diff / run the tests / check the output
-  before marking an item done and dispatching the next. Resolve each item on the spot via
-  `tk-queue done <id> --how "<pointer>"` (never hand-edit the queue files — contract in
-  `SKILL.md`).
+Claim every item of the confirmed package before dispatching the first one:
+`tk-queue claim <id> --as <session/host label>`, taken under the exclusive lock the queue
+already holds. A second claim is REFUSED, naming the owner and the moment — and that refusal
+IS the guard: the item leaves the package untouched and enters the report as held elsewhere.
 
-**Done when:** every package item is verified-done or reported-skipped, and the queue
-reflects it.
+It leads because the tree signals are blind exactly where the collision happens. A sibling
+session working from the shared main tree appears in no `git worktree list` and carries no
+`+` in `git branch -v`; on 2026-08-19 one such sibling ran `git pull --ff-only` and landed
+the fast-forward on the branch another session had checked out. The tree is the second line
+and it is a **defence**, not a check: dispatch every code-editing run into its own worktree,
+so a sibling in the shared tree cannot move the ground under it.
 
-## 4. Report
+A package that dies holding claims leaves them behind — `tk-queue release <id>` hands an item
+back without closing it, and prints whose claim it dropped.
 
-The user returns to ONE message: (a) what was done, with the verifying evidence; (b)
-eligible items left out for size — the ready line to run them is another `/tk:kickoff afk`;
-(c) DECISION/BLOCKED/EXTERNAL items untouched, as in a normal kickoff close; (d) items
-bound to ANOTHER environment, in a block of their own beside (c), each marked "runs on: X".
-(d) is not a variant of (b): those items were never eligible here, so a report shaped only
-around (b) drops them silently — and an item nothing on this machine can run is precisely
-the one the user has to see, since only they can take it to the machine that runs it.
-Settle any
-remaining queue changes through `tk-queue` (`add`/`edit`/`done`/`cancel`) last — a DECISION
-registered with nobody to ask carries `--deferred afk`, which is the only thing that
-distinguishes it from a decision nobody bothered to ask.
-**Done when:** the report covers (a)–(d) and `next-steps.md` matches the post-run queue.
+### The vehicle, and who writes the queue
+
+The palette in `../dispatch/SKILL.md` picks it. Default: one background subagent per item, in
+its own worktree, dispatched **in series**, since items from one queue usually share a repo.
+Parallel only across disjoint repos or areas, and never past the local ceiling the contract
+block states. An item whose work does not fit one subagent's context is not squeezed into
+one: write its briefing with `tk-queue handoff <id>` and dispatch it as a session of its own
+— and where this machine cannot open one unattended, the item leaves the package carrying
+that briefing, and its ready-to-paste line goes in the report.
+
+**Only the orchestrator writes the queue.** `tk-queue` resolves which queue it is writing
+from the cwd, and a run in a worktree has a different one: a subagent calling `done` there
+writes into another project's memory dir, or none, and reports success either way. Runs
+return evidence; the writing happens here.
+
+### The prompt each run receives
+
+Two parts, both produced here and neither delegated back:
+
+- **The contract block**, pasted verbatim from `../../bin/tk-contract --role <role from the table>`:
+  the ceilings, that role's model/effort/venue, and the return contract it owes. Generate it
+  per dispatch rather than typing it from memory — a hand-written block is a fork of the
+  policy. Pass `--fleet N` only when something else shares this machine's ceiling and told you
+  N; alone, the whole ceiling is yours.
+- **The item's distilled contract**: the interface the work must honour, its invariants, what
+  the neighbouring slices consume from it. You hold the map hot and distilling costs once,
+  where re-reading costs per dispatch — a prompt that says "read #X, #Y and #Z" bills that
+  price on every run, and has been measured starting an implementer at ~150k of context — the
+  edge of the smart zone — before its first line of code. Retransmit the item, the memory file
+  behind its `[[slug]]` at ONE hop and its handoff; context in none of the three is a
+  **missing handoff**, and the prompt says exactly that in its own line, because a gap named
+  is cheap and a gap papered over with plausible synthesis sends the run onto invented ground.
+
+**Read the venue signature that comes back, never the flag you passed.** `isolation: remote`
+has been measured degrading silently to local execution, and a run whose signature is local
+counts against the local ceiling — counted anywhere else, that ceiling leaks through remotes
+that never left the machine.
+
+**Done when:** every package item is claimed or reported as held elsewhere, and every
+dispatched run carries its generated contract block and a prompt self-sufficient without the
+tracker.
+
+## 4. Verify every delivery
+
+The ruler is the item's own criterion and the rite belongs to `../verify/SKILL.md` — read it
+before the first item closes. What this step owes that file:
+
+- **The caller re-runs the proof**, here, once, on the final tree. The run's own account of
+  its work is an input to that run and never a substitute: verify by artifact, not by summary.
+- **An empty return is a failed attempt.** A run that comes back with no evidence block did
+  not deliver, however confident its prose, and the attempt counts toward the three.
+- The three attempts, the four outcomes and the DECISION-plus-handoff a failure writes are
+  verify's own; this step supplies the caller they are written for.
+
+An approved item then leaves the queue here — `tk-queue done <id> --how "<pointer>"`, in the
+form verify prescribes for carrying the evidence block — and an item verify turned into a
+DECISION stays, carrying its handoff.
+
+**Done when:** every package item carries exactly one verify outcome with its evidence block
+in the PR body or on the item, and every claim this package took has either left with its
+item or been released.
+
+## 5. Measure, and hand the package to the close
+
+Three numbers on one line, where the run goes back to the human: **planned × completed ×
+wall clock** — items claimed, items that reached an approved outcome, and the time from first
+dispatch to last verdict. They are what stops the cut in step 1 from staying a guess: each
+package's line is the next package's evidence. The deviation lines ride here too, one per
+departure from the role table, in that file's format — a deviation with no line is
+indistinguishable from a slip.
+
+Beside them, the three blocks the closing template has no column for:
+
+- eligible items left out for size — the ready line that runs them is another
+  `/tk:kickoff afk`;
+- items `tk-queue pack` excluded, each with the reason it printed: never eligible at all, so
+  a report shaped only around size drops them silently;
+- items bound to ANOTHER environment, each marked "runs on: X" — nothing here can execute
+  them, and the user is the only path to the machine that can.
+
+**Done when:** the measurement line, the deviation lines and the three blocks exist, ready
+for the close to carry.
+
+## 6. Chain the afk wrap-up
+
+The package ends by running `../wrap-up/SKILL.md` with its `afk` argument, executed **from
+that file**: both skills carry `disable-model-invocation: true`, so an agent cannot fire
+`/tk:wrap-up afk` as a command. Reading the file is how the chaining honours that lock
+instead of routing around it.
+
+What the close owns from there, and this file therefore does not restate: committing and
+pushing before any review is dispatched, the four verdicts of safe-to-merge in their strict
+unattended form, which items may merge unattended and which end at an open PR carrying their
+proof, and the closing template that step 5's line and blocks land in.
+
+**Done when:** the wrap-up reached its own "Done when" — or it did not run, and the report
+names the step that stopped the package and the state the tree was left in.
+
+## A session finding, unattended
+
+A **session finding** is work this session discovered and did not come for; what separates it
+from a pendency is the criterion of the item in hand, and the ladder that triages it lives in
+`SKILL.md` beside this file. Unattended, that ladder has exactly one rung left: **queue it
+with a gate.** `tk-queue add` at the moment of discovery, the gate named in the item's own
+text — human decision · effort · external dependency — and a finding only the user can judge
+arrives as a DECISION carrying `--deferred afk`.
+
+The two rungs an unattended session does not have are the two that need a human. **Discarding**
+is a judgement ("this will never happen") nobody here can make, so an unattended package
+reports no discards. **Resolving on the spot** is the hydra's own fuel: three heads die and
+six items are born, which is how a quick job became three weeks. So every finding this package
+queued is listed in the close under the gate that kept it, for the user's **veto** on their
+return — `tk-queue cancel <id> --why "..."` is that veto, and it is one command against a
+finding that would otherwise have been lost to nobody's judgement.

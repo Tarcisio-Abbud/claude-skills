@@ -319,9 +319,9 @@ the next conversation's opening sentences, each in the shape that fits.
   finding of step 1 and each unanswered choice becomes a `DECISION` item, carrying
   `--deferred afk` — the flag that separates a decision nobody could ask from one nobody
   bothered to ask.
-- **Concurrent-session guard** first (defined in `../kickoff/AFK.md`): `git worktree list` +
-  the `+` marks in `git branch -v`; another live session in the repo → leave the tree
-  untouched and report it.
+- **Concurrent-session guard** first, in the form `../kickoff/AFK.md` defines — the claim on
+  the queue's items leads, and the tree signals follow it: another live session working this
+  repo → leave the tree untouched and report it.
 - **Commit and push before the review; merge after it.** Commit the work to a branch —
   never the default branch — and push that branch BEFORE dispatching any review, so a
   session that dies on the quota wall leaves nothing uncommitted and nothing unpushed. Fix
