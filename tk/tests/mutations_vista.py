@@ -42,8 +42,8 @@ MUTATIONS = [
       "TestSelfContained.test_the_smallest_qualifying_page_is_accepted"], CHECK),
 
     ("T139 a protocol-relative URL is read as local",
-     '    if not u or u.startswith("#"):',
-     '    if not u or u.startswith("#") or u.startswith("//"):',
+     '    if u.startswith("#"):',
+     '    if u.startswith("#") or u.startswith("//"):',
      ["TestSelfContained.test_a_protocol_relative_script_is_refused"], CHECK),
 
     ("T139 the naive rule: anything that is not http is local",
@@ -87,12 +87,12 @@ MUTATIONS = [
      ["TestSelfContained.test_a_base_tag_is_refused"], CHECK),
 
     # -- the five blocks --------------------------------------------------
-    ("T139 block 1 is not required",
-     '    if "stats" not in v.blocks:', "    if False:",
+    ("T139 block 1 drops out of the table the check reads",
+     'PAGE_BLOCKS = ("stats", "cards", "saldo")', 'PAGE_BLOCKS = ("cards", "saldo")',
      ["TestFiveBlocks.test_the_stats_block_is_required"], CHECK),
 
-    ("T139 block 2's region is not required",
-     '    if "cards" not in v.blocks:', "    if False:",
+    ("T139 block 2's region drops out of the table the check reads",
+     'PAGE_BLOCKS = ("stats", "cards", "saldo")', 'PAGE_BLOCKS = ("stats", "saldo")',
      ["TestFiveBlocks.test_the_cards_region_is_required"], CHECK),
 
     ("T139 a page with no card at all passes",
@@ -131,9 +131,40 @@ MUTATIONS = [
      ["TestFiveBlocks.test_an_unclosed_paragraph_does_not_keep_a_card_open_past_its_end"],
      CHECK),
 
-    ("T139 block 5 is not required",
-     '    if "saldo" not in v.blocks:', "    if False:",
+    ("T139 block 5 drops out of the table the check reads",
+     'PAGE_BLOCKS = ("stats", "cards", "saldo")', 'PAGE_BLOCKS = ("stats", "cards")',
      ["TestFiveBlocks.test_the_balance_block_is_required"], CHECK),
+
+    ("T139 a card with no id of its own is named by an empty string",
+     '            "id": a.get("data-vista-card", "").strip() or f"#{len(self.cards) + 1}",',
+     '            "id": a.get("data-vista-card", "").strip(),',
+     ["TestFiveBlocks.test_a_card_with_an_empty_id_is_named_by_its_position"], CHECK),
+
+    ("T139 the script flag is set where a self-closing tag also arrives",
+     '        a = {k.lower(): (v or "") for k, v in attrs}',
+     '        a = {k.lower(): (v or "") for k, v in attrs}\n'
+     '        if tag == "script":\n            self.in_script = True',
+     ["TestSelfContained.test_a_self_closing_script_does_not_make_the_rest_of_the_page_script"],
+     CHECK),
+
+    ("T139 an empty URL is read as no URL at all",
+     "    if not u:\n        return False", "    if not u:\n        return True",
+     ["TestSelfContained.test_an_empty_src_is_refused"], CHECK),
+
+    ("T139 text outside every element is never collected",
+     "        elif not self.stack and data.strip():", "        elif False:",
+     ["TestWhatTheReaderSEES.test_text_left_outside_every_element_is_refused"], CHECK),
+
+    ("T139 the loose text is collected and then never reported",
+     "    for text_out in v.loose:", "    for text_out in []:",
+     ["TestWhatTheReaderSEES.test_a_comment_holding_a_nested_comment_is_caught_where_it_leaks"],
+     CHECK),
+
+    ("T139 the shipped template lets its own instructions leak onto the page",
+     "  Write no `<!` + `--` inside this comment: it would end here, and the rest\n"
+     "  would print at the top of the page.",
+     "  Fill in the <!" + "-- FILL --" + "> notes.",
+     ["TestShippedTemplate.test_the_template_the_plugin_ships_qualifies"], TEMPLATE),
 
     # -- both themes ------------------------------------------------------
     ("T139 one theme is enough",

@@ -63,13 +63,26 @@ DARK_THEME = re.compile(r"prefers-color-scheme\s*:\s*dark", re.IGNORECASE)
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
         "meta", "param", "source", "track", "wbr"}
 
-BLOCKS = ("stats", "cards", "prova", "saldo")
+# Marker -> the block's number and the name a refusal prints. The three
+# page-level blocks are checked from this table; the per-card ones (2's
+# outcome, 3's risk tag, 4's proof link) are checked card by card, reading
+# their name from the same place. One table, so the check and the list beside
+# it cannot drift apart
+BLOCKS = {
+    "stats": (1, "the opening stats line"),
+    "cards": (2, "the cards region"),
+    "prova": (4, "the slice's proof"),
+    "saldo": (5, "closed × open balance"),
+}
+PAGE_BLOCKS = ("stats", "cards", "saldo")
 
 
 def local(url):
     """True when the browser can resolve `url` without leaving this file."""
     u = (url or "").strip()
-    if not u or u.startswith("#"):
+    if not u:
+        return False        # `src=""` resolves to the page and refetches it
+    if u.startswith("#"):
         return True
     return u.lower().startswith("data:")
 
@@ -77,6 +90,7 @@ def local(url):
 class Vista(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
+        self.loose = []          # text rendered outside every element
         self.stack = []          # open tags, innermost last
         self.cards = []          # one dict per card found
         self.open_cards = []     # indices into self.cards, innermost last
@@ -89,6 +103,10 @@ class Vista(HTMLParser):
     # -- traversal ---------------------------------------------------------
     def handle_starttag(self, tag, attrs):
         opened_card = self._element(tag, attrs)
+        if tag == "script":
+            # only here: `<script/>` closes where it opens, and a flag set in
+            # the shared element reader would stay on for the rest of the file
+            self.in_script = True
         if tag not in VOID:
             self.stack.append(tag)
             if opened_card:
@@ -118,13 +136,17 @@ class Vista(HTMLParser):
             self.script.append(data)
         elif self.stack and self.stack[-1] == "style":
             self.css.append(data)
+        elif not self.stack and data.strip():
+            # text outside every element, which the browser prints at the top
+            # of the page. A comment holding a nested `<!-- ... -->` ENDS at
+            # the first `-->`, and the rest of what the author meant as a note
+            # lands here — measured on this repo's own template
+            self.loose.append(" ".join(data.split())[:60])
 
     # -- one element -------------------------------------------------------
     def _element(self, tag, attrs):
         """Read one element; True when it opened a card."""
         a = {k.lower(): (v or "") for k, v in attrs}
-        if tag == "script":
-            self.in_script = True
         for name, value in a.items():
             if name in URL_ATTRS:
                 if tag == "a" and name == "href":
@@ -180,10 +202,10 @@ def check(path):
         bad.append(f"network call in script: {call} — a vista renders from what it already holds")
 
     # -- the five blocks ---------------------------------------------------
-    if "stats" not in v.blocks:
-        bad.append('block 1 missing: no data-vista-bloco="stats" (the opening stats line)')
-    if "cards" not in v.blocks:
-        bad.append('block 2 missing: no data-vista-bloco="cards" (the cards region)')
+    for marker in PAGE_BLOCKS:
+        number, name = BLOCKS[marker]
+        if marker not in v.blocks:
+            bad.append(f'block {number} missing: no data-vista-bloco="{marker}" ({name})')
     if not v.cards:
         bad.append("block 2 missing: no data-vista-card in the page")
     for card in v.cards:
@@ -193,10 +215,12 @@ def check(path):
         if not card["risco"]:
             bad.append(f'block 3: card {card["id"]} has no data-vista-risco (risk tag per card)')
         if not [u for u in card["provas"] if u]:
-            bad.append(f'block 4: card {card["id"]} carries no data-vista-bloco="prova" '
-                       "link with an href (the slice's proof)")
-    if "saldo" not in v.blocks:
-        bad.append('block 5 missing: no data-vista-bloco="saldo" (closed × open balance)')
+            number, name = BLOCKS["prova"]
+            bad.append(f'block {number}: card {card["id"]} carries no '
+                       f'data-vista-bloco="prova" link with an href ({name})')
+    for text_out in v.loose:
+        bad.append(f"text rendered outside every element: {text_out!r} — an unterminated "
+                   "comment prints what it was holding")
 
     # -- readable in both themes -------------------------------------------
     if not DARK_THEME.search(css):

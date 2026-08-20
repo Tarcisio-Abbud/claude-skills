@@ -131,6 +131,17 @@ class TestSelfContained(CheckTest):
     def test_the_word_fetch_in_the_page_prose_is_not_a_network_call(self):
         self.assertAccepted(PAGE.replace("what it delivered", "the fetch( in this heading is prose"))
 
+    def test_a_self_closing_script_does_not_make_the_rest_of_the_page_script(self):
+        # `<script/>` fires handle_startendtag, never handle_endtag: a flag set
+        # where both arrive stays on for every byte that follows
+        self.assertAccepted(PAGE.replace("<main>", "<main><script/>")
+                                .replace("what it delivered", "the fetch( here is prose"))
+
+    def test_an_empty_src_is_refused(self):
+        # `src=""` is not "no URL": the browser resolves it to the page itself
+        self.assertRefused(PAGE.replace("<main>", '<main><img alt="" src="">'),
+                           "external resource")
+
     def test_a_base_tag_is_refused(self):
         # <base> is judged by the URL rule like any other fetched attribute:
         # it needs no guard of its own, and a guard of its own would be one no
@@ -185,8 +196,28 @@ class TestFiveBlocks(CheckTest):
                               '  </article>\n  <a data-vista-bloco="prova" href="https://forge.invalid/pull/1">proof</a>\n')
         self.assertRefused(loose, "block 4", "T001")
 
+    def test_a_card_with_an_empty_id_is_named_by_its_position(self):
+        r = self.check(PAGE.replace('data-vista-card="T001"', 'data-vista-card=""')
+                           .replace('data-vista-risco="low"', ""))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("card #1", r.stdout)
+
     def test_the_balance_block_is_required(self):
         self.assertRefused(PAGE.replace('data-vista-bloco="saldo"', 'class="saldo"'), "block 5")
+
+
+class TestWhatTheReaderSEES(CheckTest):
+    """The page is judged by a human reading it, so text that should not be on
+    it at all is a defect the five markers cannot see."""
+
+    def test_text_left_outside_every_element_is_refused(self):
+        self.assertRefused("A note nobody meant to publish.\n" + PAGE,
+                           "text rendered outside every element")
+
+    def test_a_comment_holding_a_nested_comment_is_caught_where_it_leaks(self):
+        # the outer comment ends at the FIRST `-->`; everything after it prints
+        leaky = "<!-- fill in the <!-- FILL --> notes and keep the markers -->\n" + PAGE
+        self.assertRefused(leaky, "text rendered outside every element")
 
 
 class TestBothThemes(CheckTest):

@@ -5,9 +5,13 @@
   package does not have, and restyle freely: the layout is free, the five
   `data-vista-*` markers are not, and `tk-vista-check` reads only the markers.
 
-  Fill in: <!-- FILL --> comments. Write the page in the READER's language.
-  Keep: the CSS tokens (both themes), and every data-vista-* attribute.
-  Never add: a stylesheet link, a font link, an image URL, a script that fetches.
+  Fill in every FILL note. Write the page in the READER's language: the markers
+  are the plugin's, the prose is theirs.
+  Keep the CSS tokens (both themes) and every data-vista-* attribute.
+  Everything the page shows travels inside it: inline the CSS, embed an image as
+  a data: URI, and let `<a href>` be the only thing pointing outward.
+  Write no `<!` + `--` inside this comment: it would end here, and the rest
+  would print at the top of the page.
 -->
 <html lang="en">
 <head>
@@ -37,6 +41,7 @@
   h2 { font-size:1.15rem; margin:40px 0 12px; padding-bottom:6px;
        border-bottom:2px solid var(--line); }
   .sub { color:var(--sub); font-size:.95rem; margin-bottom:24px; }
+  .nota { color:var(--sub); font-size:.84rem; margin:0 0 8px; }
   a { color:var(--link); }
   code { font-family:var(--mono); font-size:.85em; background:var(--line);
          padding:1px 5px; border-radius:4px; }
@@ -82,12 +87,15 @@
 
   <!-- BLOCK 1 · stats line, at the opening -->
   <ul class="stats" data-vista-bloco="stats">
-    <li><b>0</b><span>slices</span></li>
-    <li><b>0</b><span>merged</span></li>
-    <li><b>0</b><span>open PRs</span></li>
-    <li><b>0</b><span>findings fixed</span></li>
+    <li><b>0</b><span>closed</span></li>
+    <li><b>0</b><span>carried</span></li>
+    <li><b>0</b><span>blocked</span></li>
+    <li><b>0</b><span>discarded</span></li>
+    <li><b>0</b><span>open PRs</span></li><!-- FILL: add the counts this package earned -->
     <li><b>0</b><span>tests</span></li>
   </ul>
+  <p class="nota">The first four never sum: three are the queue's balance, the fourth counts
+    session findings that never entered it.</p>
 
   <!-- BLOCK 2 · one card per PR/item, grouped by outcome -->
   <h2>What the package did</h2>
@@ -100,11 +108,13 @@
         <h4>T000 · WHAT THE SLICE DELIVERED <span class="risk">risk: low</span></h4>
         <p>Two or three sentences a reader who will not open the diff can judge: what changed,
            and what it buys.</p>
-        <ul class="verdicts">
-          <li><b>Tests</b> — green on the final tree: WHAT RAN</li>
-          <li><b>Review</b> — WHICH REVIEW RAN, every finding fixed or accepted with a reason</li>
-          <li><b>Criterion</b> — re-run here: THE COMMAND, and its verdict</li>
-          <li><b>Reversal</b> — the way back, in one line</li>
+        <ul class="verdicts"><!-- the four safe-to-merge verdicts, one line each -->
+          <li data-vista-veredito="tests"><b>Tests</b> — green on the final tree: WHAT RAN</li>
+          <li data-vista-veredito="review"><b>Review</b> — WHICH REVIEW RAN, every finding fixed
+              or accepted with a reason</li>
+          <li data-vista-veredito="criterion"><b>Criterion</b> — the one-line claim the proof
+              carries; the evidence block itself stays in the PR, linked below</li>
+          <li data-vista-veredito="reversal"><b>Reversal</b> — the way back, in one line</li>
         </ul>
         <!-- BLOCK 4 · the link to this slice's proof. The proof lives in the PR; the vista points -->
         <p><a data-vista-bloco="prova" href="https://example.invalid/pull/0">Proof — evidence block in PR #0</a></p>

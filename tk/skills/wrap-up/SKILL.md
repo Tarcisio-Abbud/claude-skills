@@ -347,7 +347,8 @@ the next conversation's opening sentences, each in the shape that fits.
     that was READ, never by the silence of a file that was missing.
   Whatever is not merged enters the queue as a DECISION with its digest reference ready.
 - **The vista is written after the merge round**, once every slice has its outcome, and it is
-  named in the report only after `tk/bin/tk-vista-check` passes on it.
+  named in the report only after `../../bin/tk-vista-check` (relative to this file) passes on
+  it.
 - The step-6 report ends with the ready pair for the user's return: `/clear` +
   `/tk:kickoff afk`.
 
@@ -356,5 +357,5 @@ committed, pushed, and every item ended either merged under the strict four verd
 an open PR carrying its evidence block; or the concurrent-session guard stopped the run and
 the report says so with the tree untouched; or there was nothing to commit. Whatever was
 not merged sits in the queue as a DECISION, the package's vista is in the outbox with a green
-`tk-vista-check`, or the report says which site address was missing, and no other external
-effect happened.
+`tk-vista-check` — or the report names which of the two lines that would give the outbox address
+is missing — and no other external effect happened.
