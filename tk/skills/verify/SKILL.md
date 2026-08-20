@@ -27,6 +27,12 @@ rewrite) → an equivalence artefact: output byte-compared against real data, a 
 fuzz across the two implementations, dumps compared on a copy of the real database. A green
 suite there proves the suite still runs, which is not what the item promised.
 
+The fixture carries the same weight as the currency. Run the criterion against the shape the
+data really has, not the smallest one the wording accepts: a criterion read as satisfied on a
+minimal fixture has passed while the same command failed on the populated form, the moment it
+met one. When the item's subject has a real population — a queue with tagged items, a file with
+prior content — that population is the fixture.
+
 ## Prove it can fail
 
 The first time a criterion A is run at all, prove once that it **can** fail: put the defect

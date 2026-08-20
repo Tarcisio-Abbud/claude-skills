@@ -43,6 +43,12 @@ BIN_DIR = os.path.dirname(os.path.abspath(__file__))
 POLICY_FILE = os.path.normpath(
     os.path.join(BIN_DIR, os.pardir, "reference", "subagent-policy.md"))
 
+# the rules an implementer would otherwise rediscover by shipping the defect.
+# Named, never inlined: the block is handed to every role, and only the ones
+# that write code or prose reach for it
+RULES_FILE = os.path.normpath(
+    os.path.join(BIN_DIR, os.pardir, "reference", "slice-rules.md"))
+
 SCHEMA = "1"
 OPEN_RE = re.compile(r"<!--\s*tk:roles\s+schema=(\S+)\s*-->\Z")
 OPEN_LOOSE = "tk:roles"
@@ -293,6 +299,12 @@ def render(row, site, fleet, policy_path):
         "",
         "Neither rule touches the file you are actually EDITING — that one you have to see.",
         "They are about reading to learn the terrain, which is where the tokens went.",
+        "",
+        "### Rules earlier slices paid for",
+        "",
+        f"Before you write a file, a proof, or prose another agent reads: `{RULES_FILE}`.",
+        "Each rule there cost a defect that a green suite or a passing review had already",
+        "called healthy, so the terrain does not warn you — the file does.",
         "",
         "<!-- /tk:contract -->",
     ]

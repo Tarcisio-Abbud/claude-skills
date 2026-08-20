@@ -260,6 +260,21 @@ MUTATIONS = [
      '        "- **Read only what you need.** A file that you are",',
      ["TestBlockContent.test_it_carries_the_two_measured_reading_rules"]),
 
+    # --- the pointer to the rules, and the file it points at ---------------
+    ("the block stops naming the rules file and gestures at it instead",
+     '        f"Before you write a file, a proof, or prose another agent reads: '
+     '`{RULES_FILE}`.",',
+     '        "Before you write a file, a proof, or prose another agent reads the reference.",',
+     ["TestBlockContent.test_it_points_at_the_rules_earlier_slices_paid_for"]),
+
+    # the block names this file at every dispatch; renaming its heading is the
+    # cheapest stand-in for the file drifting out from under the pointer
+    ("the pointed-at rules lose the heading the pointer promises",
+     "# Rules earlier slices paid for",
+     "# Slice rules",
+     ["TestBlockContent.test_the_rules_the_block_points_at_are_actually_there"],
+     os.path.join("reference", "slice-rules.md")),
+
     ("the deviation line loses this role's own default",
      '        f"    {row.role}: {row.model}→<what actually ran> — reason",',
      '        "    <role>: <default>→<what actually ran> — reason",',

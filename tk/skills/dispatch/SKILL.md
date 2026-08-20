@@ -43,7 +43,10 @@ constraints ("without touching other tests") and a cap ("or stop after 20 turns"
 `/schedule`. Scheduled fires only execute model-invocable skills: to schedule work from a
 `disable-model-invocation: true` skill (kickoff, wrap-up), point the prompt at the skill's
 file in the plugin's install folder ("follow `skills/wrap-up/SKILL.md` of the `tk`
-plugin").
+plugin"). The same lock rules out dispatching such a skill to a subagent: a prompt reading
+"run `/implement`" reaches an agent that cannot invoke it, and the run dies there. When a
+locked skill must open the work, the user types it as the session's first line, and the
+dispatch delivers that line rather than a subagent.
 
 The `next-steps.md` queue (contract: `../kickoff/SKILL.md`, relative to this file) has
 three dispatchers, by presence and scope:
