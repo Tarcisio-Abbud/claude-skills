@@ -141,7 +141,7 @@ the flow — they enter the final report as ready-to-paste lines.
 Close with: (a) what is running/scheduled, (b) BLOCKED items with what's missing from the
 user, (c) EXTERNAL items with who to chase, (d) items bound to ANOTHER environment, each
 marked "runs on: X" and carrying its ready-to-paste line where one fits, and (e) the
-findings discarded in this session — "discarded: N" plus one line each. (d) is not a
+**session findings** discarded here (section below) — "discarded: N" plus one line each. (d) is not a
 variant of (b): nothing on this machine can run those items, so the user is the only path
 to the machine that can. (e) is the only trace a discard leaves, which is what keeps
 "discarded" from becoming the silent outcome — settle the rest of the queue through
@@ -149,18 +149,20 @@ to the machine that can. (e) is the only trace a discard leaves, which is what k
 **Done when:** every checked item is running or scheduled, the report covers (b) through
 (e), and `next-steps.md` reflects the post-kickoff queue.
 
-## A finding during the session
+## A session finding
 
-A **finding** is work this session discovered and did not come for. What tells it from a
-**pendency** is the criterion of the item in hand: work that item's `**Criterion:**` needs
-in order to pass is a pendency, and it is resolved in the session. Everything else is a
-finding, and a finding never inherits that default — that inheritance IS the hydra: three
-heads die and six items are born, which is how a quick job became three weeks.
+A **session finding** is work this session discovered and did not come for. The qualifier
+is load-bearing: a code review's findings are defects in a diff, and this is the other
+thing entirely. What tells a session finding from a **pendency** is the criterion of the
+item in hand: work that item's `**Criterion:**` needs in order to pass is a pendency, and
+it is resolved in the session. Everything else is a session finding, and a session finding
+never inherits that default — that inheritance IS the hydra: three heads die and six items
+are born, which is how a quick job became three weeks.
 
-Every finding is triaged at the moment of discovery, and with the user present the triage
-is a menu (`AskUserQuestion`, which waits for them — a question in prose scrolls away in
-the terminal's wall of text). Three outcomes, and the **recommended** one is the first that
-holds, read in order:
+Every session finding is triaged at the moment of discovery, and with the user present the
+triage is a menu (`AskUserQuestion`, which waits for them — a question in prose scrolls
+away in the terminal's wall of text). Three outcomes, and the one that carries
+"(Recommended)" is the first that holds, read in order:
 
 1. **Resolve now** — leaving it breaks something already delivered: a live defect in what
    this session just shipped, data the user will read as correct, a command they will type
@@ -172,9 +174,11 @@ holds, read in order:
    not a discard.
 
 The ladder recommends and the user picks; their pick IS the authorization, including for a
-resolve-now the ladder had placed third. Unattended, this menu has no one to answer it, and
-neither the discard nor the resolve-now is a session's call to take without the user — read
-`AFK.md` before acting on a finding there.
+resolve-now the ladder had placed third. **This ladder needs the user**: unattended, nobody
+answers the menu, and both the discard ("this will never happen") and the resolve-now (the
+hydra's own fuel) are judgements that belong to them — so an unattended session has one
+outcome available, queue-with-a-gate, and the user vetoes at their return. `AFK.md` is
+where that path is written.
 
 ## The queue contract: `next-steps.md` + `done-log.md`, written only by `tk-queue`
 
