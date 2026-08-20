@@ -203,6 +203,14 @@ asr/
   .claude-plugin/plugin.json      the plugin manifest
   skills/transcribe-audio/SKILL.md
   bin/transcribe.py               the transcription CLI (Parakeet / faster-whisper)
+docs/agents/
+  issue-tracker.md                what the mattpocock engineering skills read: which
+  triage-labels.md                tracker holds the issues, what the triage labels are
+                                  called. Versioned — see below
+githooks/
+  private-values                  refuses a commit that would publish a value from this
+                                  clone's local git config; installed as two hooks
+  tests/                          its suite and mutation harness
 ```
 
 On the authoring machine this repo is cloned **as** `~/.claude/skills/`, so `tk/` sits
@@ -218,8 +226,21 @@ returning to `main` puts the old `tk-queue` back. A fix is only in force once me
 proved by `python3 tk/tests/mutations.py`, which restores each defect and requires the tests
 named for it to fail, one at a time. A test that passes with the defect back protects
 nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answers to the same
-rule through `python3 tk/tests/mutations_tk_contract.py`; the two harnesses are separate files
-only because the older one names its test module inline.
+rule through `python3 tk/tests/mutations_tk_contract.py`, and the commit guard through
+`python3 githooks/tests/mutations_private_values.py`. The harnesses are separate files only
+because the oldest one names its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
 the whole `tk/` tree is versioned.
+
+`docs/agents/` is versioned, which is unusual for repo-local agent config and follows from the
+paragraph above: a worktree is the standard way to work on a clone whose primary tree is live,
+and `git worktree add` materialises tracked files only. Left untracked, that config reached
+the primary tree and nowhere else, so every dispatched agent and every
+`/mattpocock-skills:code-review` ran with no tracker config at all.
+
+This repo being public, the private half stays out of it. The tracker's slug and the `gh`
+config directory live in the clone's local git config, under `tk.tracker` and
+`tk.ghConfigDir`, which git never pushes; `docs/agents/issue-tracker.md` carries the two
+`git config` lines a fresh clone needs, and the two lines that install
+`githooks/private-values` as the `pre-commit` and `commit-msg` hooks.

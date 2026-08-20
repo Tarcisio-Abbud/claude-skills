@@ -9,6 +9,15 @@
 !/tk-cowork
 !/plugin-drift
 !/asr
+!/githooks
+
+# Agent config: everything `/setup-matt-pocock-skills` writes under docs/agents/ is
+# versioned, so that `git worktree add` materialises it (README, "Layout"). The allowlist
+# reopens docs/ for that one directory and closes it again, and `githooks/private-values`
+# is what keeps a private value out of a PUBLIC repo.
+!/docs
+/docs/*
+!/docs/agents
 
 # Python bytecode from the tk-queue test suite
 __pycache__/

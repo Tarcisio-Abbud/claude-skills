@@ -1,0 +1,53 @@
+#!/bin/sh
+# Refuses a commit that would publish one of the values configuring this clone.
+#
+# This repo is PUBLIC and `docs/agents/issue-tracker.md` is versioned, so the path where
+# `.gitignore` used to block the private tracker's slug is now a path a careless write
+# reaches. The slug and the gh config directory live in the clone's local git config,
+# `tk.tracker` and `tk.ghConfigDir`, and this guard keeps them from being committed.
+#
+# Install it as BOTH hooks — the install lines are in `docs/agents/issue-tracker.md`.
+# git passes the message file as $1 to `commit-msg` and nothing to `pre-commit`, which is
+# how one script covers staged content and the commit message without being told which
+# hook it is running as.
+
+message_file=$1
+found=0
+
+# Everything this commit would publish: the staged content, plus the message when git
+# handed one over. `--text` matters — without it a staged binary is summarised as
+# "Binary files ... differ" and a value inside it never reaches grep.
+published() {
+  git diff --cached --text
+  if [ -n "$message_file" ]; then
+    cat "$message_file"
+  fi
+}
+
+for key in tk.tracker tk.ghConfigDir; do
+  value=$(git config "$key" 2>/dev/null)
+  # An unset key protects nothing, and an empty needle would match every commit.
+  if [ -z "$value" ]; then
+    continue
+  fi
+  if published | grep -q -F -- "$value"; then
+    if [ "$found" -eq 0 ]; then
+      echo "This repo is PUBLIC and the commit carries a private value." >&2
+      found=1
+    fi
+    echo "  - the value of: git config $key" >&2
+    echo "    see it:     git diff --cached --text | grep -n -F -- \"\$(git config $key)\"" >&2
+    echo "    replace by: \$(git config $key)" >&2
+  fi
+done
+
+if [ "$found" -eq 0 ]; then
+  exit 0
+fi
+
+cat >&2 <<'END'
+
+Swap each literal above for the lookup shown beside it, or drop the line, then commit again.
+Publishing the value on purpose takes `git commit --no-verify`.
+END
+exit 1
