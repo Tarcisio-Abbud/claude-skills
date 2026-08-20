@@ -1327,9 +1327,9 @@ MUTATIONS = [
 
     ("T126 pack packages the items already closed",
      '        if kind != "item-open":\n            continue\n        iid = item_id(text)\n'
-     "        # `is not None`, not truthiness:",
+     "        # the item's own spelling, from item_label:",
      '        if kind == "other":\n            continue\n        iid = item_id(text)\n'
-     "        # `is not None`, not truthiness:",
+     "        # the item's own spelling, from item_label:",
      ["TestPack.test_a_checked_item_is_not_a_candidate"]),
 
     ("T126 the repair is repeated once per item instead of once per shape",
@@ -1529,6 +1529,23 @@ MUTATIONS = [
      '        return f.read().replace("\\ufeff", "")',
      ["TestByteOrderMark.test_a_bom_further_INTO_the_file_is_left_alone"]),
 
+    ("ID the label is rebuilt from the parsed number, so T0001 prints as T001 again",
+     '    m = ITEM_ID_RE.match(text)\n    return ("T" + m.group(2)) if m else "----"',
+     '    iid = item_id(text)\n    return f"T{iid:03d}" if iid else "----"',
+     ["TestIdSpelling.test_list_prints_each_item_under_its_own_spelling",
+      "TestIdSpelling.test_pack_reads_the_id_the_way_list_does"]),
+     # NOT the two allocation tests: the display is not what they measure, and
+     # naming a test that passes here would claim a proof this run cannot make
+
+    # the WRONG fix for the collision, and the reason the repair had to stay in
+    # the display: capping the width hides T0001 from the allocator, which hands
+    # its number out again — and breaks T1000 the day IDs reach four digits
+    ("ID the slot hard-caps the width at three digits",
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]{3,})(?:~~)?\\*\\*"',
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]{3})(?:~~)?\\*\\*"',
+     ["TestIdSpelling.test_a_wide_spelling_is_still_an_allocated_id",
+      "TestIdSpelling.test_a_four_digit_id_is_canonical_and_is_not_capped"]),
+
     ("T122 a briefing is written for an item that is not open (an orphan at birth)",
      "    content, block, start = find_open_item(memdir, args.id)\n    values = {dest:",
      '    content, block, start = "", "", 0\n    values = {dest:',
@@ -1554,7 +1571,8 @@ def main():
                                   "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
                                   "TestEnvField", "TestClaim",
                                   "TestPack", "TestHandoffCreation",
-                                  "TestHandoffLifecycle", "TestByteOrderMark"])
+                                  "TestHandoffLifecycle", "TestByteOrderMark",
+                                  "TestIdSpelling"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

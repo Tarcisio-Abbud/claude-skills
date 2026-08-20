@@ -3519,5 +3519,67 @@ class TestByteOrderMark(QueueTest):
         self.assertEqual(self.body(), HEADER + item(1, "um\ufeffdois", effort="M"))
 
 
+# --- one number, two spellings -------------------------------------------
+
+class TestIdSpelling(QueueTest):
+    """`int("0001") == int("001")`, so a label rebuilt from the parsed number
+    showed `T001` for BOTH items — the collision reached the DISPLAY, and a
+    caller reading `list` could not see that two items existed at all.
+
+    The repair is in the display only, never in the grammar: `T0001` must go on
+    counting as an allocated ID. The tolerances of ITEM_ID_RE are deliberately
+    one-way (they may make MORE IDs count as taken, never fewer), and a width cap
+    that hid `T0001` from the allocator would hand its number out a second time —
+    the outcome the whole ID grammar exists to prevent. A cap would also break
+    the day IDs legitimately reach four digits: `T0001` is a NON-canonical
+    spelling of 1, `T1000` is the canonical spelling of 1000.
+    """
+
+    def wide(self, text="item de id largo"):
+        """T0001: the same number as T001, spelled a digit wider."""
+        return item(1, text).replace("**T001**", "**T0001**", 1)
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c", "--source", "2026-08-20")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    def test_list_prints_each_item_under_its_own_spelling(self):
+        self.seed(item(1, "item curto"), self.wide())
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # the WHOLE listing: the defect printed two identical lines, and any
+        # assertIn("T0001") would also pass on a listing that showed T0001 twice
+        self.assertEqual(r.stdout,
+                         "T001  AUTONOMOUS  item curto\n"
+                         "T0001  AUTONOMOUS  item de id largo\n")
+
+    def test_pack_reads_the_id_the_way_list_does(self):
+        """Two renderings of one ID is how the package and the listing come to
+        disagree about which item a line is about."""
+        self.seed(item(1, "item curto"), self.wide())
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001  S             item curto\n", r.stdout)
+        self.assertIn("T0001  S             item de id largo\n", r.stdout)
+
+    def test_a_wide_spelling_is_still_an_allocated_id(self):
+        """The one-way rule, at its sharp end: with `T0001` ALONE in the file, a
+        fix that stopped the allocator seeing it re-issues 1, and the queue ends
+        with two open items under one number."""
+        self.seed(self.wide())
+        self.assertEqual(self.add(), "T002")
+        self.assertEqual(re.findall(r"\*\*T([0-9]+)\*\*", self.body()), ["0001", "002"])
+
+    def test_a_four_digit_id_is_canonical_and_is_not_capped(self):
+        """The future the cap would break. T1000 is not a wide spelling of
+        anything — it is the only spelling of 1000."""
+        self.seed(item(1000, "item de quatro digitos"))
+        r = self.run_tk("list")
+        self.assertEqual(r.stdout, "T1000  AUTONOMOUS  item de quatro digitos\n")
+        self.assertEqual(self.add(), "T1001")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

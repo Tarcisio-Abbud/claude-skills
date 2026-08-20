@@ -415,6 +415,25 @@ def item_id(text):
     return int(m.group(2)) if m else None
 
 
+def item_label(text):
+    """How the item's ID is DISPLAYED — its OWN spelling, never a re-rendering of
+    the number that spelling parses to. `T001` and `T0001` are two items and one
+    number (`int("0001") == 1`), so a label rebuilt as f"T{iid:03d}" printed the
+    SAME line for both: a caller reading `list` could not even see that two items
+    existed, let alone which one a command would touch. The literal is also what
+    a human greps for in next-steps.md.
+
+    Canonical spelling is zero-padded to three, so for every item a WRITER of
+    these files produced this returns exactly what f"T{iid:03d}" returned — T000
+    included, which is an ID and must not be shown as the `----` reserved for an
+    item that carries none. Nothing here narrows what the allocator sees: the ID
+    is still read by ITEM_ID_RE and still counts as taken (see the allocation
+    note above).
+    """
+    m = ITEM_ID_RE.match(text)
+    return ("T" + m.group(2)) if m else "----"
+
+
 # CLI-facing ID parser: the queue DISPLAYS "T006" everywhere and the contract
 # writes `done <id>`, so the displayed form must be accepted. ASCII digits only
 # ([0-9], never \d): Python's int() would also swallow surrounding whitespace,
@@ -1200,8 +1219,7 @@ def cmd_list(args):
     for kind, text in split_blocks(content):
         if kind != "item-open":
             continue
-        iid = item_id(text)
-        label = f"T{iid:03d}" if iid else "----"
+        label = item_label(text)
         pm = PROJECT_TAG_RE.search(text)
         rows.append((label, item_class(text) or "?", item_title(text),
                      pm.group(1) if pm else None, displayed_claim(text)))
@@ -1457,10 +1475,11 @@ def cmd_pack(args):
         if kind != "item-open":
             continue
         iid = item_id(text)
-        # `is not None`, not truthiness: the rule below asks `iid is None`, and an
-        # item numbered T000 would otherwise be packaged under the label of an item
-        # with no ID at all
-        label = f"T{iid:03d}" if iid is not None else "----"
+        # the item's own spelling, from item_label: `list` and the package must not
+        # disagree about how an ID reads. It also keeps T000 an ID — the rule below
+        # asks `iid is None`, and truthiness here packaged T000 under the `----` of
+        # an item with no ID at all
+        label = item_label(text)
         verdict = pack_exclusion(iid, text, identity)
         if verdict is None:
             # Effort is free text, so the column is padded and never TRUNCATED: a
