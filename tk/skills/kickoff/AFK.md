@@ -27,6 +27,14 @@ to another session — if that session is known to be gone, hand it back with
 over a malformed field carries its repair in the `repairs:` block. Re-run
 `tk-queue pack` after any of these.
 
+An exclusion naming a value the script has no name for — a field written in
+another language, a class typed by hand — is the one no flag repairs: `edit`
+finds a field by the marker the script itself writes, and the fold the
+`repairs:` block prints is refused outright when the item's own text carries
+markers of its own. The queue contract's remedy for that item is `cancel` +
+`add`, which re-creates it in the contract's own names. Queues older than the
+contract are full of them, so meeting one is ordinary.
+
 **Then cut.** Take the eligible in the order printed — priority IS the order of
 the file, and `tk-queue bump <id>` is what moves an item to the top — then add
 items while the package still fits ONE session: the parent only orchestrates and
@@ -88,8 +96,9 @@ that briefing, and its ready-to-paste line goes in the report.
 
 **Only the orchestrator writes the queue.** `tk-queue` resolves which queue it is writing
 from the cwd, and a run in a worktree has a different one: a subagent calling `done` there
-writes into another project's memory dir, or none, and reports success either way. Runs
-return evidence; the writing happens here.
+writes into ANOTHER project's memory dir whenever that cwd collides with one, and reports
+success for it. (With no queue at that path it fails loud instead — the collision is the
+dangerous half.) Runs return evidence; the writing happens here.
 
 ### The prompt each run receives
 
@@ -115,9 +124,9 @@ Two parts, both produced here and neither delegated back:
 signature that came back local counts against the local ceiling. The measurement behind that
 rule is the *Venue* section of that same policy file.
 
-**Done when:** every package item is claimed or reported as held elsewhere, and every
-dispatched run carries its generated contract block and a prompt self-sufficient without the
-tracker.
+**Done when:** every package item was claimed — all of them, before the first dispatch — or
+reported as held elsewhere, and every dispatched run carries a contract block generated for
+that dispatch and a prompt self-sufficient without the tracker.
 
 ## 4. Verify every delivery
 
@@ -137,8 +146,8 @@ form verify prescribes for carrying the evidence block — and an item verify tu
 DECISION stays, carrying its handoff.
 
 **Done when:** every package item carries exactly one verify outcome with its evidence block
-in the PR body or on the item, and every claim this package took has either left with its
-item or been released.
+in the PR body or on the item, every claim this package took has either left with its item or
+been released, and `tk-queue list` shows the queue as the run left it.
 
 ## 5. Measure, and hand the package to the close
 
@@ -161,7 +170,9 @@ reason — the convention `tk-queue pack` already uses for its own exclusions:
   `tk-queue pack`'s exclusion or by the claim this package was refused;
 - an item `tk-queue pack` excluded for anything else is **carried** too, recording the value
   the filter printed: it was never eligible at all, and "left out" alone reads as a size call
-  nobody made;
+  nobody made. Where that value names a defect in the ITEM rather than a decision about it —
+  a field the script cannot read — the reason says so, since "carried" alone reads as a
+  deliberate hold and not as a repair waiting;
 - an item left out for size is **carried** under the effort gate — cut in step 1, or too big
   to dispatch from here in step 3 — and it carries the ready-to-paste line that runs it:
   another `/tk:kickoff afk` for the cut, and for the one that needed a session of its own,
@@ -171,8 +182,11 @@ An item verify ended at **proof ready**, and one it turned into a **DECISION**, 
 what verify already wrote into them and owe nothing further here: the close is where a
 proof-ready item becomes the DECISION that carries its digest reference.
 
+Items this package never touched owe nothing here: the close's own groups cover the whole
+queue's balance, and this ladder covers only what the package handled.
+
 **Done when:** the measurement line and the deviation lines are written, and every item the
-package did not close carries the reason that lands it in one of the close's groups.
+package did not close carries the first rung that applies to it.
 
 ## 6. Chain the afk wrap-up
 
@@ -205,3 +219,6 @@ six items are born, which is how a quick job became three weeks. So every findin
 queued is listed in the close under the gate that kept it, for the user's **veto** on their
 return — `tk-queue cancel <id> --why "..."` is that veto, and it is one command against a
 finding that would otherwise have been lost to nobody's judgement.
+
+**Done when:** every session finding this session raised sits in the queue behind a named
+gate and is listed in the close for that veto — none discarded, none resolved on the spot.
