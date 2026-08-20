@@ -60,8 +60,11 @@ merely transported. Run the ones you carried over, not only the ones you wrote.
 
 **Re-lens the correction commit.** When a second pair of eyes finds anything non-trivial, the
 fix is new code that nobody has reviewed; pointing the lenses that found the defect back at the
-commit that repaired it has caught a defect born in the repair five times running, including
-regressions that a fully green suite reported as healthy.
+commit that repaired it has caught a defect born in the repair six times running, including
+regressions that a fully green suite reported as healthy and, once, a defect in a process
+document rather than in code. The sixth was found in the commit that promoted this very rule:
+writing a rule does not immunise you against breaking it, and the author is the worst judge of
+whether they applied it.
 
 ## Prose an agent will read
 
