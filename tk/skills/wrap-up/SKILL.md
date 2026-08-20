@@ -104,9 +104,10 @@ finding: a discard answers a question, and this one needs a routine.
 system signal, not an instance signal — propose encoding it (project skill, hook rule,
 test) so it holds in every future iteration.
 **Done when:** every durable fact of the session has a memory file (with a pointer in
-`MEMORY.md`), every item left in `next-steps.md` names the survival gate that kept it there, no
-RECURRING item is parked, and every recurring correction has an encoding proposed or
-discarded.
+`MEMORY.md`), every session finding carried here from step 1 is either resolved in this
+session or in the queue behind a named gate, every item left in `next-steps.md` names the
+survival gate that kept it there, no RECURRING item is parked, and every recurring
+correction has an encoding proposed or discarded.
 
 ## 3. Update the repo documentation
 
@@ -203,7 +204,7 @@ preference that disagrees with it loses:
 ```
 **<N> closed · <M> carried · <K> blocked · <D> discarded**
 
-**Closed** — resolved or cancelled; both left the queue for the log
+**Closed** — everything that left the queue, FEITO or DESCARTADO alike
 - <item> — <the one or two concrete gains it bought>
 - <item> — <gains>  ·  risk: <what could still bite, in one clause>
 
