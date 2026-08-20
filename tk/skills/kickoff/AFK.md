@@ -43,9 +43,9 @@ What multiplies a lane is the number of correction cycles, not the size of the d
 budgeting a lane by its diff was measured underestimating by ~3× (2026-08-19).
 
 **Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45"),
-and every item left out is noted with the reason — the eligible ones dropped for size AND
-the ones `tk-queue pack` excluded, which are not eligible at all and would otherwise leave no
-trace anywhere.
+every exclusion was re-triaged rather than copied, and every item left out is noted with the
+reason — the eligible ones dropped for size AND the ones `tk-queue pack` excluded, which are
+not eligible at all and would otherwise leave no trace anywhere.
 
 ## 2. `pack` only: confirm
 
@@ -94,10 +94,11 @@ return evidence; the writing happens here.
 
 Two parts, both produced here and neither delegated back:
 
-- **The contract block**, pasted verbatim from `../../bin/tk-contract --role <role from the table>`:
-  the ceilings, that role's model/effort/venue, and the return contract it owes. Generate it
-  per dispatch rather than typing it from memory — a hand-written block is a fork of the
-  policy. Pass `--fleet N` only when something else shares this machine's ceiling and told you
+- **The contract block**, pasted verbatim from `../../bin/tk-contract --role <row>`: the
+  ceilings, that role's model/effort/venue, and the return contract it owes. The row for a run
+  executing a package item is `implementer`; the other rows belong to the roles a step names
+  by itself. Generate it per dispatch rather than typing it from memory — a hand-written block
+  is a fork of the policy. Pass `--fleet N` only when something else shares this machine's ceiling and told you
   N; alone, the whole ceiling is yours.
 - **The item's distilled contract**: the interface the work must honour, its invariants, what
   the neighbouring slices consume from it. You hold the map hot and distilling costs once,
@@ -121,8 +122,9 @@ tracker.
 The ruler is the item's own criterion and the rite belongs to `../verify/SKILL.md` — read it
 before the first item closes. What this step owes that file:
 
-- **The caller re-runs the proof**, here, once, on the final tree. The run's own account of
-  its work is an input to that run and never a substitute: verify by artifact, not by summary.
+- **The caller re-runs the proof**, here, once, on the final tree — the one measurement, which
+  the close then displays rather than repeating. The run's own account of its work is an input
+  to it and never a substitute: verify by artifact, not by summary.
 - **An empty return is a failed attempt.** A run that comes back with no evidence block did
   not deliver, however confident its prose, and the attempt counts toward the three.
 - The three attempts, the four outcomes and the DECISION-plus-handoff a failure writes are
@@ -159,8 +161,9 @@ reason — the convention `tk-queue pack` already uses for its own exclusions:
   the filter printed: it was never eligible at all, and "left out" alone reads as a size call
   nobody made;
 - an item left out for size is **carried** under the effort gate — cut in step 1, or too big
-  to dispatch from here in step 3 — and its ready line is another `/tk:kickoff afk`, or, for
-  one that needed a session of its own, the opening line of the briefing written for it.
+  to dispatch from here in step 3 — and it carries the ready-to-paste line that runs it:
+  another `/tk:kickoff afk` for the cut, and for the one that needed a session of its own,
+  the line step 3 already put in the report beside its briefing.
 
 An item verify ended at **proof ready**, and one it turned into a **DECISION**, are carried on
 what verify already wrote into them and owe nothing further here: the close is where a
