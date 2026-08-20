@@ -38,6 +38,9 @@ human judges several PRs at once, and one PR is read faster in the digest than i
 
 The outbox is where it goes, by default and without asking: the machine's **outbox** is the
 directory it exports to the user, and the file is `<outbox>/vista-<package>-<YYYY-MM-DD>.html`.
+A package has no id of its own, so `<package>` is the name the session already calls it by — the
+anchor item's id (`T139`) for a package built around one, otherwise its first item's id, and the
+campaign's name where the user gave it one.
 Two places name that directory, and the reader takes the first that answers — the machine's own
 instruction file (`CLAUDE.md`/`AGENTS.md`, which normally states where deliverables go), then
 the site extension `~/.claude/tk/wrap-up.md`, under a line reading `outbox = <absolute path>`.
@@ -54,7 +57,7 @@ the design. Every marker is a `data-vista-*` attribute, and `tk-vista-check` rea
 
 | # | Block | Marker | What fills it |
 |---|---|---|---|
-| 1 | Stats line, at the opening | `data-vista-bloco="stats"` | slices, merged, open PRs, findings, tests — the counts the reader wants before anything else |
+| 1 | Stats line, at the opening | `data-vista-bloco="stats"` | the closing template's own four counts — closed · carried · blocked · discarded, which never sum — plus whatever else this package earned (open PRs, tests) |
 | 2 | One card per PR or item, grouped by outcome | `data-vista-bloco="cards"` on the region; `data-vista-card="<id>"` and `data-vista-desfecho="<outcome>"` on each card | what the slice delivered, in prose a reader who will not open the diff can judge |
 | 3 | Risk tag, on every card | `data-vista-risco="<low\|medium\|high>"` on the card | what could still bite, in one clause |
 | 4 | Link to that slice's proof | `data-vista-bloco="prova"` on an `<a href>` inside the card | the evidence block lives in the PR (`../skills/verify/SKILL.md`) and is pointed at, never copied or re-derived here |
@@ -86,7 +89,9 @@ where a `tk/` directory usually means something else:
 ```
 
 It fails on an external resource (a `src`, a `<link href>`, an `@import`, a CSS `url()`, a
-relative path, a network call in script), on a missing block, on a card with no outcome, no
-risk tag or no proof link, and on a page with no `prefers-color-scheme: dark` rule. That last
-one is why the template defines its palette as tokens twice: the reader's browser picks the
-theme, and both have to be legible.
+relative path, an empty `src`, a network call in script), on a missing block, on a card with no
+outcome, no risk tag or no proof link, on text printed outside the `<body>` a page declared —
+what a comment holding a nested comment leaves above the title — and on a page with no
+`prefers-color-scheme: dark` rule.
+That last one is why the template defines its palette as tokens twice: the reader's browser
+picks the theme, and both have to be legible.

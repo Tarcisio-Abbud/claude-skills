@@ -87,12 +87,12 @@ MUTATIONS = [
      ["TestSelfContained.test_a_base_tag_is_refused"], CHECK),
 
     # -- the five blocks --------------------------------------------------
-    ("T139 block 1 drops out of the table the check reads",
-     'PAGE_BLOCKS = ("stats", "cards", "saldo")', 'PAGE_BLOCKS = ("cards", "saldo")',
+    ("T139 block 1 drops out of the table the checks are derived from",
+     '    "stats": (1, "the opening stats line"),\n', "",
      ["TestFiveBlocks.test_the_stats_block_is_required"], CHECK),
 
-    ("T139 block 2's region drops out of the table the check reads",
-     'PAGE_BLOCKS = ("stats", "cards", "saldo")', 'PAGE_BLOCKS = ("stats", "saldo")',
+    ("T139 block 2's region drops out of the table the checks are derived from",
+     '    "cards": (2, "the cards region"),\n', "",
      ["TestFiveBlocks.test_the_cards_region_is_required"], CHECK),
 
     ("T139 a page with no card at all passes",
@@ -131,8 +131,8 @@ MUTATIONS = [
      ["TestFiveBlocks.test_an_unclosed_paragraph_does_not_keep_a_card_open_past_its_end"],
      CHECK),
 
-    ("T139 block 5 drops out of the table the check reads",
-     'PAGE_BLOCKS = ("stats", "cards", "saldo")', 'PAGE_BLOCKS = ("stats", "cards")',
+    ("T139 block 5 drops out of the table the checks are derived from",
+     '    "saldo": (5, "closed \u00d7 open balance"),\n', "",
      ["TestFiveBlocks.test_the_balance_block_is_required"], CHECK),
 
     ("T139 a card with no id of its own is named by an empty string",
@@ -148,15 +148,22 @@ MUTATIONS = [
      CHECK),
 
     ("T139 an empty URL is read as no URL at all",
-     "    if not u:\n        return False", "    if not u:\n        return True",
+     '    return u.lower().startswith("data:")',
+     '    return u.lower().startswith("data:") or not u',
      ["TestSelfContained.test_an_empty_src_is_refused"], CHECK),
+
+    ("T139 a page that declares no body is judged as if it had one",
+     "    for text_out in v.loose if v.declared_structure else []:",
+     "    for text_out in v.loose:",
+     ["TestWhatTheReaderSEES.test_a_page_that_declares_no_body_keeps_its_text"], CHECK),
 
     ("T139 text outside every element is never collected",
      "        elif not self.stack and data.strip():", "        elif False:",
      ["TestWhatTheReaderSEES.test_text_left_outside_every_element_is_refused"], CHECK),
 
     ("T139 the loose text is collected and then never reported",
-     "    for text_out in v.loose:", "    for text_out in []:",
+     "    for text_out in v.loose if v.declared_structure else []:",
+     "    for text_out in []:",
      ["TestWhatTheReaderSEES.test_a_comment_holding_a_nested_comment_is_caught_where_it_leaks"],
      CHECK),
 

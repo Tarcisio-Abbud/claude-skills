@@ -212,12 +212,22 @@ class TestWhatTheReaderSEES(CheckTest):
 
     def test_text_left_outside_every_element_is_refused(self):
         self.assertRefused("A note nobody meant to publish.\n" + PAGE,
-                           "text rendered outside every element")
+                           "text printed outside <body>")
+
+    def test_a_page_that_declares_no_body_keeps_its_text(self):
+        # `<html>` and `<body>` are optional in HTML5. Such a page holds its
+        # prose at depth zero with nothing leaked, and the layout is free
+        bare = PAGE.replace('<html lang="en">', "").replace("<body>", "").replace("</body>", "")
+        # the sentence is wrapped in NOTHING: inside a <p> it would sit one
+        # level deep and the fixture would prove nothing about depth zero
+        bare = bare.replace("</html>", "").replace(
+            "</head>", "</head>\nA note the author meant to publish.")
+        self.assertAccepted(bare)
 
     def test_a_comment_holding_a_nested_comment_is_caught_where_it_leaks(self):
         # the outer comment ends at the FIRST `-->`; everything after it prints
         leaky = "<!-- fill in the <!-- FILL --> notes and keep the markers -->\n" + PAGE
-        self.assertRefused(leaky, "text rendered outside every element")
+        self.assertRefused(leaky, "text printed outside <body>")
 
 
 class TestBothThemes(CheckTest):

@@ -6,6 +6,11 @@ give a verdict, written to the outbox and thrown away. It is never a source, so
 nothing is read back from it — which leaves exactly two properties a machine can
 still check, and both are checked here.
 
+Four properties are checkable without a human: the page fetches nothing, the
+five blocks are there, the palette covers both themes, and nothing prints that
+the author never meant to publish. Whether the prose is worth reading is the
+reader's question, and no checker replaces it.
+
 SELF-CONTAINED. The page opens from a local file, on a machine that may be
 offline, months after the session that wrote it. So every byte it renders is
 already inside it: no stylesheet, script, font, image or fetch reaching out.
@@ -74,23 +79,28 @@ BLOCKS = {
     "prova": (4, "the slice's proof"),
     "saldo": (5, "closed × open balance"),
 }
-PAGE_BLOCKS = ("stats", "cards", "saldo")
+CARD_BLOCK = "prova"                       # the one checked card by card
+PAGE_BLOCKS = tuple(m for m in BLOCKS if m != CARD_BLOCK)
 
 
 def local(url):
     """True when the browser can resolve `url` without leaving this file."""
     u = (url or "").strip()
-    if not u:
-        return False        # `src=""` resolves to the page and refetches it
     if u.startswith("#"):
         return True
+    # everything else has to be inline. An EMPTY value falls through to False on
+    # purpose: `src=""` is not "no URL", it resolves to the page and refetches it
     return u.lower().startswith("data:")
 
 
 class Vista(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.loose = []          # text rendered outside every element
+        self.loose = []          # text printed outside the structure the page declared
+        # `<html>` and `<body>` are optional in HTML5: a page that declares
+        # neither keeps its text at depth zero legitimately, and refusing that
+        # would refuse the free layout the contract promises
+        self.declared_structure = False
         self.stack = []          # open tags, innermost last
         self.cards = []          # one dict per card found
         self.open_cards = []     # indices into self.cards, innermost last
@@ -147,6 +157,8 @@ class Vista(HTMLParser):
     def _element(self, tag, attrs):
         """Read one element; True when it opened a card."""
         a = {k.lower(): (v or "") for k, v in attrs}
+        if tag in ("html", "body"):
+            self.declared_structure = True
         for name, value in a.items():
             if name in URL_ATTRS:
                 if tag == "a" and name == "href":
@@ -215,12 +227,12 @@ def check(path):
         if not card["risco"]:
             bad.append(f'block 3: card {card["id"]} has no data-vista-risco (risk tag per card)')
         if not [u for u in card["provas"] if u]:
-            number, name = BLOCKS["prova"]
+            number, name = BLOCKS[CARD_BLOCK]
             bad.append(f'block {number}: card {card["id"]} carries no '
                        f'data-vista-bloco="prova" link with an href ({name})')
-    for text_out in v.loose:
-        bad.append(f"text rendered outside every element: {text_out!r} — an unterminated "
-                   "comment prints what it was holding")
+    for text_out in v.loose if v.declared_structure else []:
+        bad.append(f"text printed outside <body>: {text_out!r} — the usual cause is a "
+                   "comment holding a nested comment, which ends at the first -->")
 
     # -- readable in both themes -------------------------------------------
     if not DARK_THEME.search(css):
