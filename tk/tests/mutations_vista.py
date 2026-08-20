@@ -89,9 +89,34 @@ MUTATIONS = [
      "        if False:\n            bad.append(f\"external resource: CSS fetches",
      ["TestSelfContained.test_a_css_url_on_a_relative_path_is_refused"], CHECK),
 
+    ("T139 the argument list is read by a regex that cannot nest",
+     "        content = balanced(css, m.end() - 1)",
+     '        content = (css[m.end():] + ")").split(")", 1)[0]',
+     ["TestSelfContained.test_a_refused_css_url_is_named_whole_even_with_parens_in_it"], CHECK),
+
+    ("T139 a nested url() is read as a token of the function around it",
+     "            if not candidate or CSS_URL_FUNC.match(candidate):",
+     "            if not candidate:",
+     ["TestSelfContained.test_an_image_set_wrapping_a_data_uri_is_kept"], CHECK),
+
+    ("T139 the scan resumes past the whole function, so a nested url() is never seen",
+     "        pos = m.end()\n        content = balanced",
+     "        pos = m.end() + len(balanced(css, m.end() - 1)) + 1\n        content = balanced",
+     ["TestSelfContained.test_an_image_set_wrapping_a_remote_url_is_refused"], CHECK),
+
+    ("T139 the candidates are split on every comma, quotes and parens included",
+     "        for candidate in top_level_commas(content):",
+     '        for candidate in content.split(","):',
+     ["TestSelfContained.test_an_image_set_wrapping_a_data_uri_is_kept"], CHECK),
+
+    ("T139 every candidate of an image-set is reported, local ones included",
+     '        if not local(url):\n            bad.append(f"external resource: CSS fetches',
+     '        if True:\n            bad.append(f"external resource: CSS fetches',
+     ["TestSelfContained.test_only_the_offending_candidate_of_an_image_set_is_refused"], CHECK),
+
     ("T139 only url() counts as a CSS function that fetches",
-     r'CSS_URL_FUNC = re.compile(r"(?:url|image-set|-webkit-image-set)\s*\(([^)]*)\)"',
-     r'CSS_URL_FUNC = re.compile(r"(?:url)\s*\(([^)]*)\)"',
+     r'CSS_URL_FUNC = re.compile(r"(?<![\w-])(url|image-set|-webkit-image-set)\s*\("',
+     r'CSS_URL_FUNC = re.compile(r"(?<![\w-])(url)\s*\("',
      ["TestSelfContained.test_an_image_set_reaching_the_network_is_refused"], CHECK),
 
     ("T139 the catch-all over the CSS text is back, and it refuses legitimate CSS",

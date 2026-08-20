@@ -188,6 +188,33 @@ class TestSelfContained(CheckTest):
             PAGE.replace("body {", 'body { background-image:image-set("http://cdn.example/a.png" 1x);'),
             "CSS fetches")
 
+    def test_an_image_set_wrapping_a_data_uri_is_kept(self):
+        # the argument list NESTS: a regex that stops at the first `)` truncates
+        # at the inner url() and refuses a page that fetches nothing
+        self.assertAccepted(PAGE.replace(
+            "body {", "body { background-image:image-set(url(data:image/gif;base64,R0lGOD) 1x);"))
+
+    def test_an_image_set_wrapping_a_remote_url_is_refused(self):
+        self.assertRefused(PAGE.replace(
+            "body {", "body { background-image:image-set(url(https://cdn.example/a.png) 1x);"),
+            "CSS fetches")
+
+    def test_only_the_offending_candidate_of_an_image_set_is_refused(self):
+        r = self.check(PAGE.replace(
+            "body {", 'body { background-image:image-set("data:image/gif;base64,R0lGOD" 1x, '
+                      '"http://cdn.example/b.png" 2x);'))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("http://cdn.example/b.png", r.stdout)
+        self.assertNotIn("data:image/gif", r.stdout)
+
+    def test_a_refused_css_url_is_named_whole_even_with_parens_in_it(self):
+        # what `balanced()` buys once the nested-url rule is in place: the
+        # refusal prints the address the author has to go and fix, not a stump
+        r = self.check(PAGE.replace(
+            "body {", "body { background-image:image-set(url(https://cdn.example/a(1).png) 1x);"))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("https://cdn.example/a(1).png", r.stdout)
+
     def test_a_class_named_http_is_not_an_address(self):
         # every place CSS fetches from is a FUNCTION, so the functions are the
         # whole list: a catch-all over the stylesheet text refused these two

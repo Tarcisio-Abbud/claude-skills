@@ -87,7 +87,7 @@ PLACEHOLDER_HOSTS = ("localhost", "invalid", "test", "example", "local",
 # Every CSS function that takes a URL, not `url()` alone: `image-set()` fetches
 # just as hard, and a checker that knows one token is a checker that fetches the
 # other one
-CSS_URL_FUNC = re.compile(r"(?:url|image-set|-webkit-image-set)\s*\(([^)]*)\)", re.IGNORECASE)
+CSS_URL_FUNC = re.compile(r"(?<![\w-])(url|image-set|-webkit-image-set)\s*\(", re.IGNORECASE)
 CSS_IMPORT = re.compile(r"@import\b", re.IGNORECASE)
 DARK_THEME = re.compile(r"prefers-color-scheme\s*:\s*dark", re.IGNORECASE)
 
@@ -140,19 +140,75 @@ def placeholder(url):
     return None
 
 
+def balanced(css, opening):
+    """The text between the paren at `opening` and the one that closes it.
+
+    A regex cannot do this: `[^)]*` truncates `image-set(url(data:…) 1x)` at the
+    INNER paren, and the mutilated token then fails the `data:` test — a local,
+    legitimate page refused. Quotes are honoured so a paren inside a string does
+    not close anything."""
+    depth, quote, i = 0, None, opening
+    while i < len(css):
+        ch = css[i]
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return css[opening + 1:i]
+        i += 1
+    return css[opening + 1:]        # unbalanced: judge what there is
+
+
+def top_level_commas(text):
+    """`text` split on the commas that are not inside parens or quotes."""
+    parts, depth, quote, start = [], 0, None, 0
+    for i, ch in enumerate(text):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return parts
+
+
 def css_urls(css):
     """Every URL the stylesheet would fetch, from every function that takes one."""
-    found = []
-    for args in CSS_URL_FUNC.findall(css):
-        for arg in args.split(","):
-            arg = arg.strip()
-            if not arg:
-                continue
-            # `image-set("a.png" 1x)` — the descriptor is not part of the URL
-            token = arg.split()[0].strip("'\"")
+    found, pos = [], 0
+    while True:
+        m = CSS_URL_FUNC.search(css, pos)
+        if not m:
+            return found
+        # resume just INSIDE this function, so a nested `url()` is found by its
+        # own pass rather than read as a token of the outer one
+        pos = m.end()
+        content = balanced(css, m.end() - 1)
+        if m.group(1).lower() == "url":
+            token = content.strip().strip("'\"")
             if token:
                 found.append(token)
-    return found
+            continue
+        for candidate in top_level_commas(content):
+            candidate = candidate.strip()
+            # `image-set("a.png" 1x)` — the descriptor is not part of the URL
+            if not candidate or CSS_URL_FUNC.match(candidate):
+                continue
+            token = candidate.split()[0].strip("'\"")
+            if token:
+                found.append(token)
 
 
 class Vista(HTMLParser):

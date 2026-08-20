@@ -228,10 +228,12 @@ returning to `main` puts the old `tk-queue` back. A fix is only in force once me
 proved by `python3 tk/tests/mutations.py`, which restores each defect and requires the tests
 named for it to fail, one at a time. A test that passes with the defect back protects
 nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answers to the same
-rule through `python3 tk/tests/mutations_tk_contract.py`, `tk-vista-check` through
+rule through `python3 tk/tests/mutations_tk_contract.py`, the roster sweep through
+`python3 tk/tests/mutations_roster.py`, `tk-vista-check` through
 `python3 tk/tests/mutations_vista.py` (entries only, reusing that runner), and the commit guard
-through `python3 githooks/tests/mutations_private_values.py`. The harnesses are separate files only
-because the oldest one names its test module inline.
+through `python3 githooks/tests/mutations_private_values.py` — **that last path arrives with the
+commit-guard PR**, and until it merges the line names a directory this branch does not have. The
+harnesses are separate files only because the oldest one names its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
 the whole `tk/` tree is versioned.
