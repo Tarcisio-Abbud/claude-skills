@@ -1,6 +1,6 @@
 ---
 name: wrap-up
-description: "Session close before /compact or /clear: closes the session's loose ends, updates memory and docs, runs the tests, settles every commit/push/merge decision in one gate and reports on a fixed template. Arg: afk (no menus, strict merge)"
+description: "Session close before /compact or /clear: kills the session's pendings, updates memory and docs, runs the tests, settles every commit/push/merge decision in one gate and reports on a fixed template. Arg: afk (no menus, strict merge)"
 disable-model-invocation: true
 ---
 
@@ -19,7 +19,7 @@ disagrees with that structure, the template wins.
 
 **Site extensions:** read `~/.claude/tk/wrap-up.md` and `.claude/tk/wrap-up.md` (project
 root) if they exist — they add site-specific documentation targets, flow recommendations
-and the repo list step 5 reads before an unattended merge. (A project's own
+and, where the site has one, the repo list the afk merge reads. (A project's own
 `.claude/skills/wrap-up` overrides this skill entirely.)
 
 ## 1. Inventory the session's changes
@@ -35,15 +35,17 @@ discoveries, external pending items). The inventory drives the rest: no code cha
 step 4 skips the suite; nothing behaviour- or knowledge-changing → step 3 shrinks to
 nothing; the version-control actions found here feed the step-5 gate.
 
-**Then the loose ends.** The inventory carries a section of its own: every point the
+**Then the session findings.** The inventory carries a section of its own: every point the
 session RAISED and left unanswered — a question the user asked back, an option weighed and
-not chosen, a defect noticed in passing. Right after printing it, ONE batched
-`AskUserQuestion` closes the whole section, since each answer can still change memory, docs
-or the queue in the steps below. This is where the session stops leaking pendings into the
-queue; what the user answers here never becomes an item.
+not chosen, a defect noticed in passing. **Session finding** is the term, qualified because
+a bare "finding" is a code-review finding throughout this repo. Right after printing the
+section, ONE batched `AskUserQuestion` closes it whole, since each answer can still change
+memory, docs or the queue in the steps below; the same menu carries any conversion step 2
+owes. Each finding leaves answered, discarded, or gated into the queue by step 2 — which is
+where the session stops leaking pendings into the queue.
 **Done when:** the user saw a concrete list of touched files/commits, of the branches/PRs
-in play, and of the new decisions/facts — with nothing material omitted — every loose end
-was answered or consciously carried, and each later step is marked run/skip.
+in play, and of the new decisions/facts — with nothing material omitted — every session
+finding was answered, discarded or gated, and each later step is marked run/skip.
 
 ## 2. Update memory, and gate what survives into the queue
 
@@ -73,26 +75,29 @@ That queue is what `/tk:kickoff` dispatches at the next session's open.
 ### The three survival gates
 
 An item survives into the queue only when at least ONE **survival gate** holds — a
-different object from the versioning gate of step 5 — and the `add` command records WHICH
-one in the item's text:
+different object from the versioning gate of step 5 — and the item RECORDS which one. The
+contract has no `Gate` field, so that record is the item's own text, in the writer's words
+("waiting on the vendor's token"), except where a field already carries it:
 
 | Survival gate | Holds when | The class it arrives as |
 |---|---|---|
 | **decision** | the item needs a human verdict that cannot be had now | `DECISION`, and `--deferred` carries it |
 | **effort** | the work exceeds what is left of this session | `AUTONOMOUS`, and `--effort` carries the size |
-| **dependency** | a third party, a credential, or a machine that is not this one holds it | `BLOCKED` or `EXTERNAL` — or `--env <machine>` when the block is only WHERE it runs — and the text names what is awaited |
+| **dependency** | a third party, a credential, or a machine that is not this one holds it | `BLOCKED` or `EXTERNAL` — or `--env <name from the site roster>` when the block is only WHERE it runs, matched exactly and refused otherwise — and the text names what is awaited |
 
-The survival gates are a disjunction, not a partition: two can hold at once, and then the item
-records the FIRST in the order above — that order is the tie-break, and nothing more.
-An item that passes none is resolved in this session; "I will do it later" is not one.
+`--effort` is required on every `add`, so a size alone marks nothing: the effort gate is
+named in the text like any other. The survival gates are a disjunction, not a partition: two
+can hold at once, and then the item records the FIRST in the order above — that order is the
+tie-break, and nothing more. An item that passes none is resolved in this session;
+"I will do it later" is not one.
 
 **RECURRING is convert-or-resolve, and it is decided before the survival gates are
 asked.** The class means the item is not a one-off, so no survival gate can justify parking
-it: with the user present, convert it into a scheduled routine NOW and close the item with
-`done --how "<the routine>"`;
-unattended, it becomes a `DECISION` carrying the routine ready to paste, since creating one
-is an external effect. A RECURRING item is never swept as a loose end in step 1 either — the
-sweep answers questions, and this one needs a routine.
+it. Creating a routine is an external effect, so with the user present the conversion is one
+of the options in step 1's batched menu — the check IS the authorization — and the item
+then closes with `done --how "<the routine>"`. Unattended, it becomes a `DECISION` carrying the
+routine ready to paste. Either way it is converted or resolved, never discarded as a session
+finding: a discard answers a question, and this one needs a routine.
 
 **Encode into the system:** a correction the user repeated or a check they did by hand is a
 system signal, not an instance signal — propose encoding it (project skill, hook rule,
@@ -150,8 +155,9 @@ the four verdicts of **safe-to-merge**, one line each:
 
 Four green → merge is the recommended action. Any red → the digest says which one, and the
 merge is not offered. Verdict 3 has a second shape: a **type-B criterion** ends at proof
-ready, because the verdict is the user's — the digest displays the proof and the merge waits
-for them, which is the one check the unattended path below can never turn green on its own.
+ready, because the verdict is the user's. The digest displays that proof, and with the user
+here their check in the menu below IS the verdict, so the merge is offered like any other
+action. It is the unattended path that can never turn this one green on its own.
 A small diff (guidance: ≲150 lines) is still shown whole in the terminal and a large one
 gets the link, but the diff is a courtesy: what authorizes the merge is the four verdicts,
 which is the point of a user who does not read code.
@@ -164,10 +170,16 @@ Then ONE multiSelect `AskUserQuestion` with the actions, recommended first — t
 the authorization (this is how "commit/push only when the user asks" is satisfied). Execute
 what was checked, following the project's conventions (required trailer lines; on the
 default branch, branch first). Every unchecked action enters the queue as a DECISION item
-via `tk-queue add --class DECISION --deferred "<why it waits for the user>"` — a merge
-carries its digest reference (forge link + review status), any other action carries the
-branch/paths involved — deferred by choice, not by omission, and the script demands that
-choice in writing.
+via the full `add` line, since `--effort` and `--criterion` are required of every class:
+
+```
+tk-queue add "<the action>" --class DECISION --deferred "<why it waits for the user>" \
+         --effort "<S/M/L + estimate>" --criterion "<A: a command | B: the user's verdict>"
+```
+
+A merge carries its digest reference (forge link + review status); any other action carries
+the branch/paths involved. It is deferred by choice, not by omission, and the script demands
+that choice in writing.
 
 **Merging a stack, in this order:** retarget each child PR onto the new base BEFORE deleting
 the base branch — deleting it first CLOSES the child (measured twice) — and remove the
@@ -185,7 +197,7 @@ The report follows this structure, and it is the structure that travels — a re
 preference that disagrees with it loses:
 
 ```
-**<N> closed · <M> carried · <K> blocked**
+**<N> closed · <M> carried · <K> blocked · <D> discarded**
 
 **Closed**
 - <item> — <the one or two concrete gains it bought>
@@ -197,13 +209,18 @@ preference that disagrees with it loses:
 **Blocked**
 - <item> — what is missing, and from whom
 
+**Discarded**
+- <session finding> — why it was dropped
+
 **Blockers and notes for the next session:** <text — or "none", spelled out>
 
 **Suggestions:** <what you would do next, if you have one — last, never mixed in above>
 ```
 
 The stats line opens the report and carries the balance: what left the queue against what
-is still in it. Items group by outcome, never by chronology. A group of three or more items
+is still in it. Items group by outcome, never by chronology. The discarded group holds the
+session findings the user dropped in step 1, and it exists only where a user was there to
+drop them — unattended, the findings are gated into the queue instead. A group of three or more items
 becomes a table with those same columns. The gains are concrete — "the queue can no longer
 lose a resolved item" beats "improved the queue" — and a case that closed with no gain worth
 a line closed with nothing worth reporting, which is itself the finding. The blockers line
@@ -214,11 +231,12 @@ itself the signal that the briefing below is due.
 
 ### The handoff
 
-The default handoff is the pair that already exists: the queue item, in executable order,
-plus the opening sentence of the next session. **Escalate to the five-field briefing when
-the understanding the next session needs lives only in this conversation** — a task
-mid-flight, open hypotheses, a campaign spanning several items. The briefing is written and
-removed by `tk-queue` alone:
+The handoff comes at two levels. The default is the pair that already exists: the queue
+item, in executable order, plus the opening sentence of the next session. **Escalate to the
+five-field briefing when the understanding the next session needs lives only in this
+conversation** — a task mid-flight, open hypotheses, a campaign spanning several items. The
+briefing is the file `tk-queue handoff` writes — the sibling skills reach for it by that
+command's name — and it is written and removed by that command alone:
 
 ```
 tk-queue handoff <id> --objective "..." --state "..." --blockers "..." \
@@ -290,23 +308,24 @@ the next conversation's opening sentences, each in the shape that fits.
 
 `/tk:wrap-up afk` — the user typed it and left; run every step without a single menu.
 
-- Steps 1–4 and 6 run unchanged, except that every menu becomes a queue entry: each loose
-  end of step 1 and each unanswered choice becomes a `DECISION` item, and an unattended
-  session passes `--deferred afk`, which is the only thing separating a decision nobody
-  could ask from one nobody bothered to ask.
+- Steps 1–4 and 6 run as written, with every menu turning into a queue entry: each session
+  finding of step 1 and each unanswered choice becomes a `DECISION` item, carrying
+  `--deferred afk` — the flag that separates a decision nobody could ask from one nobody
+  bothered to ask.
 - **Concurrent-session guard** first (defined in `../kickoff/AFK.md`): `git worktree list` +
   the `+` marks in `git branch -v`; another live session in the repo → leave the tree
   untouched and report it.
-- **Commit, then review, then push.** Commit the work to a branch — never the default branch
-  — before dispatching any review, so a session that dies on the quota wall dies with the
-  work saved. Fix the findings in a follow-up commit, rewrite the PR body to match, then
-  push the branch and open the PR carrying the evidence block. Invoking `afk` IS that
-  authorization.
+- **Commit and push before the review; merge after it.** Commit the work to a branch —
+  never the default branch — and push that branch BEFORE dispatching any review, so a
+  session that dies on the quota wall leaves nothing uncommitted and nothing unpushed. Fix
+  the findings in a follow-up commit, push again, and open the PR — or rewrite the body of
+  the one already open — so the body describes the branch as it now stands and carries the
+  evidence block. Invoking `afk` IS that authorization.
 - **Merge runs on the strict version of the four verdicts**, with verdict 2 hardened: every
   finding FIXED, zero accepted, since accepting a finding is human judgment. Two cases keep
   the merge away from an unattended session, and each is checked by itself:
-  - **A type-B criterion never merges here** — the verdict belongs to the user, so the item
-    ends at an open PR carrying its proof and waits.
+  - **A type-B criterion** — verdict 3 cannot turn green without the user, so the item ends
+    at an open PR carrying its proof and waits.
   - **A repo whose default branch is consumed as it lands** — a marketplace serving it live,
     a boot script reading it — merges only with the user. Those repos are named in the site
     extension (`~/.claude/tk/wrap-up.md`), and a merge decided from a machine with no such
@@ -316,6 +335,7 @@ the next conversation's opening sentences, each in the shape that fits.
 - The step-6 report ends with the ready pair for the user's return: `/clear` +
   `/tk:kickoff afk`.
 
-**Done when:** the session state is externalized, the work is committed and its PR is open
-with the evidence block, every merge either passed the strict four verdicts or is in the
-queue as a DECISION, and no other external effect happened.
+**Done when:** the session state is externalized, the work is committed and pushed, every
+item ended either merged under the strict four verdicts or at an open PR carrying its
+evidence block, whatever was not merged sits in the queue as a DECISION, and no other
+external effect happened.
