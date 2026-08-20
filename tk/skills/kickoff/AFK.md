@@ -48,10 +48,11 @@ candidate line carries its Effort, raw and unsummed. Guidance: stop around 3–6
 items or ~2h of summed Effort; leaving an eligible item out beats a session too
 long to verify its own work.
 
-Those numbers are an opening bid: step 5 measures what this package actually did, and the
+Those numbers are an opening bid: step 6 measures what this package actually did, and the
 next cut reads that line. The shapes behind them were measured against one 5-hour quota
 window (2026-08-18) — a survey ≈5% of the window, one implement + review + fix lane
-≈15–20%, a full-method second pair of eyes ≈8%.
+≈15–20%, a full-method second pair of eyes ≈8%. The audit of step 4 is the one shape
+with no measured share yet, so budget it by its agent count (~8–12) until step 6 supplies one.
 What multiplies a lane is the number of correction cycles, not the size of the diff —
 budgeting a lane by its diff was measured underestimating by ~3× (2026-08-19).
 
@@ -129,11 +130,126 @@ Two parts, both produced here and neither delegated back:
 signature that came back local counts against the local ceiling. The measurement behind that
 rule is the *Venue* section of that same policy file.
 
+On a wave, the audit of step 4 stands between the claim and the first run: claim and write the
+dispatches here, fire them after that step returns.
+
 **Done when:** every package item was claimed — all of them, before the first dispatch — or
 reported as held elsewhere, and every dispatched run carries a contract block generated for
 that dispatch and a prompt self-sufficient without the tracker.
 
-## 4. Verify every delivery
+## 4. Audit the spec and the tickets
+
+A package whose items came from a spec and a ticket set written in this flow — a **wave** — is
+audited before any of it is implemented: three adversarial lenses read the two documents, one
+verifier tries to refute each finding, and every survivor leaves by one of four outcomes.
+There is no code yet, so this reviews none: `/mattpocock-skills:code-review` still runs per
+slice, and the conditional second pair of eyes still runs over delivered code.
+
+**It sits between the claim and the first run.** Step 3 claims the whole package and writes
+each dispatch; the first run is fired once this step returns, because a REGRILL halts the
+package outright and an item whose ticket the audit rewrote has to be dispatched from the
+rewritten one.
+
+It runs by **default** on a wave. The orchestrator may skip it for a wave of at most two
+trivial or mechanical tickets, and the skip costs the line step 6 owes either way; a wave born
+of a REGRILL never skips, however small it is. A package assembled from an aged queue rather
+than from a wave has no spec to read and the audit does not apply — which is the line step 6
+gets in that case.
+
+### The workflow
+
+Fire the site's **dynamic workflow** from this session — the palette row is in
+`../dispatch/SKILL.md` and the site names the concrete mechanism in `~/.claude/tk/dispatch.md`.
+That row hands the workflow to the user; the audit is the one package step that fires one
+itself, and this instruction is the opt-in that allows it. Running it here rather than inside
+a subagent is what keeps the findings where the orchestrator can read them. Where the session
+has no such mechanism, run the same graph as Agent-tool dispatches in series. Either way the
+prompt carries the ceiling in words — "use at most N agents" — with N no larger than the local
+ceiling in the contract block.
+
+Each run takes its row from `../../reference/subagent-policy.md`: `audit-finder` for the
+lenses, then `verifier-1`, `verifier-2` and `tiebreak`. The graph, in order:
+
+1. **Three finders in parallel**, one per lens, each reading spec and tickets whole:
+   **adversarial** — break what the spec promises, with the tickets as they stand;
+   **blast radius** — which ticket touches a path that deletes or corrupts with no copy;
+   **contract** — a promise in the spec that no ticket delivers.
+   The lenses are fixed, and fixed by measurement: on 2026-08-14 the grave findings came from
+   lenses aimed at breaking a promise, and generic "review this" reading returned none.
+2. **Dedup here**, by comparing the three lists; no agent for it. Two lenses arriving at one
+   finding by different routes is corroboration, not duplication — record it once and keep
+   both routes in its text.
+3. **One verifier per finding**, prompted to **refute** it. Escalate only upward: a finding
+   `verifier-1` confirms AND whose correction would edit the spec or a ticket goes on to
+   `verifier-2`; the two disagreeing goes to `tiebreak`.
+4. A verifier that **writes** — runs the suite, mutates a source — is dispatched with
+   `isolation: 'worktree'`, since a shared tree was measured contaminating reviewers of one
+   another (2026-08-14).
+
+A round is ~8–12 agents. What share of the quota window that is has not been measured; step 6
+records the first real number, and until it does the cut in step 1 carries the agent count.
+
+### The four outcomes
+
+Exactly one holds per surviving finding.
+
+| Outcome | Holds when | What it emits |
+|---|---|---|
+| **Resolve here** | the correction fits inside the spec or the tickets and is unambiguous | the orchestrator edits them directly — editing the spec included, the delta being accepted practice — and records file, field, and what the text said before |
+| **Backlog** | the finding is real and correcting it is work of its own | `tk-queue add` at the moment of the verdict, the gate named in the item's own text, exactly as *A session finding, unattended* prescribes below; one only the user can judge is a `DECISION` carrying `--deferred afk` |
+| **Refuted** | the verifier broke the finding | one line naming the verifier and how it broke — the finding is gone, and the line is the whole record |
+| **REGRILL** | the spec's own premise is what the finding hit | the package halts with no run fired, and the queue takes the decision instead of the work (below) |
+
+*Refuted* is the outcome the decision that ratified this step calls **discard**. It is named
+for what performs it, because *discarding* on the session-finding ladder below is a human
+judgement an unattended package does not have: there, a real finding nobody can weigh goes to
+**backlog**. Here it is a verifier's verdict that the finding was never real.
+
+### A rotten criterion is routed, not chosen
+
+A ticket whose acceptance criterion measures something other than what the ticket promises
+carries a **rotten criterion** — the term and its two shapes, *unsatisfiable by construction*
+and *satisfiable but wrong*, belong to `../verify/SKILL.md`. Caught here it is the cheapest
+finding of the round: the alternative is an implementer spending three attempts against a
+broken ruler and the item ending at a DECISION anyway. It is a distinct object from that
+file's **failed 3×** — a rotten criterion never executed against a real delivery at all.
+
+Its outcome is not a choice among the four:
+
+- the spec states the promise plainly and only the criterion misses it → **resolve here**,
+  rewriting the criterion to measure the promise, recording both the old text and the new.
+  It edits a ticket, so `verifier-2` sees it first;
+- the criterion and the spec agree, and together they miss what the work is for → **REGRILL**.
+  Nothing ratified is left to measure against, so no rewrite here can be the right one.
+
+A rotten criterion the verifier does not break stays out of **backlog**: a broken ruler left
+standing in a ticket is what the next implementer measures itself against.
+
+### REGRILL enters the queue through its gate
+
+```sh
+tk-queue add "REGRILL: <the promise the audit could not close> — package halted before the first implement" \
+  --class DECISION --deferred afk --effort "M (~40min)" \
+  --criterion "B: the user re-grills the promise, and the wave is re-sliced from the spec that grill leaves"
+tk-queue handoff <id> --objective "<what the re-grill has to settle>" \
+  --state "<the finding, its verifier's verdict, and where the spec and the tickets stand>" \
+  --blockers "<what the package stopped holding, and every claim it released>"
+```
+
+`--deferred` is the gate: `--class DECISION` is refused without it, so a REGRILL that reached
+the queue reached it carrying the record of why nobody could be asked. `../../tests/test_afk_audit.py`
+extracts those two commands from this file, runs them against a throwaway queue, and runs the
+first again with `--deferred` removed to watch the refusal — it proves the commands and the
+gate, and nothing about whether this step ran, which is what the line owed to step 6 is for.
+
+Then release what the package was holding, per step 3, and hand it to step 6: a halted package
+still owes its measurement and its close.
+
+**Done when:** the audit ran and every finding it kept carries exactly one of the four
+outcomes with the verifier's verdict beside it — or it was skipped, and the judgement that
+skipped it is written for step 6.
+
+## 5. Verify every delivery
 
 The ruler is the item's own criterion and the rite belongs to `../verify/SKILL.md` — read it
 before the first item closes. What this step owes that file:
@@ -156,15 +272,17 @@ been released, and `tk-queue list` shows exactly the items the run left open —
 closed gone from that list, every claim it did not close released — or the queue file itself is
 gone, and the report says so instead of a criterion nobody could meet.
 
-## 5. Measure, and hand the package to the close
+## 6. Measure, and hand the package to the close
 
 Three numbers on one line, emitted here, where the package hands back: **planned × completed
 × wall clock** — items claimed, items that reached an approved outcome, and the time from
 first dispatch to last verdict. They are what stops the cut in step 1 from staying a guess:
 this package's line is the next package's evidence. The deviation lines are emitted beside
 them, one per departure from the role table, in that file's format — a deviation with no line
-is indistinguishable from a slip. Both belong to the package and precede the close, whose own
-report follows a template this file does not extend.
+is indistinguishable from a slip. The audit owes one line here too, whichever way it went:
+ran, with its findings counted by outcome and the share of the window it took, or skipped,
+with the judgement that skipped it. Those lines belong to the package and precede the close,
+whose own report follows a template this file does not extend.
 
 What the items the package did NOT close owe that template is their **reason**, since it
 groups by outcome and by nothing else. Read them in order and the first that applies is the
@@ -194,11 +312,11 @@ too, by class — and the classes are not a list to keep by hand: they are every
 filter refuses, which today is all four that are not AUTONOMOUS. No step of this run looked at
 them, and a close shaped only around what the package touched is where they go silent.
 
-**Done when:** the measurement line and the deviation lines are written, and every item the
+**Done when:** the measurement line, the audit's line and the deviation lines are written, and every item the
 package did not close carries the first rung that applies to it, and the items it never
 visited are handed over by class.
 
-## 6. Chain the afk wrap-up
+## 7. Chain the afk wrap-up
 
 The package ends by running `../wrap-up/SKILL.md` with its `afk` argument, executed **from
 that file**: both skills carry `disable-model-invocation: true`, so an agent cannot fire
@@ -208,7 +326,7 @@ instead of routing around it.
 What the close owns from there, and this file therefore does not restate: committing and
 pushing before any review is dispatched, the four verdicts of safe-to-merge in their strict
 unattended form, which items may merge unattended and which end at an open PR carrying their
-proof, and the closing template that step 5's unclosed items enter by their reason.
+proof, and the closing template that step 6's unclosed items enter by their reason.
 
 **Done when:** the wrap-up reached its own "Done when" — or it did not run, and the report
 names the step that stopped the package and the state the tree was left in.
