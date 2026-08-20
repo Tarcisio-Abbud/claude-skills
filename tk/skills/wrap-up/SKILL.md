@@ -40,12 +40,13 @@ session RAISED and left unanswered — a question the user asked back, an option
 not chosen, a defect noticed in passing. **Session finding** is the term, qualified because
 a bare "finding" is a code-review finding throughout this repo. Right after printing the
 section, ONE batched `AskUserQuestion` closes it whole, since each answer can still change
-memory, docs or the queue in the steps below; the same menu carries any conversion step 2
-owes. Each finding leaves answered, discarded, or gated into the queue by step 2 — which is
-where the session stops leaking pendings into the queue.
+memory, docs or the queue in the steps below. A finding leaves this menu answered or
+discarded; one the answer turns into work travels to step 2, which is where the survival
+gates decide whether it may enter the queue at all.
 **Done when:** the user saw a concrete list of touched files/commits, of the branches/PRs
 in play, and of the new decisions/facts — with nothing material omitted — every session
-finding was answered, discarded or gated, and each later step is marked run/skip.
+finding was answered, discarded, or carried to step 2 as work, and each later step is
+marked run/skip.
 
 ## 2. Update memory, and gate what survives into the queue
 
@@ -82,7 +83,7 @@ contract has no `Gate` field, so that record is the item's own text, in the writ
 | Survival gate | Holds when | The class it arrives as |
 |---|---|---|
 | **decision** | the item needs a human verdict that cannot be had now | `DECISION`, and `--deferred` carries it |
-| **effort** | the work exceeds what is left of this session | `AUTONOMOUS`, and `--effort` carries the size |
+| **effort** | the work exceeds what is left of this session | `AUTONOMOUS`, and the text names what would not fit |
 | **dependency** | a third party, a credential, or a machine that is not this one holds it | `BLOCKED` or `EXTERNAL` — or `--env <name from the site roster>` when the block is only WHERE it runs, matched exactly and refused otherwise — and the text names what is awaited |
 
 `--effort` is required on every `add`, so a size alone marks nothing: the effort gate is
@@ -93,9 +94,9 @@ tie-break, and nothing more. An item that passes none is resolved in this sessio
 
 **RECURRING is convert-or-resolve, and it is decided before the survival gates are
 asked.** The class means the item is not a one-off, so no survival gate can justify parking
-it. Creating a routine is an external effect, so with the user present the conversion is one
-of the options in step 1's batched menu — the check IS the authorization — and the item
-then closes with `done --how "<the routine>"`. Unattended, it becomes a `DECISION` carrying the
+it. Creating a routine is an external effect, so with the user present the conversion is
+put to them as a check of its own here — the check IS the authorization — and the item then
+closes with `done --how "<the routine>"`. Unattended, it becomes a `DECISION` carrying the
 routine ready to paste. Either way it is converted or resolved, never discarded as a session
 finding: a discard answers a question, and this one needs a routine.
 
@@ -155,9 +156,12 @@ the four verdicts of **safe-to-merge**, one line each:
 
 Four green → merge is the recommended action. Any red → the digest says which one, and the
 merge is not offered. Verdict 3 has a second shape: a **type-B criterion** ends at proof
-ready, because the verdict is the user's. The digest displays that proof, and with the user
-here their check in the menu below IS the verdict, so the merge is offered like any other
-action. It is the unattended path that can never turn this one green on its own.
+ready, because the verdict is the user's, and it is GIVEN rather than inferred. The digest
+displays the proof and the one-line claim it carries; the menu below then offers the verdict
+as an option worded to say what checking it means — "the proof settles it; merge" — never a
+bare "merge" that would read a verdict out of a checkbox. Verdict 3 stays amber until that
+option is checked, so it is never the recommended-first one. The unattended path has nobody
+to check it, which is why it defers.
 A small diff (guidance: ≲150 lines) is still shown whole in the terminal and a large one
 gets the link, but the diff is a courtesy: what authorizes the merge is the four verdicts,
 which is the point of a user who does not read code.
@@ -199,7 +203,7 @@ preference that disagrees with it loses:
 ```
 **<N> closed · <M> carried · <K> blocked · <D> discarded**
 
-**Closed**
+**Closed** — resolved or cancelled; both left the queue for the log
 - <item> — <the one or two concrete gains it bought>
 - <item> — <gains>  ·  risk: <what could still bite, in one clause>
 
@@ -209,7 +213,7 @@ preference that disagrees with it loses:
 **Blocked**
 - <item> — what is missing, and from whom
 
-**Discarded**
+**Discarded** — session findings, which never entered the queue
 - <session finding> — why it was dropped
 
 **Blockers and notes for the next session:** <text — or "none", spelled out>
@@ -217,13 +221,15 @@ preference that disagrees with it loses:
 **Suggestions:** <what you would do next, if you have one — last, never mixed in above>
 ```
 
-The stats line opens the report and carries the balance: what left the queue against what
-is still in it. Items group by outcome, never by chronology. The discarded group holds the
-session findings the user dropped in step 1, and it exists only where a user was there to
-drop them — unattended, the findings are gated into the queue instead. A group of three or more items
-becomes a table with those same columns. The gains are concrete — "the queue can no longer
-lose a resolved item" beats "improved the queue" — and a case that closed with no gain worth
-a line closed with nothing worth reporting, which is itself the finding. The blockers line
+The stats line opens the report, and its first three counts are the queue's balance: what
+left it against what is still in it. The fourth counts a different object — session findings
+dropped in step 1, which never entered the queue — so the group is labelled and the two are
+never summed. Discarding needs a user to do it, so an unattended run reports no discards and
+carries its findings to the gates instead. Items group by outcome, never by chronology, and
+a group of three or more becomes a table with those same columns. The gains are concrete —
+"the queue can no longer lose a resolved item" beats "improved the queue" — and a case that
+closed with no gain worth a line closed with nothing worth reporting, which is itself worth
+one. The blockers line
 is unskippable: "none" written out is an answer, an absent line is a rediscovery the next
 session pays for. It is also the one line of the report that must survive the terminal —
 it lands in the affected item's text, and a blocker too big for the item's size ceiling is
@@ -335,7 +341,8 @@ the next conversation's opening sentences, each in the shape that fits.
 - The step-6 report ends with the ready pair for the user's return: `/clear` +
   `/tk:kickoff afk`.
 
-**Done when:** the session state is externalized, the work is committed and pushed, every
-item ended either merged under the strict four verdicts or at an open PR carrying its
-evidence block, whatever was not merged sits in the queue as a DECISION, and no other
-external effect happened.
+**Done when:** the session state is externalized and one of three holds — the work is
+committed, pushed, and every item ended either merged under the strict four verdicts or at
+an open PR carrying its evidence block; or the concurrent-session guard stopped the run and
+the report says so with the tree untouched; or there was nothing to commit. Whatever was
+not merged sits in the queue as a DECISION, and no other external effect happened.
