@@ -35,9 +35,10 @@ candidate line carries its Effort, raw and unsummed. Guidance: stop around 3–6
 items or ~2h of summed Effort; leaving an eligible item out beats a session too
 long to verify its own work.
 
-Those numbers are an opening bid, and step 5's measurement is what corrects it. The shapes
-behind them were measured against one 5-hour quota window (2026-08-18): a survey ≈5% of the
-window, one implement + review + fix lane ≈15–20%, a full-method second pair of eyes ≈8%.
+Those numbers are an opening bid: step 5 measures what this package actually did, and the
+next cut reads that line. The shapes behind them were measured against one 5-hour quota
+window (2026-08-18) — a survey ≈5% of the window, one implement + review + fix lane
+≈15–20%, a full-method second pair of eyes ≈8%.
 What multiplies a lane is the number of correction cycles, not the size of the diff —
 budgeting a lane by its diff was measured underestimating by ~3× (2026-08-19).
 
@@ -102,14 +103,14 @@ Two parts, both produced here and neither delegated back:
   the neighbouring slices consume from it. You hold the map hot and distilling costs once,
   where re-reading costs per dispatch — a prompt that says "read #X, #Y and #Z" bills that
   price on every run, and was measured starting an implementer at ~150k of context — the edge
-  of the smart zone — before its first line of code (2026-08-19). Retransmit the item, the memory file
-  behind its `[[slug]]` at ONE hop and its handoff; context in none of the three is a
+  of the smart zone — before its first line of code (2026-08-19). Retransmit the item, the
+  memory file behind its `[[slug]]` at ONE hop and its handoff; context in none of the three is a
   **missing handoff**, and the prompt says exactly that in its own line, because a gap named
   is cheap and a gap papered over with plausible synthesis sends the run onto invented ground.
 
 **Count each run by the venue signature it returns, never by the flag you passed** — a
 signature that came back local counts against the local ceiling. The measurement behind that
-rule is the role table's *Venue* section.
+rule is the *Venue* section of that same policy file.
 
 **Done when:** every package item is claimed or reported as held elsewhere, and every
 dispatched run carries its generated contract block and a prompt self-sufficient without the
@@ -137,25 +138,27 @@ item or been released.
 
 ## 5. Measure, and hand the package to the close
 
-Three numbers on one line, where the run goes back to the human: **planned × completed ×
-wall clock** — items claimed, items that reached an approved outcome, and the time from first
-dispatch to last verdict. They are what stops the cut in step 1 from staying a guess: each
-package's line is the next package's evidence. The deviation lines ride here too, one per
-departure from the role table, in that file's format — a deviation with no line is
-indistinguishable from a slip.
+Three numbers on one line, emitted here, where the package hands back: **planned × completed
+× wall clock** — items claimed, items that reached an approved outcome, and the time from
+first dispatch to last verdict. They are what stops the cut in step 1 from staying a guess:
+this package's line is the next package's evidence. The deviation lines are emitted beside
+them, one per departure from the role table, in that file's format — a deviation with no line
+is indistinguishable from a slip. Both belong to the package and precede the close, whose own
+report follows a template this file does not extend.
 
-Beside them, the three blocks the closing template has no column for — they follow it rather
-than enter it, since that template is fixed and travels whole:
+What the items the package did NOT close owe that template is their **reason**, since it
+groups by outcome and by nothing else:
 
-- eligible items left out for size — the ready line that runs them is another
-  `/tk:kickoff afk`;
-- items `tk-queue pack` excluded, each with the reason it printed: never eligible at all, so
-  a report shaped only around size drops them silently;
-- items bound to ANOTHER environment, each marked "runs on: X" — nothing here can execute
-  them, and the user is the only path to the machine that can.
+- an eligible item left out for size is **carried**, and the gate it records is that effort —
+  the ready line that runs it is another `/tk:kickoff afk`;
+- an item `tk-queue pack` excluded is **carried** too, recording the value the filter printed
+  as its reason: it was never eligible at all, and "left out" alone reads as a size call
+  nobody made;
+- an item bound to ANOTHER environment is **blocked**, marked "runs on: X" — nothing here can
+  execute it, and the user is the only path to the machine that can.
 
-**Done when:** the measurement line, the deviation lines and the three blocks exist, ready
-for the close to carry.
+**Done when:** the measurement line and the deviation lines are written, and every item the
+package did not close carries the reason that lands it in one of the close's groups.
 
 ## 6. Chain the afk wrap-up
 
@@ -167,7 +170,7 @@ instead of routing around it.
 What the close owns from there, and this file therefore does not restate: committing and
 pushing before any review is dispatched, the four verdicts of safe-to-merge in their strict
 unattended form, which items may merge unattended and which end at an open PR carrying their
-proof, and the closing template that step 5's line and blocks follow rather than enter.
+proof, and the closing template that step 5's unclosed items enter by their reason.
 
 **Done when:** the wrap-up reached its own "Done when" — or it did not run, and the report
 names the step that stopped the package and the state the tree was left in.
