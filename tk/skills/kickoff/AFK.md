@@ -32,7 +32,9 @@ another language, which queues older than the contract are full of — takes ONE
 command: `tk-queue edit <id> --class AUTONOMOUS` reaches the field through the
 variants the script already knows (`Classe`, `Esforço`, `Risco`, `Fonte`, …)
 and rewrites it in the contract's own name, keeping the item's id, its place in
-the order and every other field. Reach for `cancel` + `add` only where the field
+the order and every other field. What it replaces is the whole class VALUE, so
+an annotation riding inside that value goes with it — read the line before
+running it on an item whose class carries prose. Reach for `cancel` + `add` only where the field
 chain itself cannot be read, and reach knowing the cost: a new id, the place in
 the order lost, and any prose past the done-log's title cut gone with it. The
 fold the `repairs:` block prints has a limit of its own — it is refused outright
@@ -187,9 +189,10 @@ An item verify ended at **proof ready**, and one it turned into a **DECISION**, 
 what verify already wrote into them and owe nothing further here: the close is where a
 proof-ready item becomes the DECISION that carries its digest reference.
 
-The ladder covers what the package handled. The queue items it never visited — the DECISION,
-BLOCKED and EXTERNAL ones — are handed over too, by class: no step of this run looked at them,
-and a close shaped only around what the package touched is where they go silent.
+The ladder covers what the package handled. The queue items it never visited are handed over
+too, by class — and the classes are not a list to keep by hand: they are every class the step-1
+filter refuses, which today is all four that are not AUTONOMOUS. No step of this run looked at
+them, and a close shaped only around what the package touched is where they go silent.
 
 **Done when:** the measurement line and the deviation lines are written, and every item the
 package did not close carries the first rung that applies to it, and the items it never
