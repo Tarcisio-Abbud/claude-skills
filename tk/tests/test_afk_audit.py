@@ -115,7 +115,9 @@ class AfkAuditTest(unittest.TestCase):
         """Every check below iterates a list derived from AFK.md, and an empty list
         would make each of them pass while the recipe was gone."""
         text = afk_text()
-        self.assertRegex(text, AUDIT_HEADING, "AFK.md has no numbered Audit step")
+        # assertTrue, not assertRegex: the failure message of the latter prints the
+        # whole file, which buries the three assertions under it.
+        self.assertTrue(AUDIT_HEADING.search(text), "AFK.md has no numbered Audit step")
         self.assertTrue(with_class(self.cmds, "add", "DECISION"),
                         "AFK.md prescribes no `tk-queue add --class DECISION` — "
                         "the REGRILL recipe is gone, and every gate check below is vacuous")
