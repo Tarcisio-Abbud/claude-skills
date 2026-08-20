@@ -100,9 +100,10 @@ where a `tk/` directory usually means something else:
 ```
 
 It fails on an external resource (a `src`, a `<link href>`, an `@import`, a CSS `url()` or
-`image-set()`, an http address anywhere in the CSS, a relative path, an empty `src`), on any
-script at all (a `<script>`, an `on*` handler, a `javascript:` URL, a `<meta http-equiv=
-"refresh">`), on a missing block, on a card whose outcome is outside the vocabulary or which has
+`image-set()` — the functions are where CSS fetches, so an address in a class name or in
+generated text is prose — a relative path, an empty `src`), on any script at all (a `<script>`,
+an `on*` handler, a `javascript:` or `vbscript:` URL read the way a browser reads it, a
+`<meta http-equiv="refresh">`), on a missing block, on a card whose outcome is outside the vocabulary or which has
 no risk tag or no real proof link, on text printed outside the `<body>` a page declared, and on
 a page with no `prefers-color-scheme: dark` rule.
 
