@@ -131,7 +131,8 @@ signature that came back local counts against the local ceiling. The measurement
 rule is the *Venue* section of that same policy file.
 
 On a wave, the audit of step 4 stands between the claim and the first run: claim and write the
-dispatches here, fire them after that step returns.
+dispatches here, fire them after that step returns — so on a wave this step's "Done when" is
+reached only once step 4 has returned and the runs it allowed have gone out.
 
 **Done when:** every package item was claimed — all of them, before the first dispatch — or
 reported as held elsewhere, and every dispatched run carries a contract block generated for
@@ -151,23 +152,40 @@ package outright and an item whose ticket the audit rewrote has to be dispatched
 rewritten one.
 
 It runs by **default** on a wave. The orchestrator may skip it for a wave of at most two
-tickets that are both Effort S and fully specified — the same test the `implementer` row of
-`../../reference/subagent-policy.md` uses to allow a sonnet downgrade — and the skip costs the
-block step 6 is owed either way; a wave born
-of a REGRILL never skips, however small it is. A package assembled from an aged queue rather
-than from a wave has no spec to read and the audit does not apply — which is what the block
-says in that case.
+tickets it judges **mechanical and fully specified** — the `implementer` row of
+`../../reference/subagent-policy.md` uses those same words for a sonnet downgrade, and they
+are no sharper there than here: no field in the queue measures them, so the skip is a
+judgement, and the block step 6 is owed carries which two tickets were judged that way and
+what was read to judge them.
+
+**Skipping is a bet with no hedge**, and it is stated rather than papered over: the check that
+would have found a REGRILL lives inside the step being skipped, so a small wave that skips
+cannot discover that it should not have. What narrows the bet is only the two-ticket bound and
+the requirement to write down the judgement.
+
+A wave re-sliced after a REGRILL is the one case the bet is refused, and the carrier is the
+handoff that REGRILL wrote: reading it, the orchestrator does not skip. Nothing in the queue
+marks such a wave on its own — the handoff is the only carrier there is, and a wave that
+arrives without one is an ordinary wave.
+
+A package assembled from an aged queue rather than from a wave has no spec to read and the
+audit does not apply — which is what the block says in that case.
 
 ### The workflow
 
 Fire the site's **dynamic workflow** from this session — the palette row is in
 `../dispatch/SKILL.md` and the site names the concrete mechanism in `~/.claude/tk/dispatch.md`.
-That row hands the workflow to the user; the audit is the one package step that fires one
-itself, and this instruction is the opt-in that allows it. Running it here rather than inside
+Two departures from that row, both deliberate: it hands the workflow to the user, and the
+audit is the one package step that fires one itself, this instruction being the opt-in that
+allows it; and the situation it describes is a mass sweep over many items, which the audit is
+not. What is borrowed is the mechanism — deterministic control and resume over a fixed graph —
+never the row's situation. Running it here rather than inside
 a subagent is what keeps the findings where the orchestrator can read them. Where the session
 has no such mechanism, run the same graph as Agent-tool dispatches in series. Either way the
 prompt carries the ceiling in words — "use at most N agents" — with N no larger than the local
-ceiling in the contract block.
+ceiling in the contract block. **The three lenses are not negotiable and the ceiling decides
+only concurrency:** where the local ceiling is below three, run them in series. A dropped lens
+is a round that did not happen.
 
 Each run takes its row from `../../reference/subagent-policy.md`: `audit-finder` for the
 lenses, then `verifier-1`, `verifier-2` and `tiebreak`. The graph, in order:
@@ -182,18 +200,21 @@ lenses, then `verifier-1`, `verifier-2` and `tiebreak`. The graph, in order:
    cites**, which is where the strongest findings of the round measured below came from, and
    **an empty return is a failure, never an approval: finding nothing, list the attacks you
    ran**, which is what makes a lens that found nothing usable as evidence.
-2. **Dedup here**, by comparing the three lists; no agent for it. Two lenses arriving at one
-   finding by different routes is corroboration, not duplication — record it once and keep
-   both routes in its text.
+   Each finder returns its findings in one fixed shape, so the dedup below compares like with
+   like instead of inventing a format per round: per finding, a **one-line claim**; **where** —
+   the document and the line it quotes verbatim; **why it breaks**, one line; and the **lens**
+   that found it. Returning nothing, it returns the list of attacks instead.
+2. **Dedup here**, by comparing the three lists on their **where** field; no agent for it. Two
+   lenses landing on the same quoted line by different routes is corroboration, not
+   duplication — record it once and keep both claims in its text.
 3. **One verifier per finding**, carrying three fixed lines: its mandate is to **refute**, its
    default verdict is *refuted*, and it reads the **real sources** rather than the quotations
    the finding carries. That prompt broke 22% of the finders' findings on that same round.
    It also declares its own **confidence** — `high`, `medium` or `low`, those three words —
    and confidence is the escalation trigger, not severity: a `low` verdict goes to
-   `verifier-2`, as does any confirmed finding whose
-   correction would edit the spec or a ticket, and the two disagreeing goes to `tiebreak`. There,
-   the four low-confidence verdicts were exactly the four the tiebreak decided
-   — two of them real, two refuted.
+   `verifier-2`, as does any confirmed finding whose correction would edit the spec or a
+   ticket, and the two disagreeing goes to `tiebreak`. There, the four low-confidence verdicts
+   were exactly the four the tiebreak decided — two of them real, two refuted.
 4. A verifier that **writes** — runs the suite, mutates a source — is dispatched with
    `isolation: 'worktree'`, since a shared tree was measured contaminating reviewers of one
    another (2026-08-14).
@@ -225,6 +246,11 @@ Exactly one holds per surviving finding.
 | **Refuted** | the verifier broke the finding | one line naming the verifier and how it broke — the finding is gone, and the line is the whole record |
 | **REGRILL** | the spec's own premise is what the finding hit | the package halts with no run fired, and the queue takes the decision instead of the work (below) |
 
+**Resolve here** is not the *resolving on the spot* the session-finding ladder below forbids.
+That ban is on new work — the hydra, three heads dying and six items born. This corrects the
+very documents the audit was pointed at, before anyone works from them, and the work it
+prevents is an implementer building from a document known to be wrong.
+
 Every record in that last column goes into the **audit's block**, which is what this step
 hands to step 6: one line per finding under its outcome — what was edited, what was queued,
 what was refuted. That block is the only address they have, and a record kept in this step's
@@ -250,12 +276,17 @@ four outcomes:
 
 - the spec states the promise plainly and only the criterion misses it → **resolve here**,
   rewriting the criterion to measure the promise, recording both the old text and the new.
-  It edits a ticket, so `verifier-2` sees it first;
+  It edits a ticket, so the rewrite goes to `verifier-2` **before it is applied**;
 - the criterion and the spec agree, and together they miss what the work is for → **REGRILL**.
   Nothing ratified is left to measure against, so no rewrite here can be the right one.
 
 A rotten criterion the verifier does not break stays out of **backlog**: a broken ruler left
 standing in a ticket is what the next implementer measures itself against.
+
+What none of this buys is **detection**. Nothing here fires on a rotten criterion by itself —
+it is seen when the contract lens happens to compare a criterion against the promise, and the
+evidence for it working is one round with one finding. Routing it is settled; catching it is
+not, and a round that found none has not shown there were none.
 
 ### REGRILL enters the queue through its gate
 
@@ -263,23 +294,42 @@ standing in a ticket is what the next implementer measures itself against.
 tk-queue add "REGRILL: <the promise the audit could not close> — package halted before the first implement" \
   --class DECISION --deferred afk --effort "M (~40min)" \
   --criterion "B: the user re-grills the promise, and the wave is re-sliced from the spec that grill leaves"
-tk-queue handoff <id> --objective "<what the re-grill has to settle>" \
+tk-queue handoff "<id>" --objective "<what the re-grill has to settle>" \
   --state "<the finding, its verifier's verdict, and where the spec and the tickets stand>" \
   --blockers "<what the package stopped holding, and every claim it released>"
 ```
 
+Every `<...>` above is a **metavariable**: substitute it before running, and paste nothing as
+it stands. `<id>` is the id the `add` printed, and it is quoted for the same reason the prose
+placeholders are — unquoted, a shell reads `<id>` as a redirect and the line dies before
+`tk-queue` sees it.
+
+**Then run the `edit` the handoff prints.** `tk-queue handoff` warns on stderr, at exit 0, that
+the item does not point at `[[handoff-T0NN]]`, and prints the `tk-queue edit --text` that
+repairs it, already quoted for the shell and already carrying `--force` where the link would
+cross the field ceiling. Run it as printed: the item is the briefing's only discovery path, so
+a REGRILL that skips this step parks a decision whose briefing nothing leads to.
+
 `--deferred` is the gate: `--class DECISION` is refused without it, so a REGRILL that reached
-the queue reached it carrying the record of why nobody could be asked. `../../tests/test_afk_audit.py`
-extracts those two commands from this file, runs them against a throwaway queue, and runs the
-first again with `--deferred` removed to watch the refusal — it proves the commands and the
-gate, and nothing about whether this step ran, which is what the block owed to step 6 is for.
+the queue reached it carrying the record of why nobody could be asked.
+`../../tests/test_afk_audit.py` lifts these commands out of THIS section, runs them against a
+throwaway queue both as an argv list and **through a shell**, follows the printed `edit`, and
+re-runs the `add` with `--deferred` removed to watch the refusal. It proves the recipe and the
+gate. It proves nothing about whether this step ran — that is what the block owed to step 6
+is for.
 
 Then release what the package was holding, per step 3, and hand it to step 6: a halted package
 still owes its measurement and its close.
 
-**Done when:** the audit ran and every finding it kept carries exactly one of the four
-outcomes with the verifier's verdict beside it — or it was skipped — and the block step 6 is
-owed says which of the two happened.
+A round can also **fail**, which is not a skip and not a finding: the mechanism died, or a
+lens came back empty without its list of attacks. Re-dispatch that lens. Where it cannot be
+made to run, the audit did not run — the block says so, the wave is unaudited, and that is a
+third state, distinct from a clean round with no findings.
+
+**Done when:** the block step 6 is owed names exactly one of three states — the audit ran, and
+every finding it kept carries one of the four outcomes with its verifier's verdict; or it was
+skipped, with the judgement that skipped it; or it failed, naming the lens that could not be
+made to run. A clean round with no findings is the first state and says so in those words.
 
 ## 5. Verify every delivery
 
