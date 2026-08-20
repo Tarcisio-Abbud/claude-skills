@@ -32,9 +32,20 @@ the wrong tracker. Pull requests are the exception: they belong to this repo and
 
 ## Read single items through `--json`
 
-The `gh` here is 2.23.0, where `gh issue view <n>` and `gh pr view <n>` fail on a GraphQL
-`projectCards` deprecation, with or without `--comments`. Shape single items with `--json` +
-`--jq` instead. `gh pr edit <n> --body ...` fails **silently**; pass the body at creation.
+The `gh` here is 2.23.0, and every command that walks the classic-Projects GraphQL path dies
+on its deprecation notice with exit 1: `gh issue view <n>` and `gh pr view <n>`, with or
+without `--comments`, and `gh pr edit <n>` whatever flag it carries.
+
+Reads have an escape — add `--json` + `--jq` and they work, so shape single items that way.
+`gh pr edit` has none, which makes a PR's title and body right-at-creation work: pass them to
+`gh pr create`, the body through `--body-file`. To change either afterwards, go around `gh pr
+edit` through the REST endpoint, which does not touch that GraphQL path:
+
+```bash
+gh api -X PATCH "repos/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/pulls/<n>" \
+  -f body="$(cat <file>)"
+```
+
 List, create, comment and diff behave normally.
 
 ## Conventions
