@@ -19,6 +19,7 @@ repo is public and the site file is the one place a deployment's proper names
 live, which is exactly why they are not in it.
 """
 
+import io
 import os
 import shutil
 import subprocess
@@ -29,6 +30,8 @@ import unittest
 BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "bin", "tk-contract")
 POLICY = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
                       "reference", "subagent-policy.md")
+RULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                     "reference", "slice-rules.md")
 
 SITE = """identity = alpha
 environments = alpha, bravo, charlie-2
@@ -399,6 +402,19 @@ class TestBlockContent(ContractTest):
         self.assertIn("~500 lines", out)
         # the counterweight: without it the rule reads as "do not open files"
         self.assertIn("Neither rule touches the file you are actually EDITING", out)
+
+    def test_it_points_at_the_rules_earlier_slices_paid_for(self):
+        out = self.block("--role", "implementer")
+        self.assertIn("slice-rules.md", out)
+        self.assertIn("Rules earlier slices paid for", out)
+
+    def test_the_rules_the_block_points_at_are_actually_there(self):
+        # a pointer aimed at a file that is not there sends the reader to
+        # silence, and the block would go on naming it at every dispatch. This
+        # is the one test besides the policy-path one that reads the real repo
+        self.assertTrue(os.path.isfile(RULES), RULES)
+        self.assertIn("# Rules earlier slices paid for",
+                      io.open(RULES, encoding="utf-8").read())
 
     def test_it_asks_for_the_deviation_log_in_the_policy_s_format(self):
         out = self.block("--role", "explore")

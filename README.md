@@ -72,7 +72,9 @@ Every subagent an orchestrator dispatches gets its model, reasoning effort and *
 that lets the orchestrator deviate by logging one line, and the venue eligibility test
 (cloud only where the proof fits in the pushed repo). Its role table is delimited and
 carries its own parsing schema, so a generator injecting those cells into a subagent's
-contract block reads them verbatim instead of keeping a second copy.
+contract block reads them verbatim instead of keeping a second copy. That same block points
+every role at `tk/reference/slice-rules.md` — the rules earlier slices paid for, each one the
+residue of a defect that a green suite or a passing review had already called healthy.
 
 ## The `tk-cowork` plugin
 
@@ -171,6 +173,9 @@ tk/
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   reference/subagent-policy.md    model, effort and venue per subagent role; the role
                                   table is parseable, schema declared in the file
+  reference/slice-rules.md        the rules earlier slices paid for — writing a command
+                                  that touches a file, proving it, and prose another
+                                  agent reads; reached from the contract block
   bin/tk-queue                    deterministic CLI: only writer of the queue files
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
                                   identity, the roster of environments, the two ceilings,
