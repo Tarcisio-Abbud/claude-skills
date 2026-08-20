@@ -43,9 +43,10 @@ What multiplies a lane is the number of correction cycles, not the size of the d
 budgeting a lane by its diff was measured underestimating by ~3× (2026-08-19).
 
 **Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45"),
-every exclusion was re-triaged rather than copied, and every item left out is noted with the
-reason — the eligible ones dropped for size AND the ones `tk-queue pack` excluded, which are
-not eligible at all and would otherwise leave no trace anywhere.
+every exclusion carries either the command that cleared it or the one-line verdict that it
+still holds, and every item left out is noted with the reason — the eligible ones dropped for
+size AND the ones `tk-queue pack` excluded, which are not eligible at all and would otherwise
+leave no trace anywhere.
 
 ## 2. `pack` only: confirm
 
@@ -96,10 +97,11 @@ Two parts, both produced here and neither delegated back:
 
 - **The contract block**, pasted verbatim from `../../bin/tk-contract --role <row>`: the
   ceilings, that role's model/effort/venue, and the return contract it owes. The row for a run
-  executing a package item is `implementer`; the other rows belong to the roles a step names
-  by itself. Generate it per dispatch rather than typing it from memory — a hand-written block
-  is a fork of the policy. Pass `--fleet N` only when something else shares this machine's
-  ceiling and told you N; alone, the whole ceiling is yours.
+  executing a package item is `implementer`; any other run takes the row of the role it is
+  dispatched as, and a role the table has no row for is a deliberate choice, logged like any
+  other deviation. Generate it per dispatch rather than typing it from memory — a hand-written
+  block is a fork of the policy. Pass `--fleet N` only when something else shares this
+  machine's ceiling and told you N; alone, the whole ceiling is yours.
 - **The item's distilled contract**: the interface the work must honour, its invariants, what
   the neighbouring slices consume from it. You hold the map hot and distilling costs once,
   where re-reading costs per dispatch — a prompt that says "read #X, #Y and #Z" bills that
