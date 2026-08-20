@@ -51,8 +51,8 @@ long to verify its own work.
 Those numbers are an opening bid: step 6 measures what this package actually did, and the
 next cut reads that line. The shapes behind them were measured against one 5-hour quota
 window (2026-08-18) — a survey ≈5% of the window, one implement + review + fix lane
-≈15–20%, a full-method second pair of eyes ≈8%. The audit of step 4 is the one shape
-with no measured share yet, so budget it by its agent count (~8–12) until step 6 supplies one.
+≈15–20%, a full-method second pair of eyes ≈8%. The audit of step 4 is a fixed cost on the
+package rather than a per-item one, and the round it has measured is in that step.
 What multiplies a lane is the number of correction cycles, not the size of the diff —
 budgeting a lane by its diff was measured underestimating by ~3× (2026-08-19).
 
@@ -174,20 +174,38 @@ lenses, then `verifier-1`, `verifier-2` and `tiebreak`. The graph, in order:
    **adversarial** — break what the spec promises, with the tickets as they stand;
    **blast radius** — which ticket touches a path that deletes or corrupts with no copy;
    **contract** — a promise in the spec that no ticket delivers.
-   The lenses are fixed, and fixed by measurement: on 2026-08-14 the grave findings came from
-   lenses aimed at breaking a promise, and generic "review this" reading returned none.
+   The lenses are fixed by measurement: on 2026-08-14 the grave findings came from lenses
+   aimed at breaking a promise, and generic "review this" reading returned none. Two lines are
+   fixed in every finder's prompt — **check each acceptance criterion against the decision it
+   cites**, which is where the strongest findings of the round measured below came from, and
+   **an empty return is a failure, never an approval: finding nothing, list the attacks you
+   ran**, which is what makes a lens that found nothing usable as evidence.
 2. **Dedup here**, by comparing the three lists; no agent for it. Two lenses arriving at one
    finding by different routes is corroboration, not duplication — record it once and keep
    both routes in its text.
-3. **One verifier per finding**, prompted to **refute** it. Escalate only upward: a finding
-   `verifier-1` confirms AND whose correction would edit the spec or a ticket goes on to
-   `verifier-2`; the two disagreeing goes to `tiebreak`.
+3. **One verifier per finding**, carrying three fixed lines: its mandate is to **refute**, its
+   default verdict is *refuted*, and it reads the **real sources** rather than the quotations
+   the finding carries. That prompt broke 22% of the finders' findings on that same round.
+   It also declares its own **confidence**, and confidence is the escalation trigger, not
+   severity: a low-confidence verdict goes to `verifier-2`, as does any confirmed finding whose
+   correction would edit the spec or a ticket, and the two disagreeing goes to `tiebreak`. There,
+   the four low-confidence verdicts were exactly the four the tiebreak decided
+   — two of them real, two refuted.
 4. A verifier that **writes** — runs the suite, mutates a source — is dispatched with
    `isolation: 'worktree'`, since a shared tree was measured contaminating reviewers of one
    another (2026-08-14).
 
-A round is ~8–12 agents. What share of the quota window that is has not been measured; step 6
-records the first real number, and until it does the cut in step 1 carries the agent count.
+**One question stays here rather than becoming a fourth lens: can the first implement session
+START?** The three lenses read the two documents against each other, and none of them asks
+whether the work can begin at all — on that round a code repo holding no tracker
+configuration got past all three, and was caught outside the audit. Ask it of the wave once.
+
+One round is measured (2026-08-19, run over this package's own spec and tickets): three Sonnet
+finders, ≈280k tokens and 10.5 minutes, returned 11 findings with one of them reached by two
+lenses; the verifier plus one effort-high tiebreak, ≈152k tokens and 10.6 minutes, confirmed 7
+and refuted 2. It found one real REGRILL — a gap that the spec, its quiz and a human approval
+had all let through. That is one round and not a distribution, which is why step 6 adds this
+package's.
 
 ### The four outcomes
 
@@ -200,10 +218,15 @@ Exactly one holds per surviving finding.
 | **Refuted** | the verifier broke the finding | one line naming the verifier and how it broke — the finding is gone, and the line is the whole record |
 | **REGRILL** | the spec's own premise is what the finding hit | the package halts with no run fired, and the queue takes the decision instead of the work (below) |
 
-*Refuted* is the outcome the decision that ratified this step calls **discard**. It is named
-for what performs it, because *discarding* on the session-finding ladder below is a human
-judgement an unattended package does not have: there, a real finding nobody can weigh goes to
-**backlog**. Here it is a verifier's verdict that the finding was never real.
+Every record in that last column is written into the **audit's line to step 6** — what was
+edited, what was queued, what was refuted, one line each. That is the only address they have:
+the close's digest is assembled in step 7, and a record kept in this step's own reasoning
+reaches nobody.
+
+*Refuted* is a verifier's verdict that the finding was never real, which is what separates it
+from the **discarding** of the session-finding ladder below: that one is a human judgement an
+unattended package does not have, and there a real finding nobody can weigh goes to
+**backlog** instead.
 
 ### A rotten criterion is routed, not chosen
 
@@ -214,7 +237,9 @@ finding of the round: the alternative is an implementer spending three attempts 
 broken ruler and the item ending at a DECISION anyway. It is a distinct object from that
 file's **failed 3×** — a rotten criterion never executed against a real delivery at all.
 
-Its outcome is not a choice among the four:
+Those two shapes say how the criterion is broken. What routes it here is a different
+question — which of the two documents is wrong — and the answer is not a choice among the
+four outcomes:
 
 - the spec states the promise plainly and only the criterion misses it → **resolve here**,
   rewriting the criterion to measure the promise, recording both the old text and the new.
@@ -280,7 +305,8 @@ first dispatch to last verdict. They are what stops the cut in step 1 from stayi
 this package's line is the next package's evidence. The deviation lines are emitted beside
 them, one per departure from the role table, in that file's format — a deviation with no line
 is indistinguishable from a slip. The audit owes one line here too, whichever way it went:
-ran, with its findings counted by outcome and the share of the window it took, or skipped,
+ran, with one line per finding under its outcome and what the round cost in agents and wall
+clock, or skipped,
 with the judgement that skipped it. Those lines belong to the package and precede the close,
 whose own report follows a template this file does not extend.
 
