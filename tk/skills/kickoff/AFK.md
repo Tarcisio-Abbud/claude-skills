@@ -155,8 +155,8 @@ tickets that are both Effort S and fully specified — the same test the `implem
 `../../reference/subagent-policy.md` uses to allow a sonnet downgrade — and the skip costs the
 block step 6 is owed either way; a wave born
 of a REGRILL never skips, however small it is. A package assembled from an aged queue rather
-than from a wave has no spec to read and the audit does not apply — which is the line step 6
-gets in that case.
+than from a wave has no spec to read and the audit does not apply — which is what the block
+says in that case.
 
 ### The workflow
 
@@ -272,14 +272,14 @@ tk-queue handoff <id> --objective "<what the re-grill has to settle>" \
 the queue reached it carrying the record of why nobody could be asked. `../../tests/test_afk_audit.py`
 extracts those two commands from this file, runs them against a throwaway queue, and runs the
 first again with `--deferred` removed to watch the refusal — it proves the commands and the
-gate, and nothing about whether this step ran, which is what the line owed to step 6 is for.
+gate, and nothing about whether this step ran, which is what the block owed to step 6 is for.
 
 Then release what the package was holding, per step 3, and hand it to step 6: a halted package
 still owes its measurement and its close.
 
 **Done when:** the audit ran and every finding it kept carries exactly one of the four
-outcomes with the verifier's verdict beside it — or it was skipped, and the judgement that
-skipped it is written for step 6.
+outcomes with the verifier's verdict beside it — or it was skipped — and the block step 6 is
+owed says which of the two happened.
 
 ## 5. Verify every delivery
 
@@ -345,7 +345,7 @@ too, by class — and the classes are not a list to keep by hand: they are every
 filter refuses, which today is all four that are not AUTONOMOUS. No step of this run looked at
 them, and a close shaped only around what the package touched is where they go silent.
 
-**Done when:** the measurement line, the audit's line and the deviation lines are written, and every item the
+**Done when:** the measurement line, the audit's block and the deviation lines are written, and every item the
 package did not close carries the first rung that applies to it, and the items it never
 visited are handed over by class.
 
