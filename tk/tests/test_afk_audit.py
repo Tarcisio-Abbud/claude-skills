@@ -25,6 +25,13 @@ Four properties are deliberate, each having been a hole once:
   run asserts the weaker, real property — the shell HANDS the line to `tk-queue` — measured
   through a shim that records every invocation.
 
+Two limits of the extraction, decided rather than inherited. The scope is the audit's H2 and
+everything under it, so a `tk-queue` line in ANY H3 of that step counts as the recipe — which
+is deliberate, the recipe itself living in an H3. And only ```sh fences are read: a fence
+written ```bash, or indented inside a blockquote, is invisible. Rewriting the REAL recipe that
+way empties the list and the vacuity guard fires loud; what would pass unseen is a
+SUPPLEMENTARY recipe added in one of those formats.
+
 What it does NOT prove: that an orchestrator running a package reaches the step at all, or
 that a REGRILL it decided on was really queued. Nothing here can see a session — that is
 what the block the step owes step 6 is for. It also does not execute prescribed subcommands
@@ -110,6 +117,16 @@ def sets_decision(argv):
     `edit --class DECISION` sit beside the real recipe with the suite green.
     """
     return "--class" in argv and argv[argv.index("--class") + 1] == "DECISION"
+
+
+def item_fields(body):
+    """The `**Field:** value.` segments of the queue's first open item.
+
+    Derived from the item itself, never a hand-kept list: a hand-kept one is the
+    next hole, and this one sits beside a check that claims the chain survived.
+    """
+    line = next((ln for ln in body.splitlines() if ln.startswith("- [ ] ")), "")
+    return [seg.strip() for seg in re.findall(r"\*\*[A-Za-z]+:\*\*[^*]*", line)]
 
 
 def subcommand(argv):
@@ -215,6 +232,23 @@ class AfkAuditTest(unittest.TestCase):
 
     # --- the gate ------------------------------------------------------------
 
+    def test_inline_commands_quote_their_metavariables(self):
+        """The whole file, not only the recipe: `tk-queue done <id>` in prose is the
+        same defect the recipe was just fixed for, and a reader pastes prose too.
+
+        This checks QUOTING, not execution — the inline commands are illustrative and
+        have no fixture here. Unquoted, `<id>` is a shell redirect and the line dies
+        before tk-queue sees it.
+        """
+        spans = re.findall(r"`(tk-queue [^`]*)`", afk_text())
+        self.assertTrue(spans, "no inline tk-queue command in AFK.md — re-anchor this test")
+        for span in spans:
+            bare = re.findall(r"(?<![\"'])<[^<>`\"]+>(?![\"'])", span)
+            with self.subTest(cmd=span):
+                self.assertEqual(bare, [],
+                                 f"unquoted metavariable {bare} — a shell reads it as a "
+                                 f"redirect and the line dies before tk-queue sees it")
+
     def test_every_prescribed_decision_command_carries_the_deferral(self):
         for line, argv in self.cmds:
             if sets_decision(argv):
@@ -293,10 +327,23 @@ class AfkAuditTest(unittest.TestCase):
                          "the item already points at the briefing — this test proves nothing")
         m = re.search(r"`(tk-queue edit [^`]+)`", warned)
         self.assertTrue(m, f"the handoff printed no remedy to run:\n{warned}")
+        # The remedy REWRITES the item, so what it leaves behind is asked of the whole
+        # field chain, captured first and compared segment by segment. Asking only
+        # whether the link arrived let a rebuild that dropped Class/Deferred/Effort/
+        # Criterion through — the remedy erasing the very gate this file exists to
+        # protect, with all eight tests green.
+        fields_before = item_fields(self.body())
+        self.assertIn("**Class:** DECISION.", fields_before,
+                      "the item under test is not a gated DECISION — this proves nothing")
         r = self.run_shell(m.group(1))
         self.assertEqual(r.returncode, 0, f"the printed remedy does not run:\n{r.stderr}")
         self.assertIn(f"[[handoff-{iid}]]", self.body(),
                       "the remedy ran and the item still does not point at its briefing")
+        fields_after = item_fields(self.body())
+        for seg in fields_before:
+            self.assertIn(seg, fields_after,
+                          f"the printed remedy dropped {seg!r} from the item — the recipe "
+                          f"tells the orchestrator to run a command that erases the gate")
 
     def test_the_same_regrill_without_the_gate_is_refused(self):
         """Checked backwards: the presence check above passes on a flag the script

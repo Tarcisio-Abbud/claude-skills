@@ -19,17 +19,17 @@ in `tk-queue pack --help`. What it deliberately does not decide is the cut.
 
 **Re-triage before accepting an exclusion.** A Risk the triage finds OBSOLETE (it
 names a branch since merged, a migration since run) is cleared on the spot with
-`tk-queue edit <id> --risk none`, which is what keeps a stale line from excluding
+`tk-queue edit "<id>" --risk none`, which is what keeps a stale line from excluding
 the item forever; an Env that named a machine the item needed before it was
 sliced goes the same way, with `--env none`. An item reported as claimed belongs
 to another session — if that session is known to be gone, hand it back with
-`tk-queue release <id>`, which prints whose claim it dropped. An item excluded
+`tk-queue release "<id>"`, which prints whose claim it dropped. An item excluded
 over a malformed field carries its repair in the `repairs:` block. Re-run
 `tk-queue pack` after any of these.
 
 An exclusion naming a class the filter does not recognise — one written in
 another language, which queues older than the contract are full of — takes ONE
-command: `tk-queue edit <id> --class AUTONOMOUS` reaches the field through the
+command: `tk-queue edit "<id>" --class AUTONOMOUS` reaches the field through the
 variants the script already knows (`Classe`, `Esforço`, `Risco`, `Fonte`, …)
 and rewrites it in the contract's own name, keeping the item's id, its place in
 the order and every other field. What it replaces is the whole class VALUE, so
@@ -41,7 +41,7 @@ fold the `repairs:` block prints has a limit of its own — it is refused outrig
 when the item's text carries a field marker inside it.
 
 **Then cut.** Take the eligible in the order printed — priority IS the order of
-the file, and `tk-queue bump <id>` is what moves an item to the top — then add
+the file, and `tk-queue bump "<id>"` is what moves an item to the top — then add
 items while the package still fits ONE session: the parent only orchestrates and
 verifies, yet each item still costs context to dispatch, monitor and check. Each
 candidate line carries its Effort, raw and unsummed. Guidance: stop around 3–6
@@ -75,7 +75,7 @@ authorization.)
 ### The claim is the first line of the concurrent-session guard
 
 Claim every item of the confirmed package before dispatching the first one:
-`tk-queue claim <id> --as <session/host label>`, taken under the exclusive lock the queue
+`tk-queue claim "<id>" --as "<session/host label>"`, taken under the exclusive lock the queue
 already holds. A second claim is REFUSED, naming the owner and the moment — and that refusal
 IS the guard: the item leaves the package untouched and enters the report as held elsewhere.
 
@@ -86,7 +86,7 @@ the fast-forward on the branch another session had checked out. The tree is the 
 and it is a **defence**, not a check: dispatch every code-editing run into its own worktree,
 so a sibling in the shared tree cannot move the ground under it.
 
-A package that dies holding claims leaves them behind — `tk-queue release <id>` hands an item
+A package that dies holding claims leaves them behind — `tk-queue release "<id>"` hands an item
 back without closing it, and prints whose claim it dropped.
 
 ### The vehicle, and who writes the queue
@@ -96,7 +96,7 @@ SIZE, and that rule is this step's own. Default: one background subagent per ite
 worktree, dispatched **in series**, since items from one queue usually share a repo.
 Parallel only across disjoint repos or areas, and never past the local ceiling the contract
 block states. An item whose work does not fit one subagent's context is not squeezed into
-one: write its briefing with `tk-queue handoff <id>` and dispatch it as a session of its own
+one: write its briefing with `tk-queue handoff "<id>"` and dispatch it as a session of its own
 — and where this machine cannot open one unattended, the item leaves the package carrying
 that briefing, and its ready-to-paste line goes in the report.
 
@@ -163,10 +163,14 @@ would have found a REGRILL lives inside the step being skipped, so a small wave 
 cannot discover that it should not have. What narrows the bet is only the two-ticket bound and
 the requirement to write down the judgement.
 
-A wave re-sliced after a REGRILL is the one case the bet is refused, and the carrier is the
-handoff that REGRILL wrote: reading it, the orchestrator does not skip. Nothing in the queue
-marks such a wave on its own — the handoff is the only carrier there is, and a wave that
-arrives without one is an ordinary wave.
+A wave re-sliced after a REGRILL is the one case the bet is refused. Half of that is
+mechanical and half is not, and the halves are worth separating. **Mechanical:** an open
+REGRILL is a `DECISION`, and step 1's `tk-queue pack` prints every excluded item with the
+value that excluded it, so an orchestrator that ran step 1 has the REGRILL in front of it.
+**Not mechanical:** nothing ties that item to THIS wave. The handoff the REGRILL wrote is the
+only carrier of the link, and a session that did not write it has nothing forcing it to look —
+so a wave arriving with no handoff is treated as an ordinary wave, and this guarantee is only
+as strong as that reading.
 
 A package assembled from an aged queue rather than from a wave has no spec to read and the
 audit does not apply — which is what the block says in that case.
@@ -181,11 +185,21 @@ allows it; and the situation it describes is a mass sweep over many items, which
 not. What is borrowed is the mechanism — deterministic control and resume over a fixed graph —
 never the row's situation. Running it here rather than inside
 a subagent is what keeps the findings where the orchestrator can read them. Where the session
-has no such mechanism, run the same graph as Agent-tool dispatches in series. Either way the
-prompt carries the ceiling in words — "use at most N agents" — with N no larger than the local
-ceiling in the contract block. **The three lenses are not negotiable and the ceiling decides
-only concurrency:** where the local ceiling is below three, run them in series. A dropped lens
-is a round that did not happen.
+has no such mechanism, run the same graph as Agent-tool dispatches.
+
+**Two paths, and concurrency is ruled differently on each — read the rule for the path you are
+on**, because a reader who takes the ceiling rule as general fires three calls in parallel down
+the fallback path:
+
+- **On the dynamic workflow**, the prompt carries the ceiling in words — "use at most N
+  agents" — with N no larger than the local ceiling in the contract block, and the ceiling
+  decides how many finders run at once: three or more, all three together; two, a pair and
+  then the third; one, one after another.
+- **On the Agent-tool fallback**, the graph is dispatched **in series**, whatever the ceiling
+  says. Serial is what that path IS, not a concession the ceiling extracted from it.
+
+**The three lenses are not negotiable on either path.** A dropped lens is a round that did not
+happen.
 
 Each run takes its row from `../../reference/subagent-policy.md`: `audit-finder` for the
 lenses, then `verifier-1`, `verifier-2` and `tiebreak`. The graph, in order:
@@ -204,9 +218,13 @@ lenses, then `verifier-1`, `verifier-2` and `tiebreak`. The graph, in order:
    like instead of inventing a format per round: per finding, a **one-line claim**; **where** —
    the document and the line it quotes verbatim; **why it breaks**, one line; and the **lens**
    that found it. Returning nothing, it returns the list of attacks instead.
-2. **Dedup here**, by comparing the three lists on their **where** field; no agent for it. Two
-   lenses landing on the same quoted line by different routes is corroboration, not
-   duplication — record it once and keep both claims in its text.
+2. **Dedup here**, by reading the three lists side by side; no agent for it. **`where` is a
+   clue, not a key:** two lenses that hit one defect by different routes quote different lines
+   of different documents — one the promise in the spec, the other the ticket that fails it —
+   and a string comparison keeps them apart, turning corroboration into two findings. Read for
+   overlap of the DEFECT, following each `where` to the passage. Where two claims describe one
+   defect, record it once and keep both claims and both quotes in its text. This step is
+   judgement; the fixed shape above only makes the judgement cheap.
 3. **One verifier per finding**, carrying three fixed lines: its mandate is to **refute**, its
    default verdict is *refuted*, and it reads the **real sources** rather than the quotations
    the finding carries. That prompt broke 22% of the finders' findings on that same round.
@@ -232,7 +250,9 @@ One round is measured (2026-08-19, run over this package's own spec and tickets)
 finders, ≈280k tokens and 10.5 minutes, returned 11 findings with one of them reached by two
 lenses; the verifier plus one effort-high tiebreak, ≈152k tokens and 10.6 minutes, confirmed 7
 and refuted 2. It found one real REGRILL — a gap that the spec, its quiz and a human approval
-had all let through. That is one round and not a distribution, which is why step 6 adds this
+had all let through. **Those minutes are a round with the finders in parallel.** Run in series
+the token cost is the same and the wall clock is roughly three times it — derived from the
+round's shape, not measured. That is one round and not a distribution, which is why step 6 adds this
 package's.
 
 ### The four outcomes
@@ -321,15 +341,24 @@ is for.
 Then release what the package was holding, per step 3, and hand it to step 6: a halted package
 still owes its measurement and its close.
 
-A round can also **fail**, which is not a skip and not a finding: the mechanism died, or a
-lens came back empty without its list of attacks. Re-dispatch that lens. Where it cannot be
-made to run, the audit did not run — the block says so, the wave is unaudited, and that is a
-third state, distinct from a clean round with no findings.
+A round can also **fail**: a lens came back empty without its list of attacks, or the
+mechanism died before the lenses delivered. Re-dispatch that lens. Where it cannot be made to
+run, the audit did not run — the block says so and the wave is unaudited.
 
-**Done when:** the block step 6 is owed names exactly one of three states — the audit ran, and
-every finding it kept carries one of the four outcomes with its verifier's verdict; or it was
-skipped, with the judgement that skipped it; or it failed, naming the lens that could not be
-made to run. A clean round with no findings is the first state and says so in those words.
+**A round can also end PARTIAL, and this is the state that must not be called failed:** the
+lenses ran and delivered real findings, and the verifier died — silently degraded venue is a
+documented mode, which is why step 3 counts a run by the signature it returns. Re-dispatch the
+verifier. Where it cannot be made to run, every finding left without a verdict goes to
+**backlog** carrying the words *unverified by the audit*, because an unverified finding is
+exactly a finding nobody here can weigh; the block reports the round as partial and says how
+many findings had no verdict. Calling that round failed would be false — the lenses did run —
+and destructive: it throws away findings that were produced.
+
+**Done when:** the block step 6 is owed names exactly one of four states — the audit **ran**,
+and every finding it kept carries one of the four outcomes with its verifier's verdict; or it
+was **skipped**, with the judgement that skipped it; or it ended **partial**, naming how many
+findings went to backlog unverified; or it **failed**, naming the lens that could not be made
+to run. A clean round with no findings is the first state and says so in those words.
 
 ## 5. Verify every delivery
 
@@ -344,7 +373,7 @@ before the first item closes. What this step owes that file:
 - The three attempts, the four outcomes and the DECISION-plus-handoff a failure writes are
   verify's own; this step supplies the caller they are written for.
 
-An approved item then leaves the queue here — `tk-queue done <id> --how "<pointer>"`, in the
+An approved item then leaves the queue here — `tk-queue done "<id>" --how "<pointer>"`, in the
 form verify prescribes for carrying the evidence block — and an item verify turned into a
 DECISION stays, carrying its handoff.
 
@@ -362,9 +391,10 @@ first dispatch to last verdict. They are what stops the cut in step 1 from stayi
 this package's line is the next package's evidence. The deviation lines are emitted beside
 them, one per departure from the role table, in that file's format — a deviation with no line
 is indistinguishable from a slip. The audit hands over its **block** here, whichever way it
-went: having run, one line per finding under its outcome plus what the round cost in agents
-and wall clock; skipped,
-with the judgement that skipped it. Those lines belong to the package and precede the close,
+went, in the four states step 4 defines: having **run**, one line per finding under its
+outcome plus what the round cost in agents and wall clock; **skipped**, the judgement that
+skipped it; **partial**, how many findings were queued unverified; **failed**, the lens that
+could not be made to run. Those lines belong to the package and precede the close,
 whose own report follows a template this file does not extend.
 
 What the items the package did NOT close owe that template is their **reason**, since it
@@ -428,7 +458,7 @@ is a judgement ("this will never happen") nobody here can make, so an unattended
 reports no discards. **Resolving on the spot** is the hydra's own fuel: three heads die and
 six items are born, which is how a quick job became three weeks. So every finding this package
 queued is listed in the close under the gate that kept it, for the user's **veto** on their
-return — `tk-queue cancel <id> --why "..."` is that veto, and it is one command against a
+return — `tk-queue cancel "<id>" --why "..."` is that veto, and it is one command against a
 finding that would otherwise have been lost to nobody's judgement.
 
 **Done when:** the close carries one line per session finding, each matching an item this run
