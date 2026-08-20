@@ -6,16 +6,27 @@ config, which git never pushes.
 
 ## Resolve the tracker before anything else
 
-Read both values from git config. Linked worktrees share one config, so this works from any
-of them:
+Read both values from git config — linked worktrees share one config, so this works from any
+of them — and let the resolution ITSELF refuse an absent value:
 
 ```bash
-TRACKER=$(git config tk.tracker)                     # owner/repo of the private tracker
-export GH_CONFIG_DIR="$(git config tk.ghConfigDir)"  # directory holding the gh token
+TRACKER="$(git config tk.tracker)"
+GH_CONFIG_DIR="$(git config tk.ghConfigDir)"
+: "${TRACKER:?this clone has no tk.tracker — configure it before running any gh command}"
+: "${GH_CONFIG_DIR:?this clone has no tk.ghConfigDir — configure it before running any gh command}"
+export GH_CONFIG_DIR
 ```
 
-An empty `TRACKER` means this clone was never configured. Stop there and give the user these
-two lines to run, then continue:
+The two `:?` lines are the load-bearing part, not decoration. `git config` answers a missing
+key with an empty string and exit 0, and **`gh` discards an empty `-R` and falls back to the
+cwd's remote — which here is the PUBLIC repo.** Measured: `gh issue view 1 -R ""` returns this
+repo's issue #1 at exit 0. Every command below is built as `-R "$TRACKER"`, and the table
+includes `issue create`, `comment`, `edit --add-label` and `close`, so in an unconfigured
+clone an unguarded empty value does not merely read the wrong repo — it WRITES to the public
+one. `${VAR:?}` turns that silent redirection into a non-zero exit before any `gh` runs.
+
+When it does refuse, the clone was never configured. Give the user these two lines, wait for
+them, then resolve again:
 
 ```bash
 git config tk.tracker <owner>/<repo>
@@ -44,8 +55,11 @@ pass them to `gh pr create`, the body through `--body-file`. To change either af
 around `gh pr edit` through the REST endpoint, which does not touch that GraphQL path:
 
 ```bash
-gh api -X PATCH "repos/OWNER/REPO/pulls/<n>" -F body=@<path to a file>
+gh api -X PATCH "repos/{owner}/{repo}/pulls/<n>" -F body=@<path to a file>
 ```
+
+`{owner}/{repo}` is `gh`'s own placeholder for the cwd's repo, which is the right one here —
+PRs live on this repo, not on `$TRACKER`.
 
 `-F key=@<path>` reads the value from the file, which keeps a body full of backticks and
 newlines out of the shell's reach.
@@ -88,41 +102,75 @@ install -m 755 githooks/private-values "$hooks/pre-commit"
 install -m 755 githooks/private-values "$hooks/commit-msg"
 ```
 
-It refuses a commit whose staged content or message carries either configured value —
-`pre-commit` sees the content, `commit-msg` sees the message, and one script covers both.
-**PR titles and bodies reach GitHub through `gh`, never through git, so no hook sees them:
-that half is yours to keep clean.** The guard reads only the lines a commit ADDS and the paths it
-touches, so a value already in the tree is left alone rather than blamed on the commit that
-edited its neighbour. It guards new writes; it is not an audit of history.
-
 Copying the script into the git directory, rather than pointing `core.hooksPath` at
 `githooks/`, is deliberate: a worktree checked out at a branch older than that directory would
-leave the guard silently inert. Prove it still bites with
-`python3 githooks/tests/mutations_private_values.py`.
+leave the guard silently inert.
+
+**What it catches, each proved by a test that fails when the check is removed.** It reads
+three surfaces — the lines a commit adds, the paths it introduces, and the commit message —
+and names the one that fired. A value is recognised through the disguises that defeated
+earlier versions of it: a different case (a GitHub slug is case-insensitive, so a re-cased
+copy publishes the same identity), `%2F` in place of the slash, a value wrapped across two
+lines, a value inside a staged binary, and a pure rename INTO a leaky path, which adds no
+line at all.
+
+**What it does not catch. Read this before trusting it.**
+
+- **`git cherry-pick` and `git rebase` run neither hook.** Measured by instrumenting the
+  script: it is never invoked. A commit made with `--no-verify` on a private branch therefore
+  reaches this public repo through either of them with nothing in its way. Closing that needs
+  a `pre-push` hook, which does not exist here — so on a branch built by rebase or cherry-pick,
+  read the diff yourself before pushing.
+- **It reads only what a commit ADDS.** A value already tracked stays; this is a gate on new
+  writes, not an audit of history.
+- **PR titles and bodies travel through `gh`, never through git**, so no hook sees them. That
+  half is yours to keep clean.
+- **It knows two literals, not a category.** It greps the values of `tk.tracker` and
+  `tk.ghConfigDir`. Company names, people's names and ticket numbers of the private tracker
+  are equally unwelcome here and equally invisible to it.
+
+Re-prove the lot with `python3 githooks/tests/mutations_private_values.py`, which puts each
+defect back and requires the test named for it to fail.
 
 ## Wayfinding operations
 
-A package's map is an issue on `$TRACKER` carrying the `wayfinder:map` label, and its tickets
-are the map's children through GitHub sub-issues. Find the map by the label rather than by a
-number, which goes stale as packages come and go:
+A package's map is an issue on `$TRACKER` carrying the `wayfinder:map` label. Find it by the
+label rather than by a number, which goes stale as packages come and go:
 
 ```bash
 gh issue list -R "$TRACKER" --label wayfinder:map --state open --json number,title
 ```
 
-More than one row means more than one package is live: pick the map whose children include
-the ticket you were handed, and say which one you picked. Add `--state all` only to reach a
-concluded package.
+Zero rows means no package is live; add `--state all` to reach a concluded one. More than one
+row means more than one package is live — pick the map that owns the ticket you were handed,
+and say which one you picked.
 
-List the children, and with them the frontier — the open ones carrying no assignee:
+### Count the children before trusting the frontier
+
+The tickets are meant to be the map's children through GitHub sub-issues, but **the edge is
+not reliably there**: measured on this tracker, open tickets of a live package carry
+`parent: null`, never having been linked. So ask how many children exist BEFORE asking which
+are free, or an unlinked package reads as a finished one:
+
+```bash
+gh api "repos/$TRACKER/issues/<map>/sub_issues" --paginate --jq 'length'
+```
+
+- **Zero** — the edges were never made. This is not an empty frontier, and the package is not
+  done. Fall back to the tracker's own open list, and use the map's body to decide which of
+  those rows belong to it:
+  `gh issue list -R "$TRACKER" --state open --search "no:assignee" --json number,title`
+- **More than zero** — the edges exist, so the frontier is the open children with no assignee:
 
 ```bash
 gh api "repos/$TRACKER/issues/<map>/sub_issues" --paginate \
   --jq '.[] | select(.state == "open" and .assignee == null) | "\(.number)\t\(.title)"'
 ```
 
-Claim one with `gh issue edit <n> -R "$TRACKER" --add-assignee @me`; resolve it with a comment
-and a close. Edges between tickets go through `gh api`:
+Either way, say which route gave you the list, so the next reader can tell a real empty
+frontier from a missing one. Claim a ticket with
+`gh issue edit <n> -R "$TRACKER" --add-assignee @me`; resolve it with a comment and a close.
+Edges between tickets go through `gh api`:
 
 ```bash
 gh api "repos/$TRACKER/issues/<n>/dependencies/blocked_by" -F issue_id=<blocker DATABASE id>

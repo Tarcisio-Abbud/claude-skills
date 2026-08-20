@@ -129,6 +129,76 @@ class GuardTest(unittest.TestCase):
         r.write("a.txt", "innocent body\n")
         self.assertRefused(r.commit(message="closes %s#42" % SLUG))
 
+    # --- the disguises a value can wear ---------------------------------------------
+    # Each of these walked straight through an earlier version of the guard.
+
+    def test_rename_into_a_leaky_path_is_refused(self):
+        """A pure rename adds no line at all, so only the path betrays it."""
+        r = self.repo()
+        r.write("plain.txt", "innocent body\n")
+        self.assertAccepted(r.commit())
+        moved = os.path.join(r.dir, SLUG)
+        os.makedirs(os.path.dirname(moved), exist_ok=True)
+        r.git("mv", "plain.txt", SLUG)
+        result = r.commit(message="move it")
+        self.assertRefused(result)
+        self.assertIn("in a PATH", result.stderr)
+
+    def test_editing_a_file_whose_path_already_leaked_is_accepted(self):
+        """`--diff-filter=ACR` keeps an already-tracked path from being re-reported on every
+        edit near it — the false positive that misdirects the author."""
+        r = self.repo()
+        r.write(os.path.join(SLUG, "notes.txt"), "first\n")
+        planted = r.commit_unguarded()
+        self.assertEqual(planted.returncode, 0, planted.stderr)
+        r.write(os.path.join(SLUG, "notes.txt"), "first\nsecond\n")
+        self.assertAccepted(r.commit(message="edit inside it"))
+
+    def test_case_changed_value_is_refused(self):
+        """A GitHub slug is case-insensitive, so a re-cased copy publishes the same identity."""
+        r = self.repo()
+        r.write("a.txt", "see %s\n" % SLUG.upper())
+        self.assertRefused(r.commit())
+
+    def test_percent_encoded_value_is_refused(self):
+        r = self.repo()
+        r.write("a.txt", "repos/%s/issues\n" % SLUG.replace("/", "%2F"))
+        self.assertRefused(r.commit())
+
+    def test_value_wrapped_across_two_lines_is_refused(self):
+        owner, name = SLUG.split("/")
+        r = self.repo()
+        r.write("a.txt", "see %s/\n%s here\n" % (owner, name))
+        result = r.commit()
+        self.assertRefused(result)
+        self.assertIn("split across lines", result.stderr)
+
+    def test_wrapped_remedy_runs_and_finds_the_value(self):
+        """The wrapped case needs its own remedy: the line-wise search prints nothing."""
+        owner, name = SLUG.split("/")
+        r = self.repo()
+        r.write("a.txt", "see %s/\n%s here\n" % (owner, name))
+        result = r.commit()
+        self.assertRefused(result)
+        printed = [
+            line.split("see it:", 1)[1].strip()
+            for line in result.stderr.splitlines()
+            if "see it:" in line
+        ]
+        self.assertEqual(len(printed), 1, "expected one remedy line, got: %r" % printed)
+        shown = subprocess.run(
+            printed[0], shell=True, cwd=r.dir, capture_output=True, text=True
+        )
+        self.assertEqual(shown.returncode, 0, "the printed remedy did not run: %s" % shown.stderr)
+        self.assertIn(SLUG.lower(), shown.stdout.lower())
+
+    def test_refusal_names_the_surface_that_fired(self):
+        r = self.repo()
+        r.write("a.txt", "innocent body\n")
+        result = r.commit(message="closes %s#42" % SLUG)
+        self.assertRefused(result)
+        self.assertIn("in the commit message", result.stderr)
+
     # --- the two branches that would make the guard useless ------------------------
 
     def test_unset_key_protects_nothing(self):

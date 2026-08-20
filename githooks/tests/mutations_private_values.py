@@ -26,88 +26,168 @@ GUARD = os.path.abspath(os.path.join(HERE, os.pardir, "private-values"))
 # name -> (what the defect is, the literal to replace, its replacement, tests it must kill)
 MUTATIONS = [
     (
-        "binary staged file is not scanned",
-        "  git diff --cached --text --unified=0",
-        "  git diff --cached --unified=0",
-        ["test_value_inside_a_binary_file_is_refused"],
-    ),
-    (
-        "grep answers the binary stream instead of filtering it",
-        "| grep -a -E '^\\+'",
-        "| grep -E '^\\+'",
-        ["test_value_inside_a_binary_file_is_refused"],
-    ),
-    (
-        "context lines are scanned, so an untouched neighbour trips the guard",
-        "--unified=0 | grep -a -E '^\\+'",
-        "| cat",
-        ["test_value_already_committed_nearby_does_not_trip_the_guard"],
-    ),
-    (
-        "the filter drops the path header, so a value in a path walks through",
-        "grep -a -E '^\\+'",
-        "grep -a -E '^\\+[^+]'",
-        ["test_value_in_a_path_is_refused"],
-    ),
-    (
-        "narrowing to added lines blinds the guard to a value added now",
-        "git diff --cached --text --unified=0 | grep -a -E '^\\+'",
-        "true",
+        'binary staged file is not scanned',
+        'git diff --cached --text --unified=0 |',
+        'git diff --cached --unified=0 |',
         [
-            "test_the_same_value_added_now_is_still_refused",
-            "test_slug_in_staged_content_is_refused",
+            'test_value_inside_a_binary_file_is_refused',
         ],
     ),
     (
-        "the commit message is never scanned",
+        'grep answers the binary stream instead of filtering it',
+        "    grep -a -E '^\\+' | grep -a -v",
+        "    grep -E '^\\+' | grep -a -v",
+        [
+            'test_value_inside_a_binary_file_is_refused',
+        ],
+    ),
+    (
+        'context is neither suppressed nor filtered, so an untouched neighbour trips the guard',
+        "  git diff --cached --text --unified=0 |\n    grep -a -E '^\\+' | grep -a -v -E '^\\+\\+\\+ ' | sed 's/^+//'\n",
+        '  git diff --cached --text\n',
+        [
+            'test_value_already_committed_nearby_does_not_trip_the_guard',
+        ],
+    ),
+    (
+        'the added lines are never read',
+        '  git diff --cached --text --unified=0 |\n',
+        '  : |\n',
+        [
+            'test_slug_in_staged_content_is_refused',
+            'test_the_same_value_added_now_is_still_refused',
+        ],
+    ),
+    (
+        'a pure rename is invisible, because only added lines are read',
+        '  for surface in added_lines new_paths message_text; do',
+        '  for surface in added_lines message_text; do',
+        [
+            'test_rename_into_a_leaky_path_is_refused',
+        ],
+    ),
+    (
+        'every touched path is read, so an already-tracked leaky path is re-reported',
+        'git diff --cached --name-only --diff-filter=ACR\n',
+        'git diff --cached --name-only\n',
+        [
+            'test_editing_a_file_whose_path_already_leaked_is_accepted',
+        ],
+    ),
+    (
+        'case is honoured, so a re-cased slug publishes the same identity unchecked',
+        '  grep -a -q -i -F -- "$1"\n',
+        '  grep -a -q -F -- "$1"\n',
+        [
+            'test_case_changed_value_is_refused',
+        ],
+    ),
+    (
+        'the URL-encoded spelling is never considered',
+        '    for needle in "$value" "$encoded"; do',
+        '    for needle in "$value"; do',
+        [
+            'test_percent_encoded_value_is_refused',
+        ],
+    ),
+    (
+        'the diff marker is left in, so joining cannot rejoin a wrapped value',
+        " | sed 's/^+//'\n",
+        '\n',
+        [
+            'test_value_wrapped_across_two_lines_is_refused',
+            'test_wrapped_remedy_runs_and_finds_the_value',
+        ],
+    ),
+    (
+        'a wrapped value is never looked for',
+        '      elif hit_joined "$surface" "$needle"; then\n        wrapped=yes\n',
+        '      elif false; then\n        wrapped=yes\n',
+        [
+            'test_value_wrapped_across_two_lines_is_refused',
+            'test_wrapped_remedy_runs_and_finds_the_value',
+        ],
+    ),
+    (
+        'the wrapped remedy is printed with echo, which breaks it across lines',
+        '        printf \'%s\\n\' "    see it:',
+        '        echo "    see it:',
+        [
+            'test_wrapped_remedy_runs_and_finds_the_value',
+        ],
+    ),
+    (
+        'the commit message is never scanned',
         '  if [ -n "$message_file" ]; then\n    cat "$message_file"\n  fi\n',
-        "",
-        ["test_value_only_in_the_commit_message_is_refused"],
+        '  :\n',
+        [
+            'test_value_only_in_the_commit_message_is_refused',
+        ],
     ),
     (
-        "only the first key is checked",
-        "for key in tk.tracker tk.ghConfigDir; do",
-        "for key in tk.tracker; do",
-        ["test_gh_config_dir_in_staged_content_is_refused"],
+        'the refusal does not say which surface fired',
+        '            echo "  - the value of: git config $key — in the commit message" >&2\n',
+        '            echo "  - the value of: git config $key" >&2\n',
+        [
+            'test_refusal_names_the_surface_that_fired',
+        ],
     ),
     (
-        "an empty value is used as a needle, matching every commit",
+        'only the first key is checked',
+        'for key in tk.tracker tk.ghConfigDir; do',
+        'for key in tk.tracker; do',
+        [
+            'test_gh_config_dir_in_staged_content_is_refused',
+        ],
+    ),
+    (
+        'an empty value is used as a needle, matching every commit',
         '  if [ -z "$value" ]; then\n    continue\n  fi\n',
-        "",
+        '',
         [
-            "test_empty_value_does_not_match_every_commit",
-            "test_unset_key_protects_nothing",
+            'test_empty_value_does_not_match_every_commit',
+            'test_unset_key_protects_nothing',
         ],
     ),
     (
-        "the refusal does not refuse",
-        "exit 1\n",
-        "exit 0\n",
+        'the refusal does not refuse',
+        'exit 1\n',
+        'exit 0\n',
         [
-            "test_slug_in_staged_content_is_refused",
-            "test_gh_config_dir_in_staged_content_is_refused",
-            "test_value_in_a_path_is_refused",
-            "test_value_inside_a_binary_file_is_refused",
-            "test_value_only_in_the_commit_message_is_refused",
+            'test_slug_in_staged_content_is_refused',
+            'test_gh_config_dir_in_staged_content_is_refused',
+            'test_value_in_a_path_is_refused',
+            'test_value_inside_a_binary_file_is_refused',
+            'test_value_only_in_the_commit_message_is_refused',
+            'test_rename_into_a_leaky_path_is_refused',
+            'test_case_changed_value_is_refused',
+            'test_percent_encoded_value_is_refused',
+            'test_value_wrapped_across_two_lines_is_refused',
         ],
     ),
     (
-        "the refusal names a fixed key instead of the one that fired",
-        '    echo "  - the value of: git config $key" >&2\n',
-        '    echo "  - the value of: git config tk.tracker" >&2\n',
-        ["test_refusal_names_the_key_that_fired"],
+        'the refusal names a fixed key instead of the one that fired',
+        '            echo "  - the value of: git config $key — in a line this commit adds" >&2\n',
+        '            echo "  - the value of: git config tk.tracker — in a line this commit adds" >&2\n',
+        [
+            'test_refusal_names_the_key_that_fired',
+        ],
     ),
     (
-        "the printed remedy loses the lookup that makes it run",
-        '\\"\\$(git config $key)\\"" >&2\n    echo "    replace by',
-        '\\"$key\\"" >&2\n    echo "    replace by',
-        ["test_printed_remedy_runs_and_finds_the_line"],
+        'the printed remedy loses the lookup that makes it run',
+        '            echo "    see it:     git diff --cached --text -U0 | grep -n -i -F -- \\"\\$(git config $key)\\"" >&2\n',
+        '            echo "    see it:     git diff --cached --text -U0 | grep -n -i -F -- \\"$key\\"" >&2\n',
+        [
+            'test_printed_remedy_runs_and_finds_the_line',
+        ],
     ),
     (
-        "the guard refuses everything, blocking all work",
-        '  if published | grep -a -q -F -- "$value"; then\n',
-        "  if true; then\n",
-        ["test_clean_commit_is_accepted"],
+        'the guard refuses everything, blocking all work',
+        '  $1 | contains "$2"\n',
+        '  true\n',
+        [
+            'test_clean_commit_is_accepted',
+        ],
     ),
 ]
 

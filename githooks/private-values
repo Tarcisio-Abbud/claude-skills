@@ -6,25 +6,61 @@
 # git passes the message file as $1 to `commit-msg` and nothing to `pre-commit`, which is
 # how one script covers staged content and the commit message without being told which
 # hook it is running as.
+#
+# WHAT IT DOES NOT COVER, measured rather than assumed. `git cherry-pick` and `git rebase`
+# invoke neither hook, so a commit made with `--no-verify` reaches the public remote through
+# either of them unexamined; closing that needs a `pre-push` hook, which this file is not.
+# It also reads only what a commit ADDS — a value already tracked stays where it is — and
+# PR titles and bodies travel through `gh`, never through git.
 
 message_file=$1
 found=0
 
-# Everything this commit would publish, and nothing else: the lines it ADDS and the paths
-# it touches, plus the message when git handed one over.
+# Three surfaces, named so the refusal can say which one fired.
 #
-# `--text` matters — without it a staged binary is summarised as "Binary files ... differ"
-# and a value inside it never reaches grep; `grep -a` matters for the same reason, since
-# grep answers a NUL-carrying stream with "binary file matches" instead of the lines. `--unified=0` plus the filter matter as much in
-# the other direction: with context lines in the diff, a value already committed near an
-# edit trips the guard, and the refusal then prescribes changing a line the commit does not
-# touch. `^\+` keeps the `+++ b/<path>` header along with the added lines, because a value
-# can hide in a path as easily as in a line.
-published() {
-  git diff --cached --text --unified=0 | grep -a -E '^\+'
+# `--text` and `grep -a`: without them a staged binary is summarised as "Binary files ...
+# differ", and grep answers a NUL-carrying stream with "binary file matches" instead of the
+# lines. Context lines are kept out twice over — `--unified=0` stops git emitting them, and
+# the `^\+` filter would drop them anyway — so no mutation can falsify either half alone;
+# the harness removes both at once and says so. The filter earns its place on its own for a
+# different reason: stripping the marker is what lets a wrapped value be rejoined.
+# The `+` marker is stripped, because joining the lines to catch a wrapped value would
+# otherwise slide that marker between the two halves and break the very match it is for.
+# The `+++ b/<path>` header goes out with it: paths are `new_paths`'s job.
+added_lines() {
+  git diff --cached --text --unified=0 |
+    grep -a -E '^\+' | grep -a -v -E '^\+\+\+ ' | sed 's/^+//'
+}
+
+# A pure rename adds no line at all, so the path it moves the file TO has to be read
+# separately. `ACR` — added, copied, renamed — leaves modified files out, which is what keeps
+# an already-tracked leaky path from being re-reported on every edit near it.
+new_paths() {
+  git diff --cached --name-only --diff-filter=ACR
+}
+
+message_text() {
   if [ -n "$message_file" ]; then
     cat "$message_file"
   fi
+}
+
+# Two readings of one surface, kept apart so the refusal can prescribe the right repair: a
+# value sitting on one line, and a value the author wrapped across two. Case is ignored
+# because a GitHub slug is case-insensitive — a re-cased copy publishes the same identity.
+# One place for the match flags, so both readings answer to the same rule: `-a` for a stream
+# carrying NUL bytes, `-F` because a slug is a literal and not a pattern, `-i` because a
+# GitHub slug is case-insensitive and a re-cased copy publishes the same identity.
+contains() {
+  grep -a -q -i -F -- "$1"
+}
+
+hit_lines() {
+  $1 | contains "$2"
+}
+
+hit_joined() {
+  $1 | tr -d '\n\r' | contains "$2"
 }
 
 for key in tk.tracker tk.ghConfigDir; do
@@ -33,15 +69,52 @@ for key in tk.tracker tk.ghConfigDir; do
   if [ -z "$value" ]; then
     continue
   fi
-  if published | grep -a -q -F -- "$value"; then
-    if [ "$found" -eq 0 ]; then
-      echo "This repo is PUBLIC and the commit carries a private value." >&2
-      found=1
-    fi
-    echo "  - the value of: git config $key" >&2
-    echo "    see it:     git diff --cached --text -U0 | grep -n -F -- \"\$(git config $key)\"" >&2
-    echo "    replace by: \$(git config $key)" >&2
-  fi
+  # `%2F` is the same value wearing a URL's clothes, and reads back as the same identity.
+  encoded=$(printf '%s' "$value" | sed 's|/|%2F|g')
+
+  for surface in added_lines new_paths message_text; do
+    for needle in "$value" "$encoded"; do
+      wrapped=""
+      if hit_lines "$surface" "$needle"; then
+        wrapped=no
+      elif hit_joined "$surface" "$needle"; then
+        wrapped=yes
+      else
+        continue
+      fi
+
+      if [ "$found" -eq 0 ]; then
+        echo "This repo is PUBLIC and the commit carries a private value." >&2
+        found=1
+      fi
+
+      if [ "$wrapped" = yes ]; then
+        # printf, not echo: this shell's echo expands the `\n` inside the remedy and hands
+        # the reader a command broken across two lines.
+        printf '%s\n' "  - the value of: git config $key — split across lines in what this commit adds" >&2
+        printf '%s\n' "    see it:     git diff --cached --text -U0 | grep -a -E '^\\+' | sed 's/^+//' | tr -d '\\n' | grep -o -i -F -- \"\$(git config $key)\"" >&2
+        printf '%s\n' "    put it on one line, then replace it by: \$(git config $key)" >&2
+      else
+        case $surface in
+          added_lines)
+            echo "  - the value of: git config $key — in a line this commit adds" >&2
+            echo "    see it:     git diff --cached --text -U0 | grep -n -i -F -- \"\$(git config $key)\"" >&2
+            echo "    replace by: \$(git config $key)" >&2
+            ;;
+          new_paths)
+            echo "  - the value of: git config $key — in a PATH this commit introduces" >&2
+            echo "    see it:     git diff --cached --name-only --diff-filter=ACR" >&2
+            echo "    rename the file; its content is not the problem" >&2
+            ;;
+          message_text)
+            echo "  - the value of: git config $key — in the commit message" >&2
+            echo "    rewrite the message; describe the change on its own terms" >&2
+            ;;
+        esac
+      fi
+      break 2
+    done
+  done
 done
 
 if [ "$found" -eq 0 ]; then
@@ -50,7 +123,8 @@ fi
 
 cat >&2 <<'END'
 
-Swap each literal above for the lookup shown beside it, or drop the line, then commit again.
-Publishing the value on purpose takes `git commit --no-verify`.
+Fix what is named above, then commit again. Case and `%2F` encoding do not evade this check,
+and neither does wrapping the value across two lines. Publishing on purpose takes
+`git commit --no-verify` — which is also what `cherry-pick` and `rebase` do implicitly.
 END
 exit 1
