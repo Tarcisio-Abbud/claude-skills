@@ -199,9 +199,30 @@ def memory_dir(explicit):
 
 
 def read(path):
+    """The file's text, with a leading BOM read OFF.
+
+    utf-8-sig, not utf-8, and the asymmetry with `write_atomic` (which stays
+    utf-8, so nothing here ever EMITS a BOM) is the point. Every reader of these
+    files anchors with `^` under re.M — ITEM_START, ITEM_ID_RE, LOG_ID_RE — and a
+    BOM surviving at byte 0 is a CHARACTER sitting between `^` and the first
+    line's marker, so that one line stops matching. Only the first line: `^` also
+    matches after every newline, and those are untouched. The vector is a hand
+    edit from an editor that writes one (Windows), on a file that syncs between
+    machines.
+
+    Measured on this script before the fix, on a next-steps.md whose first line
+    is an item: `list` printed everything BUT that item; `edit` on its ID
+    answered "T001 is allocated but appears in neither next-steps.md nor
+    done-log.md. Another writer very likely removed or clobbered it" — a
+    confident wrong answer sending the caller after a writer that never existed;
+    and with that item alone in the file, `add` handed its number OUT AGAIN,
+    which is the duplicate ID this whole grammar exists to prevent. Reading a
+    file with no BOM is byte-identical to before: utf-8-sig strips one only at
+    the head, and is plain utf-8 everywhere else.
+    """
     if not os.path.exists(path):
         return None
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         return f.read()
 
 

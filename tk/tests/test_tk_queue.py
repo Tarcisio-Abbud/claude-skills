@@ -3439,5 +3439,85 @@ class TestHandoffLifecycle(HandoffTest):
         self.assertIsNone(self.brief(5))
 
 
+# --- a BOM at the head of a queue file -----------------------------------
+
+class TestByteOrderMark(QueueTest):
+    """A UTF-8 BOM (U+FEFF) surviving at byte 0 is a CHARACTER sitting between
+    `^` and the first line, and every reader of these files anchors with `^`
+    under re.M. So the first line stops matching — only the first, since `^`
+    also matches after every newline.
+
+    The blast radius was MEASURED, and it is narrower than "the queue reads as
+    empty": in front of the usual frontmatter the BOM is harmless, because
+    nothing is anchored to `---`. It bites when the file's first line is a
+    STRUCTURAL one — an item marker in next-steps.md, an entry in done-log.md —
+    and then it bites hard: the item vanishes from `list`, `edit` on its ID
+    answers "Another writer very likely removed or clobbered it" (a confident
+    wrong answer, sending the caller after a writer that never existed), and
+    `add` hands its number OUT AGAIN.
+
+    The fixtures below therefore carry NO header. One with the header would pass
+    with the defect restored, and prove nothing.
+    """
+
+    BOM = "\ufeff"
+
+    def seed_bom(self, *items):
+        self.write("next-steps.md", self.BOM + "".join(items))
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c", "--source", "2026-08-20")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    def test_the_first_item_is_neither_hidden_nor_blamed_on_a_concurrent_writer(self):
+        self.seed_bom(item(1, "um"), item(2, "dois"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+        self.assertIn("T002", r.stdout)
+        e = self.run_tk("edit", "T001", "--effort", "M")
+        self.assertEqual(e.returncode, 0, e.stderr)
+        self.assertNotIn("Another writer", e.stderr)
+        # the WHOLE file, never an assertNotIn: `edit` REWRITES it, and a rewrite
+        # that dropped the sibling or left the BOM in place passes any absence
+        # check. The BOM is gone because write_atomic stays utf-8 — the queue
+        # file is normalised by the first command that writes it
+        self.assertEqual(self.body(), item(1, "um", effort="M") + item(2, "dois"))
+
+    def test_the_hidden_items_id_is_never_handed_out_twice(self):
+        """The sharp end. With the BOM'd item ALONE in the file, `max_id` sees
+        nothing and `add` re-issues its number — two open items under one ID,
+        which is the outcome the whole ID grammar exists to prevent."""
+        self.seed_bom(item(1, "um"))
+        self.assertEqual(self.add(), "T002")
+        self.assertEqual(re.findall(r"\*\*T([0-9]{3})\*\*", self.body()), ["001", "002"])
+
+    def test_a_bom_in_the_done_log_keeps_its_first_entry_allocated(self):
+        """The same read(), the other file. A log whose first line is an entry
+        loses that entry: the ID it closed reads as free, so `add` re-issues it,
+        and `edit` on it is answered from the wrong branch."""
+        self.write("next-steps.md", HEADER)     # only the LOG carries the BOM here
+        self.write("done-log.md", self.BOM + "- 2026-08-01 — FEITO — T007 sete — PR #1\n")
+        self.assertEqual(self.add(), "T008")
+        e = self.run_tk("edit", "T007", "--effort", "L")
+        self.assertEqual(e.returncode, 1)
+        self.assertIn("already left the queue", e.stderr)
+        self.assertNotIn("Another writer", e.stderr)
+
+    def test_a_bom_further_INTO_the_file_is_left_alone(self):
+        """utf-8-sig strips ONE BOM at the head and is plain utf-8 everywhere
+        else. The inverse fix — stripping every U+FEFF out of the text — would
+        silently edit the user's own words, and only this direction can see it."""
+        self.seed(item(1, "um\ufeffdois"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("um\ufeffdois", r.stdout)
+        e = self.run_tk("edit", "T001", "--effort", "M")   # a full rewrite of the file
+        self.assertEqual(e.returncode, 0, e.stderr)
+        self.assertEqual(self.body(), HEADER + item(1, "um\ufeffdois", effort="M"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

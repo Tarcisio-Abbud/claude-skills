@@ -1511,6 +1511,24 @@ MUTATIONS = [
      '        fixed = f"{item_title(block, limit=400)} {link}"',
      ["TestHandoffCreation.test_the_remedy_never_truncates_the_item_it_rewrites"]),
 
+    ("BOM read() lets one at the head through to the `^`-anchored grammars again",
+     '    with open(path, encoding="utf-8-sig") as f:\n        return f.read()',
+     '    with open(path, encoding="utf-8") as f:\n        return f.read()',
+     ["TestByteOrderMark.test_the_first_item_is_neither_hidden_nor_blamed_on_a_concurrent_writer",
+      "TestByteOrderMark.test_the_hidden_items_id_is_never_handed_out_twice",
+      "TestByteOrderMark.test_a_bom_in_the_done_log_keeps_its_first_entry_allocated"]),
+     # NOT test_a_bom_further_INTO_the_file_is_left_alone: it passes with the
+     # defect restored, by construction — it guards the OPPOSITE direction, and
+     # naming it here would claim a proof this run cannot make
+
+    # the other direction, which no mutation above covers: a strip that reaches
+    # PAST the head silently edits the user's own text
+    ("BOM the strip reaches past the head, into the user's own text",
+     '    with open(path, encoding="utf-8-sig") as f:\n        return f.read()',
+     '    with open(path, encoding="utf-8") as f:\n'
+     '        return f.read().replace("\\ufeff", "")',
+     ["TestByteOrderMark.test_a_bom_further_INTO_the_file_is_left_alone"]),
+
     ("T122 a briefing is written for an item that is not open (an orphan at birth)",
      "    content, block, start = find_open_item(memdir, args.id)\n    values = {dest:",
      '    content, block, start = "", "", 0\n    values = {dest:',
@@ -1536,7 +1554,7 @@ def main():
                                   "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
                                   "TestEnvField", "TestClaim",
                                   "TestPack", "TestHandoffCreation",
-                                  "TestHandoffLifecycle"])
+                                  "TestHandoffLifecycle", "TestByteOrderMark"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
