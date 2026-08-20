@@ -3,37 +3,37 @@
 
 A vista is the visual companion of a package digest: a page the human READS to
 give a verdict, written to the outbox and thrown away. It is never a source, so
-nothing is read back from it — which leaves exactly two properties a machine can
-still check, and both are checked here.
+nothing is read back from it.
 
-Four properties are checkable without a human: the page fetches nothing, the
-five blocks are there, the palette covers both themes, and nothing prints that
-the author never meant to publish. Whether the prose is worth reading is the
-reader's question, and no checker replaces it.
+WHAT THIS GATE MEASURES — and nothing beyond it, because a gate that announces
+more than it measures is worse than one that measures less:
 
-SELF-CONTAINED. The page opens from a local file, on a machine that may be
-offline, months after the session that wrote it. So every byte it renders is
-already inside it: no stylesheet, script, font, image or fetch reaching out.
-The rule this script enforces is narrower than "no http", because a vista MUST
-carry links — block 4 of the contract is the link to each slice's proof, which
-lives in the PR. The distinction is what the browser LOADS versus where the
-reader CLICKS:
+1. The page fetches NOTHING. Every URL the browser would resolve to render it is
+   `data:` or a `#` fragment, and the page carries no script at all.
+2. The five blocks of the contract are present, by marker.
+3. Each card names an outcome from the closed vocabulary, carries a risk tag,
+   and links a proof that is not still a placeholder.
+4. The page answers the dark colour scheme.
 
-  - a URL the browser fetches to render the page (src, <link href>, @import,
-    CSS url(), a network call in script) must be `data:` or a `#` fragment;
-  - `<a href="...">` may point anywhere, since it loads nothing until a human
-    clicks it, and clicking is the point.
+WHAT IT DOES NOT MEASURE, stated so no report can borrow authority it lacks:
+whether the two palettes are LEGIBLE (that is measured by rendering the file,
+not by reading it), whether block 1's counts are right or even present as
+numbers, whether the prose is worth reading, and where an `<a href>` actually
+leads. `../reference/vista.md` says the same thing to the human side.
 
-A RELATIVE path is refused by the same rule, and deliberately: `src="logo.png"`
-costs no network but breaks the moment the file is copied anywhere alone, which
-is the normal life of an outbox file.
+NO SCRIPT, rather than a list of forbidden calls. A blocklist of network calls
+loses to `new Image()`, to `window["fet"+"ch"]`, to a name bound before it is
+used — measured, each on a page that was otherwise green. A vista needs no
+script: its collapsibles are `<details>`, its themes are a media query, its
+drawings are inline SVG. So the property checked is the one that matters — this
+page runs nothing — and it cannot be spelled around.
 
-THE FIVE BLOCKS. The contract (`../reference/vista.md`) fixes five blocks and
-leaves the layout free, so the blocks are found by MARKER, never by shape:
-`data-vista-bloco` names a region, `data-vista-card` marks one card, and a card
-carries its outcome and its risk tag as attributes. A checker looking for a
-heading text or a CSS class would fail the next page that renders the same
-contract differently — which is every page, the layout being free.
+LINKS STAY. A vista MUST carry links: block 4 of the contract is the link to the
+proof, which lives in the PR. The line is what the browser FETCHES versus where
+the reader CLICKS — `<a href>` may point anywhere real, and everything else must
+already be inside the file. A RELATIVE path is refused by the same rule and
+deliberately: `src="logo.png"` costs no network but breaks the moment the file
+is copied anywhere alone, which is the normal life of an outbox file.
 
 Usage:  tk-vista-check <file.html> [<file.html> ...]
 Exit:   0 every file qualifies · 1 some file does not · 2 bad usage/unreadable
@@ -44,6 +44,7 @@ import os
 import re
 import sys
 from html.parser import HTMLParser
+from urllib.parse import urlparse
 
 # Attributes whose value the browser FETCHES. `href` is here too, and the `<a>`
 # exemption is applied where the tag is known — not by dropping href from the
@@ -53,26 +54,9 @@ URL_ATTRS = {
     "background", "cite", "longdesc", "manifest", "xlink:href", "codebase",
 }
 
-# Network APIs, looked for inside <script> and event-handler attributes only:
-# the same words in the page's prose are prose
-NETWORK_CALLS = re.compile(
-    r"\b(fetch|XMLHttpRequest|WebSocket|EventSource|importScripts)\s*\(" 
-    r"|\bnavigator\s*\.\s*sendBeacon\b"
-    r"|\bimport\s*\("
-)
-
-CSS_URL = re.compile(r"url\(\s*(['\"]?)([^'\")]*)\1\s*\)", re.IGNORECASE)
-CSS_IMPORT = re.compile(r"@import\b", re.IGNORECASE)
-DARK_THEME = re.compile(r"prefers-color-scheme\s*:\s*dark", re.IGNORECASE)
-
-VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
-        "meta", "param", "source", "track", "wbr"}
-
-# Marker -> the block's number and the name a refusal prints. The three
-# page-level blocks are checked from this table; the per-card ones (2's
-# outcome, 3's risk tag, 4's proof link) are checked card by card, reading
-# their name from the same place. One table, so the check and the list beside
-# it cannot drift apart
+# Marker -> the block's number and the name a refusal prints. The page-level
+# blocks are DERIVED from this table, so a marker added to one cannot be
+# forgotten in the other
 BLOCKS = {
     "stats": (1, "the opening stats line"),
     "cards": (2, "the cards region"),
@@ -81,6 +65,27 @@ BLOCKS = {
 }
 CARD_BLOCK = "prova"                       # the one checked card by card
 PAGE_BLOCKS = tuple(m for m in BLOCKS if m != CARD_BLOCK)
+
+# The closed vocabulary of outcomes. One list, here, because the CSS that
+# colours a card and the report that groups them have to agree, and a value
+# outside it renders as an uncoloured card nobody notices
+OUTCOMES = ("merged", "closed", "open", "carried", "blocked", "discarded")
+
+# A proof link that still points at a placeholder is not a proof. `.invalid` is
+# reserved by RFC 2606 precisely to never resolve, and the example.* domains are
+# reserved beside it — a link to either can never be evidence of anything
+PLACEHOLDER_HOSTS = (".invalid", "example.com", "example.org", "example.net")
+
+# Every CSS function that takes a URL, not `url()` alone: `image-set()` fetches
+# just as hard, and a checker that knows one token is a checker that fetches the
+# other one
+CSS_URL_FUNC = re.compile(r"(?:url|image-set|-webkit-image-set)\s*\(([^)]*)\)", re.IGNORECASE)
+CSS_IMPORT = re.compile(r"@import\b", re.IGNORECASE)
+CSS_SCHEME = re.compile(r"https?:", re.IGNORECASE)
+DARK_THEME = re.compile(r"prefers-color-scheme\s*:\s*dark", re.IGNORECASE)
+
+VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+        "meta", "param", "source", "track", "wbr"}
 
 
 def local(url):
@@ -91,6 +96,35 @@ def local(url):
     # everything else has to be inline. An EMPTY value falls through to False on
     # purpose: `src=""` is not "no URL", it resolves to the page and refetches it
     return u.lower().startswith("data:")
+
+
+def placeholder(url):
+    """The reason this href is not yet a proof, or None when it is one."""
+    u = (url or "").strip()
+    if not u or u.startswith("#"):
+        return "it points nowhere"
+    if "FILL" in u:
+        return "it still carries a FILL marker"
+    host = (urlparse(u).hostname or "").lower()
+    for bad in PLACEHOLDER_HOSTS:
+        if host == bad.lstrip(".") or host.endswith(bad):
+            return f"{host} is a reserved placeholder domain"
+    return None
+
+
+def css_urls(css):
+    """Every URL the stylesheet would fetch, from every function that takes one."""
+    found = []
+    for args in CSS_URL_FUNC.findall(css):
+        for arg in args.split(","):
+            arg = arg.strip()
+            if not arg:
+                continue
+            # `image-set("a.png" 1x)` — the descriptor is not part of the URL
+            token = arg.split()[0].strip("'\"")
+            if token:
+                found.append(token)
+    return found
 
 
 class Vista(HTMLParser):
@@ -106,17 +140,16 @@ class Vista(HTMLParser):
         self.open_cards = []     # indices into self.cards, innermost last
         self.blocks = set()      # data-vista-bloco values seen anywhere
         self.css = []            # every stylesheet-ish string in the document
-        self.script = []         # every script body and event handler
         self.external = []       # (tag, attr, value)
-        self.in_script = False
+        self.scripts = []        # every way the page would run code
+        self.refreshes = []      # <meta http-equiv=refresh> targets
+
+    def in_style(self):
+        return bool(self.stack) and self.stack[-1] == "style"
 
     # -- traversal ---------------------------------------------------------
     def handle_starttag(self, tag, attrs):
         opened_card = self._element(tag, attrs)
-        if tag == "script":
-            # only here: `<script/>` closes where it opens, and a flag set in
-            # the shared element reader would stay on for the rest of the file
-            self.in_script = True
         if tag not in VOID:
             self.stack.append(tag)
             if opened_card:
@@ -128,8 +161,6 @@ class Vista(HTMLParser):
         self._element(tag, attrs)
 
     def handle_endtag(self, tag):
-        if tag == "script":
-            self.in_script = False
         if tag in self.stack:
             # pop through the tags an unclosed <p> or <li> left behind, so one
             # sloppy element cannot detach every card boundary below it
@@ -142,15 +173,9 @@ class Vista(HTMLParser):
                     break
 
     def handle_data(self, data):
-        if self.in_script:
-            self.script.append(data)
-        elif self.stack and self.stack[-1] == "style":
+        if self.in_style():
             self.css.append(data)
         elif not self.stack and data.strip():
-            # text outside every element, which the browser prints at the top
-            # of the page. A comment holding a nested `<!-- ... -->` ENDS at
-            # the first `-->`, and the rest of what the author meant as a note
-            # lands here — measured on this repo's own template
             self.loose.append(" ".join(data.split())[:60])
 
     # -- one element -------------------------------------------------------
@@ -159,8 +184,18 @@ class Vista(HTMLParser):
         a = {k.lower(): (v or "") for k, v in attrs}
         if tag in ("html", "body"):
             self.declared_structure = True
+        if tag == "script":
+            self.scripts.append("<script>")
+        if tag == "meta" and a.get("http-equiv", "").strip().lower() == "refresh":
+            self.refreshes.append(a.get("content", "").strip())
+
         for name, value in a.items():
+            if name.startswith("on"):
+                self.scripts.append(f"{name}=")
             if name in URL_ATTRS:
+                if value.strip().lower().startswith("javascript:"):
+                    self.scripts.append(f"<{tag} {name}=javascript:>")
+                    continue
                 if tag == "a" and name == "href":
                     continue        # a link the human clicks loads nothing now
                 for url in (value.split(",") if name == "srcset" else [value]):
@@ -169,15 +204,12 @@ class Vista(HTMLParser):
                         self.external.append((tag, name, url.strip()))
             if name == "style":
                 self.css.append(value)
-            if name.startswith("on"):
-                self.script.append(value)
 
         block = a.get("data-vista-bloco", "").strip()
         if block:
             self.blocks.add(block)
-            if block == "prova" and self.open_cards:
-                card = self.cards[self.open_cards[-1]]
-                card["provas"].append(a.get("href", "").strip())
+            if block == CARD_BLOCK and self.open_cards:
+                self.cards[self.open_cards[-1]]["provas"].append(a.get("href", "").strip())
 
         if "data-vista-card" not in a:
             return False
@@ -201,17 +233,24 @@ def check(path):
     v.close()
     bad = []
 
-    # -- self-contained ----------------------------------------------------
+    # -- fetches nothing ---------------------------------------------------
     for tag, attr, url in v.external:
         bad.append(f"external resource: <{tag} {attr}=\"{url}\"> — must be data: or #fragment")
+    for how in sorted(set(v.scripts)):
+        bad.append(f"the page runs code ({how}) — a vista carries no script: its collapsibles "
+                   "are <details>, its themes a media query, its drawings inline SVG")
+    for target in v.refreshes:
+        bad.append(f"<meta http-equiv=\"refresh\" content=\"{target}\"> — the page navigates "
+                   "on its own")
     css = "\n".join(v.css)
     if CSS_IMPORT.search(css):
         bad.append("external resource: @import — a vista inlines its CSS instead")
-    for _, url in CSS_URL.findall(css):
+    for url in css_urls(css):
         if not local(url):
-            bad.append(f"external resource: CSS url({url}) — must be data: or #fragment")
-    for call in sorted({m.group(0).strip() for m in NETWORK_CALLS.finditer("\n".join(v.script))}):
-        bad.append(f"network call in script: {call} — a vista renders from what it already holds")
+            bad.append(f"external resource: CSS fetches {url} — must be data: or #fragment")
+    if CSS_SCHEME.search(css):
+        bad.append("external resource: the CSS names an http(s) address — every byte it renders "
+                   "is already inside the file")
 
     # -- the five blocks ---------------------------------------------------
     for marker in PAGE_BLOCKS:
@@ -224,28 +263,38 @@ def check(path):
         if not card["desfecho"]:
             bad.append(f'block 2: card {card["id"]} has no data-vista-desfecho '
                        "(cards group by outcome)")
+        elif card["desfecho"] not in OUTCOMES:
+            bad.append(f'block 2: card {card["id"]} has outcome "{card["desfecho"]}", which is '
+                       f"outside the vocabulary ({', '.join(OUTCOMES)}) — the CSS that colours a "
+                       "card knows only these")
         if not card["risco"]:
             bad.append(f'block 3: card {card["id"]} has no data-vista-risco (risk tag per card)')
-        if not [u for u in card["provas"] if u]:
-            number, name = BLOCKS[CARD_BLOCK]
+        number, name = BLOCKS[CARD_BLOCK]
+        if not card["provas"]:
             bad.append(f'block {number}: card {card["id"]} carries no '
-                       f'data-vista-bloco="prova" link with an href ({name})')
+                       f'data-vista-bloco="prova" link ({name})')
+        else:
+            why = [placeholder(u) for u in card["provas"]]
+            if why and all(why):
+                bad.append(f'block {number}: card {card["id"]} links no real proof — '
+                           f"{why[0]}")
     for text_out in v.loose if v.declared_structure else []:
         bad.append(f"text printed outside <body>: {text_out!r} — the usual cause is a "
                    "comment holding a nested comment, which ends at the first -->")
 
-    # -- readable in both themes -------------------------------------------
+    # -- answers the dark scheme -------------------------------------------
     if not DARK_THEME.search(css):
-        bad.append("no prefers-color-scheme: dark rule — the page has one theme, "
-                   "and the reader may be in the other")
+        bad.append("no prefers-color-scheme: dark rule — the page answers one scheme, and the "
+                   "reader may be in the other. Whether both are LEGIBLE is measured by "
+                   "rendering the file, not here")
     return bad
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(
         prog="tk-vista-check",
-        description="Checks an outbox vista: self-contained, and the five blocks of the "
-                    "contract in ../reference/vista.md.")
+        description="Checks an outbox vista: fetches nothing, runs nothing, carries the five "
+                    "blocks of ../reference/vista.md, and answers the dark scheme.")
     p.add_argument("files", nargs="+", metavar="FILE.html")
     args = p.parse_args(argv)
 

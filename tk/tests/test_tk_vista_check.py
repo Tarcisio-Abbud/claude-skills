@@ -42,7 +42,7 @@ PAGE = """<!doctype html>
 <div data-vista-bloco="cards">
   <article data-vista-card="T001" data-vista-desfecho="open" data-vista-risco="low">
     <h4>T001 — what it delivered</h4>
-    <p><a data-vista-bloco="prova" href="https://forge.invalid/pull/1">proof — PR #1</a></p>
+    <p><a data-vista-bloco="prova" href="https://github.com/acme/repo/pull/1">proof — PR #1</a></p>
   </article>
 </div>
 <div data-vista-bloco="saldo">1 closed, 2 open</div>
@@ -92,7 +92,7 @@ class TestSelfContained(CheckTest):
 
     def test_a_link_the_human_clicks_is_kept(self):
         # block 4 IS an off-machine link: the page loads nothing until a click
-        self.assertAccepted(PAGE.replace(">proof — PR #1<", ">https://forge.invalid/pull/1<"))
+        self.assertAccepted(PAGE.replace(">proof — PR #1<", ">https://github.com/acme/repo/pull/1<"))
 
     def test_a_protocol_relative_script_is_refused(self):
         self.assertRefused(PAGE.replace("<style>", '<script src="//cdn.invalid/a.js"></script>\n<style>'),
@@ -116,26 +116,68 @@ class TestSelfContained(CheckTest):
                            "@import")
 
     def test_a_css_url_reaching_the_network_is_refused(self):
-        self.assertRefused(PAGE.replace("body {", "body { background-image:url(https://cdn.invalid/a.png);"),
-                           "CSS url(")
+        self.assertRefused(PAGE.replace("body {", "body { background-image:url(https://cdn.example/a.png);"),
+                           "CSS fetches")
 
-    def test_a_fetch_in_script_is_refused(self):
-        self.assertRefused(PAGE.replace("</main>", "</main><script>fetch('https://x.invalid/d.json')</script>"),
-                           "network call in script")
+    def test_a_css_url_on_a_relative_path_is_refused(self):
+        # no scheme to catch here: only the function-argument rule sees it
+        self.assertRefused(PAGE.replace("body {", "body { background-image:url(logo.png);"),
+                           "CSS fetches")
 
-    def test_a_send_beacon_in_an_event_handler_is_refused(self):
+    def test_a_script_element_is_refused_whatever_it_holds(self):
+        self.assertRefused(PAGE.replace("</main>", "</main><script>var x = 1;</script>"),
+                           "the page runs code")
+
+    def test_an_image_built_in_script_is_refused(self):
+        # no rule for `Image` could have caught this: the class of thing is the
+        # rule, and the class is "this page runs code"
         self.assertRefused(
-            PAGE.replace("<h4>T001", '<h4 onclick="navigator.sendBeacon(\'/x\')">T001'),
-            "network call in script")
+            PAGE.replace("</main>", '</main><script>var i=new Image();i.src="http://x.example/p"</script>'),
+            "the page runs code")
+
+    def test_a_bracketed_fetch_is_refused(self):
+        self.assertRefused(
+            PAGE.replace("</main>", '</main><script>window["fet"+"ch"]("http://x.example/d")</script>'),
+            "the page runs code")
+
+    def test_an_aliased_xhr_is_refused(self):
+        self.assertRefused(
+            PAGE.replace("</main>", '</main><script>var X=window["XMLHttpRequest"];new X()</script>'),
+            "the page runs code")
+
+    def test_a_javascript_url_is_refused(self):
+        self.assertRefused(PAGE.replace('href="https://github.com/acme/repo/pull/1"',
+                                        'href="javascript:location=1"'),
+                           "the page runs code")
+
+    def test_a_meta_refresh_is_refused(self):
+        self.assertRefused(
+            PAGE.replace("<title>", '<meta http-equiv="refresh" content="0;url=http://x.example/">\n<title>'),
+            "navigates on its own")
+
+    def test_an_image_set_reaching_the_network_is_refused(self):
+        self.assertRefused(
+            PAGE.replace("body {", 'body { background-image:image-set("http://cdn.example/a.png" 1x);'),
+            "CSS fetches")
+
+    def test_an_http_address_anywhere_in_the_css_is_refused(self):
+        # the catch-all behind the function list: a CSS property this checker
+        # has never heard of cannot smuggle an address past it
+        self.assertRefused(PAGE.replace("body {", 'body { -x-future:"http://cdn.example/a.png";'),
+                           "names an http(s) address")
+
+    def test_an_event_handler_is_refused(self):
+        self.assertRefused(PAGE.replace("<h4>T001", '<h4 onclick="void 0">T001'),
+                           "the page runs code")
 
     def test_the_word_fetch_in_the_page_prose_is_not_a_network_call(self):
+        # nothing scans prose for call-shaped words: the rule is about elements
         self.assertAccepted(PAGE.replace("what it delivered", "the fetch( in this heading is prose"))
 
-    def test_a_self_closing_script_does_not_make_the_rest_of_the_page_script(self):
-        # `<script/>` fires handle_startendtag, never handle_endtag: a flag set
-        # where both arrive stays on for every byte that follows
-        self.assertAccepted(PAGE.replace("<main>", "<main><script/>")
-                                .replace("what it delivered", "the fetch( here is prose"))
+    def test_a_self_closing_script_is_refused_like_any_other(self):
+        # `<script/>` fires handle_startendtag, never handle_endtag: a rule that
+        # only watches the closing tag never sees this one
+        self.assertRefused(PAGE.replace("<main>", "<main><script/>"), "the page runs code")
 
     def test_an_empty_src_is_refused(self):
         # `src=""` is not "no URL": the browser resolves it to the page itself
@@ -171,7 +213,7 @@ class TestFiveBlocks(CheckTest):
         self.assertRefused(PAGE.replace('data-vista-bloco="prova" ', ""), "T001")
 
     def test_a_proof_marker_with_no_href_is_not_a_proof(self):
-        self.assertRefused(PAGE.replace('href="https://forge.invalid/pull/1"', ""), "block 4")
+        self.assertRefused(PAGE.replace('href="https://github.com/acme/repo/pull/1"', ""), "block 4")
 
     def test_a_card_without_a_proof_is_named_even_when_a_sibling_has_one(self):
         r = self.check(PAGE.replace("</div>\n<div data-vista-bloco=\"saldo\"",
@@ -181,20 +223,44 @@ class TestFiveBlocks(CheckTest):
         self.assertNotIn("card T001", r.stdout)
 
     def test_a_proof_link_outside_every_card_covers_none(self):
-        moved = PAGE.replace('    <p><a data-vista-bloco="prova" href="https://forge.invalid/pull/1">proof — PR #1</a></p>\n', "")
+        moved = PAGE.replace('    <p><a data-vista-bloco="prova" href="https://github.com/acme/repo/pull/1">proof — PR #1</a></p>\n', "")
         moved = moved.replace("</div>\n<div data-vista-bloco=\"saldo\"",
-                              '<p><a data-vista-bloco="prova" href="https://forge.invalid/pull/1">proof</a></p>'
+                              '<p><a data-vista-bloco="prova" href="https://github.com/acme/repo/pull/1">proof</a></p>'
                               "</div>\n<div data-vista-bloco=\"saldo\"")
         self.assertRefused(moved, "block 4", "T001")
 
     def test_an_unclosed_paragraph_does_not_keep_a_card_open_past_its_end(self):
         # the card's proof sits AFTER </article>: it belongs to no card, and a
         # parser that never closed the card would count it and pass
-        loose = PAGE.replace('    <p><a data-vista-bloco="prova" href="https://forge.invalid/pull/1">proof — PR #1</a></p>\n',
+        loose = PAGE.replace('    <p><a data-vista-bloco="prova" href="https://github.com/acme/repo/pull/1">proof — PR #1</a></p>\n',
                              "    <p>a paragraph nobody closed\n")
         loose = loose.replace("  </article>\n",
-                              '  </article>\n  <a data-vista-bloco="prova" href="https://forge.invalid/pull/1">proof</a>\n')
+                              '  </article>\n  <a data-vista-bloco="prova" href="https://github.com/acme/repo/pull/1">proof</a>\n')
         self.assertRefused(loose, "block 4", "T001")
+
+    def test_an_outcome_outside_the_vocabulary_is_refused(self):
+        self.assertRefused(PAGE.replace('data-vista-desfecho="open"', 'data-vista-desfecho="pending"'),
+                           "outside the vocabulary")
+
+    def test_every_outcome_of_the_vocabulary_is_accepted(self):
+        for outcome in ("merged", "closed", "open", "carried", "blocked", "discarded"):
+            with self.subTest(outcome=outcome):
+                self.assertAccepted(PAGE.replace('data-vista-desfecho="open"',
+                                                 f'data-vista-desfecho="{outcome}"'))
+
+    def test_a_proof_pointing_at_a_reserved_placeholder_domain_is_refused(self):
+        self.assertRefused(PAGE.replace("https://github.com/acme/repo/pull/1",
+                                        "https://example.invalid/pull/0"),
+                           "links no real proof", "placeholder domain")
+
+    def test_a_proof_that_is_only_a_fragment_is_refused(self):
+        self.assertRefused(PAGE.replace("https://github.com/acme/repo/pull/1", "#"),
+                           "links no real proof")
+
+    def test_a_proof_still_carrying_a_fill_marker_is_refused(self):
+        self.assertRefused(PAGE.replace("https://github.com/acme/repo/pull/1",
+                                        "https://forge.example/FILL"),
+                           "FILL marker")
 
     def test_a_card_with_an_empty_id_is_named_by_its_position(self):
         r = self.check(PAGE.replace('data-vista-card="T001"', 'data-vista-card=""')
@@ -237,9 +303,17 @@ class TestBothThemes(CheckTest):
 
 
 class TestShippedTemplate(CheckTest):
-    def test_the_template_the_plugin_ships_qualifies(self):
+    """The template is not a deliverable: its proof link is a placeholder, and
+    the gate says so. What this asserts is that the placeholder is the ONLY
+    thing wrong with it — the blocks, the themes and the self-containment of the
+    file we hand people are checked here, and a second finding fails the test."""
+
+    def test_the_template_is_refused_for_its_placeholder_and_nothing_else(self):
         r = self.run_on(TEMPLATE)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        findings = [l.strip("- ").strip() for l in r.stdout.splitlines() if l.startswith("  - ")]
+        self.assertEqual(len(findings), 1, findings)
+        self.assertIn("placeholder domain", findings[0])
 
 
 class TestUsage(CheckTest):

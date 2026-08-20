@@ -10,7 +10,9 @@ rule below follows from one of them.
   the menu, a PR comment. Nothing is ever read back from this file, by any session.
 - **Self-contained.** One file, no network: it opens from disk, on a machine that is offline,
   months later. Links a human CLICKS are the point of block 4 and stay; what the browser would
-  LOAD is inlined as `data:` or written out.
+  LOAD is inlined as `data:` or written out. **A vista carries no script** — collapsibles are
+  `<details>`, themes a media query, drawings inline SVG — because a page that runs code can
+  fetch in a hundred spellings, and none of them is worth the reading.
 
 `vista-template.html`, beside this file, is that page in its smallest form — copy it, fill it,
 restyle it. `../bin/tk-vista-check` is the gate below.
@@ -57,11 +59,20 @@ the design. Every marker is a `data-vista-*` attribute, and `tk-vista-check` rea
 
 | # | Block | Marker | What fills it |
 |---|---|---|---|
-| 1 | Stats line, at the opening | `data-vista-bloco="stats"` | the closing template's own four counts — closed · carried · blocked · discarded, which never sum — plus whatever else this package earned (open PRs, tests) |
+| 1 | Stats line, at the opening | `data-vista-bloco="stats"` | the closing template's own four counts — closed · carried · blocked · discarded, which never sum with each other — plus whatever else the run earned (open PRs, tests). Across several projects each count is the sum of that count over them, and the line says how many queues it covers |
 | 2 | One card per PR or item, grouped by outcome | `data-vista-bloco="cards"` on the region; `data-vista-card="<id>"` and `data-vista-desfecho="<outcome>"` on each card | what the slice delivered, in prose a reader who will not open the diff can judge |
+
+**The outcome vocabulary is closed**: `merged` · `closed` · `open` · `carried` · `blocked` ·
+`discarded`. The gate refuses anything else, because the CSS that colours a card knows only
+these — a card carrying a seventh word renders grey and reads as unremarkable. Grouping headings
+are prose and free; the attribute is not.
+
+**A proof link is a real address.** The gate refuses a placeholder — an empty or `#` href, a
+`FILL` marker still in it, or a reserved domain (`*.invalid`, `example.com/net/org`) — so a
+close at 3am cannot ship a card whose proof was never filled in and still be called green.
 | 3 | Risk tag, on every card | `data-vista-risco="<low\|medium\|high>"` on the card | what could still bite, in one clause |
 | 4 | Link to that slice's proof | `data-vista-bloco="prova"` on an `<a href>` inside the card | the evidence block lives in the PR (`../skills/verify/SKILL.md`) and is pointed at, never copied or re-derived here |
-| 5 | Closed × open balance | `data-vista-bloco="saldo"` | what left the queue against what is still in it, and what this package added to it |
+| 5 | Closed × open balance | `data-vista-bloco="saldo"` | what left the queue against what is still in it, and what this run added to it. One queue for a package close; a consolidated run gives one row per project and a total row, since two projects' queues never merge into one number |
 
 The marker words are Portuguese (`bloco`, `desfecho`, `risco`, `prova`, `saldo`) because they
 are the decision's own glossary; the prose of a vista is written in the reader's language, and
@@ -88,10 +99,24 @@ where a `tk/` directory usually means something else:
 ../bin/tk-vista-check <path to the .html>
 ```
 
-It fails on an external resource (a `src`, a `<link href>`, an `@import`, a CSS `url()`, a
-relative path, an empty `src`, a network call in script), on a missing block, on a card with no
-outcome, no risk tag or no proof link, on text printed outside the `<body>` a page declared —
-what a comment holding a nested comment leaves above the title — and on a page with no
-`prefers-color-scheme: dark` rule.
-That last one is why the template defines its palette as tokens twice: the reader's browser
-picks the theme, and both have to be legible.
+It fails on an external resource (a `src`, a `<link href>`, an `@import`, a CSS `url()` or
+`image-set()`, an http address anywhere in the CSS, a relative path, an empty `src`), on any
+script at all (a `<script>`, an `on*` handler, a `javascript:` URL, a `<meta http-equiv=
+"refresh">`), on a missing block, on a card whose outcome is outside the vocabulary or which has
+no risk tag or no real proof link, on text printed outside the `<body>` a page declared, and on
+a page with no `prefers-color-scheme: dark` rule.
+
+## What the gate does not measure
+
+A green run means the four things above, and a report may claim no more than that:
+
+- **Legibility.** The gate sees that the page ANSWERS the dark scheme, not that either palette
+  is readable — `--ink` equal to `--bg` inside that block passes. Legibility is measured by
+  RENDERING the file in both schemes before delivering it, which is a step, not a regex.
+- **Block 1's content.** A `stats` marker around an empty list passes. The markers say where the
+  blocks are; what is in them is the writer's.
+- **Where a link leads.** `<a href>` is exempt by design and only the placeholder rule touches
+  it. A link to the wrong PR is a green page.
+- **One way.** That nothing is read back from a vista is a rule of the flow, held by prose here
+  and by no mechanism. Nothing stops a future session from parsing one; the contract says do
+  not, and the gate cannot say it.
