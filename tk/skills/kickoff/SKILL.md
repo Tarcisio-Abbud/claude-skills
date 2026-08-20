@@ -65,16 +65,35 @@ Each item gets exactly ONE class:
 | **EXTERNAL** | waiting on a third party; at most chase/remind |
 | **RECURRING** | not a one-off item — should become a scheduled routine |
 
-While triaging, fill or refresh each item's **Effort** and **Risk** (contract below) — the
-package modes (`AFK.md`) and the dispatch choice read them.
+While triaging, fill or refresh each item's **Effort**, **Risk** and **Env** (contract
+below) — the package modes (`AFK.md`) and the dispatch choice read them.
+
+**Env is filled here, and a mixed item is sliced here.** Env names the machine that can
+execute the item, and absent means this one (field contract below) — so triage writes it
+only in the exception, and clears it with `tk-queue edit <id> --env none` the moment it
+stops being true. An item half here and half elsewhere has no honest single value: slice it
+before it gets a class, one item per machine — `tk-queue edit <id> --text "<the half that
+runs here>"` plus `tk-queue add "<the other half>" --env <machine>`. A refused value is
+actionable output, not a wall: it names the roster it was matched against, and when no site
+file exists at all it names the file to create and its format. Read that refusal to the
+user rather than re-deriving what it already says.
+
+**Ask before writing BLOCKED — the user is in the room.** BLOCKED means only the user can
+supply what is missing, and with them present that supply is one question away: ask whether
+they can give the data, the credential or the action NOW. Supplied → the item is
+AUTONOMOUS, carrying the answer in its text and `--criterion`. Still missing → BLOCKED
+stands as an exception someone tested, not a default nobody questioned. A DECISION takes
+the same move one step earlier: ask the choice, and the item leaves triage AUTONOMOUS.
 
 An AUTONOMOUS item that already lives as an agent-ready ticket on the tracker has its
 dispatch pre-made by the site's per-ticket flow (site extensions name it). An item too big
 and foggy to triage cleanly — a whole effort, not a slice — isn't forced into a class:
 propose charting it first (site extensions may name a mapping flow).
 
-**Done when:** every pending item has a class, Effort, Risk where due and, if actionable, a
-recommended dispatch from the `dispatch` skill's palette (step 5).
+**Done when:** every pending item has a class, Effort, Risk and Env where due, every
+mixed item is sliced, every BLOCKED and DECISION was asked out loud before its class was
+written, and, if actionable, each item carries a recommended dispatch from the `dispatch`
+skill's palette (step 5).
 
 ## 4. Build the menu
 
@@ -82,13 +101,35 @@ Before asking, show the **full triaged agenda** — ALL items, one line each, wi
 the user sees nothing was lost before checking (BLOCKED/EXTERNAL show up here; their detail
 waits for the final report).
 
+**Brief each DECISION before asking it, in prose.** Two to four lines per item: what it
+is, where it came from, what is already decided — so the user answers a question they
+recognise instead of a hypertechnical one. The briefing is **retransmission, not
+synthesis**: its lines come from what the item already carries — its text, its
+`**Criterion:**`, the memory file behind a `[[slug]]` at ONE hop, and `handoff-T<id>.md`
+beside the queue files when it exists. Searching wiki, git or code to fill a gap is the
+move to avoid: context that is in neither the item nor its handoff is a **missing
+handoff**, and the briefing says exactly that in its own line, because a gap named is
+cheap and a gap papered over with plausible synthesis is a decision taken on invented
+ground. Anything the session inferred rather than read is marked as inference right in the
+line that carries it.
+
 Then one multiSelect `AskUserQuestion` with the actionable items (AUTONOMOUS + RECURRING)
 in the queue's own order — that order IS the priority, and `tk-queue bump <id>` is what
 changes it — recommendation first with "(Recommended)". DECISION items
 become their own questions — the options are the choices themselves, not "yes/no". Tool
 limit: 4 questions × 4 options; what doesn't fit becomes a line in the final report, not an
 option. BLOCKED and EXTERNAL are never options.
-**Done when:** the whole agenda was shown and the user's selection is captured.
+
+**An item bound to another environment is not an option either.** Its agenda line carries
+the marker "runs on: X" — derived from the item's **Env** field, read off the item itself
+since `tk-queue list` does not print it — and nothing here can execute it, so it leaves the
+menu and enters block (d) of the report (step 5). **Its DECISION stays in the menu:**
+deciding is machine-agnostic, only the execution waits for the machine, so an item that is
+both DECISION and bound elsewhere appears twice on purpose — as a question here, and as a
+line in (d), now decided and ready to run there. Dropping it from the menu is how a choice
+the user could have made in one keystroke ends up waiting for a trip to another machine.
+**Done when:** the whole agenda was shown, every DECISION was briefed before its question,
+and the user's selection is captured.
 
 ## 5. Dispatch
 
@@ -98,10 +139,42 @@ task→mechanism matching (palette), the `/goal` recipe, the mechanism boundarie
 this file) before the first dispatch. Dispatches that are user-native commands don't block
 the flow — they enter the final report as ready-to-paste lines.
 Close with: (a) what is running/scheduled, (b) BLOCKED items with what's missing from the
-user, (c) EXTERNAL items with who to chase — and settle the resulting queue through
+user, (c) EXTERNAL items with who to chase, (d) items bound to ANOTHER environment, each
+marked "runs on: X" and carrying its ready-to-paste line where one fits, and (e) the
+findings discarded in this session — "discarded: N" plus one line each. (d) is not a
+variant of (b): nothing on this machine can run those items, so the user is the only path
+to the machine that can. (e) is the only trace a discard leaves, which is what keeps
+"discarded" from becoming the silent outcome — settle the rest of the queue through
 `tk-queue` (`done`/`cancel`/`edit`/`add`; contract below).
-**Done when:** every checked item is running or scheduled, the report covers (b) and (c),
-and `next-steps.md` reflects the post-kickoff queue.
+**Done when:** every checked item is running or scheduled, the report covers (b) through
+(e), and `next-steps.md` reflects the post-kickoff queue.
+
+## A finding during the session
+
+A **finding** is work this session discovered and did not come for. What tells it from a
+**pendency** is the criterion of the item in hand: work that item's `**Criterion:**` needs
+in order to pass is a pendency, and it is resolved in the session. Everything else is a
+finding, and a finding never inherits that default — that inheritance IS the hydra: three
+heads die and six items are born, which is how a quick job became three weeks.
+
+Every finding is triaged at the moment of discovery, and with the user present the triage
+is a menu (`AskUserQuestion`, which waits for them — a question in prose scrolls away in
+the terminal's wall of text). Three outcomes, and the **recommended** one is the first that
+holds, read in order:
+
+1. **Resolve now** — leaving it breaks something already delivered: a live defect in what
+   this session just shipped, data the user will read as correct, a command they will type
+   as written.
+2. **Queue with a gate** — someone will act on it later and it has a gate to name: human
+   decision · effort · external dependency. `tk-queue add` on the spot, gate in the item.
+3. **Discard** — neither of the above holds. Nothing is written: the finding's whole trace
+   is its line in block (e) of the report. A discard that deserved more than one line was
+   not a discard.
+
+The ladder recommends and the user picks; their pick IS the authorization, including for a
+resolve-now the ladder had placed third. Unattended, this menu has no one to answer it, and
+neither the discard nor the resolve-now is a session's call to take without the user — read
+`AFK.md` before acting on a finding there.
 
 ## The queue contract: `next-steps.md` + `done-log.md`, written only by `tk-queue`
 
