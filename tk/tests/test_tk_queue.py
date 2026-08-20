@@ -3550,10 +3550,14 @@ class TestIdSpelling(QueueTest):
         r = self.run_tk("list")
         self.assertEqual(r.returncode, 0, r.stderr)
         # the WHOLE listing: the defect printed two identical lines, and any
-        # assertIn("T0001") would also pass on a listing that showed T0001 twice
+        # assertIn("T0001") would also pass on a listing that showed T0001 twice.
+        # The duplicate mark belongs to the ambiguity these two also are — one
+        # number, two items — and is measured by TestAmbiguousId
         self.assertEqual(r.stdout,
-                         "T001  AUTONOMOUS  item curto\n"
-                         "T0001  AUTONOMOUS  item de id largo\n")
+                         "T001  AUTONOMOUS  item curto  [duplicate ID 1]\n"
+                         "T0001  AUTONOMOUS  item de id largo  [duplicate ID 1]\n"
+                         "\nduplicate IDs: only the FIRST item under each is reachable"
+                         " — renumber the others by hand in next-steps.md.\n")
 
     def test_pack_reads_the_id_the_way_list_does(self):
         """Two renderings of one ID is how the package and the listing come to
@@ -3579,6 +3583,91 @@ class TestIdSpelling(QueueTest):
         r = self.run_tk("list")
         self.assertEqual(r.stdout, "T1000  AUTONOMOUS  item de quatro digitos\n")
         self.assertEqual(self.add(), "T1001")
+
+
+# --- one number, more than one open item ---------------------------------
+
+class TestAmbiguousId(QueueTest):
+    """Two items at one address. It happens two ways — the same ID written
+    twice, and a width collision (`T001` + `T0001`, one number to `int()`) — and
+    it is ONE failure, so it gets one answer: act on the first occurrence, and
+    say which one that was.
+
+    Not a refusal, decided 2026-08-18: refusing would freeze the whole queue
+    over two lines a human has to repair by hand, and the queue's other items are
+    innocent. Silence was the defect — `edit T005` printed "T005 updated", true
+    about the line it touched and a lie about the request, with nothing anywhere
+    saying a second T005 existed.
+    """
+
+    WARNING = ('tk-queue: warning: duplicate ID 5 — 2 open items carry it (T005, T005). '
+               'Acting on the FIRST, T005 "primeira ocorrencia"; the rest stay '
+               'unreachable until one of them is renumbered by hand in next-steps.md.\n')
+
+    def wide(self, text="item de id largo"):
+        return item(1, text).replace("**T001**", "**T0001**", 1)
+
+    def test_list_marks_every_row_under_a_duplicated_id(self):
+        """The whole listing, because the mark is only worth anything if the rows
+        that are NOT ambiguous stay unmarked — a mark on every line says nothing."""
+        self.seed(item(5, "primeira ocorrencia"), item(7, "item sozinho"),
+                  item(5, "segunda ocorrencia"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout,
+                         "T005  AUTONOMOUS  primeira ocorrencia  [duplicate ID 5]\n"
+                         "T007  AUTONOMOUS  item sozinho\n"
+                         "T005  AUTONOMOUS  segunda ocorrencia  [duplicate ID 5]\n"
+                         "\nduplicate IDs: only the FIRST item under each is reachable"
+                         " — renumber the others by hand in next-steps.md.\n")
+
+    def test_edit_says_which_occurrence_it_acted_on_and_still_acts(self):
+        self.seed(item(5, "primeira ocorrencia"), item(5, "segunda ocorrencia"))
+        r = self.run_tk("edit", "5", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)      # a warning, never a refusal
+        self.assertIn(self.WARNING, r.stderr)
+        self.assertEqual(r.stdout, "T005 updated\n")
+        # the WHOLE file: `edit` rewrites it, and an absence check would pass just
+        # as happily on one where the second occurrence had been eaten
+        self.assertEqual(self.body(),
+                         HEADER + item(5, "primeira ocorrencia", effort="M")
+                         + item(5, "segunda ocorrencia"))
+
+    def test_the_warning_sits_where_the_ID_is_RESOLVED_not_in_edit(self):
+        """`done` and `cancel` resolve through the same function, so neither can
+        keep the silence `edit` lost."""
+        for cmd, extra in (("done", ("--how", "PR #1")), ("cancel", ("--why", "n/a"))):
+            with self.subTest(cmd=cmd):
+                self.seed(item(5, "primeira ocorrencia"), item(5, "segunda ocorrencia"),
+                          log="")
+                r = self.run_tk(cmd, "5", *extra)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn(self.WARNING, r.stderr)
+                # the first went to the log, the second is still in the queue
+                self.assertEqual(self.body(), HEADER + item(5, "segunda ocorrencia"))
+                self.assertIn("primeira ocorrencia", self.body("done-log.md"))
+
+    def test_a_wide_spelling_is_the_same_ambiguity(self):
+        """The bridge to the other defect: `edit T0001` cannot reach the item
+        spelled T0001 — `int("0001")` is 1 — so it must not pretend it did."""
+        self.seed(item(1, "item curto"), self.wide())
+        r = self.run_tk("edit", "T0001", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('tk-queue: warning: duplicate ID 1 — 2 open items carry it '
+                      '(T001, T0001). Acting on the FIRST, T001 "item curto"; the rest '
+                      'stay unreachable until one of them is renumbered by hand in '
+                      'next-steps.md.\n', r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + item(1, "item curto", effort="M") + self.wide())
+
+    def test_an_ID_carried_by_ONE_item_is_not_warned_about(self):
+        """The other direction, and the only one that can see a warning fired at
+        every resolution — which would train the reader to ignore it."""
+        self.seed(item(5, "unico"), item(6, "outro"))
+        r = self.run_tk("edit", "5", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("duplicate ID", r.stderr)
+        self.assertNotIn("duplicate ID", self.run_tk("list").stdout)
 
 
 if __name__ == "__main__":

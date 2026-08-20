@@ -660,8 +660,8 @@ MUTATIONS = [
     # --- 2nd pair of eyes: an item's TEXT is not its ADDRESS ------------------
 
     ("2ª review the block is addressed by its TEXT again (a quoted copy wins)",
-     "            return content, text, pos",
-     "            return content, text, content.index(text)",
+     "    return content, found[0][0], found[0][1]",
+     "    return content, found[0][0], content.index(found[0][0])",
      ["TestBlockAddressing.test_done_closes_the_real_item_and_spares_the_quoted_copy",
       "TestBlockAddressing.test_bump_moves_the_real_item_and_leaves_no_phantom",
       "TestBlockAddressing.test_edit_rewrites_the_real_item_and_not_the_quotation"]),
@@ -1121,8 +1121,8 @@ MUTATIONS = [
      ["TestClaim.test_release_names_the_claim_it_dropped"]),
 
     ("T121 list stops showing the mark",
-     '    return f"{label}  {cls:<10}  {title}" + (f"  [{mark}]" if mark else "")',
-     '    return f"{label}  {cls:<10}  {title}"',
+     '+ (f"  [{mark}]" if mark else "")',
+     '+ ""',
      ["TestClaim.test_list_marks_the_claimed_item_and_only_that_one"]),
 
     # the two-command bypass: a flag that can WRITE this field takes an item
@@ -1546,6 +1546,29 @@ MUTATIONS = [
      ["TestIdSpelling.test_a_wide_spelling_is_still_an_allocated_id",
       "TestIdSpelling.test_a_four_digit_id_is_canonical_and_is_not_capped"]),
 
+    # the guard's own boundary, not the whole warning: a pair stops counting as
+    # ambiguous and the silence is back, while a triple would still warn
+    ("ID two open items under one number go back to being resolved in silence",
+     "    if len(found) > 1:\n        print(ambiguous_id_message(",
+     "    if len(found) > 2:\n        print(ambiguous_id_message(",
+     ["TestAmbiguousId.test_edit_says_which_occurrence_it_acted_on_and_still_acts",
+      "TestAmbiguousId.test_the_warning_sits_where_the_ID_is_RESOLVED_not_in_edit",
+      "TestAmbiguousId.test_a_wide_spelling_is_the_same_ambiguity"]),
+
+    ("ID every resolution warns, ambiguous or not",
+     "    if len(found) > 1:\n        print(ambiguous_id_message(",
+     "    if len(found) >= 1:\n        print(ambiguous_id_message(",
+     ["TestAmbiguousId.test_an_ID_carried_by_ONE_item_is_not_warned_about"]),
+
+    ("ID `list` stops marking a duplicated ID (only a triple would count)",
+     "ids.count(i) > 1", "ids.count(i) > 2",
+     ["TestAmbiguousId.test_list_marks_every_row_under_a_duplicated_id"]),
+
+    ("ID `list` marks every row as duplicated, which marks nothing",
+     "ids.count(i) > 1", "ids.count(i) > 0",
+     ["TestAmbiguousId.test_list_marks_every_row_under_a_duplicated_id",
+      "TestAmbiguousId.test_an_ID_carried_by_ONE_item_is_not_warned_about"]),
+
     ("T122 a briefing is written for an item that is not open (an orphan at birth)",
      "    content, block, start = find_open_item(memdir, args.id)\n    values = {dest:",
      '    content, block, start = "", "", 0\n    values = {dest:',
@@ -1572,7 +1595,7 @@ def main():
                                   "TestEnvField", "TestClaim",
                                   "TestPack", "TestHandoffCreation",
                                   "TestHandoffLifecycle", "TestByteOrderMark",
-                                  "TestIdSpelling"])
+                                  "TestIdSpelling", "TestAmbiguousId"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

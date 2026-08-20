@@ -1185,6 +1185,27 @@ def missing_item_message(memdir, content, wanted_id):
             "replacement item, that is exactly how a duplicate is born.")
 
 
+# One number, more than one open item. Two ways in, one answer: a genuine
+# duplicate (`T005` written twice) and a width collision (`T001` and `T0001`,
+# which `int()` reads as the same number) are the SAME failure — two items at
+# one address, and only the first reachable. Resolution stays numeric, because
+# `done 5`, `done T005` and `done 005` are documented as one call (see
+# ID_INPUT_RE); what changes is that the run no longer pretends the second item
+# is not there. `list` marks both rows, every command that resolves an ID names
+# the occurrence it acted on, and the repair is a human renumbering one of them.
+AMBIGUOUS_MARK = "duplicate ID %s"
+
+
+def ambiguous_id_message(wanted_id, blocks):
+    """One wording for every command that resolves an ID, so the warning cannot
+    drift from `list`'s mark."""
+    spellings = ", ".join(item_label(t) for t in blocks)
+    return (f"tk-queue: warning: {AMBIGUOUS_MARK % wanted_id} — {len(blocks)} open items "
+            f"carry it ({spellings}). Acting on the FIRST, {item_label(blocks[0])} "
+            f"\"{item_title(blocks[0])}\"; the rest stay unreachable until one of them "
+            "is renumbered by hand in next-steps.md.")
+
+
 def find_open_item(memdir, wanted_id):
     """(content, block, start) — the file, the item's block, and WHERE it starts.
 
@@ -1196,16 +1217,27 @@ def find_open_item(memdir, wanted_id):
     walks the file in order, so the position is exact, while searching the text
     back out finds whichever copy comes first — including one quoted inside
     another item's note (see excise).
+
+    An ID carried by MORE THAN ONE open item is not refused: refusing would
+    freeze the whole queue over two lines a human has to repair, and the other
+    twenty items are innocent. The first occurrence is acted on — the behaviour
+    every caller already had — and now the run SAYS so. Silence was the defect:
+    `edit T005` answered "T005 updated", true about the line it touched and a
+    lie about the request, with nothing anywhere saying a second T005 existed.
     """
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
         fail("next-steps.md not found in " + memdir)
-    pos = 0
+    pos, found = 0, []
     for kind, text in split_blocks(content):
         if kind == "item-open" and item_id(text) == wanted_id:
-            return content, text, pos
+            found.append((text, pos))
         pos += len(text)
-    fail(missing_item_message(memdir, content, wanted_id))
+    if not found:
+        fail(missing_item_message(memdir, content, wanted_id))
+    if len(found) > 1:
+        print(ambiguous_id_message(wanted_id, [t for t, _ in found]), file=sys.stderr)
+    return content, found[0][0], found[0][1]
 
 
 # --- commands -------------------------------------------------------------
@@ -1215,39 +1247,49 @@ def cmd_list(args):
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
         fail("next-steps.md not found in " + memdir)
+    opens = [text for kind, text in split_blocks(content) if kind == "item-open"]
+    ids = [item_id(t) for t in opens]
+    # the ID, not the spelling: T001 and T0001 are one number and two rows, and a
+    # reader who cannot see that only the first is reachable will keep addressing
+    # the second one
+    ambiguous = {i for i in ids if i is not None and ids.count(i) > 1}
     rows = []
-    for kind, text in split_blocks(content):
-        if kind != "item-open":
-            continue
-        label = item_label(text)
+    for text, iid in zip(opens, ids):
         pm = PROJECT_TAG_RE.search(text)
-        rows.append((label, item_class(text) or "?", item_title(text),
-                     pm.group(1) if pm else None, displayed_claim(text)))
+        rows.append((item_label(text), item_class(text) or "?", item_title(text),
+                     pm.group(1) if pm else None, displayed_claim(text),
+                     iid if iid in ambiguous else None))
     if not rows:
         print("(queue empty)")
         return
-    grouped = group_by_tag([(project, (label, cls, title, mark))
-                            for label, cls, title, project, mark in rows],
+    grouped = group_by_tag([(project, (label, cls, title, mark, dup))
+                            for label, cls, title, project, mark, dup in rows],
                            by_position=True)
     if grouped is None:
-        for label, cls, title, _, mark in rows:
-            print(list_line(label, cls, title, mark))
+        for label, cls, title, _, mark, dup in rows:
+            print(list_line(label, cls, title, mark, dup))
     else:
         for n, (project, entries) in enumerate(grouped):
             if n:
                 print()
             print(f"## {project or 'no project'}")
-            for label, cls, title, mark in entries:
-                print(list_line(label, cls, title, mark))
+            for label, cls, title, mark, dup in entries:
+                print(list_line(label, cls, title, mark, dup))
     if any(r[0] == "----" for r in rows):
         print("\nitems without ID: run `tk-queue migrate` to assign them.")
+    if ambiguous:
+        print("\nduplicate IDs: only the FIRST item under each is reachable — renumber "
+              "the others by hand in next-steps.md.")
 
 
-def list_line(label, cls, title, mark):
+def list_line(label, cls, title, mark, dup=None):
     """The claim is appended, not given a column of its own: it is the exception
     (most items are free), and a column would indent every line of every queue for
     a field almost none of them carry."""
-    return f"{label}  {cls:<10}  {title}" + (f"  [{mark}]" if mark else "")
+    return (f"{label}  {cls:<10}  {title}"
+            + (f"  [{mark}]" if mark else "")
+            # `is not None`: T000 is an ID, and truthiness would drop its mark
+            + (f"  [{AMBIGUOUS_MARK % dup}]" if dup is not None else ""))
 
 
 # --- pack: the candidates for an unattended package ------------------------
