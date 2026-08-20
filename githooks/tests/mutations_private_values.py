@@ -27,8 +27,8 @@ GUARD = os.path.abspath(os.path.join(HERE, os.pardir, "private-values"))
 MUTATIONS = [
     (
         'binary staged file is not scanned',
-        'git diff --cached --text --unified=0 |',
-        'git diff --cached --unified=0 |',
+        'git diff --cached --text --unified=0 |\n    grep',
+        'git diff --cached --unified=0 |\n    grep',
         [
             'test_value_inside_a_binary_file_is_refused',
         ],
@@ -51,8 +51,8 @@ MUTATIONS = [
     ),
     (
         'the added lines are never read',
-        '  git diff --cached --text --unified=0 |\n',
-        '  : |\n',
+        '  git diff --cached --text --unified=0 |\n    grep -a -E',
+        '  : |\n    grep -a -E',
         [
             'test_slug_in_staged_content_is_refused',
             'test_the_same_value_added_now_is_still_refused',
@@ -84,36 +84,85 @@ MUTATIONS = [
     ),
     (
         'the URL-encoded spelling is never considered',
-        '    for needle in "$value" "$encoded"; do',
-        '    for needle in "$value"; do',
+        '    "$(printf \'%s\' "$value" | sed \'s|/|%2F|g\')" \\\n',
+        '    "$value" \\\n',
         [
             'test_percent_encoded_value_is_refused',
         ],
     ),
     (
-        'the diff marker is left in, so joining cannot rejoin a wrapped value',
-        " | sed 's/^+//'\n",
-        '\n',
+        'the doubly-encoded spelling is never considered',
+        '    "$(printf \'%s\' "$value" | sed \'s|/|%252F|g\')"\n',
+        '    "$(printf \'%s\' "$value" | sed \'s|/|%2F|g\')"\n',
         [
-            'test_value_wrapped_across_two_lines_is_refused',
+            'test_double_encoded_value_is_refused',
+        ],
+    ),
+    (
+        'the join runs across the whole diff, so two files collide at the seam',
+        '    /^\\+\\+\\+ / { if (path != "") print path "\\t" buf; path = substr($0, 7); buf = ""; next }\n',
+        '    /^\\+\\+\\+ / { if (path == "") path = substr($0, 7); next }\n',
+        [
+            'test_two_files_meeting_at_the_seam_are_accepted',
+        ],
+    ),
+    (
+        'a carriage return is left on each line, so a CRLF file cannot be rejoined',
+        '    /^\\+/      { l = substr($0, 2); sub(/\\r$/, "", l); buf = buf l; next }\n',
+        '    /^\\+/      { l = substr($0, 2); buf = buf l; next }\n',
+        [
+            'test_wrapped_remedy_survives_crlf_line_endings',
+        ],
+    ),
+    (
+        'the joined match is asked of the whole row, so the path answers for it',
+        '      NEEDLE="$needle" awk -F\'\\t\' \'index(tolower($2), tolower(ENVIRON["NEEDLE"])) { print; exit }\')\n',
+        '      NEEDLE="$needle" awk -F\'\\t\' \'index(tolower($0), tolower(ENVIRON["NEEDLE"])) { print; exit }\')\n',
+        [
+            'test_editing_a_file_whose_path_already_leaked_is_accepted',
+        ],
+    ),
+    (
+        'the branch name is never read',
+        '    if branch_name | fold_separators | contains "$(printf \'%s\' "$needle" | fold_separators)"; then\n',
+        '    if false; then\n',
+        [
+            'test_branch_name_transliterating_the_value_is_refused',
+            'test_branch_name_carrying_the_literal_value_is_refused',
+        ],
+    ),
+    (
+        'separators are not folded, so a transliterated branch walks through',
+        "  tr '/_' '--'\n",
+        '  cat\n',
+        [
+            'test_branch_name_transliterating_the_value_is_refused',
+        ],
+    ),
+    (
+        'the wrapped remedy leaves the +++ header in what it shows',
+        '      printf \'%s\\n\' "    see it:     git diff --cached --text -U0 -- \'$hit_path\' | grep -a -E \'^\\\\+\' | grep -a -v -E \'^\\\\+\\\\+\\\\+ \' | sed \'s/^+//\'" >&2\n',
+        '      printf \'%s\\n\' "    see it:     git diff --cached --text -U0 -- \'$hit_path\' | grep -a -E \'^\\\\+\' | sed \'s/^+//\'" >&2\n',
+        [
             'test_wrapped_remedy_runs_and_finds_the_value',
         ],
     ),
     (
-        'a wrapped value is never looked for',
-        '      elif hit_joined "$surface" "$needle"; then\n        wrapped=yes\n',
-        '      elif false; then\n        wrapped=yes\n',
+        'the joined reading is never taken, so a wrapped value walks through',
+        '    row=$(joined_per_file |\n',
+        '    row=\n',
         [
             'test_value_wrapped_across_two_lines_is_refused',
-            'test_wrapped_remedy_runs_and_finds_the_value',
+            'test_a_wrap_inside_one_file_is_still_refused',
+            'test_wrapped_remedy_survives_crlf_line_endings',
         ],
     ),
     (
-        'the wrapped remedy is printed with echo, which breaks it across lines',
-        '        printf \'%s\\n\' "    see it:',
-        '        echo "    see it:',
+        'the branch check uses an empty needle, refusing every branch',
+        '    if branch_name | fold_separators | contains "$(printf \'%s\' "$needle" | fold_separators)"; then\n',
+        '    if branch_name | fold_separators | contains ""; then\n',
         [
-            'test_wrapped_remedy_runs_and_finds_the_value',
+            'test_an_ordinary_branch_name_is_accepted',
         ],
     ),
     (
@@ -126,8 +175,8 @@ MUTATIONS = [
     ),
     (
         'the refusal does not say which surface fired',
-        '            echo "  - the value of: git config $key — in the commit message" >&2\n',
-        '            echo "  - the value of: git config $key" >&2\n',
+        '      echo "  - the value of: git config $key — in the commit message" >&2\n',
+        '      echo "  - the value of: git config $key" >&2\n',
         [
             'test_refusal_names_the_surface_that_fired',
         ],
@@ -155,36 +204,32 @@ MUTATIONS = [
         'exit 0\n',
         [
             'test_slug_in_staged_content_is_refused',
-            'test_gh_config_dir_in_staged_content_is_refused',
             'test_value_in_a_path_is_refused',
-            'test_value_inside_a_binary_file_is_refused',
-            'test_value_only_in_the_commit_message_is_refused',
             'test_rename_into_a_leaky_path_is_refused',
-            'test_case_changed_value_is_refused',
-            'test_percent_encoded_value_is_refused',
-            'test_value_wrapped_across_two_lines_is_refused',
+            'test_branch_name_transliterating_the_value_is_refused',
+            'test_a_wrap_inside_one_file_is_still_refused',
         ],
     ),
     (
         'the refusal names a fixed key instead of the one that fired',
-        '            echo "  - the value of: git config $key — in a line this commit adds" >&2\n',
-        '            echo "  - the value of: git config tk.tracker — in a line this commit adds" >&2\n',
+        '      echo "  - the value of: git config $key — in a line this commit adds" >&2\n',
+        '      echo "  - the value of: git config tk.tracker — in a line this commit adds" >&2\n',
         [
             'test_refusal_names_the_key_that_fired',
         ],
     ),
     (
         'the printed remedy loses the lookup that makes it run',
-        '            echo "    see it:     git diff --cached --text -U0 | grep -n -i -F -- \\"\\$(git config $key)\\"" >&2\n',
-        '            echo "    see it:     git diff --cached --text -U0 | grep -n -i -F -- \\"$key\\"" >&2\n',
+        '      echo "    see it:     git diff --cached --text -U0 | grep -n -i -F -- \\"\\$(git config $key)\\"" >&2\n',
+        '      echo "    see it:     git diff --cached --text -U0 | grep -n -i -F -- \\"$key\\"" >&2\n',
         [
             'test_printed_remedy_runs_and_finds_the_line',
         ],
     ),
     (
         'the guard refuses everything, blocking all work',
-        '  $1 | contains "$2"\n',
-        '  true\n',
+        '      if $surface | contains "$needle"; then\n',
+        '      if true; then\n',
         [
             'test_clean_commit_is_accepted',
         ],

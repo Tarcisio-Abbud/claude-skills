@@ -212,6 +212,12 @@ githooks/
   private-values                  refuses a commit that would publish a value from this
                                   clone's local git config; installed as two hooks
   tests/                          its suite and mutation harness
+bin/
+  tracker-gh                      runs one gh command against the private tracker,
+                                  resolving it in the SAME process — a shell variable
+                                  does not survive to the next tool call, and gh
+                                  discards an empty -R onto the cwd's repo
+  tests/                          its suite and mutation harness
 ```
 
 On the authoring machine this repo is cloned **as** `~/.claude/skills/`, so `tk/` sits
@@ -227,9 +233,10 @@ returning to `main` puts the old `tk-queue` back. A fix is only in force once me
 proved by `python3 tk/tests/mutations.py`, which restores each defect and requires the tests
 named for it to fail, one at a time. A test that passes with the defect back protects
 nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answers to the same
-rule through `python3 tk/tests/mutations_tk_contract.py`, and the commit guard through
-`python3 githooks/tests/mutations_private_values.py`. The harnesses are separate files only
-because the oldest one names its test module inline.
+rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard through
+`python3 githooks/tests/mutations_private_values.py`, and the tracker wrapper through
+`python3 bin/tests/mutations_tracker_gh.py`. The harnesses are separate files sharing one
+shape; the oldest differs only in naming its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
 the whole `tk/` tree is versioned.
@@ -242,6 +249,9 @@ the primary tree and nowhere else, so every dispatched agent and every
 
 This repo being public, the private half stays out of it. The tracker's slug and the `gh`
 config directory live in the clone's local git config, under `tk.tracker` and
-`tk.ghConfigDir`, which git never pushes; `docs/agents/issue-tracker.md` carries the two
+`tk.ghConfigDir`, which git never pushes. Tracker commands run through `bin/tracker-gh`,
+which resolves those values in the same process that uses them: a shell variable does not
+survive to an agent's next tool call, and `gh` answers an empty `-R` by silently targeting the
+cwd's repo — this one. `docs/agents/issue-tracker.md` carries that reasoning, the two
 `git config` lines a fresh clone needs, and the block that installs
 `githooks/private-values` as both the `pre-commit` and the `commit-msg` hook.

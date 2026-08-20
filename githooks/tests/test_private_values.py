@@ -102,9 +102,13 @@ class GuardTest(unittest.TestCase):
     # --- the guard refuses each place a value can hide -----------------------------
 
     def test_slug_in_staged_content_is_refused(self):
+        """The joined reading would catch this too. What the line-wise surface earns is the
+        precise diagnosis — assert that, or nothing proves the surface exists."""
         r = self.repo()
         r.write("a.txt", "see %s for the tickets\n" % SLUG)
-        self.assertRefused(r.commit())
+        result = r.commit()
+        self.assertRefused(result)
+        self.assertIn("in a line this commit adds", result.stderr)
 
     def test_gh_config_dir_in_staged_content_is_refused(self):
         r = self.repo()
@@ -155,10 +159,14 @@ class GuardTest(unittest.TestCase):
         self.assertAccepted(r.commit(message="edit inside it"))
 
     def test_case_changed_value_is_refused(self):
-        """A GitHub slug is case-insensitive, so a re-cased copy publishes the same identity."""
+        """A GitHub slug is case-insensitive, so a re-cased copy publishes the same identity.
+        Asserting the surface too: the joined reading folds case on its own, so a bare
+        assertRefused would pass with the line-wise fold removed."""
         r = self.repo()
         r.write("a.txt", "see %s\n" % SLUG.upper())
-        self.assertRefused(r.commit())
+        result = r.commit()
+        self.assertRefused(result)
+        self.assertIn("in a line this commit adds", result.stderr)
 
     def test_percent_encoded_value_is_refused(self):
         r = self.repo()
@@ -171,7 +179,8 @@ class GuardTest(unittest.TestCase):
         r.write("a.txt", "see %s/\n%s here\n" % (owner, name))
         result = r.commit()
         self.assertRefused(result)
-        self.assertIn("split across lines", result.stderr)
+        self.assertIn("consecutive added lines", result.stderr)
+        self.assertIn("a.txt", result.stderr)
 
     def test_wrapped_remedy_runs_and_finds_the_value(self):
         """The wrapped case needs its own remedy: the line-wise search prints nothing."""
@@ -190,7 +199,16 @@ class GuardTest(unittest.TestCase):
             printed[0], shell=True, cwd=r.dir, capture_output=True, text=True
         )
         self.assertEqual(shown.returncode, 0, "the printed remedy did not run: %s" % shown.stderr)
-        self.assertIn(SLUG.lower(), shown.stdout.lower())
+        # It shows the wrap rather than the value: both halves, on the two lines that made it,
+        # and nothing else — the `+++` header included would be noise the reader must discount.
+        owner, name = SLUG.split("/")
+        self.assertIn(owner.lower(), shown.stdout.lower())
+        self.assertIn(name.lower(), shown.stdout.lower())
+        self.assertEqual(
+            [l for l in shown.stdout.splitlines() if l.strip()],
+            ["see %s/" % owner, "%s here" % name],
+            "the remedy should show the two wrapped lines and nothing else",
+        )
 
     def test_refusal_names_the_surface_that_fired(self):
         r = self.repo()
@@ -198,6 +216,82 @@ class GuardTest(unittest.TestCase):
         result = r.commit(message="closes %s#42" % SLUG)
         self.assertRefused(result)
         self.assertIn("in the commit message", result.stderr)
+
+    # --- joining lines must not invent a value that nobody wrote ---------------------
+
+    def test_two_files_meeting_at_the_seam_are_accepted(self):
+        """Joining the whole diff glued the last line of one file to the first of the next,
+        so the alphabetical order of FILENAMES decided whether innocent text collided."""
+        owner, name = SLUG.split("/")
+        r = self.repo()
+        r.write("a-first.md", "owner is %s" % owner)
+        r.write("b-second.md", "/%s is a path fragment\n" % name)
+        self.assertAccepted(r.commit())
+
+    def test_a_wrap_inside_one_file_is_still_refused(self):
+        """The other half: narrowing to one file must not blind the join."""
+        owner, name = SLUG.split("/")
+        r = self.repo()
+        r.write("only.md", "see %s/\n%s here\n" % (owner, name))
+        self.assertRefused(r.commit())
+
+    def test_wrapped_remedy_survives_crlf_line_endings(self):
+        """The refusal was already right on a CRLF file; the remedy it printed showed
+        nothing, so the reader could not see why."""
+        owner, name = SLUG.split("/")
+        r = self.repo()
+        r.write("crlf.md", "see %s/\r\n%s here\r\n" % (owner, name))
+        result = r.commit()
+        self.assertRefused(result)
+        printed = [
+            line.split("see it:", 1)[1].strip()
+            for line in result.stderr.splitlines()
+            if "see it:" in line
+        ]
+        self.assertEqual(len(printed), 1)
+        shown = subprocess.run(
+            printed[0], shell=True, cwd=r.dir, capture_output=True, text=True
+        )
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        self.assertIn(owner.lower(), shown.stdout.lower())
+        self.assertIn(name.lower(), shown.stdout.lower())
+
+    # --- encodings and the refs that also get pushed ---------------------------------
+
+    def test_double_encoded_value_is_refused(self):
+        """`%252F` is what a second encoding pass does to the `%` of the first."""
+        r = self.repo()
+        r.write("a.txt", "repos/%s/issues\n" % SLUG.replace("/", "%252F"))
+        self.assertRefused(r.commit())
+
+    def test_branch_name_transliterating_the_value_is_refused(self):
+        """A branch name is pushed and public. The idiom is to swap the separators, so
+        `/` and `_` are folded to `-` on both sides before comparing."""
+        r = self.repo()
+        r.write("seed.txt", "seed\n")
+        self.assertAccepted(r.commit())
+        r.git("checkout", "-q", "-b", "leak/%s" % SLUG.replace("/", "-"))
+        r.write("a.txt", "entirely innocent\n")
+        result = r.commit()
+        self.assertRefused(result)
+        self.assertIn("BRANCH NAME", result.stderr)
+
+    def test_branch_name_carrying_the_literal_value_is_refused(self):
+        r = self.repo()
+        r.write("seed.txt", "seed\n")
+        self.assertAccepted(r.commit())
+        r.git("checkout", "-q", "-b", "leak/%s" % SLUG)
+        r.write("a.txt", "entirely innocent\n")
+        self.assertRefused(r.commit())
+
+    def test_an_ordinary_branch_name_is_accepted(self):
+        """Folding separators must not start refusing ordinary hyphenated branches."""
+        r = self.repo()
+        r.write("seed.txt", "seed\n")
+        self.assertAccepted(r.commit())
+        r.git("checkout", "-q", "-b", "fix/some-ordinary-branch-name")
+        r.write("a.txt", "entirely innocent\n")
+        self.assertAccepted(r.commit())
 
     # --- the two branches that would make the guard useless ------------------------
 

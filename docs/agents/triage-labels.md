@@ -11,10 +11,10 @@ the identity:
 | `ready-for-human` | `ready-for-human` | Requires human implementation |
 | `wontfix` | `wontfix` | Will not be actioned |
 
-All five exist on the tracker. [`issue-tracker.md`](issue-tracker.md) resolves `$TRACKER` and
-`GH_CONFIG_DIR` and carries the `gh` gotchas that shape every command here — read it first,
-then:
+All five exist on the tracker. [`issue-tracker.md`](issue-tracker.md) explains why tracker
+commands go through `bin/tracker-gh`, and carries the `gh` gotchas that shape every command
+here — read it first, then:
 
 ```bash
-gh issue edit <n> -R "$TRACKER" --add-label "<label>"
+bin/tracker-gh issue edit <n> -R '{tracker}' --add-label "<label>"
 ```

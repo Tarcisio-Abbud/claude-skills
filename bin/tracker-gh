@@ -1,0 +1,61 @@
+#!/bin/sh
+# Runs one `gh` command against the PRIVATE tracker, resolving the tracker and the gh identity
+# in the SAME process that runs it.
+#
+# The indivisibility is the whole point. A shell guard such as `${TRACKER:?}` protects only
+# inside one shell process, and the primary reader of these docs is an agent whose cwd
+# persists between tool calls while its shell state does not: resolve in one call, run `gh` in
+# the next, and the variable is gone. `gh` DISCARDS an empty `-R` and falls back to the cwd's
+# remote — which here is a PUBLIC repo — so the gap does not fail, it silently retargets, for
+# writes as much as for reads. An empty GH_CONFIG_DIR degrades the same way, to whatever
+# identity the environment happens to carry.
+#
+#   bin/tracker-gh issue list -R '{tracker}' --state open
+#   bin/tracker-gh api "repos/{tracker}/issues/66/sub_issues" --paginate
+#
+# `{tracker}` is substituted in every argument. A command that names it nowhere is REFUSED
+# rather than run against the cwd's repo, because forgetting `-R` is the same accident wearing
+# a different hat. Exit 78 is this script refusing; any other status is `gh`'s own.
+
+tracker=$(git config tk.tracker 2>/dev/null) || tracker=
+gh_dir=$(git config tk.ghConfigDir 2>/dev/null) || gh_dir=
+
+missing=
+if [ -z "$tracker" ]; then
+  missing="$missing tk.tracker"
+fi
+if [ -z "$gh_dir" ]; then
+  missing="$missing tk.ghConfigDir"
+fi
+if [ -n "$missing" ]; then
+  echo "tracker-gh: this clone is not configured —$missing" >&2
+  echo "  git config tk.tracker <owner>/<repo>" >&2
+  echo "  git config tk.ghConfigDir <path to the gh config directory>" >&2
+  echo "Refusing to run gh: with the value empty it would target this repo, which is PUBLIC." >&2
+  exit 78
+fi
+
+placeholder=no
+for arg in "$@"; do
+  case $arg in
+    *'{tracker}'*) placeholder=yes ;;
+  esac
+done
+if [ "$placeholder" = no ]; then
+  echo "tracker-gh: nothing in this command names {tracker}." >&2
+  echo "Say where it goes — 'issue list -R {tracker}', 'api repos/{tracker}/...'." >&2
+  echo "For a command that belongs to THIS repo, such as anything under 'gh pr', run gh directly." >&2
+  exit 78
+fi
+
+count=$#
+while [ "$count" -gt 0 ]; do
+  arg=$1
+  shift
+  set -- "$@" "$(printf '%s' "$arg" | sed "s|{tracker}|$tracker|g")"
+  count=$((count - 1))
+done
+
+GH_CONFIG_DIR=$gh_dir
+export GH_CONFIG_DIR
+exec gh "$@"

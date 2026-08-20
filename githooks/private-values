@@ -10,23 +10,20 @@
 # WHAT IT DOES NOT COVER, measured rather than assumed. `git cherry-pick` and `git rebase`
 # invoke neither hook, so a commit made with `--no-verify` reaches the public remote through
 # either of them unexamined; closing that needs a `pre-push` hook, which this file is not.
-# It also reads only what a commit ADDS — a value already tracked stays where it is — and
-# PR titles and bodies travel through `gh`, never through git.
+# It reads only what a commit ADDS — a value already tracked stays where it is — and PR
+# titles and bodies travel through `gh`, never through git. Tag names are not read. Encoding
+# is followed two levels deep (`%2F`, `%252F`) and no further.
 
 message_file=$1
-found=0
 
-# Three surfaces, named so the refusal can say which one fired.
+# --- the surfaces a value can reach the remote through -------------------------------
 #
 # `--text` and `grep -a`: without them a staged binary is summarised as "Binary files ...
 # differ", and grep answers a NUL-carrying stream with "binary file matches" instead of the
 # lines. Context lines are kept out twice over — `--unified=0` stops git emitting them, and
 # the `^\+` filter would drop them anyway — so no mutation can falsify either half alone;
-# the harness removes both at once and says so. The filter earns its place on its own for a
-# different reason: stripping the marker is what lets a wrapped value be rejoined.
-# The `+` marker is stripped, because joining the lines to catch a wrapped value would
-# otherwise slide that marker between the two halves and break the very match it is for.
-# The `+++ b/<path>` header goes out with it: paths are `new_paths`'s job.
+# the harness removes both at once and says so. Stripping the marker is what lets a wrapped
+# value be rejoined further down.
 added_lines() {
   git diff --cached --text --unified=0 |
     grep -a -E '^\+' | grep -a -v -E '^\+\+\+ ' | sed 's/^+//'
@@ -45,23 +42,44 @@ message_text() {
   fi
 }
 
-# Two readings of one surface, kept apart so the refusal can prescribe the right repair: a
-# value sitting on one line, and a value the author wrapped across two. Case is ignored
-# because a GitHub slug is case-insensitive — a re-cased copy publishes the same identity.
-# One place for the match flags, so both readings answer to the same rule: `-a` for a stream
+# A branch name is pushed and public exactly like a path is. Detached HEAD has no name, and
+# that is not an error here.
+branch_name() {
+  git symbolic-ref --quiet --short HEAD 2>/dev/null || true
+}
+
+# A branch rarely carries the value's punctuation intact — the idiom is to transliterate the
+# separators, and `leak/Owner-repo` publishes the identity as surely as `leak/Owner/repo`.
+# `/` and `_` are folded to `-` on BOTH sides, which also covers the branch that spells the
+# value intact — so the branch is read through the folded comparison only, never twice. The
+# folding stays on this surface: applied to prose it would refuse ordinary hyphenated phrases.
+fold_separators() {
+  tr '/_' '--'
+}
+
+# The added lines of ONE file, joined, so a value the author wrapped across two lines is one
+# string again. Per file and never across the diff: joining the whole diff concatenated the
+# last line of one file to the first line of the next, and since git orders files
+# alphabetically, the FILENAME decided whether two innocent lines collided at the seam.
+# Each row is `<path>\tjoined`, so the refusal can name the file; the tab cannot occur inside
+# a value, so no match can span it. `\r` goes early — a CRLF file would otherwise wrap every
+# line in a carriage return and defeat the join.
+joined_per_file() {
+  git diff --cached --text --unified=0 | awk '
+    /^\+\+\+ / { if (path != "") print path "\t" buf; path = substr($0, 7); buf = ""; next }
+    /^\+/      { l = substr($0, 2); sub(/\r$/, "", l); buf = buf l; next }
+    END        { if (path != "") print path "\t" buf }
+  '
+}
+
+# One place for the match flags, so every reading answers to the same rule: `-a` for a stream
 # carrying NUL bytes, `-F` because a slug is a literal and not a pattern, `-i` because a
 # GitHub slug is case-insensitive and a re-cased copy publishes the same identity.
 contains() {
   grep -a -q -i -F -- "$1"
 }
 
-hit_lines() {
-  $1 | contains "$2"
-}
-
-hit_joined() {
-  $1 | tr -d '\n\r' | contains "$2"
-}
+found=0
 
 for key in tk.tracker tk.ghConfigDir; do
   value=$(git config "$key" 2>/dev/null)
@@ -69,52 +87,82 @@ for key in tk.tracker tk.ghConfigDir; do
   if [ -z "$value" ]; then
     continue
   fi
-  # `%2F` is the same value wearing a URL's clothes, and reads back as the same identity.
-  encoded=$(printf '%s' "$value" | sed 's|/|%2F|g')
 
-  for surface in added_lines new_paths message_text; do
-    for needle in "$value" "$encoded"; do
-      wrapped=""
-      if hit_lines "$surface" "$needle"; then
-        wrapped=no
-      elif hit_joined "$surface" "$needle"; then
-        wrapped=yes
-      else
-        continue
-      fi
+  # The same value wearing a URL's clothes, once and twice over. Both read back as the same
+  # identity; `%25` is what a second pass does to the `%` of the first.
+  set -- "$value" \
+    "$(printf '%s' "$value" | sed 's|/|%2F|g')" \
+    "$(printf '%s' "$value" | sed 's|/|%252F|g')"
 
-      if [ "$found" -eq 0 ]; then
-        echo "This repo is PUBLIC and the commit carries a private value." >&2
-        found=1
+  hit_surface=""
+  hit_path=""
+  for needle in "$@"; do
+    for surface in added_lines new_paths message_text; do
+      if $surface | contains "$needle"; then
+        hit_surface=$surface
+        break
       fi
-
-      if [ "$wrapped" = yes ]; then
-        # printf, not echo: this shell's echo expands the `\n` inside the remedy and hands
-        # the reader a command broken across two lines.
-        printf '%s\n' "  - the value of: git config $key — split across lines in what this commit adds" >&2
-        printf '%s\n' "    see it:     git diff --cached --text -U0 | grep -a -E '^\\+' | sed 's/^+//' | tr -d '\\n' | grep -o -i -F -- \"\$(git config $key)\"" >&2
-        printf '%s\n' "    put it on one line, then replace it by: \$(git config $key)" >&2
-      else
-        case $surface in
-          added_lines)
-            echo "  - the value of: git config $key — in a line this commit adds" >&2
-            echo "    see it:     git diff --cached --text -U0 | grep -n -i -F -- \"\$(git config $key)\"" >&2
-            echo "    replace by: \$(git config $key)" >&2
-            ;;
-          new_paths)
-            echo "  - the value of: git config $key — in a PATH this commit introduces" >&2
-            echo "    see it:     git diff --cached --name-only --diff-filter=ACR" >&2
-            echo "    rename the file; its content is not the problem" >&2
-            ;;
-          message_text)
-            echo "  - the value of: git config $key — in the commit message" >&2
-            echo "    rewrite the message; describe the change on its own terms" >&2
-            ;;
-        esac
-      fi
-      break 2
     done
+    if [ -n "$hit_surface" ]; then
+      break
+    fi
+    if branch_name | fold_separators | contains "$(printf '%s' "$needle" | fold_separators)"; then
+      hit_surface=branch_name
+      break
+    fi
+    # The match is asked of the CONTENT field alone. Grepping the whole row would let the
+    # `<path>` prefix answer for it, and a file already living under a leaky path would be
+    # re-reported on every edit — the false positive `--diff-filter=ACR` exists to prevent.
+    row=$(joined_per_file |
+      NEEDLE="$needle" awk -F'\t' 'index(tolower($2), tolower(ENVIRON["NEEDLE"])) { print; exit }')
+    if [ -n "$row" ]; then
+      hit_surface=joined
+      hit_path=${row%%	*}
+      break
+    fi
   done
+
+  if [ -z "$hit_surface" ]; then
+    continue
+  fi
+
+  if [ "$found" -eq 0 ]; then
+    echo "This repo is PUBLIC and the commit carries a private value." >&2
+    found=1
+  fi
+
+  case $hit_surface in
+    added_lines)
+      echo "  - the value of: git config $key — in a line this commit adds" >&2
+      echo "    see it:     git diff --cached --text -U0 | grep -n -i -F -- \"\$(git config $key)\"" >&2
+      echo "    replace by: \$(git config $key)" >&2
+      ;;
+    new_paths)
+      echo "  - the value of: git config $key — in a PATH this commit introduces" >&2
+      echo "    see it:     git diff --cached --name-only --diff-filter=ACR" >&2
+      echo "    rename the file; its content is not the problem" >&2
+      ;;
+    message_text)
+      echo "  - the value of: git config $key — in the commit message" >&2
+      echo "    rewrite the message; describe the change on its own terms" >&2
+      ;;
+    branch_name)
+      echo "  - the value of: git config $key — in the BRANCH NAME, which is pushed too" >&2
+      echo "    see it:     git symbolic-ref --short HEAD" >&2
+      echo "    rename it:  git branch -m <a name that does not spell it>" >&2
+      ;;
+    joined)
+      # printf, not echo: this shell's echo expands a backslash escape inside the remedy and
+      # hands the reader a command that is not the one that was meant.
+      printf '%s\n' "  - the value of: git config $key — only once consecutive added lines of" >&2
+      printf '%s\n' "    $hit_path are joined. Two readings fit, and they want opposite repairs:" >&2
+      printf '%s\n' "      * the value really is wrapped there — put it on one line, then replace" >&2
+      printf '%s\n' "        it by: \$(git config $key)" >&2
+      printf '%s\n' "      * two unrelated lines merely meet at its seam — nothing is published," >&2
+      printf '%s\n' "        and this refusal is a false positive; commit with --no-verify" >&2
+      printf '%s\n' "    see it:     git diff --cached --text -U0 -- '$hit_path' | grep -a -E '^\\+' | grep -a -v -E '^\\+\\+\\+ ' | sed 's/^+//'" >&2
+      ;;
+  esac
 done
 
 if [ "$found" -eq 0 ]; then
@@ -123,8 +171,8 @@ fi
 
 cat >&2 <<'END'
 
-Fix what is named above, then commit again. Case and `%2F` encoding do not evade this check,
-and neither does wrapping the value across two lines. Publishing on purpose takes
-`git commit --no-verify` — which is also what `cherry-pick` and `rebase` do implicitly.
+Fix what is named above, then commit again. Case, `%2F`/`%252F` encoding and a value wrapped
+across two lines do not evade this check. Publishing on purpose takes `git commit --no-verify`
+— which is also what `cherry-pick` and `rebase` do implicitly.
 END
 exit 1

@@ -10,6 +10,7 @@
 !/plugin-drift
 !/asr
 !/githooks
+!/bin
 
 # Agent config, versioned so that `git worktree add` materialises it (README, "Layout").
 # The four rules run in order: reopen docs/, close what sits directly inside it, reopen
