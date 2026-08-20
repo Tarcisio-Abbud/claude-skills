@@ -98,8 +98,8 @@ Two parts, both produced here and neither delegated back:
   ceilings, that role's model/effort/venue, and the return contract it owes. The row for a run
   executing a package item is `implementer`; the other rows belong to the roles a step names
   by itself. Generate it per dispatch rather than typing it from memory — a hand-written block
-  is a fork of the policy. Pass `--fleet N` only when something else shares this machine's ceiling and told you
-  N; alone, the whole ceiling is yours.
+  is a fork of the policy. Pass `--fleet N` only when something else shares this machine's
+  ceiling and told you N; alone, the whole ceiling is yours.
 - **The item's distilled contract**: the interface the work must honour, its invariants, what
   the neighbouring slices consume from it. You hold the map hot and distilling costs once,
   where re-reading costs per dispatch — a prompt that says "read #X, #Y and #Z" bills that
