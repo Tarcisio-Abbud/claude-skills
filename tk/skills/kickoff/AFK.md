@@ -147,21 +147,24 @@ is indistinguishable from a slip. Both belong to the package and precede the clo
 report follows a template this file does not extend.
 
 What the items the package did NOT close owe that template is their **reason**, since it
-groups by outcome and by nothing else. Read the four in order and the first that applies is
-the reason — the convention `tk-queue pack` already uses for its own exclusions:
+groups by outcome and by nothing else. Read them in order and the first that applies is the
+reason — the convention `tk-queue pack` already uses for its own exclusions:
 
 - an item bound to ANOTHER environment is **blocked**, marked "runs on: X": nothing here can
   execute it, and the user is the only path to the machine that can;
-- an item another session holds is **carried** under the dependency gate, and its reason is
-  the owner and the moment the refused claim printed;
+- an item another session holds is **carried** under the dependency gate — whose shape here is
+  a sibling session holding it — and its reason is the owner and the moment, printed either by
+  `tk-queue pack`'s exclusion or by the claim this package was refused;
 - an item `tk-queue pack` excluded for anything else is **carried** too, recording the value
   the filter printed: it was never eligible at all, and "left out" alone reads as a size call
   nobody made;
-- an eligible item left out for size is **carried**, and the gate it records is that effort —
-  the ready line that runs it is another `/tk:kickoff afk`.
+- an item left out for size is **carried** under the effort gate — cut in step 1, or too big
+  to dispatch from here in step 3 — and its ready line is another `/tk:kickoff afk`, or, for
+  one that needed a session of its own, the opening line of the briefing written for it.
 
-An item verify turned into a DECISION is **carried** on the justification verify already
-wrote into it, and owes nothing further here.
+An item verify ended at **proof ready**, and one it turned into a **DECISION**, are carried on
+what verify already wrote into them and owe nothing further here: the close is where a
+proof-ready item becomes the DECISION that carries its digest reference.
 
 **Done when:** the measurement line and the deviation lines are written, and every item the
 package did not close carries the reason that lands it in one of the close's groups.
