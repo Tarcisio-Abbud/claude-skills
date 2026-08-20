@@ -36,15 +36,19 @@ The `gh` here is 2.23.0, and every command that walks the classic-Projects Graph
 on its deprecation notice with exit 1: `gh issue view <n>` and `gh pr view <n>`, with or
 without `--comments`, and `gh pr edit <n>` whatever flag it carries.
 
-Reads have an escape — add `--json` + `--jq` and they work, so shape single items that way.
-`gh pr edit` has none, which makes a PR's title and body right-at-creation work: pass them to
-`gh pr create`, the body through `--body-file`. To change either afterwards, go around `gh pr
-edit` through the REST endpoint, which does not touch that GraphQL path:
+Reads have an escape: `--json` takes them off that path, so ask for fields and they work.
+Add `--jq` when you want the answer shaped — it is not what makes the command succeed.
+
+`gh pr edit` has no such escape, which makes a PR's title and body right-at-creation work:
+pass them to `gh pr create`, the body through `--body-file`. To change either afterwards, go
+around `gh pr edit` through the REST endpoint, which does not touch that GraphQL path:
 
 ```bash
-gh api -X PATCH "repos/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/pulls/<n>" \
-  -f body="$(cat <file>)"
+gh api -X PATCH "repos/OWNER/REPO/pulls/<n>" -F body=@<path to a file>
 ```
+
+`-F key=@<path>` reads the value from the file, which keeps a body full of backticks and
+newlines out of the shell's reach.
 
 List, create, comment and diff behave normally.
 
@@ -72,7 +76,8 @@ A change lands as a PR **on this repo** — the cwd default:
 
 Keep PR titles, PR bodies and commit messages here free of the tracker's slug, of ticket
 numbers from it, and of account or company names: describe the change on its own terms, and
-name the work by what it is — "tk v3 slice", not "#131". The cross-reference goes the other
+name the work by what it is — "tk v3 slice" — rather than by the ticket's number, which
+belongs to the private tracker. The cross-reference goes the other
 way — comment the PR's URL onto the ticket with `gh issue comment <n> -R "$TRACKER"`.
 
 `githooks/private-values` guards the commits. Install it once per clone, as both hooks:
@@ -86,8 +91,9 @@ install -m 755 githooks/private-values "$hooks/commit-msg"
 It refuses a commit whose staged content or message carries either configured value —
 `pre-commit` sees the content, `commit-msg` sees the message, and one script covers both.
 **PR titles and bodies reach GitHub through `gh`, never through git, so no hook sees them:
-that half is yours to keep clean.** The guard also reads only what a commit ADDS, so a value
-that predates the install stays where it is.
+that half is yours to keep clean.** The guard reads only the lines a commit ADDS and the paths it
+touches, so a value already in the tree is left alone rather than blamed on the commit that
+edited its neighbour. It guards new writes; it is not an audit of history.
 
 Copying the script into the git directory, rather than pointing `core.hooksPath` at
 `githooks/`, is deliberate: a worktree checked out at a branch older than that directory would
@@ -96,20 +102,32 @@ leave the guard silently inert. Prove it still bites with
 
 ## Wayfinding operations
 
-The map is the issue on `$TRACKER` carrying the `wayfinder:map` label; the package's tickets
-are its children through GitHub sub-issues. Find it by the label rather than by a number,
-which goes stale as packages come and go:
+A package's map is an issue on `$TRACKER` carrying the `wayfinder:map` label, and its tickets
+are the map's children through GitHub sub-issues. Find the map by the label rather than by a
+number, which goes stale as packages come and go:
 
 ```bash
-gh issue list -R "$TRACKER" --label wayfinder:map --state all --json number,title
+gh issue list -R "$TRACKER" --label wayfinder:map --state open --json number,title
 ```
 
-Edges go through `gh api`:
+More than one row means more than one package is live: pick the map whose children include
+the ticket you were handed, and say which one you picked. Add `--state all` only to reach a
+concluded package.
+
+List the children, and with them the frontier — the open ones carrying no assignee:
+
+```bash
+gh api "repos/$TRACKER/issues/<map>/sub_issues" --paginate \
+  --jq '.[] | select(.state == "open" and .assignee == null) | "\(.number)\t\(.title)"'
+```
+
+Claim one with `gh issue edit <n> -R "$TRACKER" --add-assignee @me`; resolve it with a comment
+and a close. Edges between tickets go through `gh api`:
 
 ```bash
 gh api "repos/$TRACKER/issues/<n>/dependencies/blocked_by" -F issue_id=<blocker DATABASE id>
 ```
 
 The database id comes from `gh api "repos/$TRACKER/issues/<n>" --jq .id`, and differs from the
-`#number`. The frontier is the open children carrying no open blocker and no assignee. Claim
-one with `--add-assignee @me`; resolve it with a comment and a close.
+`#number`. A ticket carrying an open blocker is not on the frontier even when nobody has
+claimed it.

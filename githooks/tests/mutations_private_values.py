@@ -27,15 +27,48 @@ GUARD = os.path.abspath(os.path.join(HERE, os.pardir, "private-values"))
 MUTATIONS = [
     (
         "binary staged file is not scanned",
-        "  git diff --cached --text\n",
-        "  git diff --cached\n",
+        "  git diff --cached --text --unified=0",
+        "  git diff --cached --unified=0",
         ["test_value_inside_a_binary_file_is_refused"],
+    ),
+    (
+        "grep answers the binary stream instead of filtering it",
+        "| grep -a -E '^\\+'",
+        "| grep -E '^\\+'",
+        ["test_value_inside_a_binary_file_is_refused"],
+    ),
+    (
+        "context lines are scanned, so an untouched neighbour trips the guard",
+        "--unified=0 | grep -a -E '^\\+'",
+        "| cat",
+        ["test_value_already_committed_nearby_does_not_trip_the_guard"],
+    ),
+    (
+        "the filter drops the path header, so a value in a path walks through",
+        "grep -a -E '^\\+'",
+        "grep -a -E '^\\+[^+]'",
+        ["test_value_in_a_path_is_refused"],
+    ),
+    (
+        "narrowing to added lines blinds the guard to a value added now",
+        "git diff --cached --text --unified=0 | grep -a -E '^\\+'",
+        "true",
+        [
+            "test_the_same_value_added_now_is_still_refused",
+            "test_slug_in_staged_content_is_refused",
+        ],
     ),
     (
         "the commit message is never scanned",
         '  if [ -n "$message_file" ]; then\n    cat "$message_file"\n  fi\n',
         "",
         ["test_value_only_in_the_commit_message_is_refused"],
+    ),
+    (
+        "only the first key is checked",
+        "for key in tk.tracker tk.ghConfigDir; do",
+        "for key in tk.tracker; do",
+        ["test_gh_config_dir_in_staged_content_is_refused"],
     ),
     (
         "an empty value is used as a needle, matching every commit",
@@ -66,40 +99,43 @@ MUTATIONS = [
     ),
     (
         "the printed remedy loses the lookup that makes it run",
-        '    echo "    see it:     git diff --cached --text | grep -n -F -- \\"\\$(git config $key)\\"" >&2\n',
-        '    echo "    see it:     git diff --cached --text | grep -n -F -- \\"$key\\"" >&2\n',
+        '\\"\\$(git config $key)\\"" >&2\n    echo "    replace by',
+        '\\"$key\\"" >&2\n    echo "    replace by',
         ["test_printed_remedy_runs_and_finds_the_line"],
     ),
     (
         "the guard refuses everything, blocking all work",
-        '  if published | grep -q -F -- "$value"; then\n',
+        '  if published | grep -a -q -F -- "$value"; then\n',
         "  if true; then\n",
         ["test_clean_commit_is_accepted"],
     ),
 ]
 
 
-def suite_test_names():
+def suite_test_ids():
+    """method name -> full unittest id. Derived, never hand-kept: a list beside a
+    completeness check is the next defect, and hardcoding the TestCase name would turn a
+    second test class into a misdiagnosed 'suite is not green'."""
     loader = unittest.TestLoader()
     suite = loader.discover(start_dir=HERE, pattern="test_*.py")
-    names = set()
+    ids = {}
 
     def walk(s):
         for item in s:
             if isinstance(item, unittest.TestSuite):
                 walk(item)
             else:
-                names.add(item.id().rsplit(".", 1)[-1])
+                full = item.id()
+                ids[full.rsplit(".", 1)[-1]] = full
 
     walk(suite)
-    return names
+    return ids
 
 
-def run_tests(names):
+def run_tests(names, ids):
     """Run the named tests against whatever is currently on disk. True when all passed."""
     result = subprocess.run(
-        [sys.executable, "-m", "unittest", "-q"]
-        + ["test_private_values.GuardTest.%s" % n for n in names],
+        [sys.executable, "-m", "unittest", "-q"] + [ids[n] for n in names],
         cwd=HERE,
         capture_output=True,
         text=True,
@@ -111,17 +147,19 @@ def main():
     with open(GUARD, encoding="utf-8") as fh:
         original = fh.read()
 
-    available = suite_test_names()
+    ids = suite_test_ids()
+    available = set(ids)
     named = set()
     problems = []
 
-    ok, output = run_tests(sorted(available))
+    ok, output = run_tests(sorted(available), ids)
     if not ok:
         print("the suite is not green before mutating; fix that first\n%s" % output)
         return 1
 
     backup = tempfile.mkstemp(prefix="guard-backup-")[1]
     shutil.copy(GUARD, backup)
+    original_mode = os.stat(GUARD).st_mode
     try:
         for label, needle, replacement, targets in MUTATIONS:
             named.update(targets)
@@ -141,14 +179,14 @@ def main():
             with open(GUARD, "w", encoding="utf-8") as fh:
                 fh.write(original.replace(needle, replacement))
 
-            survived, _ = run_tests(targets)
+            survived, _ = run_tests(targets, ids)
             if survived:
                 problems.append("%s: SURVIVED — %s still pass with the defect back" % (label, targets))
             else:
                 print("killed: %s" % label)
     finally:
         shutil.copy(backup, GUARD)
-        os.chmod(GUARD, 0o755)
+        os.chmod(GUARD, original_mode)
         os.unlink(backup)
 
     unproved = sorted(available - named)

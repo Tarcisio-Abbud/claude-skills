@@ -11,14 +11,19 @@
 !/asr
 !/githooks
 
-# Agent config: everything `/setup-matt-pocock-skills` writes under docs/agents/ is
-# versioned, so that `git worktree add` materialises it (README, "Layout"). The allowlist
-# reopens docs/ for that one directory and closes it again, and `githooks/private-values`
-# is what keeps a private value out of a PUBLIC repo.
+# Agent config, versioned so that `git worktree add` materialises it (README, "Layout").
+# The four rules run in order: reopen docs/, close what sits directly inside it, reopen
+# agents/, close that too — then name the three files `/setup-matt-pocock-skills` writes.
+# Naming them rather than opening the directory is what keeps the next file dropped there
+# from reaching a PUBLIC repo on its own.
 !/docs
 /docs/*
 !/docs/agents
+/docs/agents/*
+!/docs/agents/issue-tracker.md
+!/docs/agents/triage-labels.md
+!/docs/agents/domain.md
 
-# Python bytecode from the tk-queue test suite
+# Python bytecode from the test suites
 __pycache__/
 *.pyc

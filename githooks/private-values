@@ -1,10 +1,6 @@
 #!/bin/sh
-# Refuses a commit that would publish one of the values configuring this clone.
-#
-# This repo is PUBLIC and `docs/agents/issue-tracker.md` is versioned, so the path where
-# `.gitignore` used to block the private tracker's slug is now a path a careless write
-# reaches. The slug and the gh config directory live in the clone's local git config,
-# `tk.tracker` and `tk.ghConfigDir`, and this guard keeps them from being committed.
+# Refuses a commit that would publish one of the values configuring this clone. Why the
+# values live in git config rather than in a file: README, "Layout, and the authoring machine".
 #
 # Install it as BOTH hooks — the install lines are in `docs/agents/issue-tracker.md`.
 # git passes the message file as $1 to `commit-msg` and nothing to `pre-commit`, which is
@@ -14,11 +10,18 @@
 message_file=$1
 found=0
 
-# Everything this commit would publish: the staged content, plus the message when git
-# handed one over. `--text` matters — without it a staged binary is summarised as
-# "Binary files ... differ" and a value inside it never reaches grep.
+# Everything this commit would publish, and nothing else: the lines it ADDS and the paths
+# it touches, plus the message when git handed one over.
+#
+# `--text` matters — without it a staged binary is summarised as "Binary files ... differ"
+# and a value inside it never reaches grep; `grep -a` matters for the same reason, since
+# grep answers a NUL-carrying stream with "binary file matches" instead of the lines. `--unified=0` plus the filter matter as much in
+# the other direction: with context lines in the diff, a value already committed near an
+# edit trips the guard, and the refusal then prescribes changing a line the commit does not
+# touch. `^\+` keeps the `+++ b/<path>` header along with the added lines, because a value
+# can hide in a path as easily as in a line.
 published() {
-  git diff --cached --text
+  git diff --cached --text --unified=0 | grep -a -E '^\+'
   if [ -n "$message_file" ]; then
     cat "$message_file"
   fi
@@ -30,13 +33,13 @@ for key in tk.tracker tk.ghConfigDir; do
   if [ -z "$value" ]; then
     continue
   fi
-  if published | grep -q -F -- "$value"; then
+  if published | grep -a -q -F -- "$value"; then
     if [ "$found" -eq 0 ]; then
       echo "This repo is PUBLIC and the commit carries a private value." >&2
       found=1
     fi
     echo "  - the value of: git config $key" >&2
-    echo "    see it:     git diff --cached --text | grep -n -F -- \"\$(git config $key)\"" >&2
+    echo "    see it:     git diff --cached --text -U0 | grep -n -F -- \"\$(git config $key)\"" >&2
     echo "    replace by: \$(git config $key)" >&2
   fi
 done

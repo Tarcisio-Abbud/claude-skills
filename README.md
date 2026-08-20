@@ -203,10 +203,11 @@ asr/
   .claude-plugin/plugin.json      the plugin manifest
   skills/transcribe-audio/SKILL.md
   bin/transcribe.py               the transcription CLI (Parakeet / faster-whisper)
-docs/agents/
-  issue-tracker.md                what the mattpocock engineering skills read: which
-  triage-labels.md                tracker holds the issues, what the triage labels are
-                                  called. Versioned — see below
+docs/agents/                      what the mattpocock engineering skills read; versioned,
+                                  for the reason given below
+  issue-tracker.md                where the issues live and how to reach them, with the
+                                  private half resolved from local git config
+  triage-labels.md                the five triage roles, mapped to label strings
 githooks/
   private-values                  refuses a commit that would publish a value from this
                                   clone's local git config; installed as two hooks
@@ -242,5 +243,5 @@ the primary tree and nowhere else, so every dispatched agent and every
 This repo being public, the private half stays out of it. The tracker's slug and the `gh`
 config directory live in the clone's local git config, under `tk.tracker` and
 `tk.ghConfigDir`, which git never pushes; `docs/agents/issue-tracker.md` carries the two
-`git config` lines a fresh clone needs, and the two lines that install
-`githooks/private-values` as the `pre-commit` and `commit-msg` hooks.
+`git config` lines a fresh clone needs, and the block that installs
+`githooks/private-values` as both the `pre-commit` and the `commit-msg` hook.

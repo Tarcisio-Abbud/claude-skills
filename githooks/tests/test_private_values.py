@@ -28,7 +28,7 @@ def guard_source():
 class Repo:
     """A throwaway git repo with the guard installed as both hooks."""
 
-    def __init__(self, source=None, tracker=SLUG, gh_dir=GHDIR):
+    def __init__(self, tracker=SLUG, gh_dir=GHDIR):
         self.dir = tempfile.mkdtemp(prefix="guard-")
         self.git("init", "-q", "-b", "main", ".")
         self.git("config", "user.email", "t@example.invalid")
@@ -39,7 +39,7 @@ class Repo:
             self.git("config", "tk.ghConfigDir", gh_dir)
         hooks = os.path.join(self.dir, ".git", "hooks")
         os.makedirs(hooks, exist_ok=True)
-        text = guard_source() if source is None else source
+        text = guard_source()
         for name in ("pre-commit", "commit-msg"):
             path = os.path.join(hooks, name)
             with open(path, "w", encoding="utf-8") as fh:
@@ -66,6 +66,11 @@ class Repo:
         """Stage everything and commit. Returns the CompletedProcess."""
         self.stage()
         return self.git("commit", "-m", message)
+
+    def commit_unguarded(self, message="planted"):
+        """Commit past the hooks, to plant content the guard never inspected."""
+        self.stage()
+        return self.git("commit", "--no-verify", "-m", message)
 
     def cleanup(self):
         shutil.rmtree(self.dir, ignore_errors=True)
@@ -165,6 +170,30 @@ class GuardTest(unittest.TestCase):
         )
         self.assertEqual(shown.returncode, 0, "the printed remedy did not run: %s" % shown.stderr)
         self.assertIn(SLUG, shown.stdout)
+        # and the repair it prescribes has to leave the commit acceptable
+        r.write("a.txt", "see $(git config tk.tracker)\n")
+        self.assertAccepted(r.commit())
+
+
+    # --- the guard reads what a commit ADDS ----------------------------------------
+    # A value already in the file is not this commit's doing, and refusing over it would
+    # prescribe editing a line the commit never touched.
+
+    def test_value_already_committed_nearby_does_not_trip_the_guard(self):
+        r = self.repo()
+        r.write("a.txt", "first\nsee %s\nthird\n" % SLUG)
+        planted = r.commit_unguarded()
+        self.assertEqual(planted.returncode, 0, planted.stderr)
+        r.write("a.txt", "FIRST EDITED\nsee %s\nthird\n" % SLUG)
+        self.assertAccepted(r.commit(message="edit the neighbour"))
+
+    def test_the_same_value_added_now_is_still_refused(self):
+        """The other half: narrowing to added lines must not blind the guard."""
+        r = self.repo()
+        r.write("a.txt", "first\nsecond\n")
+        self.assertAccepted(r.commit())
+        r.write("a.txt", "first\nsecond\nsee %s\n" % SLUG)
+        self.assertRefused(r.commit(message="add it now"))
 
 
 if __name__ == "__main__":
