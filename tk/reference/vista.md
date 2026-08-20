@@ -106,6 +106,16 @@ script at all (a `<script>`, an `on*` handler, a `javascript:` URL, a `<meta htt
 no risk tag or no real proof link, on text printed outside the `<body>` a page declared, and on
 a page with no `prefers-color-scheme: dark` rule.
 
+**A red gate does not hold the run.** The vista is a companion; the digest is the close. So a
+run that gets a refusal keeps going and reports one of four states, never silence:
+
+| Exit | State | What the report says |
+|---|---|---|
+| 0 | delivered | the path, called a vista |
+| 1 | refused | that the vista was REFUSED, quoting the checker's findings; no line calls the file a vista |
+| 2 | not checkable | that the file could not be read — a failed write, a path that is not a regular file — naming the path; there are no findings to quote |
+| — | skipped | that no outbox was named, and which of the two lines is missing |
+
 ## What the gate does not measure
 
 A green run means the four things above, and a report may claim no more than that:
@@ -120,3 +130,7 @@ A green run means the four things above, and a report may claim no more than tha
 - **One way.** That nothing is read back from a vista is a rule of the flow, held by prose here
   and by no mechanism. Nothing stops a future session from parsing one; the contract says do
   not, and the gate cannot say it.
+
+One deliberate over-match sits beside these: an `on*` handler inside a `<template>` is inert and
+still refused. Keeping it costs a page nobody writes; teaching the parser about inert subtrees
+costs a branch that would have to stay right.

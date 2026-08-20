@@ -94,9 +94,11 @@ MUTATIONS = [
      r'CSS_URL_FUNC = re.compile(r"(?:url)\s*\(([^)]*)\)"',
      ["TestSelfContained.test_an_image_set_reaching_the_network_is_refused"], CHECK),
 
-    ("T139 an address in a CSS property nobody enumerated walks through",
-     "    if CSS_SCHEME.search(css):", "    if False:",
-     ["TestSelfContained.test_an_http_address_anywhere_in_the_css_is_refused"], CHECK),
+    ("T139 the catch-all over the CSS text is back, and it refuses legitimate CSS",
+     "    for url in css_urls(css):",
+     '    for url in css_urls(css) + re.findall(r"https?:", css):',
+     ["TestSelfContained.test_a_class_named_http_is_not_an_address",
+      "TestSelfContained.test_an_address_inside_generated_text_is_not_a_fetch"], CHECK),
 
     # -- runs nothing -----------------------------------------------------
     ("T139 a <script> element is not collected, and every spelling of a call returns",
@@ -120,9 +122,32 @@ MUTATIONS = [
      ["TestSelfContained.test_an_event_handler_is_refused"], CHECK),
 
     ("T139 a javascript: URL is judged as a link like any other",
-     '                if value.strip().lower().startswith("javascript:"):',
-     "                if False:",
+     "                if script_url(value):", "                if False:",
      ["TestSelfContained.test_a_javascript_url_is_refused"], CHECK),
+
+    ("T139 the URL is compared as the file spells it, not as the browser reads it",
+     '    return URL_JUNK.sub("", url or "").strip(C0_OR_SPACE)',
+     '    return (url or "").strip(C0_OR_SPACE)',
+     ["TestSelfContained.test_a_javascript_url_split_by_a_tab_is_refused",
+      "TestSelfContained.test_a_javascript_url_split_by_a_newline_is_refused"], CHECK),
+
+    ("T139 only the tab is removed, and a newline still splits the scheme",
+     r'URL_JUNK = re.compile(r"[\t\n\r]")', r'URL_JUNK = re.compile(r"[\t]")',
+     ["TestSelfContained.test_a_javascript_url_split_by_a_newline_is_refused"], CHECK),
+
+    ("T139 only whitespace is stripped, so a C0 control hides the scheme",
+     '    return URL_JUNK.sub("", url or "").strip(C0_OR_SPACE)',
+     '    return URL_JUNK.sub("", url or "").strip()',
+     ["TestSelfContained.test_a_javascript_url_behind_a_control_character_is_refused"], CHECK),
+
+    ("T139 the scheme is compared case-sensitively",
+     "    return normalise(url).lower().startswith(SCRIPT_SCHEMES)",
+     "    return normalise(url).startswith(SCRIPT_SCHEMES)",
+     ["TestSelfContained.test_a_javascript_url_in_capitals_is_refused"], CHECK),
+
+    ("T139 vbscript: is not a scheme that runs code",
+     'SCRIPT_SCHEMES = ("javascript:", "vbscript:")', 'SCRIPT_SCHEMES = ("javascript:",)',
+     ["TestSelfContained.test_a_vbscript_url_is_refused"], CHECK),
 
     ("T139 a meta refresh is not noticed",
      '        if tag == "meta" and a.get("http-equiv", "").strip().lower() == "refresh":',
@@ -183,12 +208,24 @@ MUTATIONS = [
      ["TestFiveBlocks.test_a_proof_marker_with_no_href_is_not_a_proof",
       "TestFiveBlocks.test_a_proof_that_is_only_a_fragment_is_refused"], CHECK),
 
-    ("T139 the reserved placeholder domains stop being placeholders",
-     'PLACEHOLDER_HOSTS = (".invalid", "example.com", "example.org", "example.net")',
+    ("T139 the reserved placeholder names stop being placeholders",
+     'PLACEHOLDER_HOSTS = ("localhost", "invalid", "test", "example", "local",\n'
+     '                     "example.com", "example.org", "example.net")',
      'PLACEHOLDER_HOSTS = ("example.com", "example.org", "example.net")',
      ["TestFiveBlocks.test_a_proof_pointing_at_a_reserved_placeholder_domain_is_refused",
       "TestShippedTemplate.test_the_template_is_refused_for_its_placeholder_and_nothing_else"],
      CHECK),
+
+    ("T139 the list is back to the four names of the first round",
+     'PLACEHOLDER_HOSTS = ("localhost", "invalid", "test", "example", "local",\n'
+     '                     "example.com", "example.org", "example.net")',
+     'PLACEHOLDER_HOSTS = ("invalid", "example.com", "example.org", "example.net")',
+     ["TestFiveBlocks.test_a_proof_on_a_name_that_never_resolves_is_refused"], CHECK),
+
+    ("T139 a trailing dot buys a way past the comparison",
+     '    host = (urlparse(u).hostname or "").lower().rstrip(".")',
+     '    host = (urlparse(u).hostname or "").lower()',
+     ["TestFiveBlocks.test_a_proof_on_a_name_that_never_resolves_is_refused"], CHECK),
 
     ("T139 a FILL marker left in the href is a real address",
      '    if "FILL" in u:', "    if False:",

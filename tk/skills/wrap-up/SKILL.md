@@ -349,9 +349,9 @@ the next conversation's opening sentences, each in the shape that fits.
 - **The vista is written after the merge round**, once every slice has its outcome, and it is
   named in the report only after `../../bin/tk-vista-check` (relative to this file) passes on
   it. **A red check does not hold the close** — the vista is a companion and the digest is the
-  close — but the report then says the vista was REFUSED and quotes the checker's findings, and
-  no line calls the file a vista. An unattended run has nobody to notice a page that quietly
-  failed its gate.
+  close — and the report then carries the state the contract defines for that exit: refused with
+  the findings quoted, or not checkable with the path named. An unattended run has nobody to
+  notice a page that quietly failed its gate.
 - The step-6 report ends with the ready pair for the user's return: `/clear` +
   `/tk:kickoff afk`.
 
@@ -359,7 +359,7 @@ the next conversation's opening sentences, each in the shape that fits.
 committed, pushed, and every item ended either merged under the strict four verdicts or at
 an open PR carrying its evidence block; or the concurrent-session guard stopped the run and
 the report says so with the tree untouched; or there was nothing to commit. Whatever was
-not merged sits in the queue as a DECISION, and the vista ended in exactly one of three
-states the report states: in the outbox with a green `tk-vista-check`; refused, with the
-checker's findings quoted; or skipped, naming which of the two lines that would give the outbox
-address is missing. No other external effect happened.
+not merged sits in the queue as a DECISION, and the vista ended in exactly one of the four
+states of `../../reference/vista.md` with the report saying which: delivered, refused (findings
+quoted), not checkable (path named), or skipped (the missing address line named). No other
+external effect happened.

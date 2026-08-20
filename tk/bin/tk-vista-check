@@ -15,11 +15,17 @@ more than it measures is worse than one that measures less:
    and links a proof that is not still a placeholder.
 4. The page answers the dark colour scheme.
 
-WHAT IT DOES NOT MEASURE, stated so no report can borrow authority it lacks:
-whether the two palettes are LEGIBLE (that is measured by rendering the file,
-not by reading it), whether block 1's counts are right or even present as
-numbers, whether the prose is worth reading, and where an `<a href>` actually
-leads. `../reference/vista.md` says the same thing to the human side.
+WHAT IT DOES NOT MEASURE, in the same four items `../reference/vista.md` lists
+to the human side, so no report can borrow authority this gate lacks:
+
+- LEGIBILITY. It sees that the page answers the dark scheme, never that either
+  palette is readable — that is measured by RENDERING the file.
+- BLOCK 1's CONTENT. A `stats` marker around an empty list passes; what is in a
+  block is the writer's, and so is whether the prose is worth reading.
+- WHERE A LINK LEADS. `<a href>` is exempt by design, and only the placeholder
+  rule touches it: a link to the wrong PR is a green page.
+- ONE WAY. That nothing is read back from a vista is a rule of the flow, held by
+  prose and by no mechanism here.
 
 NO SCRIPT, rather than a list of forbidden calls. A blocklist of network calls
 loses to `new Image()`, to `window["fet"+"ch"]`, to a name bound before it is
@@ -71,26 +77,46 @@ PAGE_BLOCKS = tuple(m for m in BLOCKS if m != CARD_BLOCK)
 # outside it renders as an uncoloured card nobody notices
 OUTCOMES = ("merged", "closed", "open", "carried", "blocked", "discarded")
 
-# A proof link that still points at a placeholder is not a proof. `.invalid` is
-# reserved by RFC 2606 precisely to never resolve, and the example.* domains are
-# reserved beside it — a link to either can never be evidence of anything
-PLACEHOLDER_HOSTS = (".invalid", "example.com", "example.org", "example.net")
+# A proof link that still points at a placeholder is not a proof. These names
+# are reserved by RFC 2606 and RFC 6761 to never resolve to anything real, so a
+# link to one can never be evidence — the test is "never resolves", not "looks
+# fake", because the gate cannot tell a real link from a plausible one
+PLACEHOLDER_HOSTS = ("localhost", "invalid", "test", "example", "local",
+                     "example.com", "example.org", "example.net")
 
 # Every CSS function that takes a URL, not `url()` alone: `image-set()` fetches
 # just as hard, and a checker that knows one token is a checker that fetches the
 # other one
 CSS_URL_FUNC = re.compile(r"(?:url|image-set|-webkit-image-set)\s*\(([^)]*)\)", re.IGNORECASE)
 CSS_IMPORT = re.compile(r"@import\b", re.IGNORECASE)
-CSS_SCHEME = re.compile(r"https?:", re.IGNORECASE)
 DARK_THEME = re.compile(r"prefers-color-scheme\s*:\s*dark", re.IGNORECASE)
 
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
         "meta", "param", "source", "track", "wbr"}
 
 
+# WHATWG URL: tab, CR and LF are removed from the WHOLE string before parsing,
+# and leading/trailing C0-or-space is stripped. Every comparison below runs on
+# the normalised value — measured: `java<TAB>script:alert(1)` in an <a href>
+# EXECUTES in Chromium, and `.strip()` alone leaves the tab in the middle
+URL_JUNK = re.compile(r"[\t\n\r]")
+C0_OR_SPACE = "".join(chr(c) for c in range(0x21))
+SCRIPT_SCHEMES = ("javascript:", "vbscript:")
+
+
+def normalise(url):
+    """The URL as the browser will read it, not as the file spells it."""
+    return URL_JUNK.sub("", url or "").strip(C0_OR_SPACE)
+
+
+def script_url(url):
+    """True when following this URL runs code rather than fetching a document."""
+    return normalise(url).lower().startswith(SCRIPT_SCHEMES)
+
+
 def local(url):
     """True when the browser can resolve `url` without leaving this file."""
-    u = (url or "").strip()
+    u = normalise(url)
     if u.startswith("#"):
         return True
     # everything else has to be inline. An EMPTY value falls through to False on
@@ -100,15 +126,17 @@ def local(url):
 
 def placeholder(url):
     """The reason this href is not yet a proof, or None when it is one."""
-    u = (url or "").strip()
+    u = normalise(url)
     if not u or u.startswith("#"):
         return "it points nowhere"
     if "FILL" in u:
         return "it still carries a FILL marker"
-    host = (urlparse(u).hostname or "").lower()
+    # the trailing dot of a fully qualified name resolves the same and must not
+    # buy a way past the comparison
+    host = (urlparse(u).hostname or "").lower().rstrip(".")
     for bad in PLACEHOLDER_HOSTS:
-        if host == bad.lstrip(".") or host.endswith(bad):
-            return f"{host} is a reserved placeholder domain"
+        if host == bad or host.endswith("." + bad):
+            return f"{host} is a reserved placeholder name"
     return None
 
 
@@ -193,8 +221,9 @@ class Vista(HTMLParser):
             if name.startswith("on"):
                 self.scripts.append(f"{name}=")
             if name in URL_ATTRS:
-                if value.strip().lower().startswith("javascript:"):
-                    self.scripts.append(f"<{tag} {name}=javascript:>")
+                if script_url(value):
+                    scheme = normalise(value).lower().split(":", 1)[0]
+                    self.scripts.append(f"<{tag} {name}={scheme}:>")
                     continue
                 if tag == "a" and name == "href":
                     continue        # a link the human clicks loads nothing now
@@ -248,9 +277,6 @@ def check(path):
     for url in css_urls(css):
         if not local(url):
             bad.append(f"external resource: CSS fetches {url} — must be data: or #fragment")
-    if CSS_SCHEME.search(css):
-        bad.append("external resource: the CSS names an http(s) address — every byte it renders "
-                   "is already inside the file")
 
     # -- the five blocks ---------------------------------------------------
     for marker in PAGE_BLOCKS:

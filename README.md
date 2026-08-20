@@ -230,7 +230,7 @@ named for it to fail, one at a time. A test that passes with the defect back pro
 nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answers to the same
 rule through `python3 tk/tests/mutations_tk_contract.py`, `tk-vista-check` through
 `python3 tk/tests/mutations_vista.py` (entries only, reusing that runner), and the commit guard
-through `python3 tk/tests/mutations_private_values.py`. The harnesses are separate files only
+through `python3 githooks/tests/mutations_private_values.py`. The harnesses are separate files only
 because the oldest one names its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —

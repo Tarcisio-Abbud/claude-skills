@@ -150,6 +150,34 @@ class TestSelfContained(CheckTest):
                                         'href="javascript:location=1"'),
                            "the page runs code")
 
+    def test_a_javascript_url_split_by_a_tab_is_refused(self):
+        # measured in Chromium: the link EXECUTES. WHATWG removes tab, CR and LF
+        # from the whole string before parsing, so the browser reads a scheme
+        # where `.strip()` sees none
+        self.assertRefused(PAGE.replace('href="https://github.com/acme/repo/pull/1"',
+                                        'href="java\tscript:alert(1)"'),
+                           "the page runs code")
+
+    def test_a_javascript_url_split_by_a_newline_is_refused(self):
+        self.assertRefused(PAGE.replace('href="https://github.com/acme/repo/pull/1"',
+                                        'href="java\nscript:alert(1)"'),
+                           "the page runs code")
+
+    def test_a_javascript_url_behind_a_control_character_is_refused(self):
+        self.assertRefused(PAGE.replace('href="https://github.com/acme/repo/pull/1"',
+                                        'href="\x01 javascript:alert(1)"'),
+                           "the page runs code")
+
+    def test_a_javascript_url_in_capitals_is_refused(self):
+        self.assertRefused(PAGE.replace('href="https://github.com/acme/repo/pull/1"',
+                                        'href="JAVASCRIPT:alert(1)"'),
+                           "the page runs code")
+
+    def test_a_vbscript_url_is_refused(self):
+        self.assertRefused(PAGE.replace('href="https://github.com/acme/repo/pull/1"',
+                                        'href="vbscript:msgbox 1"'),
+                           "the page runs code")
+
     def test_a_meta_refresh_is_refused(self):
         self.assertRefused(
             PAGE.replace("<title>", '<meta http-equiv="refresh" content="0;url=http://x.example/">\n<title>'),
@@ -160,11 +188,14 @@ class TestSelfContained(CheckTest):
             PAGE.replace("body {", 'body { background-image:image-set("http://cdn.example/a.png" 1x);'),
             "CSS fetches")
 
-    def test_an_http_address_anywhere_in_the_css_is_refused(self):
-        # the catch-all behind the function list: a CSS property this checker
-        # has never heard of cannot smuggle an address past it
-        self.assertRefused(PAGE.replace("body {", 'body { -x-future:"http://cdn.example/a.png";'),
-                           "names an http(s) address")
+    def test_a_class_named_http_is_not_an_address(self):
+        # every place CSS fetches from is a FUNCTION, so the functions are the
+        # whole list: a catch-all over the stylesheet text refused these two
+        self.assertAccepted(PAGE.replace("body {", ".http:hover { color:red; }\n  body {"))
+
+    def test_an_address_inside_generated_text_is_not_a_fetch(self):
+        self.assertAccepted(PAGE.replace(
+            "body {", '.badge::after { content:"See http://example-internal/docs"; }\n  body {'))
 
     def test_an_event_handler_is_refused(self):
         self.assertRefused(PAGE.replace("<h4>T001", '<h4 onclick="void 0">T001'),
@@ -251,7 +282,14 @@ class TestFiveBlocks(CheckTest):
     def test_a_proof_pointing_at_a_reserved_placeholder_domain_is_refused(self):
         self.assertRefused(PAGE.replace("https://github.com/acme/repo/pull/1",
                                         "https://example.invalid/pull/0"),
-                           "links no real proof", "placeholder domain")
+                           "links no real proof", "placeholder name")
+
+    def test_a_proof_on_a_name_that_never_resolves_is_refused(self):
+        # RFC 2606 and RFC 6761 reserve these to resolve to nothing, ever
+        for host in ("localhost", "forge.test", "forge.example", "example.com."):
+            with self.subTest(host=host):
+                self.assertRefused(PAGE.replace("github.com/acme/repo", host + "/acme/repo"),
+                                   "links no real proof")
 
     def test_a_proof_that_is_only_a_fragment_is_refused(self):
         self.assertRefused(PAGE.replace("https://github.com/acme/repo/pull/1", "#"),
@@ -313,7 +351,7 @@ class TestShippedTemplate(CheckTest):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         findings = [l.strip("- ").strip() for l in r.stdout.splitlines() if l.startswith("  - ")]
         self.assertEqual(len(findings), 1, findings)
-        self.assertIn("placeholder domain", findings[0])
+        self.assertIn("placeholder name", findings[0])
 
 
 class TestUsage(CheckTest):
