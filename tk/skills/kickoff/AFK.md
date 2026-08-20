@@ -151,7 +151,9 @@ package outright and an item whose ticket the audit rewrote has to be dispatched
 rewritten one.
 
 It runs by **default** on a wave. The orchestrator may skip it for a wave of at most two
-trivial or mechanical tickets, and the skip costs the line step 6 owes either way; a wave born
+tickets that are both Effort S and fully specified — the same test the `implementer` row of
+`../../reference/subagent-policy.md` uses to allow a sonnet downgrade — and the skip costs the
+block step 6 is owed either way; a wave born
 of a REGRILL never skips, however small it is. A package assembled from an aged queue rather
 than from a wave has no spec to read and the audit does not apply — which is the line step 6
 gets in that case.
@@ -186,8 +188,9 @@ lenses, then `verifier-1`, `verifier-2` and `tiebreak`. The graph, in order:
 3. **One verifier per finding**, carrying three fixed lines: its mandate is to **refute**, its
    default verdict is *refuted*, and it reads the **real sources** rather than the quotations
    the finding carries. That prompt broke 22% of the finders' findings on that same round.
-   It also declares its own **confidence**, and confidence is the escalation trigger, not
-   severity: a low-confidence verdict goes to `verifier-2`, as does any confirmed finding whose
+   It also declares its own **confidence** — `high`, `medium` or `low`, those three words —
+   and confidence is the escalation trigger, not severity: a `low` verdict goes to
+   `verifier-2`, as does any confirmed finding whose
    correction would edit the spec or a ticket, and the two disagreeing goes to `tiebreak`. There,
    the four low-confidence verdicts were exactly the four the tiebreak decided
    — two of them real, two refuted.
@@ -195,10 +198,14 @@ lenses, then `verifier-1`, `verifier-2` and `tiebreak`. The graph, in order:
    `isolation: 'worktree'`, since a shared tree was measured contaminating reviewers of one
    another (2026-08-14).
 
-**One question stays here rather than becoming a fourth lens: can the first implement session
-START?** The three lenses read the two documents against each other, and none of them asks
-whether the work can begin at all — on that round a code repo holding no tracker
-configuration got past all three, and was caught outside the audit. Ask it of the wave once.
+**One question stays with the orchestrator rather than becoming a fourth lens: can the first
+implement session START?** The three lenses read the two documents against each other, and
+none of them asks whether the work can begin at all — on that round a code repo holding no
+tracker configuration got past all three, and was caught outside the audit. Ask it once of the
+wave, by naming what the first ticket's session needs before its first edit: the repo, the
+tracker configuration in it, the credentials, the fixture its criterion runs against. A "no"
+is a finding like any other and takes one of the four outcomes below — usually **resolve
+here**, and **REGRILL** where the spec assumed the missing thing was there.
 
 One round is measured (2026-08-19, run over this package's own spec and tickets): three Sonnet
 finders, ≈280k tokens and 10.5 minutes, returned 11 findings with one of them reached by two
@@ -218,10 +225,10 @@ Exactly one holds per surviving finding.
 | **Refuted** | the verifier broke the finding | one line naming the verifier and how it broke — the finding is gone, and the line is the whole record |
 | **REGRILL** | the spec's own premise is what the finding hit | the package halts with no run fired, and the queue takes the decision instead of the work (below) |
 
-Every record in that last column is written into the **audit's line to step 6** — what was
-edited, what was queued, what was refuted, one line each. That is the only address they have:
-the close's digest is assembled in step 7, and a record kept in this step's own reasoning
-reaches nobody.
+Every record in that last column goes into the **audit's block**, which is what this step
+hands to step 6: one line per finding under its outcome — what was edited, what was queued,
+what was refuted. That block is the only address they have, and a record kept in this step's
+own reasoning reaches nobody.
 
 *Refuted* is a verifier's verdict that the finding was never real, which is what separates it
 from the **discarding** of the session-finding ladder below: that one is a human judgement an
@@ -304,9 +311,9 @@ Three numbers on one line, emitted here, where the package hands back: **planned
 first dispatch to last verdict. They are what stops the cut in step 1 from staying a guess:
 this package's line is the next package's evidence. The deviation lines are emitted beside
 them, one per departure from the role table, in that file's format — a deviation with no line
-is indistinguishable from a slip. The audit owes one line here too, whichever way it went:
-ran, with one line per finding under its outcome and what the round cost in agents and wall
-clock, or skipped,
+is indistinguishable from a slip. The audit hands over its **block** here, whichever way it
+went: having run, one line per finding under its outcome plus what the round cost in agents
+and wall clock; skipped,
 with the judgement that skipped it. Those lines belong to the package and precede the close,
 whose own report follows a template this file does not extend.
 

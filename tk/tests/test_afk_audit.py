@@ -3,10 +3,12 @@
 
 Run: python3 -m unittest discover -s tk/tests   (stdlib only, no deps)
 
-What it proves, and only this: the `tk-queue` commands that step PRESCRIBES for a REGRILL
-are lifted out of AFK.md itself, run against a throwaway queue, and land a `DECISION` item
-carrying its **Deferred:** gate — while the same command with `--deferred` removed is
-refused with nothing entering the queue. The prescribed lines are code, so they are run
+What it proves, and only this: the `tk-queue add` and `tk-queue handoff` lines that step
+PRESCRIBES for a REGRILL are lifted out of AFK.md itself, run against a throwaway queue, and
+land a `DECISION` item carrying its **Deferred:** gate — while the same `add` with
+`--deferred` removed is refused with nothing entering the queue. Any other `tk-queue`
+subcommand the file may come to prescribe is extracted and checked for the gate, but is not
+run: giving it a fixture is work of its own. The prescribed lines are code, so they are run
 rather than read; the list of them is derived from the file, so a recipe rewritten without
 the gate is caught rather than a hand-kept copy of it.
 
