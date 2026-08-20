@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""tk-vista-check — does this HTML file qualify as a *vista*?
+
+A vista is the visual companion of a package digest: a page the human READS to
+give a verdict, written to the outbox and thrown away. It is never a source, so
+nothing is read back from it — which leaves exactly two properties a machine can
+still check, and both are checked here.
+
+SELF-CONTAINED. The page opens from a local file, on a machine that may be
+offline, months after the session that wrote it. So every byte it renders is
+already inside it: no stylesheet, script, font, image or fetch reaching out.
+The rule this script enforces is narrower than "no http", because a vista MUST
+carry links — block 4 of the contract is the link to each slice's proof, which
+lives in the PR. The distinction is what the browser LOADS versus where the
+reader CLICKS:
+
+  - a URL the browser fetches to render the page (src, <link href>, @import,
+    CSS url(), a network call in script) must be `data:` or a `#` fragment;
+  - `<a href="...">` may point anywhere, since it loads nothing until a human
+    clicks it, and clicking is the point.
+
+A RELATIVE path is refused by the same rule, and deliberately: `src="logo.png"`
+costs no network but breaks the moment the file is copied anywhere alone, which
+is the normal life of an outbox file.
+
+THE FIVE BLOCKS. The contract (`../reference/vista.md`) fixes five blocks and
+leaves the layout free, so the blocks are found by MARKER, never by shape:
+`data-vista-bloco` names a region, `data-vista-card` marks one card, and a card
+carries its outcome and its risk tag as attributes. A checker looking for a
+heading text or a CSS class would fail the next page that renders the same
+contract differently — which is every page, the layout being free.
+
+Usage:  tk-vista-check <file.html> [<file.html> ...]
+Exit:   0 every file qualifies · 1 some file does not · 2 bad usage/unreadable
+"""
+
+import argparse
+import os
+import re
+import sys
+from html.parser import HTMLParser
+
+# Attributes whose value the browser FETCHES. `href` is here too, and the `<a>`
+# exemption is applied where the tag is known — not by dropping href from the
+# list, which would also exempt <link rel=stylesheet>
+URL_ATTRS = {
+    "src", "srcset", "poster", "data", "href", "action", "formaction",
+    "background", "cite", "longdesc", "manifest", "xlink:href", "codebase",
+}
+
+# Network APIs, looked for inside <script> and event-handler attributes only:
+# the same words in the page's prose are prose
+NETWORK_CALLS = re.compile(
+    r"\b(fetch|XMLHttpRequest|WebSocket|EventSource|importScripts)\s*\(" 
+    r"|\bnavigator\s*\.\s*sendBeacon\b"
+    r"|\bimport\s*\("
+)
+
+CSS_URL = re.compile(r"url\(\s*(['\"]?)([^'\")]*)\1\s*\)", re.IGNORECASE)
+CSS_IMPORT = re.compile(r"@import\b", re.IGNORECASE)
+DARK_THEME = re.compile(r"prefers-color-scheme\s*:\s*dark", re.IGNORECASE)
+
+VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+        "meta", "param", "source", "track", "wbr"}
+
+BLOCKS = ("stats", "cards", "prova", "saldo")
+
+
+def local(url):
+    """True when the browser can resolve `url` without leaving this file."""
+    u = (url or "").strip()
+    if not u or u.startswith("#"):
+        return True
+    return u.lower().startswith("data:")
+
+
+class Vista(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.stack = []          # open tags, innermost last
+        self.cards = []          # one dict per card found
+        self.open_cards = []     # indices into self.cards, innermost last
+        self.blocks = set()      # data-vista-bloco values seen anywhere
+        self.css = []            # every stylesheet-ish string in the document
+        self.script = []         # every script body and event handler
+        self.external = []       # (tag, attr, value)
+        self.in_script = False
+
+    # -- traversal ---------------------------------------------------------
+    def handle_starttag(self, tag, attrs):
+        opened_card = self._element(tag, attrs)
+        if tag not in VOID:
+            self.stack.append(tag)
+            if opened_card:
+                self.open_cards.append(len(self.cards) - 1)
+
+    def handle_startendtag(self, tag, attrs):
+        # `<article data-vista-card/>` closes where it opens: it is a card, and
+        # it never becomes the container a later prova link is counted into
+        self._element(tag, attrs)
+
+    def handle_endtag(self, tag):
+        if tag == "script":
+            self.in_script = False
+        if tag in self.stack:
+            # pop through the tags an unclosed <p> or <li> left behind, so one
+            # sloppy element cannot detach every card boundary below it
+            while self.stack:
+                open_tag = self.stack.pop()
+                depth = len(self.stack)
+                while self.open_cards and self.cards[self.open_cards[-1]]["depth"] >= depth:
+                    self.open_cards.pop()
+                if open_tag == tag:
+                    break
+
+    def handle_data(self, data):
+        if self.in_script:
+            self.script.append(data)
+        elif self.stack and self.stack[-1] == "style":
+            self.css.append(data)
+
+    # -- one element -------------------------------------------------------
+    def _element(self, tag, attrs):
+        """Read one element; True when it opened a card."""
+        a = {k.lower(): (v or "") for k, v in attrs}
+        if tag == "script":
+            self.in_script = True
+        for name, value in a.items():
+            if name in URL_ATTRS:
+                if tag == "a" and name == "href":
+                    continue        # a link the human clicks loads nothing now
+                for url in (value.split(",") if name == "srcset" else [value]):
+                    url = url.strip().split(" ")[0] if name == "srcset" else url
+                    if not local(url):
+                        self.external.append((tag, name, url.strip()))
+            if name == "style":
+                self.css.append(value)
+            if name.startswith("on"):
+                self.script.append(value)
+
+        block = a.get("data-vista-bloco", "").strip()
+        if block:
+            self.blocks.add(block)
+            if block == "prova" and self.open_cards:
+                card = self.cards[self.open_cards[-1]]
+                card["provas"].append(a.get("href", "").strip())
+
+        if "data-vista-card" not in a:
+            return False
+        self.cards.append({
+            "id": a.get("data-vista-card", "").strip() or f"#{len(self.cards) + 1}",
+            "desfecho": a.get("data-vista-desfecho", "").strip(),
+            "risco": a.get("data-vista-risco", "").strip(),
+            "provas": [],
+            # the depth OUTSIDE the card: this runs before the tag is pushed
+            "depth": len(self.stack),
+        })
+        return True
+
+
+def check(path):
+    """Return the list of failures for one file — empty means it qualifies."""
+    with open(path, encoding="utf-8-sig") as f:
+        text = f.read()
+    v = Vista()
+    v.feed(text)
+    v.close()
+    bad = []
+
+    # -- self-contained ----------------------------------------------------
+    for tag, attr, url in v.external:
+        bad.append(f"external resource: <{tag} {attr}=\"{url}\"> — must be data: or #fragment")
+    css = "\n".join(v.css)
+    if CSS_IMPORT.search(css):
+        bad.append("external resource: @import — a vista inlines its CSS instead")
+    for _, url in CSS_URL.findall(css):
+        if not local(url):
+            bad.append(f"external resource: CSS url({url}) — must be data: or #fragment")
+    for call in sorted({m.group(0).strip() for m in NETWORK_CALLS.finditer("\n".join(v.script))}):
+        bad.append(f"network call in script: {call} — a vista renders from what it already holds")
+
+    # -- the five blocks ---------------------------------------------------
+    if "stats" not in v.blocks:
+        bad.append('block 1 missing: no data-vista-bloco="stats" (the opening stats line)')
+    if "cards" not in v.blocks:
+        bad.append('block 2 missing: no data-vista-bloco="cards" (the cards region)')
+    if not v.cards:
+        bad.append("block 2 missing: no data-vista-card in the page")
+    for card in v.cards:
+        if not card["desfecho"]:
+            bad.append(f'block 2: card {card["id"]} has no data-vista-desfecho '
+                       "(cards group by outcome)")
+        if not card["risco"]:
+            bad.append(f'block 3: card {card["id"]} has no data-vista-risco (risk tag per card)')
+        if not [u for u in card["provas"] if u]:
+            bad.append(f'block 4: card {card["id"]} carries no data-vista-bloco="prova" '
+                       "link with an href (the slice's proof)")
+    if "saldo" not in v.blocks:
+        bad.append('block 5 missing: no data-vista-bloco="saldo" (closed × open balance)')
+
+    # -- readable in both themes -------------------------------------------
+    if not DARK_THEME.search(css):
+        bad.append("no prefers-color-scheme: dark rule — the page has one theme, "
+                   "and the reader may be in the other")
+    return bad
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(
+        prog="tk-vista-check",
+        description="Checks an outbox vista: self-contained, and the five blocks of the "
+                    "contract in ../reference/vista.md.")
+    p.add_argument("files", nargs="+", metavar="FILE.html")
+    args = p.parse_args(argv)
+
+    failed = False
+    for path in args.files:
+        if not os.path.isfile(path):
+            print(f"{path}: not a regular file", file=sys.stderr)
+            return 2
+        try:
+            bad = check(path)
+        except (OSError, UnicodeDecodeError) as e:
+            print(f"{path}: unreadable — {e}", file=sys.stderr)
+            return 2
+        if bad:
+            failed = True
+            print(f"FAIL {path}")
+            for b in bad:
+                print(f"  - {b}")
+        else:
+            print(f"ok   {path}")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

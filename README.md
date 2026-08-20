@@ -18,7 +18,7 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | Skill | What it does |
 |---|---|
 | `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens with the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality, triaged and dispatched via menu. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort |
-| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (merges preceded by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict four verdicts or at an open PR carrying its evidence block |
+| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (merges preceded by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict four verdicts or at an open PR carrying its evidence block, and the package close writes a **vista** — the digest's self-contained HTML companion — to the outbox |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
@@ -173,6 +173,11 @@ tk/
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   reference/subagent-policy.md    model, effort and venue per subagent role; the role
                                   table is parseable, schema declared in the file
+  reference/vista.md              the vista: the digest's visual companion — what it is, when
+                                  it is written, where it lands, and the five blocks it fixes;
+                                  shared by the wrap-up's package close and any later reporter
+  reference/vista-template.html   that page in its smallest form: the five markers, both
+                                  themes, and nothing the browser fetches
   reference/slice-rules.md        the rules earlier slices paid for — writing a command
                                   that touches a file, proving it, and prose another
                                   agent reads; reached from the contract block
@@ -185,6 +190,8 @@ tk/
                                   from memory, and carrying no copy of either
   bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
                                   where their projects are, minus the site file's lists
+  bin/tk-vista-check              the gate on a vista: refuses a page that fetches anything,
+                                  and one missing a block, a risk tag or a proof link
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
@@ -195,6 +202,9 @@ tk/
                                   someone wrote
   tests/mutations_roster.py       the same, for the roster suite — folds into that
                                   runner, which already takes the suite as an argument
+  tests/test_tk_vista_check.py    regression suite for the vista gate
+  tests/mutations_vista.py        its mutations — entries only: the runner is the one above,
+                                  reached through its module/entries arguments
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
@@ -218,8 +228,9 @@ returning to `main` puts the old `tk-queue` back. A fix is only in force once me
 proved by `python3 tk/tests/mutations.py`, which restores each defect and requires the tests
 named for it to fail, one at a time. A test that passes with the defect back protects
 nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answers to the same
-rule through `python3 tk/tests/mutations_tk_contract.py`; the two harnesses are separate files
-only because the older one names its test module inline.
+rule through `python3 tk/tests/mutations_tk_contract.py`, and `tk-vista-check` through
+`python3 tk/tests/mutations_vista.py`, which holds entries only and reuses that runner. The
+harnesses are separate files only because the oldest one names its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
 the whole `tk/` tree is versioned.
