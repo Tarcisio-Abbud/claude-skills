@@ -582,11 +582,13 @@ MUTATIONS = [
 
     ("T119 bump acts without checking the item is really open",
      "    content, block, start = find_open_item(memdir, args.id)\n"
+     "    label = item_label(block)\n"
      '    path = os.path.join(memdir, "next-steps.md")',
      '    path = os.path.join(memdir, "next-steps.md")\n'
      "    content = read(path) or \"\"\n"
      '    block, start = next(((t, 0) for k, t in split_blocks(content)\n'
-     '                         if k == "item-open" and item_id(t) == args.id), ("", 0))',
+     '                         if k == "item-open" and item_id(t) == args.id), ("", 0))\n'
+     "    label = item_label(block)",
      ["TestBump.test_an_unknown_id_is_diagnosed_and_nothing_moves"]),
 
     ("T119 list orders its groups alphabetically, so a bump is invisible",
@@ -986,10 +988,10 @@ MUTATIONS = [
 
     ("T121 a second claim is let through (two sessions hold the same item)",
      '    if held is not None:\n'
-     '        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. '
+     '        fail(f"{label} is already {claim_mark(*claim_value(held))}. '
      'Nothing was "',
      '    if False:\n'
-     '        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. '
+     '        fail(f"{label} is already {claim_mark(*claim_value(held))}. '
      'Nothing was "',
      ["TestClaim.test_a_second_claim_is_refused_naming_the_owner_and_the_moment",
       "TestClaim.test_the_same_owner_cannot_reclaim_it_either",
@@ -998,9 +1000,9 @@ MUTATIONS = [
     # the refusal is the whole product of the guard: "already claimed" with no name
     # tells the caller nothing to act on, and no session to go ask
     ("T121 the refusal stops naming the owner and the moment",
-     '        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. '
+     '        fail(f"{label} is already {claim_mark(*claim_value(held))}. '
      'Nothing was "',
-     '        fail(f"T{args.id:03d} is already claimed. Nothing was "',
+     '        fail(f"{label} is already claimed. Nothing was "',
      ["TestClaim.test_a_second_claim_is_refused_naming_the_owner_and_the_moment",
       "TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
 
@@ -1055,20 +1057,20 @@ MUTATIONS = [
     # release that demanded a host would refuse a diagnosis about a claim the item
     # does not even have
     ("T121 release demands a host it does not need",
-     "    held = claim_segment(args.id, block)\n    if held is None:",
+     "    held = claim_segment(block)\n    if held is None:",
      '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
-     '        fail(f"T{args.id:03d} cannot hold a claim")\n'
-     "    held = claim_segment(args.id, block)\n    if held is None:",
+     '        fail(f"{label} cannot hold a claim")\n'
+     "    held = claim_segment(block)\n    if held is None:",
      ["TestClaim.test_release_on_a_chainless_item_with_no_marker_is_still_an_honest_no_op"]),
 
     # the order of two refusals: only the stray one is terminal, and preempting it
     # printed a remedy that MUTATED the file and left the real refusal standing
     ("T121 the missing-host refusal preempts the terminal stray one",
-     "    held = claim_segment(args.id, block)\n    if held is not None:",
+     "    held = claim_segment(block)\n    if held is not None:",
      '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
-     '        fail(f"T{args.id:03d}: give it a class first: `tk-queue edit '
-     'T{args.id:03d} --class AUTONOMOUS`")\n'
-     "    held = claim_segment(args.id, block)\n    if held is not None:",
+     '        fail(f"{label}: give it a class first: `tk-queue edit '
+     '{label} --class AUTONOMOUS`")\n'
+     "    held = claim_segment(block)\n    if held is not None:",
      ["TestClaim.test_a_stray_marker_is_answered_BEFORE_the_missing_host"]),
 
     ("T121 an ambiguously claimed item is displayed as FREE",
@@ -1109,8 +1111,8 @@ MUTATIONS = [
      ["TestClaim.test_a_broken_chain_is_told_WHERE_it_stops_and_never_guesses_why"]),
 
     ("T121 two claims in the chain are guessed (the first wins) instead of refused",
-     "    if len(segs) > 1:\n        fail(f\"T{iid:03d} carries {len(segs)} **Claimed:**",
-     "    if False:\n        fail(f\"T{iid:03d} carries {len(segs)} **Claimed:**",
+     "    if len(segs) > 1:\n        fail(f\"{label} carries {len(segs)} **Claimed:**",
+     "    if False:\n        fail(f\"{label} carries {len(segs)} **Claimed:**",
      ["TestClaim.test_two_claim_fields_in_the_chain_are_refused_as_ambiguous"]),
 
     ("T121 Claimed stops being a field the readers know (it leaves FIELD_VARIANTS)",
@@ -1144,10 +1146,10 @@ MUTATIONS = [
     # ceiling makes a legacy oversized item unclaimable without --force
     ("T121 claiming is measured against the block ceiling",
      "    splice_item(memdir, content, block, start, new)\n"
-     '    print(f"T{args.id:03d} claimed by {args.owner} ({stamp})")',
+     '    print(f"{label} claimed by {args.owner} ({stamp})")',
      "    check_ceiling(new, False)\n"
      "    splice_item(memdir, content, block, start, new)\n"
-     '    print(f"T{args.id:03d} claimed by {args.owner} ({stamp})")',
+     '    print(f"{label} claimed by {args.owner} ({stamp})")',
      ["TestClaim.test_claiming_a_legacy_oversized_item_needs_no_force"]),
 
     ("T121 release splices the field out without the removal-site repair",
@@ -1158,13 +1160,13 @@ MUTATIONS = [
       "TestClaim.test_a_claim_that_does_not_parse_can_still_be_released"]),
 
     ("T121 release reports a release it did not perform",
-     '        print(f"T{args.id:03d} carries no claim — nothing to release")',
-     '        print(f"T{args.id:03d} released")',
+     '        print(f"{label} carries no claim — nothing to release")',
+     '        print(f"{label} released")',
      ["TestClaim.test_releasing_an_unclaimed_item_says_so_and_changes_nothing"]),
 
     ("T121 release stops naming the claim it dropped (a silent steal)",
-     '    print(f"T{args.id:03d} released — it was {mark}")',
-     '    print(f"T{args.id:03d} released")',
+     '    print(f"{label} released — it was {mark}")',
+     '    print(f"{label} released")',
      ["TestClaim.test_release_names_the_claim_it_dropped"]),
 
     ("T121 list stops showing the mark",
@@ -1728,6 +1730,71 @@ MUTATIONS = [
      "    content, block, start = find_open_item(memdir, args.id)\n    values = {dest:",
      '    content, block, start = "", "", 0\n    values = {dest:',
      ["TestHandoffCreation.test_an_item_that_is_not_open_gets_no_briefing"]),
+
+    # --- T121: the NAME an item gets back is read off its own block ---------
+    # `int("0001") == 1`, so a label rebuilt from the number typed is the label of
+    # a DIFFERENT item. Each entry below puts one command's re-rendering back.
+
+    ("T121 the done-log LINE records a re-rendered ID (the durable record)",
+     '    line = f"- {today} — {marker} — {label} {text} — {outcome}"',
+     '    line = f"- {today} — {marker} — T{args.id:03d} {text} — {outcome}"',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_done_log_records_the_item_under_its_own_spelling",
+      "TestResolvedItemKeepsItsOwnSpelling.test_cancel_writes_the_same_name_into_the_log"]),
+
+    ("T121 done/cancel name the item by the number typed, not by the block",
+     "    label = item_label(block)\n"
+     "    ensure_single_line(outcome=outcome, summary=args.summary)",
+     '    label = f"T{args.id:03d}"\n'
+     "    ensure_single_line(outcome=outcome, summary=args.summary)",
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_done_log_records_the_item_under_its_own_spelling",
+      "TestResolvedItemKeepsItsOwnSpelling.test_cancel_writes_the_same_name_into_the_log"]),
+
+    # the refusal that HANDS OVER A COMMAND: a remedy addressed to T001 while the
+    # item is T0001 rewrites another item, and --text eats its prose
+    ("T121 the claim refusal names a re-rendered ID in the remedy it prints",
+     '    label = item_label(block)\n    head = (f"{label} cannot hold a claim',
+     '    label = f"T{item_id(block):03d}"\n    head = (f"{label} cannot hold a claim',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_refusal_names_the_item_and_its_remedy_addresses_that_item",
+      "TestResolvedItemKeepsItsOwnSpelling.test_the_old_remedy_was_a_command_about_a_DIFFERENT_open_item"]),
+
+    ("T121 the ambiguous and stray claim refusals name a re-rendered ID",
+     '    label = item_label(block)\n    segs, markers = qualified_fields(block, "Claimed")',
+     '    label = f"T{item_id(block):03d}"\n'
+     '    segs, markers = qualified_fields(block, "Claimed")',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_ambiguous_and_stray_claim_refusals_name_the_item"]),
+
+    ("T121 edit reports a re-rendered ID",
+     "    label = item_label(block)\n    ensure_single_line(text=args.text",
+     '    label = f"T{args.id:03d}"\n    ensure_single_line(text=args.text',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_edit_reports_the_item_it_rewrote"]),
+
+    ("T121 claim reports a re-rendered ID",
+     "    label = item_label(block)\n    held = claim_segment(block)",
+     '    label = f"T{args.id:03d}"\n    held = claim_segment(block)',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_claim_release_and_bump_name_the_item_they_touched"]),
+
+    ("T121 release reports a re-rendered ID",
+     "    label = item_label(block)\n    # No host check here",
+     '    label = f"T{args.id:03d}"\n    # No host check here',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_claim_release_and_bump_name_the_item_they_touched"]),
+
+    ("T121 bump reports a re-rendered ID",
+     '    label = item_label(block)\n    path = os.path.join(memdir, "next-steps.md")',
+     '    label = f"T{args.id:03d}"\n'
+     '    path = os.path.join(memdir, "next-steps.md")',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_claim_release_and_bump_name_the_item_they_touched"]),
+
+    ("T121 the deferral gate names a re-rendered ID",
+     "    label = item_label(block)\n    setting = args.deferred is not None",
+     '    label = f"T{args.id:03d}"\n    setting = args.deferred is not None',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_deferral_refusal_names_the_item"]),
+
+    # the one branch of missing_item_message that HAS a block: `migrate` moves a
+    # ticked line VERBATIM, so the log will carry that spelling and no other
+    ("T121 the already-ticked branch names a re-rendered ID",
+     '            return (f"{item_label(text)} is in next-steps.md but already ticked [x]',
+     '            return (f"{label} is in next-steps.md but already ticked [x]',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_an_item_already_ticked_is_named_by_its_own_spelling"]),
 ]
 
 
@@ -1753,7 +1820,8 @@ def main():
                                   "TestIdSpelling", "TestAmbiguousId",
                                   "TestMigrateFold",
                                   "TestProseWearingAFieldName",
-                                  "TestListReadsTheClassFromTheChain"])
+                                  "TestListReadsTheClassFromTheChain",
+                                  "TestResolvedItemKeepsItsOwnSpelling"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

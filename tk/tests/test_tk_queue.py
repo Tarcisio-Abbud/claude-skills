@@ -4057,5 +4057,213 @@ class TestListReadsTheClassFromTheChain(QueueTest):
             self.assertIn(line, out)
 
 
+# --- T121: a resolved ID names the item it REACHED ------------------------
+#
+# `item_label` gave `list` and `pack` the item's own spelling. The commands that
+# RESOLVE an ID went on re-rendering the parsed number, and `int("0001") == 1`.
+# Two measured faces, one root — both on a lone `T0001`:
+#
+#   claim T0001 -> "T001 cannot hold a claim ... `tk-queue edit T001 --text ...`"
+#   done  T0001 -> "- 2026-08-20 - FEITO - T001 item largo. - feito"
+#
+# The first HANDS THE CALLER A COMMAND. In a queue that also holds a real T001 it
+# is a command about that OTHER item, and `--text` replaces everything between
+# the head and the first field, continuation prose included. The second is the
+# durable record: the done-log outlives the item, and it was left naming an ID no
+# item ever carried, which no grep for the real one will ever find.
+#
+# The ID stays the ADDRESS — `done 1`, `done T001` and `done T0001` are one call,
+# and two items under one number are the ambiguity TestAmbiguousId measures. What
+# moves is the NAME every message and record gives back.
+
+WIDE_OFF_LINE = ("- [ ] **T0001** — legado de id largo, campos fora da 1a linha\n"
+                 "  **Class:** AUTONOMOUS. **Effort:** L. **Source:** tracker\n")
+
+
+class TestResolvedItemKeepsItsOwnSpelling(QueueTest):
+    """Every message and record ABOUT an item names the block that was acted on,
+    read off that block with `item_label` — never rebuilt from the number the
+    caller typed."""
+
+    def wide(self, text="item de id largo", **kw):
+        """T0001: the same number as T001, spelled a digit wider."""
+        return item(1, text, **kw).replace("**T001**", "**T0001**", 1)
+
+    def today(self):
+        return datetime.date.today().isoformat()
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    # --- the refusal that hands over a command ---------------------------
+    def test_the_refusal_names_the_item_and_its_remedy_addresses_that_item(self):
+        self.seed(WIDE_OFF_LINE)
+        r = self.run_tk("claim", "T0001", "--as", "teste")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 cannot hold a claim the reader would find", r.stderr)
+        self.assertIn('`tk-queue edit T0001 --text "<the item\'s whole text>"`', r.stderr)
+        self.assertNotIn("T001 cannot hold", r.stderr)
+        self.assertNotIn("edit T001 --text", r.stderr)
+        # a refusal writes nothing, and the WHOLE file says so: an absence check
+        # would pass just as happily on a file this run had truncated
+        self.assertEqual(self.body(), HEADER + WIDE_OFF_LINE)
+
+    def test_the_old_remedy_was_a_command_about_a_DIFFERENT_open_item(self):
+        """The destruction that was one paste away. With a real T001 in the same
+        queue, `tk-queue edit T001 --text "<the item's whole text>"` addresses
+        that item — and --text replaces everything between its head and its first
+        field. `list` shows the two as the two items they are; the refusal has to
+        name the one it is about."""
+        other = item(1, "item curto de verdade")
+        self.seed(WIDE_OFF_LINE, other)
+        self.assertIn("T001  AUTONOMOUS  item curto de verdade",
+                      self.run_tk("list").stdout)
+        r = self.run_tk("claim", "T0001", "--as", "teste")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 cannot hold a claim", r.stderr)
+        self.assertIn("tk-queue edit T0001 --text", r.stderr)
+        self.assertNotIn("T001 cannot hold", r.stderr)
+        self.assertNotIn("edit T001 --text", r.stderr)
+        self.assertEqual(self.body(), HEADER + WIDE_OFF_LINE + other)
+
+    # --- the record that outlives the item -------------------------------
+    def test_the_done_log_records_the_item_under_its_own_spelling(self):
+        """The WHOLE entry line, because this one is user data with no other
+        copy: `assertIn("T0001")` passes on a line that also still says T001."""
+        self.seed(self.wide(), log="")
+        r = self.run_tk("done", "T0001", "--how", "feito")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, f"T0001 → done-log as FEITO ({self.today()})\n")
+        entries = [ln for ln in self.body("done-log.md").splitlines()
+                   if ln.startswith("- 2")]
+        self.assertEqual(
+            entries, [f"- {self.today()} — FEITO — T0001 item de id largo — feito"])
+
+    def test_cancel_writes_the_same_name_into_the_log(self):
+        """`done` and `cancel` are one function, and a fix in one of two copies
+        is how the log would come to spell the same item two ways."""
+        self.seed(self.wide(), log="")
+        r = self.run_tk("cancel", "T0001", "--why", "nao vale")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, f"T0001 → done-log as DESCARTADO ({self.today()})\n")
+        entries = [ln for ln in self.body("done-log.md").splitlines()
+                   if ln.startswith("- 2")]
+        self.assertEqual(
+            entries,
+            [f"- {self.today()} — DESCARTADO — T0001 item de id largo — nao vale"])
+
+    def test_the_recorded_spelling_is_still_the_one_the_readers_parse(self):
+        """LOG_ID_RE reads the log's ID column and `max_id` allocates from it, so
+        a label the log grammar cannot parse hands 1 out a second time — the
+        outcome the whole ID grammar exists to prevent."""
+        self.seed(self.wide(), log="")
+        self.assertEqual(self.run_tk("done", "T0001", "--how", "feito").returncode, 0)
+        self.assertEqual(self.add(), "T002")
+        self.assertIn("T0001 item de id largo", self.run_tk("report").stdout)
+
+    # --- every other command that resolves an ID -------------------------
+    def test_edit_reports_the_item_it_rewrote(self):
+        self.seed(self.wide())
+        r = self.run_tk("edit", "T0001", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "T0001 updated\n")
+        self.assertEqual(self.body(), HEADER + self.wide(effort="M"))
+
+    def test_claim_release_and_bump_name_the_item_they_touched(self):
+        self.seed(item(2, "outro"), self.wide())
+        r = self.run_tk("claim", "T0001", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, r"\AT0001 claimed by alpha ")
+        r = self.run_tk("claim", "T0001", "--as", "beta")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 is already claimed by alpha since", r.stderr)
+        self.assertIn("`tk-queue release T0001`", r.stderr)
+        r = self.run_tk("release", "T0001")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T0001 released — it was claimed by alpha since", r.stdout)
+        self.assertEqual(self.run_tk("release", "T0001").stdout,
+                         "T0001 carries no claim — nothing to release\n")
+        self.assertEqual(self.run_tk("bump", "T0001").stdout,
+                         "T0001 → top of the queue\n")
+        self.assertEqual(self.run_tk("bump", "T0001").stdout,
+                         "T0001 is already at the top of the queue\n")
+
+    def test_the_deferral_refusal_names_the_item(self):
+        """`edit`'s deferral gate reasons about the item's resulting CLASS and
+        says which item it is talking about."""
+        self.seed(self.wide())
+        r = self.run_tk("edit", "T0001", "--deferred", "esperando o Guilherme.")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 is AUTONOMOUS.", r.stderr)
+        self.assertNotIn("T001 is AUTONOMOUS.", r.stderr)
+        self.assertEqual(self.body(), HEADER + self.wide())
+
+    def test_an_item_already_ticked_is_named_by_its_own_spelling(self):
+        """The one branch of missing_item_message that HAS a block. `migrate`
+        moves a ticked line VERBATIM, so the log will carry T0001 and nothing
+        else — a message saying T001 sends the reader to grep a name the history
+        does not contain, which is the branch's whole instruction."""
+        self.seed(self.wide().replace("- [ ]", "- [x]", 1))
+        r = self.run_tk("done", "T0001", "--how", "feito")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 is in next-steps.md but already ticked [x]", r.stderr)
+        self.assertNotIn("T001 is in next-steps.md", r.stderr)
+        # the remedy it prints, run: the log really does carry that spelling
+        self.assertEqual(self.run_tk("migrate").returncode, 0)
+        self.assertIn("**T0001**", self.body("done-log.md"))
+
+    def test_the_ambiguous_and_stray_claim_refusals_name_the_item(self):
+        """`claim_segment` reads the claim for both `claim` and `release`, and its
+        two refusals are about the item — which is the one they have to name."""
+        two = ("- [ ] **T0001** — um **Class:** AUTONOMOUS. **Effort:** S. "
+               "**Criterion:** A: x. **Claimed:** alfa since 2026-08-19T10:00:00Z. "
+               "**Claimed:** bravo since 2026-08-19T11:00:00Z.\n")
+        self.seed(two)
+        r = self.run_tk("claim", "T0001", "--as", "charlie")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("T0001 carries 2 **Claimed:** fields", r.stderr)
+        self.assertNotIn("T001 carries", r.stderr)
+        self.assertEqual(self.body(), HEADER + two)
+
+        stray = "- [ ] **T0001** — algo\n  nota: **Claimed:** ver depois\n"
+        self.seed(stray)
+        r = self.run_tk("release", "T0001")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("T0001 carries a **Claimed:** marker away from the position",
+                      r.stderr)
+        self.assertNotIn("T001 carries", r.stderr)
+        self.assertEqual(self.body(), HEADER + stray)
+
+    # --- where there is no item, there is no label -----------------------
+    def test_an_ID_that_reaches_no_item_keeps_the_canonical_rendering(self):
+        """No block was resolved, so there is nothing to read a label off — and
+        the branch that says so must not go looking for one."""
+        self.seed(item(2, "dois"),
+                  log="- 2026-08-01 — FEITO — T001 um — PR #1\n")
+        r = self.run_tk("done", "999", "--how", "x")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T999 was never allocated", r.stderr)
+        r = self.run_tk("edit", "T001", "--effort", "M")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T001 already left the queue", r.stderr)
+
+    def test_an_ordinary_item_is_reported_exactly_as_before(self):
+        """Canonical spelling is zero-padded to three, so for every item a WRITER
+        of these files produced the label IS the old rendering. Moving these
+        would be the defect, not the fix."""
+        self.seed(item(1, "um"), log="")
+        self.assertEqual(self.run_tk("edit", "T001", "--effort", "M").stdout,
+                         "T001 updated\n")
+        self.assertEqual(self.run_tk("bump", "1").stdout,
+                         "T001 is already at the top of the queue\n")
+        r = self.run_tk("done", "1", "--how", "PR #1")
+        self.assertEqual(r.stdout, f"T001 → done-log as FEITO ({self.today()})\n")
+        self.assertIn(f"- {self.today()} — FEITO — T001 um — PR #1",
+                      self.body("done-log.md"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

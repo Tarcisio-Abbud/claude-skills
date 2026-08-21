@@ -945,7 +945,7 @@ def class_shape(block):
     return CLASS_SHAPE_BROKEN
 
 
-def claim_unwritable_message(iid, block, candidate):
+def claim_unwritable_message(block, candidate):
     """Why the item cannot hold a claim the reader would find, and the remedy that
     actually works for its shape.
 
@@ -976,8 +976,13 @@ def claim_unwritable_message(iid, block, candidate):
     and the machine has no site file — besides repairing only ONE broken field per
     run. The space of malformed chains is larger than any branch table for it, so the
     message states the fact it can prove and gives the remedy that always works.
+
+    The item is named by its OWN spelling (item_label), because this message HANDS
+    THE CALLER A COMMAND: a remedy addressed to `T001` while the item is `T0001`
+    is a paste that acts on a different item, and the one it prints replaces
+    everything between the head and the first field.
     """
-    label = f"T{iid:03d}"
+    label = item_label(block)
     head = (f"{label} cannot hold a claim the reader would find: a claim is the chain "
             "segment written after **Class:**, and on this item it would not land there. "
             "Nothing was changed — written anyway, the item is held in the file, shown "
@@ -1007,7 +1012,7 @@ def claim_unwritable_message(iid, block, candidate):
                    "on the very field at fault.")
 
 
-def claim_segment(iid, block):
+def claim_segment(block):
     """The item's REAL **Claimed:** field — the one in its FIELD CHAIN — or None.
 
     Read through qualified_fields, so a marker sitting BEFORE the **Class:** — the
@@ -1032,14 +1037,15 @@ def claim_segment(iid, block):
     Both populations are legacy only: ensure_no_embedded_marker refuses the marker
     shape in every free-text flag, and Claimed is a field it knows.
     """
+    label = item_label(block)
     segs, markers = qualified_fields(block, "Claimed")
     if len(segs) > 1:
-        fail(f"T{iid:03d} carries {len(segs)} **Claimed:** fields in its field chain, so "
+        fail(f"{label} carries {len(segs)} **Claimed:** fields in its field chain, so "
              "who holds it is ambiguous. Nothing was changed. Close it with `cancel` and "
              "re-add it clean.")
     seg = segs[0] if segs else None
     if markers > (1 if seg else 0):
-        fail(f"T{iid:03d} carries a **Claimed:** marker away from the position a claim is "
+        fail(f"{label} carries a **Claimed:** marker away from the position a claim is "
              "written in (after **Class:**) — in the item's own prose, or on a continuation "
              "line. Nothing was changed: reading it as the claim would let prose hold the "
              "item forever, and ignoring it would report a free item while that text says "
@@ -1228,9 +1234,12 @@ def missing_item_message(memdir, content, wanted_id):
     label = f"T{wanted_id:03d}"
     for kind, text in split_blocks(content):
         if kind == "item-done" and item_id(text) == wanted_id:
-            return (f"{label} is in next-steps.md but already ticked [x], so it never "
-                    "reached the done-log. Run `tk-queue migrate` to move it, then read "
-                    "the log line — do NOT add a replacement item.")
+            # THIS branch found the item, so it is named by its own spelling —
+            # `migrate` moves a ticked line VERBATIM, so the log will carry that
+            # spelling and no other, and "read the log line" has to be greppable
+            return (f"{item_label(text)} is in next-steps.md but already ticked [x], "
+                    "so it never reached the done-log. Run `tk-queue migrate` to move "
+                    "it, then read the log line — do NOT add a replacement item.")
     if id_in_done_log(memdir, wanted_id):
         return (f"{label} already left the queue — it is in done-log.md. Read that line "
                 "before acting, and do NOT add a replacement item.")
@@ -1276,6 +1285,12 @@ def find_open_item(memdir, wanted_id):
     walks the file in order, so the position is exact, while searching the text
     back out finds whichever copy comes first — including one quoted inside
     another item's note (see excise).
+
+    The block is also where the item's NAME comes from: every caller that puts
+    this item in a message or a record reads it off the returned block with
+    `item_label`, never by re-rendering the number it passed in. The number is
+    the ADDRESS (`T0001` and `T001` are one address), the label is the item's own
+    spelling — and a message that respells the address names a DIFFERENT item.
 
     An ID carried by MORE THAN ONE open item is not refused: refusing would
     freeze the whole queue over two lines a human has to repair, and the other
@@ -2050,6 +2065,11 @@ def cmd_handoff(args):
 def close_item(args, marker, outcome, marker_flag):
     memdir = memory_dir(args.dir)
     content, block, start = find_open_item(memdir, args.id)
+    # the item's OWN spelling: the log line OUTLIVES the item and is the only
+    # record left of it, so an ID re-rendered from the number writes a permanent
+    # entry under a name no item ever carried — ungreppable, and readable as
+    # another item's history
+    label = item_label(block)
     ensure_single_line(outcome=outcome, summary=args.summary)
     # --summary and the outcome share the log entry's FIRST line with the project
     # tag appended below, so a marker in them can be read as that tag. --note is
@@ -2067,7 +2087,7 @@ def close_item(args, marker, outcome, marker_flag):
     # --summary replaces the text wholesale, so by then the tag is already gone
     tag_m = PROJECT_TAG_RE.search(block)
     text = args.summary or item_title(block, limit=400)
-    line = f"- {today} — {marker} — T{args.id:03d} {text} — {outcome}"
+    line = f"- {today} — {marker} — {label} {text} — {outcome}"
     if tag_m:
         # appended last so LOG_TAG_RE's end-of-line anchor reads this field, not
         # any earlier lookalike in the item's own text
@@ -2076,7 +2096,7 @@ def close_item(args, marker, outcome, marker_flag):
         line += "\n  " + args.note.replace("\n", "\n  ")
     append_done_line(memdir, line, today)
     remove_block(memdir, content, block, start)
-    print(f"T{args.id:03d} → done-log as {marker} ({today})")
+    print(f"{label} → done-log as {marker} ({today})")
     # excise is pure and remove_block recomputes it from these same three values,
     # so this is the queue that was just written — not a second read of it
     handoff_collect(memdir, excise(content, block, start),
@@ -2105,6 +2125,7 @@ def deferral_for_edit(args, block):
     that already is one: every DECISION item in a real queue predates this field, and
     a gate that fired on `edit <id> --effort L` would make them all uneditable.
     """
+    label = item_label(block)
     setting = args.deferred is not None and not clears_field(args.deferred)
     clearing = args.deferred is not None and clears_field(args.deferred)
     seg, stray = deferral_field(block)
@@ -2114,7 +2135,7 @@ def deferral_for_edit(args, block):
     # edit that touches neither flag never consults the deferral, so it stays
     # allowed: over-refusing here would make the item uneditable instead.
     if stray and (args.classe or args.deferred is not None):
-        fail(f"T{args.id:03d} carries a **Deferred:** marker away from the position a "
+        fail(f"{label} carries a **Deferred:** marker away from the position a "
              "deferral is written in (right after **Class:**) — in the item's own prose, "
              "or on a continuation line. Nothing was changed: reading it as the field "
              "would let prose satisfy the gate, and clearing it would DELETE that prose. "
@@ -2125,15 +2146,15 @@ def deferral_for_edit(args, block):
         fail(deferral_gate_message("edit"))
     if setting and result_class != DEFERRABLE_CLASS:
         fail(deferral_class_message(
-            f"T{args.id:03d} is {result_class or 'carrying no unambiguous class'}."))
+            f"{label} is {result_class or 'carrying no unambiguous class'}."))
     if clearing and result_class == DEFERRABLE_CLASS:
-        fail(f"T{args.id:03d} would stay a {DEFERRABLE_CLASS} with no deferral on the "
+        fail(f"{label} would stay a {DEFERRABLE_CLASS} with no deferral on the "
              "record. A deferral is dropped by leaving the class: pass the new "
              "`--class` in the same command (the field goes with it).")
     if args.deferred is None and args.classe and args.classe != DEFERRABLE_CLASS and has:
         # a deferral left on an item that is no longer a DECISION is the stale-Risk
         # failure again: true when written, still read by every later filter
-        print(f"tk-queue: T{args.id:03d} is no longer a {DEFERRABLE_CLASS} — its "
+        print(f"tk-queue: {label} is no longer a {DEFERRABLE_CLASS} — its "
               "**Deferred:** field goes with the class", file=sys.stderr)
         return FIELD_CLEAR
     return args.deferred
@@ -2166,6 +2187,7 @@ def splice(content, block, start, new):
 def cmd_edit(args):
     memdir = memory_dir(args.dir)
     content, block, start = find_open_item(memdir, args.id)
+    label = item_label(block)
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
                        criterion=args.criterion, project=args.project,
                        deferred=args.deferred)
@@ -2190,7 +2212,7 @@ def cmd_edit(args):
     if args.text:
         head_m = CANONICAL_HEAD_RE.match(block)
         if not head_m:
-            fail(f"T{args.id:03d} has a non-canonical head — use cancel + add instead of --text")
+            fail(f"{label} has a non-canonical head — use cancel + add instead of --text")
         # keep everything from the FIRST field marker on, whichever field that is —
         # anchoring on Class alone would silently drop Effort/Risk/Source of items
         # that never carried a Class field
@@ -2219,11 +2241,11 @@ def cmd_edit(args):
         in_chain = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]
         found = real_fields(new, field)
         if len(in_chain) > 1:
-            fail(f"T{args.id:03d} carries {len(in_chain)} **{field}:** fields in its field "
+            fail(f"{label} carries {len(in_chain)} **{field}:** fields in its field "
                  f"chain, so `--{field.lower()}` is ambiguous. Nothing was changed. Close "
                  "it with `cancel` and re-add it clean.")
         if not found and re.search(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*", new):
-            fail(f"T{args.id:03d} has a **{field}:** marker OUTSIDE its field chain — in "
+            fail(f"{label} has a **{field}:** marker OUTSIDE its field chain — in "
                  "the item's own prose (before the **Class:** the chain begins at) or on "
                  "a continuation line — and none inside it. Nothing was changed. Editing "
                  "that marker would rewrite prose you did not point at (and on "
@@ -2265,7 +2287,7 @@ def cmd_edit(args):
     if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):
         check_ceiling(new, args.force)
     splice_item(memdir, content, block, start, new)
-    print(f"T{args.id:03d} updated")
+    print(f"{label} updated")
     # An edit is the only command other than a close that changes WHICH briefings
     # an item reaches, and dropping the last pointer to one is a closing path in
     # disguise. Measured before this existed: anchor closed (its briefing kept for
@@ -2294,12 +2316,13 @@ def cmd_claim(args):
     memdir = memory_dir(args.dir)
     validate_owner(args.owner)
     content, block, start = find_open_item(memdir, args.id)
-    held = claim_segment(args.id, block)
+    label = item_label(block)
+    held = claim_segment(block)
     if held is not None:
-        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. Nothing was "
+        fail(f"{label} is already {claim_mark(*claim_value(held))}. Nothing was "
              "changed: a claim is how two sessions on one queue avoid executing the same "
              "item. Take another one — or, if that session is gone, hand this one back "
-             f"with `tk-queue release T{args.id:03d}`.")
+             f"with `tk-queue release {label}`.")
     stamp = now_stamp()
     # appended at the end of the FIRST line, where the chain lives — the same place
     # `edit` puts a field it did not find, and the only place claim_segment reads
@@ -2313,13 +2336,13 @@ def cmd_claim(args):
     # and ambiguity refusals, which are the terminal ones: preempting those printed a
     # remedy the caller ran, MUTATING the file, with the real refusal landing anyway.
     if len(claim_readback(new)) != 1:
-        fail(claim_unwritable_message(args.id, block, new))
+        fail(claim_unwritable_message(block, new))
     # NOT measured against the BLOCK ceiling, on the same rule as the short fields
     # (T071): the value is bounded by construction — OWNER_RE plus a fixed-width
     # stamp — and a legacy oversized item is precisely the one a session must be
     # able to take without being taught to type --force on ordinary commands.
     splice_item(memdir, content, block, start, new)
-    print(f"T{args.id:03d} claimed by {args.owner} ({stamp})")
+    print(f"{label} claimed by {args.owner} ({stamp})")
 
 
 def cmd_release(args):
@@ -2333,22 +2356,23 @@ def cmd_release(args):
     """
     memdir = memory_dir(args.dir)
     content, block, start = find_open_item(memdir, args.id)
+    label = item_label(block)
     # No host check here, and the asymmetry is the point: WRITING a claim needs a
     # chain that can hold one, READING one does not. A chain-less item carrying a
     # marker is already answered by the stray guard inside claim_segment, and one
     # carrying none simply holds no claim — which is what the honest no-op below
     # says. Demanding a host of `release` would refuse the second population a
     # diagnosis about a claim it does not have.
-    held = claim_segment(args.id, block)
+    held = claim_segment(block)
     if held is None:
         # an honest no-op, like `bump` on an item already at the top. Reporting a
         # release that did not happen is what would send the caller on to work an
         # item somebody else is still holding
-        print(f"T{args.id:03d} carries no claim — nothing to release")
+        print(f"{label} carries no claim — nothing to release")
         return
     mark = claim_mark(*claim_value(held))
     splice_item(memdir, content, block, start, clear_field_segment(block, held))
-    print(f"T{args.id:03d} released — it was {mark}")
+    print(f"{label} released — it was {mark}")
 
 
 def cmd_bump(args):
@@ -2364,12 +2388,13 @@ def cmd_bump(args):
     """
     memdir = memory_dir(args.dir)
     content, block, start = find_open_item(memdir, args.id)
+    label = item_label(block)
     path = os.path.join(memdir, "next-steps.md")
     first = ITEM_START.search(content)
     if first and first.start() == start:
         # already there: return without writing, so a no-op bump cannot churn the
         # file's spacing (repeat it ten times and the file is still byte-identical)
-        print(f"T{args.id:03d} is already at the top of the queue")
+        print(f"{label} is already at the top of the queue")
         return
     without = excise(content, block, start)
     dest = ITEM_START.search(without)
@@ -2380,7 +2405,7 @@ def cmd_bump(args):
     # tail to separate from
     moved = block if block.endswith("\n\n") or not tail else block + "\n"
     write_atomic(path, without[:at] + moved + tail)
-    print(f"T{args.id:03d} → top of the queue")
+    print(f"{label} → top of the queue")
 
 
 def cmd_report(args):
