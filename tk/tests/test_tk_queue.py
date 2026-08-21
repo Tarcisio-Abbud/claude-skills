@@ -5161,6 +5161,84 @@ class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
         self.assertEqual(self.body(), HEADER + seeded)
         self.assertIn(self.prose_refusal("T007"), r.stdout)
 
+    # --- T168: the same shape, with the geometry licence PASSING -----------
+
+    def test_a_metadata_line_under_a_FULL_line_is_refused_and_not_flattened(self):
+        """The residue T168 decided, measured live before it was closed: the same
+        `chave: valor` as the test above, but under a head long enough that the
+        break reads as a wrapper's. Geometry licensed it, the opener whitelist saw
+        a letter and licensed it too, and the line was joined into the head and
+        reported as `folded up` — silent flattening of the user's only copy, the
+        class that produced every blocker in the T121 campaign.
+
+        Refusing it is a shape question the whitelist cannot ask, so it is asked
+        separately. A real parser would not have closed this one: CommonMark reads
+        the line as a lazy paragraph continuation and would absorb it exactly as
+        the audit did."""
+        seeded = (R4_HEAD.rstrip("\n") + "\n"
+                  + "  chave: valor\n" + R4_CHAIN)
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertIn(self.prose_refusal("T005"), r.stdout)
+
+    def test_the_GEOMETRY_alone_refuses_a_line_no_other_rule_reaches(self):
+        """The geometry arm, isolated. The `chave: valor` test above stopped
+        proving it the moment METADATA_LINE_RE started refusing that fixture on
+        its own — two guards over the same incident, and the second masks the
+        first, which the mutation harness caught as a survivor rather than a pass.
+
+        This fixture is reached by NO other rule: it opens with a letter (the
+        whitelist licenses it), it carries no colon (the metadata rule never
+        matches), and it is on no enumeration. Only the break above it betrays it —
+        the head is 30 columns wide, so the author, not a wrapper, ended it."""
+        seeded = ("- [ ] **T012** — cabeca curta\n"
+                  "  Observacao solta do autor\n"
+                  + R4_CHAIN)
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertIn(self.prose_refusal("T012"), r.stdout)
+
+    def test_a_wrapped_line_that_merely_resumes_with_a_word_and_a_colon_is_prose(self):
+        """The over-refusal the corpus caught before this shipped, replayed on an
+        item that IS foldable — which the one it was found on was not. A real
+        queue item wraps a sentence that resumes `wiki: `_wiki/...`` at 92
+        columns: a word, a colon, a space, and none of it structural. There the
+        shape rule alone cost no fold (the item is refused for another reason) but
+        printed the wrong reason; here the same line sits in an item the fold
+        would otherwise take, which is what the rule costs when it is wrong. The
+        width condition is what tells the line from a metadata line, which is short
+        because its author ended it."""
+        middle = ("  wiki: `_wiki/casa-nostra/planejamento-financeiro-2025-10.md`. E a frase "
+                  "segue ate a coluna de wrap\n")
+        self.seed(R4_HEAD.rstrip("\n") + "\n" + middle + R4_CHAIN)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + R4_HEAD.rstrip("\n") + " " + middle.strip()
+                         + " **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+
+    def test_a_colon_that_prose_really_uses_does_not_trip_the_metadata_rule(self):
+        """The over-refusal direction, and the reason the rule reads the character
+        AFTER the colon. A URL and a clock time both put a colon inside the first
+        token of a wrapped line, and both are prose the fold must go on absorbing;
+        neither is followed by a space. A key of several words is not one either —
+        `Col A | Col B` already has its own rule, and widening this one to spaces
+        would swallow ordinary sentences whole."""
+        for name, middle in (("url", "  https://exemplo.invalid/caminho segue a frase ate o fim\n"),
+                             ("hora", "  14:30 foi quando a fila virou e a frase continua\n")):
+            with self.subTest(forma=name):
+                self.seed(R4_HEAD.rstrip("\n") + "\n" + middle + R4_CHAIN)
+                r = self.migrate()
+                self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+                self.assertEqual(self.body(),
+                                 HEADER + R4_HEAD.rstrip("\n") + " " + middle.strip()
+                                 + " **Class:** AUTONOMOUS. **Effort:** S. "
+                                   "**Criterion:** A: x.\n")
+
     # --- the population the fold must NOT stop absorbing -------------------
 
     def test_the_hard_wrapped_population_is_still_absorbed_whole(self):
