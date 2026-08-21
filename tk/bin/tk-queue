@@ -2686,9 +2686,8 @@ def fold_chain_onto_first_line(block):
 
     That price is the cheap half of the choice. The expensive half was measured:
     joining EVERY line of the block into one — which is what this did — turned
-    `automacao-financeira` T037's five-item bulleted list and the m365 queue's
-    T018, an eleven-line note, into one run-on line each, and reported both as
-    folded. No
+    one real item's five-item bulleted list, and another's eleven-line note,
+    into one run-on line each, and reported both as folded. No
     character was lost, so the old docstring's claim ("the join moves no character
     of prose") stayed true while the structure that made the text readable was
     gone, in the user's only copy. 8 of the 11 items this command folded across the
