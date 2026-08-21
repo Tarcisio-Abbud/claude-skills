@@ -2006,6 +2006,36 @@ MUTATIONS = [
      '            if not real_fields(new, "Class"):\n                fail(f"{label} names no **Class:** in its field chain, so an appended "',
      ["TestAFieldAppendedBeforeTheAnchorIsRefused.test_class_first_in_ONE_call_lands_the_field_inside_the_chain",
       "TestAFieldAppendedBeforeTheAnchorIsRefused.test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through"]),
+
+    # --- review#5: the setext protection only looked at the underline -------
+    # The underline was kept and the TITLE above it — which the underline
+    # retroactively makes a heading — was absorbed, so the item came out with its
+    # heading text merged into unrelated prose and the underline orphaned. The
+    # repair is the table-head lookahead read from the other side.
+    ("review#5 the line a setext underline promotes is prose again",
+     "    if SETEXT_UNDERLINE_RE.match(nxt.strip()):\n"
+     "        return True                      # this line is the heading that underlines",
+     "    if False:\n"
+     "        return True                      # this line is the heading that underlines",
+     ["TestASetextTitleIsKeptWithItsUnderline."
+      "test_the_title_the_underline_promotes_keeps_its_own_line",
+      "TestASetextTitleIsKeptWithItsUnderline."
+      "test_the_gates_reach_the_item_folded_around_the_heading"]),
+
+    # the over-refusal direction, which the arm above cannot reach: what makes
+    # this a SETEXT rule and not a "there is a line below" rule is the shape of
+    # that line. Without it every wrapped sentence stops being absorbed, and the
+    # fold loses the population it exists for
+    ("review#5 any non-blank line below makes this one a heading",
+     "    if SETEXT_UNDERLINE_RE.match(nxt.strip()):",
+     "    if nxt.strip():",
+     ["TestASetextTitleIsKeptWithItsUnderline."
+      "test_an_ordinary_hard_wrapped_line_is_STILL_absorbed",
+      "TestASetextTitleIsKeptWithItsUnderline."
+      "test_the_whole_hard_wrapped_population_is_still_absorbed_whole",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_the_hard_wrapped_population_is_still_absorbed_whole"]),
+
 ]
 
 
@@ -2037,7 +2067,8 @@ def main():
                                   "TestAClassLessChainIsNotAField",
                                   "TestTheZeroIdIsStillAnId",
                                   "TestFoldFailsSafeOnShapesNobodyEnumerated",
-                                  "TestAFieldAppendedBeforeTheAnchorIsRefused"])
+                                  "TestAFieldAppendedBeforeTheAnchorIsRefused",
+                                  "TestASetextTitleIsKeptWithItsUnderline"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

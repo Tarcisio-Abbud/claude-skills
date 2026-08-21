@@ -2556,13 +2556,38 @@ TABLE_DELIMITER_RE = re.compile(r"\A\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*
 
 def opens_a_block(lines, j):
     """Whether `lines[j]` OPENS a Markdown block instead of continuing the
-    paragraph above it — asked with the NEXT line in hand, because one shape
+    paragraph above it — asked with the NEXT line in hand, because two shapes
     cannot be told without it.
 
     True keeps the line where the user wrote it, with its own indentation. The
     answer is a shape question and nothing else; whether an absorption is
     LICENSED is a second question, asked by `absorption_audit`, which is
     deliberately not this function and does not consult it.
+
+    Both lookaheads read the SAME relationship from the two sides it has. A GFM
+    delimiter row turns the row above it into a table head; a setext underline
+    turns the line above it into a heading. Reading only the line that carries the
+    marker — which is what this did — protects the marker and loses what it marks:
+    the underline was kept, the title above it passed both of `absorption_audit`'s
+    licences (plain prose by its first character, past the wrap column by its
+    geometry) and was absorbed into the head, so the item came out with its title
+    merged into unrelated prose AND an underline left underlining nothing, reported
+    as folded. Measured, on a file with no other copy.
+
+    Which reading `---` gets, said rather than left to the next reader: directly
+    under a line of paragraph text it is a setext H2, and after a blank or at the
+    start of the run it is a thematic break — the precedence CommonMark gives it,
+    and the one taken here. The ambiguity costs nothing either way, because both
+    readings answer True for the `---` LINE (the thematic break through
+    BLOCK_START_RE, the underline through SETEXT_UNDERLINE_RE). It decides only
+    what happens to the line ABOVE, and the lookahead below is reached only when
+    that line is paragraph text — a blank and every enumerated block shape have
+    already returned True above it — which is exactly the condition under which the
+    setext reading is the right one.
+
+    What it does NOT reach, and the limit is the same one the head line already
+    has: an underline promotes the WHOLE paragraph above it, so a title hard-wrapped
+    over two lines keeps only its last line and the earlier ones are still absorbed.
     """
     line = lines[j]
     stripped = line.strip()
@@ -2576,6 +2601,8 @@ def opens_a_block(lines, j):
     if SETEXT_UNDERLINE_RE.match(stripped) or REFERENCE_DEF_RE.match(stripped):
         return True
     nxt = lines[j + 1] if j + 1 < len(lines) else ""
+    if SETEXT_UNDERLINE_RE.match(nxt.strip()):
+        return True                      # this line is the heading that underlines
     return "|" in stripped and bool(TABLE_DELIMITER_RE.match(nxt.strip()))
 
 

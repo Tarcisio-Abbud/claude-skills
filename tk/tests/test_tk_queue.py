@@ -4824,5 +4824,83 @@ class TestAFieldAppendedBeforeTheAnchorIsRefused(QueueTest):
         self.assertIn("**Project:** tk.", self.body())
 
 
+# --- review#5: the setext protection was asymmetric -------------------------
+#
+# `opens_a_block` recognised the setext UNDERLINE and kept it, and never looked
+# BACK at the title line the underline retroactively turns into a heading. That
+# title is plain prose by its first character and past the wrap column by its
+# geometry, so both of `absorption_audit`'s licences passed it and the fold
+# absorbed it — leaving the heading text merged into unrelated prose AND the
+# underline orphaned, underlining nothing, reported as `folded up`.
+#
+# The repair is the lookahead the table-head rule already had, read from the
+# other side: if the NEXT line is a setext underline, THIS line belongs to that
+# block. Every test below asserts the WHOLE file — this command rewrites user
+# data, and the defect it replays survives any narrower assertion.
+
+R5_LONG_HEAD = ("- [ ] **T005** — cabeca do item que e uma frase longa o suficiente "
+                "para passar da coluna de wrap sem duvida nenhuma\n")
+R5_FOLDED_HEAD = (R5_LONG_HEAD.rstrip("\n")
+                  + " **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+
+
+class TestASetextTitleIsKeptWithItsUnderline(QueueTest):
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def test_the_title_the_underline_promotes_keeps_its_own_line(self):
+        """Both spellings of the underline, each measured absorbed: `===`, which
+        is only ever a setext underline, and `---`, which is a setext H2 here and
+        a thematic break after a blank. The reading is stated in `opens_a_block`;
+        what this asserts is that neither spelling leaves the title behind."""
+        for name, rule in (("igual", "  ===============\n"),
+                           ("hifen", "  ---------------\n")):
+            with self.subTest(sublinhado=name):
+                middle = "  Titulo da secao\n" + rule
+                self.seed(R5_LONG_HEAD + middle + R4_CHAIN)
+                r = self.migrate()
+                self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+                self.assertEqual(self.body(), HEADER + R5_FOLDED_HEAD + middle)
+
+    def test_the_gates_reach_the_item_folded_around_the_heading(self):
+        """A fold is only worth rewriting user data if the readers can use the
+        result — and only acceptable if the heading is still a heading after."""
+        middle = "  Titulo da secao\n  ===============\n"
+        self.seed(R5_LONG_HEAD + middle + R4_CHAIN)
+        self.migrate()
+        self.assertIn("T005  S", self.run_tk("pack").stdout)
+        r = self.run_tk("edit", "T005", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + R5_FOLDED_HEAD.replace("**Effort:** S.", "**Effort:** L.")
+                         + middle)
+
+    def test_an_ordinary_hard_wrapped_line_is_STILL_absorbed(self):
+        """The regression the lookahead could buy, and the expensive one: the same
+        title line, with no underline under it, is ordinary wrapped prose and must
+        go on being absorbed. A rule that kept it would cost the fold the very
+        population it exists for — 7 of the 8 real items with prose between head
+        and chain are one sentence hard-wrapped at column ~95."""
+        self.seed(R5_LONG_HEAD + "  Titulo da secao\n" + R4_CHAIN)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + R5_LONG_HEAD.rstrip("\n")
+                         + " Titulo da secao **Class:** AUTONOMOUS. **Effort:** S. "
+                           "**Criterion:** A: x.\n")
+
+    def test_the_whole_hard_wrapped_population_is_still_absorbed_whole(self):
+        """The same direction, on the real corpus's own shapes rather than one
+        line: every opener the queues use, none of them followed by an underline."""
+        self.seed(R4_WRAPPED)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
+        self.assertEqual(self.body(), HEADER + R4_WRAPPED_FOLDED)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
