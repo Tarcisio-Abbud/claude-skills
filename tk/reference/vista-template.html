@@ -1,0 +1,151 @@
+<!doctype html>
+<!--
+  VISTA TEMPLATE — the five blocks of ../reference/vista.md, in the smallest page
+  that renders them. Copy this file to the outbox, fill it, delete what the
+  package does not have, and restyle freely: the layout is free, the five
+  `data-vista-*` markers are not, and `tk-vista-check` reads only the markers.
+
+  Fill in every FILL note. Write the page in the READER's language: the markers
+  are the plugin's, the prose is theirs.
+  Keep the CSS tokens (both themes) and every data-vista-* attribute.
+  Everything the page shows travels inside it: inline the CSS, embed an image as
+  a data: URI, and let `<a href>` be the only thing pointing outward.
+  Write no `<!` + `--` inside this comment: it would end here, and the rest
+  would print at the top of the page.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vista — PACKAGE · DATE</title><!-- FILL -->
+<style>
+  /* Light is the base; the dark block redefines the tokens only. A page that
+     defines a colour ONLY inside the media query renders unstyled in light. */
+  :root {
+    --bg:#faf9f7; --card:#ffffff; --ink:#1c2530; --sub:#5a6472; --line:#e3e7ec;
+    --ok:#0e7a4f; --ok-bg:#e7f5ee; --warn:#8a5a00; --warn-bg:#fdf3dd;
+    --stop:#a32b28; --stop-bg:#fbeceb; --link:#0b5aa5;
+    --mono:ui-monospace,'Cascadia Code',Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#12161c; --card:#1a2029; --ink:#e6eaf0; --sub:#9aa5b4; --line:#2c343f;
+      --ok:#4ec78d; --ok-bg:#12301f; --warn:#e0aa4a; --warn-bg:#332608;
+      --stop:#f08a84; --stop-bg:#33161a; --link:#79b8ff;
+    }
+  }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.6 Georgia,'Times New Roman',serif; }
+  main { max-width:900px; margin:0 auto; padding:44px 24px 72px; }
+  h1 { font-size:1.8rem; line-height:1.25; margin:0 0 4px; }
+  h2 { font-size:1.15rem; margin:40px 0 12px; padding-bottom:6px;
+       border-bottom:2px solid var(--line); }
+  .sub { color:var(--sub); font-size:.95rem; margin-bottom:24px; }
+  .nota { color:var(--sub); font-size:.84rem; margin:0 0 8px; }
+  a { color:var(--link); }
+  code { font-family:var(--mono); font-size:.85em; background:var(--line);
+         padding:1px 5px; border-radius:4px; }
+  /* block 1 — the stats line */
+  .stats { display:flex; flex-wrap:wrap; gap:10px; margin:0 0 8px; padding:0; list-style:none; }
+  .stats li { background:var(--card); border:1px solid var(--line); border-radius:10px;
+              padding:10px 16px; min-width:96px; }
+  .stats b { display:block; font-size:1.5rem; line-height:1.1; }
+  .stats span { color:var(--sub); font-size:.78rem; font-family:var(--mono);
+                text-transform:uppercase; letter-spacing:.06em; }
+  /* block 2 — cards, grouped by outcome */
+  .group { margin-top:28px; }
+  .group > h3 { font-family:var(--mono); font-size:.8rem; text-transform:uppercase;
+                letter-spacing:.08em; color:var(--sub); margin:0 0 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--sub);
+          border-radius:10px; padding:16px 20px; margin:12px 0; }
+  .card[data-vista-desfecho="merged"], .card[data-vista-desfecho="closed"] { border-left-color:var(--ok); }
+  .card[data-vista-desfecho="open"], .card[data-vista-desfecho="carried"] { border-left-color:var(--warn); }
+  .card[data-vista-desfecho="blocked"], .card[data-vista-desfecho="discarded"] { border-left-color:var(--stop); }
+  .card h4 { margin:0 0 6px; font-size:1.05rem; }
+  .verdicts { margin:10px 0 0; padding-left:20px; font-size:.92rem; }
+  /* block 3 — the risk tag */
+  .risk { display:inline-block; font-family:var(--mono); font-size:.72rem; font-weight:600;
+          padding:2px 9px; border-radius:999px; background:var(--ok-bg); color:var(--ok); }
+  [data-vista-risco="medium"] .risk { background:var(--warn-bg); color:var(--warn); }
+  [data-vista-risco="high"] .risk { background:var(--stop-bg); color:var(--stop); }
+  /* block 5 — the balance */
+  .balance { background:var(--card); border:1px solid var(--line); border-radius:10px;
+             padding:14px 20px; }
+  .balance table { width:100%; border-collapse:collapse; font-size:.92rem; }
+  .balance td { padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .balance tr:last-child td { border-bottom:none; }
+  .scroll { overflow-x:auto; }
+  details summary { cursor:pointer; color:var(--sub); font-size:.9rem; margin-top:10px; }
+  footer { margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+           color:var(--sub); font-size:.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>PACKAGE NAME</h1><!-- FILL -->
+  <div class="sub">FILL: what this report covers (a repo and a date, or the projects a
+    consolidated run swept) · view, not source</div>
+
+  <!-- BLOCK 1 · stats line, at the opening -->
+  <ul class="stats" data-vista-bloco="stats">
+    <li><b>0</b><span>closed</span></li>
+    <li><b>0</b><span>carried</span></li>
+    <li><b>0</b><span>blocked</span></li>
+    <li><b>0</b><span>discarded</span></li>
+    <li><b>0</b><span>open PRs</span></li><!-- FILL: add the counts this package earned -->
+    <li><b>0</b><span>tests</span></li>
+  </ul>
+  <p class="nota">The first four never sum: three are the queue's balance, the fourth counts
+    session findings that never entered it.</p>
+
+  <!-- BLOCK 2 · one card per PR/item, grouped by outcome -->
+  <h2>What the package did</h2>
+  <div data-vista-bloco="cards">
+    <section class="group">
+      <h3>Open — waiting for the user's verdict</h3><!-- FILL: one group per outcome -->
+
+      <!-- one card. data-vista-desfecho groups it; data-vista-risco is block 3 -->
+      <!-- data-vista-desfecho is one of: merged · closed · open · carried · blocked · discarded -->
+      <article class="card" data-vista-card="T000" data-vista-desfecho="open" data-vista-risco="low">
+        <h4>T000 · WHAT THE SLICE DELIVERED <span class="risk">risk: low</span></h4>
+        <p>Two or three sentences a reader who will not open the diff can judge: what changed,
+           and what it buys.</p>
+        <ul class="verdicts"><!-- the four safe-to-merge verdicts, one line each -->
+          <li data-vista-veredito="tests"><b>Tests</b> — green on the final tree: WHAT RAN</li>
+          <li data-vista-veredito="review"><b>Review</b> — WHICH REVIEW RAN, every finding fixed
+              or accepted with a reason</li>
+          <li data-vista-veredito="criterion"><b>Criterion</b> — the one-line claim the proof
+              carries; the evidence block itself stays in the PR, linked below</li>
+          <li data-vista-veredito="reversal"><b>Reversal</b> — the way back, in one line</li>
+        </ul>
+        <!-- BLOCK 4 · the link to this slice's proof. The proof lives in the PR; the vista points -->
+        <!-- FILL: the real forge URL. A reserved placeholder domain is refused by the gate,
+             which is how a package close cannot ship a card whose proof was never filled in -->
+        <p><a data-vista-bloco="prova" href="https://example.invalid/pull/0">Proof — evidence block in PR #0</a></p>
+        <details>
+          <summary>Files touched</summary>
+          <p><code>path/to/file</code> — what changed there.</p>
+        </details>
+      </article>
+
+    </section>
+  </div>
+
+  <!-- BLOCK 5 · closed × open balance -->
+  <h2>Balance</h2>
+  <div class="balance" data-vista-bloco="saldo">
+    <div class="scroll"><table>
+      <tr><td><b>Closed</b></td><td>ITEMS THAT LEFT THE QUEUE, with the pointer each closed on</td></tr>
+      <tr><td><b>Open</b></td><td>ITEMS STILL IN THE QUEUE, each with the gate holding it</td></tr>
+      <tr><td><b>Born here</b></td><td>FINDINGS THIS PACKAGE RAISED that entered the queue</td></tr>
+    </table></div>
+  </div>
+
+  <footer>
+    FILL: who generated this and when · the sources it presents (the queue and the digest of a
+    package close; the queues of a consolidated run) hold the truth · nothing is read back from
+    this page.
+  </footer>
+</main>
+</body>
+</html>

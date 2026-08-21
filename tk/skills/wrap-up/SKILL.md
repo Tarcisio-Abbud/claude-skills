@@ -167,6 +167,13 @@ A small diff (guidance: ≲150 lines) is still shown whole in the terminal and a
 gets the link, but the diff is a courtesy: what authorizes the merge is the four verdicts,
 which is the point of a user who does not read code.
 
+**A package gets a vista beside its digest** — one self-contained HTML page in the site's
+outbox, presenting the same close: stats, a card per PR with its risk tag and a link to its
+proof, and the balance of the queue. It is written when this wrap-up closes an afk package and
+in any session where the user asks for one; an ordinary close stays textual. The digest remains
+the source, the vista only presents it — the five blocks, the outbox address and the checker
+that gates the file are in `../../reference/vista.md`.
+
 **Review fixes rewrite the PR body.** A PR whose body still describes the version before the
 fixes tells the reviewer something the branch no longer does, so the body is rewritten in the
 same breath as the fix commit.
@@ -339,6 +346,12 @@ the next conversation's opening sentences, each in the shape that fits.
     file, or with no such list, is deferred: an unattended merge is authorized by a list
     that was READ, never by the silence of a file that was missing.
   Whatever is not merged enters the queue as a DECISION with its digest reference ready.
+- **The vista is written after the merge round**, once every slice has its outcome, and it is
+  named in the report only after `../../bin/tk-vista-check` (relative to this file) passes on
+  it. **A red check does not hold the close** — the vista is a companion and the digest is the
+  close — and the report then carries the state the contract defines for that exit: refused with
+  the findings quoted, or not checkable with the path named. An unattended run has nobody to
+  notice a page that quietly failed its gate.
 - The step-6 report ends with the ready pair for the user's return: `/clear` +
   `/tk:kickoff afk`.
 
@@ -346,4 +359,7 @@ the next conversation's opening sentences, each in the shape that fits.
 committed, pushed, and every item ended either merged under the strict four verdicts or at
 an open PR carrying its evidence block; or the concurrent-session guard stopped the run and
 the report says so with the tree untouched; or there was nothing to commit. Whatever was
-not merged sits in the queue as a DECISION, and no other external effect happened.
+not merged sits in the queue as a DECISION, and the vista ended in exactly one of the four
+states of `../../reference/vista.md` with the report saying which: delivered, refused (findings
+quoted), not checkable (path named), or skipped (the missing address line named). No other
+external effect happened.
