@@ -2290,6 +2290,25 @@ def cmd_edit(args):
             new = (new[: m.start()] + f"**{field}:** {flag}."
                    + matched[len(matched.rstrip()):] + new[m.end():])
         else:
+            # A chain with no **Class:** anchors nothing, so a field appended to it
+            # is a field no reader may ever honour: real_fields and qualified_fields
+            # both answer [] while the anchor is missing, and the anchor a later
+            # `--class` adds goes at the END of the line, BEHIND what was appended
+            # here. Measured: `--effort L` printed "updated", `--class AUTONOMOUS`
+            # printed "updated", and `pack` went on showing the item's Effort as
+            # `?`. The refusal above covers the item that carries the marker
+            # already; this covers the one that carries no marker at all, which is
+            # the same trap on the same population — the class-less legacy item.
+            if field != "Class" and not real_fields(new, "Class"):
+                fail(f"{label} names no **Class:** in its field chain, so an appended "
+                     f"**{field}:** would sit BEFORE the anchor a later `--class` adds, "
+                     "where no gate and no report may read it. Nothing was changed. Run "
+                     f"`tk-queue edit {label} --class <CLASS> --{field.lower()} "
+                     # the caller's own value, whole and quoted: a remedy that says
+                     # <value> makes every caller retype what they just typed, and a
+                     # remedy built from a truncated one repairs something else
+                     f"{shlex.quote(flag)}` — one command, class first, and the field "
+                     "lands inside the chain.")
             # append at the end of the FIRST line, where the chain lives. Appending
             # after a continuation line would put the field outside the chain — i.e.
             # write, right now, the very shape the guard above refuses to touch later

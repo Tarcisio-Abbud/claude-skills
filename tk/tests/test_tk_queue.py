@@ -16,6 +16,7 @@ import datetime
 import importlib.machinery
 import importlib.util
 import os
+import shlex
 import re
 import shutil
 import subprocess
@@ -4730,6 +4731,97 @@ class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
         self.assertEqual(self.body(), HEADER + R4_WRAPPED_FOLDED + refused)
         self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
         self.assertIn(self.prose_refusal("T008"), r.stdout)
+
+
+# --- review#4: a field appended to a class-less item is unreachable forever --
+#
+# `real_fields` answers [] for every field while the chain names no **Class:**,
+# so a field appended to such an item is a field no gate and no report may read.
+# `edit --effort L` appended one anyway and printed "updated"; the `--class` that
+# came next appended the anchor at the END of the line, BEHIND it; and `pack`
+# went on showing the item's Effort as `?`. The refusal that already existed
+# covered only the item that carried the marker ALREADY — the same trap, on the
+# same population, one branch to the left.
+
+R4_BARE = "- [ ] **T009** — legado sem classe nenhuma.\n"
+
+
+class TestAFieldAppendedBeforeTheAnchorIsRefused(QueueTest):
+
+    def test_setting_a_field_on_a_class_less_item_is_refused(self):
+        self.seed(R4_BARE)
+        r = self.run_tk("edit", "T009", "--effort", "L")
+        self.assertEqual(self.body(), HEADER + R4_BARE)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("T009 names no **Class:** in its field chain, so an appended "
+                      "**Effort:** would sit BEFORE the anchor", r.stderr)
+        self.assertIn("Nothing was changed", r.stderr)
+
+    def test_the_file_and_the_reader_no_longer_disagree_about_the_field(self):
+        """The whole sequence as it was measured: `--effort L` exited 0, `--class`
+        exited 0, and `pack` went on printing Effort `?` over a file that said `L`.
+        The file and its reader disagreeing is the finding — not the `?`.
+
+        They agree now, and they agree the honest way: nothing was written, so
+        nothing claims a value the reader cannot see."""
+        self.seed(R4_BARE)
+        self.assertEqual(self.run_tk("edit", "T009", "--effort", "L").returncode, 1)
+        self.assertEqual(self.run_tk("edit", "T009", "--class", "AUTONOMOUS").returncode, 0)
+        self.assertEqual(self.body(),
+                         HEADER + R4_BARE.rstrip("\n") + " **Class:** AUTONOMOUS.\n")
+        self.assertNotIn("**Effort:**", self.body())
+        self.assertIn("T009  ?", self.run_tk("pack").stdout)
+
+    def test_every_field_that_is_APPENDED_is_covered_not_only_effort(self):
+        """One branch, every flag that reaches it: a rule that held for --effort
+        and not for --risk would leave the same trap open one flag over."""
+        for flag, value, marker in (("--effort", "L", "Effort"), ("--risk", "apaga X", "Risk"),
+                                    ("--criterion", "A: y", "Criterion"),
+                                    ("--project", "tk", "Project")):
+            with self.subTest(flag=flag):
+                self.seed(R4_BARE)
+                r = self.run_tk("edit", "T009", flag, value)
+                self.assertEqual(self.body(), HEADER + R4_BARE)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(f"an appended **{marker}:** would sit BEFORE the anchor",
+                              r.stderr)
+
+    def test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through(self):
+        """A refusal is only acceptable while its remedy is reachable, so the
+        printed one is run for real — literally, with the caller's own value read
+        back off the message — and the field is then where `pack` reads it."""
+        self.seed(R4_BARE)
+        r = self.run_tk("edit", "T009", "--criterion", "A: o relatorio sai com 'aspas'")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        printed = re.search(r"Run `tk-queue (edit .*?)` — one command", r.stderr).group(1)
+        argv = shlex.split(printed.replace("<CLASS>", "AUTONOMOUS"))
+        again = self.run_tk(*argv)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + R4_BARE.rstrip("\n")
+                         + " **Class:** AUTONOMOUS. **Criterion:** A: o relatorio sai com "
+                           "'aspas'.\n")
+
+    def test_class_first_in_ONE_call_lands_the_field_inside_the_chain(self):
+        """The over-refusal direction: the rule may not lock out the call that is
+        already correct. `--class` is applied before every other flag, so one
+        command gives the item its anchor and its fields in the right order."""
+        self.seed(R4_BARE)
+        r = self.run_tk("edit", "T009", "--effort", "L", "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + R4_BARE.rstrip("\n")
+                         + " **Class:** AUTONOMOUS. **Effort:** L.\n")
+        self.assertIn("T009  L", self.run_tk("pack").stdout)
+
+    def test_an_anchored_item_is_untouched_by_the_rule(self):
+        """Every item `add` writes carries a class, so a rule that reached them
+        would refuse the whole queue."""
+        seeded = item(1, "um")
+        self.seed(seeded)
+        r = self.run_tk("edit", "T001", "--project", "tk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Project:** tk.", self.body())
 
 
 if __name__ == "__main__":

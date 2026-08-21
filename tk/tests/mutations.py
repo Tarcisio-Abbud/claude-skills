@@ -760,9 +760,13 @@ MUTATIONS = [
 
     # the message, on its own: the generic one sends the caller looking for a
     # **Class:** the item has not got
+    # the anchor carries the fail() line under it, and that is not decoration: a
+    # second guard with the SAME condition was added one branch to the right, and
+    # this entry went UNRUNNABLE — proving nothing, silently — until each anchor
+    # named the refusal it belongs to
     ("review#3 the class-less refusal borrows the generic message",
-     '            if field != "Class" and not real_fields(new, "Class"):',
-     "            if False:",
+     '            if field != "Class" and not real_fields(new, "Class"):\n                fail(f"{label} names no **Class:** in its field chain, so nothing in that "',
+     '            if False:\n                fail(f"{label} names no **Class:** in its field chain, so nothing in that "',
      ["TestAClassLessChainIsNotAField.test_setting_a_field_on_a_class_less_item_is_refused",
       "TestAClassLessChainIsNotAField.test_CLEARING_a_field_on_a_class_less_item_is_refused",
       "TestAClassLessChainIsNotAField."
@@ -1986,6 +1990,22 @@ MUTATIONS = [
      ["TestFoldFailsSafeOnShapesNobodyEnumerated."
       "test_a_wrapped_sentence_that_merely_carries_a_pipe_is_not_a_table"]),
 
+    # --- review#4: a field appended to a class-less item reaches no reader --
+    ("review#4 a field is appended where the position rule can never read it",
+     '            if field != "Class" and not real_fields(new, "Class"):\n                fail(f"{label} names no **Class:** in its field chain, so an appended "',
+     '            if False:\n                fail(f"{label} names no **Class:** in its field chain, so an appended "',
+     ["TestAFieldAppendedBeforeTheAnchorIsRefused.test_setting_a_field_on_a_class_less_item_is_refused",
+      "TestAFieldAppendedBeforeTheAnchorIsRefused.test_the_file_and_the_reader_no_longer_disagree_about_the_field",
+      "TestAFieldAppendedBeforeTheAnchorIsRefused.test_every_field_that_is_APPENDED_is_covered_not_only_effort",
+      "TestAFieldAppendedBeforeTheAnchorIsRefused.test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through"]),
+
+    # the exemption --class depends on: it is the flag that GIVES the anchor, and
+    # a rule that refused it would lock the repair out of its own population
+    ("review#4 the rule swallows --class, the one flag that gives the anchor",
+     '            if field != "Class" and not real_fields(new, "Class"):\n                fail(f"{label} names no **Class:** in its field chain, so an appended "',
+     '            if not real_fields(new, "Class"):\n                fail(f"{label} names no **Class:** in its field chain, so an appended "',
+     ["TestAFieldAppendedBeforeTheAnchorIsRefused.test_class_first_in_ONE_call_lands_the_field_inside_the_chain",
+      "TestAFieldAppendedBeforeTheAnchorIsRefused.test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through"]),
 ]
 
 
@@ -2016,7 +2036,8 @@ def main():
                                   "TestFoldKeepsTheItemsMarkdown",
                                   "TestAClassLessChainIsNotAField",
                                   "TestTheZeroIdIsStillAnId",
-                                  "TestFoldFailsSafeOnShapesNobodyEnumerated"])
+                                  "TestFoldFailsSafeOnShapesNobodyEnumerated",
+                                  "TestAFieldAppendedBeforeTheAnchorIsRefused"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
