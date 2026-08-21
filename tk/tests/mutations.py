@@ -1768,7 +1768,7 @@ MUTATIONS = [
 
     # the defect itself: every intervening line absorbed, bullets included
     ("review#3 the fold absorbs every line between the head and the chain",
-     "    j = 1\n    while j < first and joins_into_the_paragraph(lines[j]):\n        j += 1",
+     "    j = 1\n    while j < first and not opens_a_block(lines, j):\n        j += 1",
      "    j = first",
      ["TestFoldKeepsTheItemsMarkdown."
       "test_a_bulleted_list_between_the_head_and_the_chain_survives_the_fold",
@@ -1777,20 +1777,21 @@ MUTATIONS = [
       "TestFoldKeepsTheItemsMarkdown."
       "test_both_populations_fold_in_ONE_run_each_keeping_its_own_shape"]),
 
-    # the predicate stops asking whether the line opens a block. The readback is
-    # what turns that into a REFUSAL rather than a flattened item — run both this
-    # entry and the next by hand and the difference is visible in the file
+    # the classifier stops asking CommonMark's block-start set. Nothing is
+    # flattened even so — the absorption audit refuses the item instead, because a
+    # bullet does not open the way a wrapped sentence opens — which is the whole
+    # point of the default having changed direction
     ("review#3 a line that opens a block is joinable like any other",
-     "            and not BLOCK_START_RE.match(line.strip()))",
-     "            and True)",
+     "    if BLOCK_START_RE.match(stripped):\n        return True",
+     "    if False:\n        return True",
      ["TestFoldKeepsTheItemsMarkdown."
       "test_a_bulleted_list_between_the_head_and_the_chain_survives_the_fold",
       "TestFoldKeepsTheItemsMarkdown.test_the_gates_reach_an_item_folded_AROUND_its_list",
       "TestFoldKeepsTheItemsMarkdown.test_prose_that_wraps_AFTER_a_block_is_not_lifted_over_it"]),
 
-    # the same rule read out of the regex, which the readback shares: with the
-    # bullet arm gone BOTH answers change and the item really is flattened
-    ("review#3 a bullet stops opening a Markdown block, for the join AND the readback",
+    # the same rule read out of the regex: with the bullet arm gone the fold stops
+    # seeing a list, and the item comes back refused instead of folded around it
+    ("review#3 a bullet stops opening a Markdown block",
      "      [-*+][ \\t]           # a bullet",
      "      (?!)                 # a bullet",
      ["TestFoldKeepsTheItemsMarkdown."
@@ -1804,7 +1805,7 @@ MUTATIONS = [
     # hard-wrapped sentence, which Markdown renders identically joined. Kept as
     # its own line, the chain lands inside the unclosed parenthesis the wrap left
     ("review#3 nothing is absorbed, so a wrapped sentence is cut by the chain",
-     "    while j < first and joins_into_the_paragraph(lines[j]):",
+     "    while j < first and not opens_a_block(lines, j):",
      "    while j < first and False:",
      ["TestFoldKeepsTheItemsMarkdown.test_a_hard_wrapped_sentence_is_still_absorbed_into_the_head",
       "TestFoldKeepsTheItemsMarkdown."
@@ -1915,6 +1916,76 @@ MUTATIONS = [
      '            return (f"{item_label(text)} is in next-steps.md but already ticked [x]',
      '            return (f"{label} is in next-steps.md but already ticked [x]',
      ["TestResolvedItemKeepsItsOwnSpelling.test_an_item_already_ticked_is_named_by_its_own_spelling"]),
+    # --- review#4: the classifier's DEFAULT was the destructive direction ---
+    # The enumeration was the whole guard and its default was ABSORB, so every
+    # shape not on it reproduced the flattening — and the structure readback
+    # re-asked the enumeration's own question, so it agreed. Each entry below puts
+    # back one arm of the repair.
+
+    # the audit itself: with it off, the shape reading is again the only vote, and
+    # a shape nobody enumerated is absorbed exactly as before
+    ("review#4 an unrecognised shape is absorbed again (the absorption audit is off)",
+     "    refusal = absorption_audit(lines, j)\n    if refusal:\n        return None, refusal",
+     "    refusal = None\n    if refusal:\n        return None, refusal",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_is_REFUSED_and_not_flattened",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_that_OPENS_like_prose_is_refused_too",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_two_verdicts_land_in_ONE_run_without_touching_each_other"]),
+
+    # the geometry arm alone: every break becomes wide enough, so a line the
+    # author chose to break reads as one a wrapper made
+    ("review#4 the geometry stops distinguishing an author's break from a wrapper's",
+     "WRAP_COLUMN_FLOOR = 72", "WRAP_COLUMN_FLOOR = 0",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_that_OPENS_like_prose_is_refused_too"]),
+
+    # the opening arm alone: `!!!` opens like a sentence again
+    ("review#4 any character may open a hard-wrapped line",
+     "        if not (opener.isalnum() or opener in PROSE_OPENERS\n"
+     '                or unicodedata.category(opener) == "So"):\n'
+     "            return FOLD_PROSE_REFUSAL",
+     "        if False:\n            return FOLD_PROSE_REFUSAL",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_is_REFUSED_and_not_flattened",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_two_verdicts_land_in_ONE_run_without_touching_each_other"]),
+
+    # the opening arm, from the other side: an emoji and a wiki link stop reading
+    # as prose, and the population the fold exists to serve is refused wholesale
+    ("review#4 only a letter or a digit may open a hard-wrapped line",
+     "        if not (opener.isalnum() or opener in PROSE_OPENERS\n"
+     '                or unicodedata.category(opener) == "So"):',
+     "        if not opener.isalnum():",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_hard_wrapped_population_is_still_absorbed_whole",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_two_verdicts_land_in_ONE_run_without_touching_each_other"]),
+
+    # one shape per entry, because each is a separate reading of the corpus and a
+    # separate way to be wrong. The setext arm degrades to a REFUSAL rather than a
+    # flattening — the layered default working — and the fold-around is still lost
+    ("review#4 a setext underline is a paragraph continuation again",
+     "    if SETEXT_UNDERLINE_RE.match(stripped) or REFERENCE_DEF_RE.match(stripped):",
+     "    if REFERENCE_DEF_RE.match(stripped):",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_each_shape_the_join_used_to_flatten_keeps_its_own_lines"]),
+
+    # this one really is flattened: `[` opens prose in the real queues (a wiki
+    # link), so no other arm catches a link reference or a footnote definition
+    ("review#4 a link reference and a footnote definition are prose again",
+     "    if SETEXT_UNDERLINE_RE.match(stripped) or REFERENCE_DEF_RE.match(stripped):",
+     "    if SETEXT_UNDERLINE_RE.match(stripped):",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_each_shape_the_join_used_to_flatten_keeps_its_own_lines"]),
+
+    # and this one too: a table head row opens with a letter like any sentence,
+    # and only the delimiter row BELOW it says otherwise
+    ("review#4 a table head row without a leading pipe is prose again",
+     '    return "|" in stripped and bool(TABLE_DELIMITER_RE.match(nxt.strip()))',
+     "    return False",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_each_shape_the_join_used_to_flatten_keeps_its_own_lines",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_gates_reach_an_item_folded_around_a_table_written_without_pipes"]),
+
+    # the lookahead is what makes the rule a TABLE rule and not a "line with a
+    # pipe" rule: without it a sentence carrying a pipe stops being prose
+    ("review#4 any line with a pipe in it opens a table",
+     '    return "|" in stripped and bool(TABLE_DELIMITER_RE.match(nxt.strip()))',
+     '    return "|" in stripped',
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_a_wrapped_sentence_that_merely_carries_a_pipe_is_not_a_table"]),
+
 ]
 
 
@@ -1944,7 +2015,8 @@ def main():
                                   "TestResolvedItemKeepsItsOwnSpelling",
                                   "TestFoldKeepsTheItemsMarkdown",
                                   "TestAClassLessChainIsNotAField",
-                                  "TestTheZeroIdIsStillAnId"])
+                                  "TestTheZeroIdIsStillAnId",
+                                  "TestFoldFailsSafeOnShapesNobodyEnumerated"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

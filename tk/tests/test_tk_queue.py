@@ -4546,5 +4546,191 @@ class TestTheZeroIdIsStillAnId(QueueTest):
                          " — renumber the others by hand in next-steps.md.\n")
 
 
+# --- review#4: the classifier's DEFAULT was the destructive direction -------
+#
+# The round before this one stopped `migrate` flattening an item's Markdown by
+# classifying each continuation line: a line that OPENS a block keeps its own
+# line, anything else is absorbed. The enumeration was the whole guard, and its
+# default was ABSORB — so every block shape not on the list reproduced the defect
+# the list was written to close, and the structure readback could not see it: it
+# counted the SAME regex's hits before and after the join, so for a shape the
+# regex never matched both counts were zero and the check agreed with the
+# flattening it was there to stop.
+#
+# Four shapes were found by reading, in one round — a setext underline, a link
+# reference definition, a GFM footnote definition, and a table head row written
+# without its leading pipe. They are enumerated now. The fifth nobody has read
+# yet is what changed the default: an absorption must be LICENSED by two
+# questions the enumeration cannot answer for itself (the geometry of the break,
+# and the character the line opens with), and an item neither licences is left
+# exactly as it is and named in the report.
+#
+# Every test here asserts the WHOLE file: this command rewrites user data, and
+# the defect it replays was invisible to any narrower assertion.
+
+R4_HEAD = ("- [ ] **T005** — cabeca escrita longa o bastante para que a quebra "
+           "seguinte caia numa coluna de wrap\n")
+R4_CHAIN = "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n"
+R4_FOLDED_HEAD = (R4_HEAD.rstrip("\n") + " **Class:** AUTONOMOUS. **Effort:** S. "
+                  "**Criterion:** A: x.\n")
+
+# one entry per shape: (name, the lines between the head and the chain)
+R4_SHAPES = (
+    ("sublinhado setext", "  ===\n"),
+    ("definicao de referencia de link", '  [ref]: https://exemplo.invalid "titulo"\n'),
+    ("definicao de nota de rodape", "  [^1]: a nota de rodape\n"),
+    ("tabela GFM sem pipe inicial", "  Col A | Col B\n  --- | ---\n  Val 1 | Val 2\n"),
+)
+
+# the population the fold must keep absorbing — a sentence hard-wrapped at column
+# ~95, which is 7 of the 8 real items with prose between head and chain. Each line
+# opens the way the real ones do: a code span, a parenthesis, an emoji, a wiki
+# link, a bold run. An over-tight rule refuses these, and the item then reads with
+# its field chain inside the parenthesis the wrap left open.
+R4_WRAPPED = (
+    "- [ ] **T006** — item cuja frase quebra no meio de um parenteses (parte um, parte dois\n"
+    "  `docs/proposta.md` + `docs/regua.md` + **`docs/esquema.md`** (novo, com a faixa de\n"
+    "  (diferenciacao vai pelo pro-labore futuro — posicao fixada no CONTEXT.md). Falta so\n"
+    "  ✅ **`Administrativo`** concedido, conferido na leitura de volta e no dry-run do dia\n"
+    "  [[nota-do-wiki]]): (a) decidir se as duas listas do vault tambem migram; (b) decidir\n"
+    "  **(c)** deixou de ser trabalho manual, e a caixa de entrada foi zerada nesse mesmo dia.\n"
+    "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: y.\n")
+R4_WRAPPED_FOLDED = (
+    "- [ ] **T006** — item cuja frase quebra no meio de um parenteses (parte um, parte dois "
+    "`docs/proposta.md` + `docs/regua.md` + **`docs/esquema.md`** (novo, com a faixa de "
+    "(diferenciacao vai pelo pro-labore futuro — posicao fixada no CONTEXT.md). Falta so "
+    "✅ **`Administrativo`** concedido, conferido na leitura de volta e no dry-run do dia "
+    "[[nota-do-wiki]]): (a) decidir se as duas listas do vault tambem migram; (b) decidir "
+    "**(c)** deixou de ser trabalho manual, e a caixa de entrada foi zerada nesse mesmo dia. "
+    "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: y.\n")
+
+
+class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def prose_refusal(self, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: a line between the "
+                "head and the chain is not the hard-wrapped prose the fold may absorb, "
+                "and absorbing a shape nobody recognised is how structure is lost in "
+                "silence — " + ", ".join(labels)
+                + ". Close each with `cancel` and re-add it clean.\n")
+
+    # --- the four shapes the enumeration was missing ----------------------
+
+    def test_each_shape_the_join_used_to_flatten_keeps_its_own_lines(self):
+        """All four, folded AROUND instead of over: the chain reaches the first
+        line, where the gates read it, and the block keeps every line it had.
+        Each was measured absorbed and reported as `folded up` — a success line
+        printed over destroyed structure, on a file with no other copy.
+
+        The head is deliberately long, so the break below it is one a wrapper
+        would make: the shape reading is the only thing that saves these, and a
+        fixture with a short head would let the geometry answer instead and prove
+        nothing about the enumeration."""
+        for name, middle in R4_SHAPES:
+            with self.subTest(shape=name):
+                self.seed(R4_HEAD.rstrip("\n") + "\n" + middle + R4_CHAIN)
+                r = self.migrate()
+                self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+                self.assertEqual(self.body(), HEADER + R4_FOLDED_HEAD + middle)
+
+    def test_the_gates_reach_an_item_folded_around_a_table_written_without_pipes(self):
+        """A fold is only worth a rewrite of user data if the readers can use the
+        result, and only acceptable if the table is still a table afterwards."""
+        self.seed(R4_HEAD.rstrip("\n") + "\n" + R4_SHAPES[3][1] + R4_CHAIN)
+        self.migrate()
+        self.assertIn("T005  S", self.run_tk("pack").stdout)
+        r = self.run_tk("edit", "T005", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + R4_FOLDED_HEAD.replace("**Effort:** S.", "**Effort:** L.")
+                         + R4_SHAPES[3][1])
+
+    # --- and the shapes NOBODY enumerated, which is the point --------------
+
+    def test_a_shape_no_one_enumerated_is_REFUSED_and_not_flattened(self):
+        """The finding this round is about, and the only test here that would
+        still hold if the four shapes above had never been added.
+
+        `!!! note` opens an admonition in Python-Markdown and MkDocs. It is on no
+        list in this file, on purpose: it stands for the shape the next reader
+        writes and nobody has enumerated. The fold does not recognise it, does not
+        guess, and does not touch the item — a refusal costs one command, and a
+        flattened queue file has no other copy."""
+        seeded = R4_HEAD.rstrip("\n") + "\n" + '  !!! note "Atencao"\n' + R4_CHAIN
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertNotIn("folded up", r.stdout)
+        # the MESSAGE, not merely "the file is unchanged": a crash leaves the file
+        # unchanged too, and would read here as a guard doing its job
+        self.assertIn(self.prose_refusal("T005"), r.stdout)
+
+    def test_a_shape_no_one_enumerated_that_OPENS_like_prose_is_refused_too(self):
+        """The second licence, and the arm the first test cannot reach. A
+        `chave: valor` metadata line opens with a letter, exactly as a wrapped
+        sentence does, so nothing about its first character betrays it. What does
+        is the GEOMETRY: the line above it is 30 columns wide, so the break was
+        the author's and not a wrapper's, and no wrapped paragraph looks like
+        that."""
+        seeded = ("- [ ] **T007** — cabeca curta\n"
+                  "  chave: valor\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.prose_refusal("T007"), r.stdout)
+
+    # --- the population the fold must NOT stop absorbing -------------------
+
+    def test_the_hard_wrapped_population_is_still_absorbed_whole(self):
+        """The regression the fail-safe default could break, and the expensive one:
+        7 of the 8 real items with prose between head and chain are one sentence
+        hard-wrapped at column ~95. Keeping those lines lands the field chain
+        inside the parenthesis the wrap left open, so `keep everything not proven
+        to be prose` reads worse than the defect it replaces. Every opener the real
+        corpus uses is here — code span, parenthesis, emoji, wiki link, bold run."""
+        self.seed(R4_WRAPPED)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
+        self.assertEqual(self.body(), HEADER + R4_WRAPPED_FOLDED)
+
+    def test_a_wrapped_sentence_that_merely_carries_a_pipe_is_not_a_table(self):
+        """The over-refusal direction of the table rule, and why it needs the line
+        BELOW: a pipe is a character prose uses. Without the lookahead the rule
+        reads `a | b` in the middle of a sentence as a table head, and the item is
+        folded around a line that was never a block."""
+        self.seed("- [ ] **T011** — cabeca longa o bastante para que a quebra seguinte caia "
+                  "numa coluna de wrap\n"
+                  "  o comando imprime `folded | refused | untouched` e segue a frase ate o "
+                  "fim dela.\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T011\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER
+                         + "- [ ] **T011** — cabeca longa o bastante para que a quebra "
+                           "seguinte caia numa coluna de wrap o comando imprime "
+                           "`folded | refused | untouched` e segue a frase ate o fim dela. "
+                           "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+
+    def test_the_two_verdicts_land_in_ONE_run_without_touching_each_other(self):
+        """A queue holds both populations, and the report must name the item it
+        could not fold beside the ones it did — a run that folded most of a queue
+        and stayed silent about the rest reports success for a job half done."""
+        refused = R4_HEAD.replace("T005", "T008").rstrip("\n") + "\n" \
+            + '  !!! note "Atencao"\n' + R4_CHAIN
+        self.seed(R4_WRAPPED, refused)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + R4_WRAPPED_FOLDED + refused)
+        self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
+        self.assertIn(self.prose_refusal("T008"), r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

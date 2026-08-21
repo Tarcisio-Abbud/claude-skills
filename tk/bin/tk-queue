@@ -87,6 +87,7 @@ import shlex
 import sys
 import tempfile
 import time
+import unicodedata
 
 try:
     import fcntl
@@ -2489,15 +2490,25 @@ def cmd_report(args):
 FOLD_REFUSAL = "folding would have to GUESS which text is a field value"
 FOLD_SPLIT_REFUSAL = ("a **Field:** marker would stay off the first line, and a chain "
                       "the fold only half lifts is not a chain any gate can read")
+FOLD_PROSE_REFUSAL = ("a line between the head and the chain is not the hard-wrapped prose "
+                      "the fold may absorb, and absorbing a shape nobody recognised is how "
+                      "structure is lost in silence")
 
 
 # every line-shape that OPENS a Markdown block, from CommonMark's block-start
 # set: a list item, an ordered item, a heading, a quote, a fence, a table row, a
 # thematic break, raw HTML. A line that opens none of these and continues the
 # paragraph above renders identically joined or wrapped — that is the whole
-# licence the join has, and it is why this list is the conservative direction:
-# a shape missing from it merely keeps its own line (nothing is lost), while a
-# shape wrongly ON it would be flattened. The readback measures that direction.
+# licence the join has.
+#
+# What this list is NOT is a safety net. It was written as one — "a shape missing
+# from it merely keeps its own line, nothing is lost" — and that sentence was
+# false in the direction that mattered: a shape missing from it was ABSORBED, so
+# every block shape not enumerated here reproduced the flattening the enumeration
+# was written to stop. Four were found by reading, in one round: a setext
+# underline, a link reference definition, a footnote definition, and a GFM table
+# whose head row carries no leading pipe. The four are enumerated below, and the
+# fifth nobody has read yet is what `absorption_audit` exists for.
 BLOCK_START_RE = re.compile(r"""
       [-*+][ \t]           # a bullet
     | [0-9]+[.)][ \t]      # an ordered item
@@ -2512,23 +2523,103 @@ BLOCK_START_RE = re.compile(r"""
 """, re.X)
 
 
-def joins_into_the_paragraph(line):
-    """Whether the fold may absorb this continuation line into the first one.
+# the four shapes the CommonMark set above does not reach, each one measured
+# FLATTENED and reported as folded by the round that wrote that set
+SETEXT_UNDERLINE_RE = re.compile(r"\A(?:=+|-+)[ \t]*\Z")
+# `[label]: destino` and `[^label]: nota` — a link reference definition and a GFM
+# footnote definition. `[[wiki-link]]) segue a frase` is NOT one of these and must
+# not be read as one: real wrapped prose opens that way in the queues
+REFERENCE_DEF_RE = re.compile(r"\A\[\^?[^\]\n]*\]:")
+# a GFM delimiter row — the line that turns the row ABOVE it into a table head,
+# and the only thing that tells `col A | col B` from a sentence with a pipe in it
+TABLE_DELIMITER_RE = re.compile(r"\A\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?\Z")
 
-    True only for a LAZY PARAGRAPH CONTINUATION — a hard-wrapped sentence, whose
-    soft line break Markdown already renders as one blank. Joining one of those
-    changes the rendered item by nothing at all, and 7 of the 8 real items with
-    prose between their head and their chain are exactly that: a sentence broken
-    at column ~95, several of them mid-parenthesis.
 
-    False for a line that OPENS a block, and for anything indented far enough to
-    be a code block — those carry structure that a join destroys, which is the
-    defect this predicate exists for. False is the safe answer in both cases: the
-    line simply keeps its own line, below the folded head.
+def opens_a_block(lines, j):
+    """Whether `lines[j]` OPENS a Markdown block instead of continuing the
+    paragraph above it — asked with the NEXT line in hand, because one shape
+    cannot be told without it.
+
+    True keeps the line where the user wrote it, with its own indentation. The
+    answer is a shape question and nothing else; whether an absorption is
+    LICENSED is a second question, asked by `absorption_audit`, which is
+    deliberately not this function and does not consult it.
     """
+    line = lines[j]
+    stripped = line.strip()
     indent = len(line) - len(line.lstrip())
-    return (indent < 4 and "\t" not in line[:indent] and bool(line.strip())
-            and not BLOCK_START_RE.match(line.strip()))
+    if not stripped:
+        return True                      # split_blocks ends the item at a blank line
+    if indent >= 4 or "\t" in line[:indent]:
+        return True                      # an indented code block
+    if BLOCK_START_RE.match(stripped):
+        return True
+    if SETEXT_UNDERLINE_RE.match(stripped) or REFERENCE_DEF_RE.match(stripped):
+        return True
+    nxt = lines[j + 1] if j + 1 < len(lines) else ""
+    return "|" in stripped and bool(TABLE_DELIMITER_RE.match(nxt.strip()))
+
+
+# the column below which a line break was the AUTHOR's and not a wrapper's. 72 is
+# the narrowest column anyone hard-wraps prose to; every break the fold absorbs
+# across the real queues is 93 columns or wider, and the flattened shapes measured
+# by hand break at 55 and below. Character count, not display width: the margin
+# between 72 and 93 is many times what a wide glyph miscounts.
+WRAP_COLUMN_FLOOR = 72
+# what a hard-wrapped line may OPEN with. Read off the corpus, not guessed: across
+# every continuation line the fold absorbs in the real queues, the first character
+# is a letter, a digit, a code span, an opening parenthesis or bracket, a bold
+# marker, a quote or an emoji — and nothing else. `!!! nota`, `: definicao`, `$$`,
+# `%%`, `+++`, `===` and `--- | ---` are none of those.
+PROSE_OPENERS = "`([*\"'“”‘’«»"
+
+
+def absorption_audit(lines, j):
+    """Why the fold may NOT absorb `lines[1:j]`, or None when it may.
+
+    The second question, and the point of it is that it is not the first. The
+    round before this one classified each line by SHAPE and then re-asked the same
+    shape question as a readback, which could not fail: a shape the classifier did
+    not recognise was absorbed, and the readback counted zero block-openers on
+    both sides and agreed. A readback that re-asks the question that made the
+    decision protects the decisions it was written for and nothing else.
+
+    So this asks two questions `opens_a_block` cannot answer for itself, and a NO
+    from either refuses the whole item rather than flattening it:
+
+      geometry  the break above the line is one a WRAPPER would make — the line
+                above plus this line's first word overruns WRAP_COLUMN_FLOOR.
+                Arithmetic on line lengths; no shape enters it, so a shape nobody
+                enumerated is still caught whenever the author put it on a line
+                they chose to break, which is what structural lines are.
+      opening   the line begins the way hard-wrapped prose begins, by a whitelist
+                read off the corpus. It is what refuses the whole family of rules,
+                underlines, fences and delimiters at once — `===`, `$$`, `:::`,
+                `+++`, `%%`, `--- | ---`, `!!! nota` — enumerated or not, because
+                none of them opens with a character a sentence opens with.
+
+    What it does NOT catch, said plainly rather than left for the next reader to
+    measure: a shape that is unenumerated AND opens with a letter AND happens to
+    sit exactly at a wrap column — a `chave: valor` metadata line under a full
+    line is the realistic one. That residue is the reason the DEFAULT changed
+    direction: an item the audit cannot license is left exactly as it is and named
+    in the report, because a refusal costs one command and a flattened queue file
+    has no other copy.
+    """
+    for k in range(1, j):
+        prev, line = lines[k - 1], lines[k]
+        stripped = line.strip()
+        # any whitespace, not a blank: a tab inside the line would otherwise
+        # make the first "word" longer, the break wider, and the absorption
+        # easier — the permissive direction, which is the destructive one
+        first_word = stripped.split(None, 1)[0]
+        if len(prev.rstrip()) + 1 + len(first_word) <= WRAP_COLUMN_FLOOR:
+            return FOLD_PROSE_REFUSAL
+        opener = stripped[0]
+        if not (opener.isalnum() or opener in PROSE_OPENERS
+                or unicodedata.category(opener) == "So"):
+            return FOLD_PROSE_REFUSAL
+    return None
 
 
 def field_run(line):
@@ -2594,12 +2685,14 @@ def fold_chain_onto_first_line(block):
     claim_unwritable_message already refuses to promise the fold for), and a chain
     spread across a line that opens mid-value takes the wrong text as its value.
 
-    The readback asks about the PROSE too, and that is the half this lacked. It
-    verifies both promises: the folded first line, up to where the reader finds
-    the chain beginning, is the original first line; and every remaining line is
-    an original continuation line, byte for byte. A readback that re-derives only
-    the field segments cannot see prose the join swallowed — it compared the two
-    things the join left alone and passed while the item was flattened.
+    Which lines may be absorbed is decided TWICE, by two questions that do not
+    share an answer. `opens_a_block` reads the SHAPE, and it is an enumeration, so
+    it is wrong about whatever nobody has enumerated yet. `absorption_audit` reads
+    the GEOMETRY of the break and the character the line opens with, neither of
+    which the enumeration can influence, and it refuses the item outright when it
+    cannot license what the shape reading absorbed. The default is what changed:
+    an unrecognised shape used to be absorbed — that is, flattened — and now it is
+    left exactly as it is and named in the report.
 
     A marker left among the lines that stay is refused outright. Nothing here can
     tell the rest of a split chain from prose that merely quotes a marker, and
@@ -2632,8 +2725,11 @@ def fold_chain_onto_first_line(block):
     # stops: the wrapped ones are absorbed, and everything from the first block
     # onwards keeps its own line, in its own place, with its own indentation
     j = 1
-    while j < first and joins_into_the_paragraph(lines[j]):
+    while j < first and not opens_a_block(lines, j):
         j += 1
+    refusal = absorption_audit(lines, j)
+    if refusal:
+        return None, refusal
     kept = lines[j:first]
     if EMBEDDED_MARKER_RE.search("\n".join(kept)):
         return None, FOLD_SPLIT_REFUSAL
@@ -2649,28 +2745,22 @@ def fold_chain_onto_first_line(block):
     if ([m.group(0).rstrip() for m in run]
             != [m.group(0).rstrip() for m in chain]):
         return None, FOLD_REFUSAL
-    # the PROSE half of the readback, and the half this lacked. Re-derived from
-    # the block as it arrived, not from the pieces the join was built out of: a
-    # comparison over those pieces is the join asking itself, and it passed while
-    # the item was being flattened. Two questions, one per promise —
-    #   structure  every line that OPENS a Markdown block is still a line of its
-    #              own. A bullet the join swallowed is missing from the second
-    #              list and the fold is refused, which is the T037 defect
-    #   verbatim   the lines that stayed are the lines that arrived, indentation
-    #              included — stripping them would keep the structure and lose
-    #              the nesting
-    #
-    # The structure question re-asks BLOCK_START_RE, which is also what decided
-    # the join, so no mutation can make it the sole reason a test falls; it is
-    # kept because it changes the DIRECTION of an unforeseen failure — a shape the
-    # predicate misreads comes back refused instead of flattened, and a refusal on
-    # this file costs a command while a flattening costs the text.
-    back = folded.rstrip("\n").split("\n")
-    blocks_in = [ln for ln in lines[1:] if BLOCK_START_RE.match(ln.strip())]
-    if [ln for ln in back[1:] if BLOCK_START_RE.match(ln.strip())] != blocks_in:
-        return None, FOLD_REFUSAL
-    if back[1:] != lines[j:first]:
-        return None, FOLD_REFUSAL
+    # Where the PROSE readback used to be. It stood here as two comparisons, and a
+    # review measured both unable to fail — so they are gone rather than kept as
+    # decoration, and what each was for now sits where it can:
+    #   structure  it counted BLOCK_START_RE hits before and after the join. That
+    #              is the question that DECIDED the join, so it agreed with every
+    #              decision, right or wrong: for a shape the regex never matched
+    #              both counts were zero and the check passed on a flattened item.
+    #              Its job — refusing rather than flattening when the shape reading
+    #              is wrong — is `absorption_audit`, which asks about geometry and
+    #              about how the line opens, two things the shape reading cannot
+    #              answer for itself.
+    #   verbatim   `back[1:] != lines[j:first]` was unreachable by construction:
+    #              `back` is built by joining `kept`, and `kept` IS `lines[j:first]`,
+    #              so the two sides were the same object's text on every input. The
+    #              nesting it meant to protect is protected by not stripping `kept`
+    #              in the first place, which is one line above and is mutation-tested.
     return folded, None
 
 
