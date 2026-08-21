@@ -363,14 +363,14 @@ MUTATIONS = [
     # --- review#2: the real field is the one in the CHAIN ------------------
 
     ("review#2 the real field is the LAST marker in the block again (note eaten)",
-     "        found = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]",
+     "        found = real_fields(new, field)",
      '        found = list(re.finditer(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
      'r"):\\*\\*[^*\\n]*", new))[-1:]',
      ["TestFieldChain.test_clearing_hits_the_real_field_and_spares_the_note",
       "TestFieldChain.test_setting_hits_the_real_field_and_spares_the_note"]),
 
     ("T065/review#2 the real field is the FIRST marker in the block again (prose eaten)",
-     "        found = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]",
+     "        found = real_fields(new, field)",
      '        found = list(re.finditer(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
      'r"):\\*\\*[^*\\n]*", new))[:1]',
      ["TestEmbeddedMarker.test_edit_rewrites_the_real_field_not_prose_that_looks_like_one",
@@ -403,7 +403,7 @@ MUTATIONS = [
      ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
 
     ("review#2 a duplicated field in the chain is guessed instead of refused",
-     "        if len(found) > 1:", "        if False:",
+     "        if len(in_chain) > 1:", "        if False:",
      ["TestFieldChain.test_an_ambiguous_chain_is_refused_not_guessed"]),
 
     # --- review#2: which flags the BLOCK ceiling covers --------------------
@@ -582,11 +582,13 @@ MUTATIONS = [
 
     ("T119 bump acts without checking the item is really open",
      "    content, block, start = find_open_item(memdir, args.id)\n"
+     "    label = item_label(block)\n"
      '    path = os.path.join(memdir, "next-steps.md")',
      '    path = os.path.join(memdir, "next-steps.md")\n'
      "    content = read(path) or \"\"\n"
      '    block, start = next(((t, 0) for k, t in split_blocks(content)\n'
-     '                         if k == "item-open" and item_id(t) == args.id), ("", 0))',
+     '                         if k == "item-open" and item_id(t) == args.id), ("", 0))\n'
+     "    label = item_label(block)",
      ["TestBump.test_an_unknown_id_is_diagnosed_and_nothing_moves"]),
 
     ("T119 list orders its groups alphabetically, so a bump is invisible",
@@ -640,8 +642,8 @@ MUTATIONS = [
     # one position rule, two gates: prose absorbed into the chain satisfies the
     # deferral gate in one direction and gets DELETED by `release` in the other
     ("2ª review a field anywhere in the chain counts, so prose satisfies the gate",
-     '        segs = [m for i, m in enumerate(chain) if names[i] == field and i > after]',
-     '        segs = [m for i, m in enumerate(chain) if names[i] == field]',
+     '    return [m for i, m in enumerate(chain) if names[i] == field and i >= lo]',
+     '    return [m for i, m in enumerate(chain) if names[i] == field]',
      ["TestDecisionDeferralGate."
       "test_prose_that_looks_like_a_deferral_never_satisfies_the_gate",
       "TestClaim.test_prose_ending_in_a_period_before_the_fields_is_not_a_claim"]),
@@ -657,11 +659,58 @@ MUTATIONS = [
      "    if stray and (args.classe or args.deferred is not None):", "    if stray:",
      ["TestDecisionDeferralGate.test_an_edit_that_never_consults_the_deferral_stays_allowed"]),
 
+    # --- T121: `list` reads the class from the chain, like the gate ----------
+
+    ("T121 `list` reads the class from the whole block again (prose beats the field)",
+     '    if real_fields(block, "Class"):\n        return chain_class(block)',
+     '    if False:\n        return chain_class(block)',
+     ["TestListReadsTheClassFromTheChain."
+      "test_a_class_named_only_in_PROSE_is_not_the_one_list_shows",
+      "TestListReadsTheClassFromTheChain."
+      "test_list_and_pack_no_longer_disagree_about_the_same_item",
+      "TestListReadsTheClassFromTheChain."
+      "test_a_class_the_GATE_calls_ambiguous_is_shown_as_unknown_not_guessed"]),
+
+    # the over-correction direction, and the one a naive fix takes: reading the
+    # chain ALONE shows every unfolded legacy item with no class at all
+    ("T121 `list` reads the chain ALONE, so a legacy item loses its class",
+     '    if real_fields(block, "Class"):\n'
+     '        return chain_class(block)\n'
+     '    m = CLASS_VALUE_RE.search(block)\n'
+     '    return m.group(1) if m else None',
+     "    return chain_class(block)",
+     ["TestListReadsTheClassFromTheChain."
+      "test_a_legacy_item_with_its_fields_OFF_the_first_line_still_shows_its_class"]),
+
+    # --- T121: prose wearing a real field's NAME -----------------------------
+
+    # the locator goes back to reading the chain RAW, which is what `edit` did
+    # before: a segment the item's own sentence opens is written, or deleted
+    ("T121 the edit locator reads the chain raw again (quoted prose eaten)",
+     "        found = real_fields(new, field)", "        found = in_chain",
+     ["TestProseWearingAFieldName.test_setting_a_field_named_only_in_prose_is_refused",
+      "TestProseWearingAFieldName.test_CLEARING_a_field_named_only_in_prose_is_refused"]),
+
+    # the off-by-one in the other direction: Class anchors the chain AT its own
+    # segment, so treating it like every other field locks `--class` out of every
+    # canonical item — the over-refusal this rule must not buy
+    ("T121 the anchor excludes the **Class:** it is anchored on",
+     '    lo = names.index("Class") + (0 if field == "Class" else 1)',
+     '    lo = names.index("Class") + 1',
+     ["TestProseWearingAFieldName."
+      "test_the_anchor_does_not_move_the_fields_of_an_ordinary_item"]),
+
+    # the ambiguity COUNT is deliberately not positional: an item that quotes the
+    # marker AND carries the real field is refused, not silently resolved
+    ("T121 the ambiguity count becomes positional (a quoted marker stops counting)",
+     "        if len(in_chain) > 1:", "        if len(found) > 1:",
+     ["TestFieldChain.test_an_ambiguous_chain_is_refused_not_guessed"]),
+
     # --- 2nd pair of eyes: an item's TEXT is not its ADDRESS ------------------
 
     ("2ª review the block is addressed by its TEXT again (a quoted copy wins)",
-     "            return content, text, pos",
-     "            return content, text, content.index(text)",
+     "    return content, found[0][0], found[0][1]",
+     "    return content, found[0][0], content.index(found[0][0])",
      ["TestBlockAddressing.test_done_closes_the_real_item_and_spares_the_quoted_copy",
       "TestBlockAddressing.test_bump_moves_the_real_item_and_leaves_no_phantom",
       "TestBlockAddressing.test_edit_rewrites_the_real_item_and_not_the_quotation"]),
@@ -681,7 +730,7 @@ MUTATIONS = [
 
     ("re-check the gate reads the class the loose way `list` displays it",
      "    result_class = args.classe or chain_class(block)",
-     "    result_class = args.classe or item_class(block)",
+     "    result_class = args.classe or (lambda m: m.group(1) if m else None)(CLASS_VALUE_RE.search(block))",
      ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
 
     ("re-check an ambiguous class in the chain is guessed instead of refused",
@@ -689,10 +738,49 @@ MUTATIONS = [
      "    if not found:\n        return None",
      ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
 
-    ("re-check a deferral counts with no Class in the chain to qualify",
-     '    if "Class" in names:\n        after = names.index("Class")',
-     '    if True:\n        after = names.index("Class") if "Class" in names else -1',
-     ["TestDecisionDeferralGate.test_a_chain_with_no_class_carries_no_deferral_to_find"]),
+    # the rule now lives in real_fields, where the WRITER reads it too — which is
+    # the review#3 finding: the gates applied it and `edit` did not
+    # the OLD body, verbatim, not `if False` — with the early return merely
+    # switched off, `names.index("Class")` raises on the very population the
+    # mutation is about, and a command that CRASHES exits 1 like the refusal
+    # does: the deferral test then passed and reported this guard as protected
+    ("review#3 a chain with no **Class:** anchors the whole chain again (prose eaten)",
+     '    if "Class" not in names:\n        return []\n'
+     '    lo = names.index("Class") + (0 if field == "Class" else 1)',
+     '    lo = 0\n'
+     '    if "Class" in names:\n'
+     '        lo = names.index("Class") + (0 if field == "Class" else 1)',
+     ["TestDecisionDeferralGate.test_a_chain_with_no_class_carries_no_deferral_to_find",
+      "TestAClassLessChainIsNotAField.test_setting_a_field_on_a_class_less_item_is_refused",
+      "TestAClassLessChainIsNotAField.test_CLEARING_a_field_on_a_class_less_item_is_refused",
+      "TestAClassLessChainIsNotAField."
+      "test_a_field_the_class_less_item_really_carries_is_refused_too",
+      "TestAClassLessChainIsNotAField."
+      "test_the_refusal_does_not_offer_a_remedy_that_is_a_dead_end"]),
+
+    # the message, on its own: the generic one sends the caller looking for a
+    # **Class:** the item has not got
+    # the anchor carries the fail() line under it, and that is not decoration: a
+    # second guard with the SAME condition was added one branch to the right, and
+    # this entry went UNRUNNABLE — proving nothing, silently — until each anchor
+    # named the refusal it belongs to
+    ("review#3 the class-less refusal borrows the generic message",
+     '            if field != "Class" and not real_fields(new, "Class"):\n                fail(f"{label} names no **Class:** in its field chain, so nothing in that "',
+     '            if False:\n                fail(f"{label} names no **Class:** in its field chain, so nothing in that "',
+     ["TestAClassLessChainIsNotAField.test_setting_a_field_on_a_class_less_item_is_refused",
+      "TestAClassLessChainIsNotAField.test_CLEARING_a_field_on_a_class_less_item_is_refused",
+      "TestAClassLessChainIsNotAField."
+      "test_a_field_the_class_less_item_really_carries_is_refused_too",
+      "TestAClassLessChainIsNotAField."
+      "test_the_refusal_does_not_offer_a_remedy_that_is_a_dead_end"]),
+
+    # the over-refusal direction, and the one the old fallback was written for:
+    # a field the item does not carry at all is APPENDED, and `--class` on a
+    # class-less item is exactly that append
+    ("review#3 a field the item does not carry at all is refused instead of appended",
+     '        if not found and re.search(r"\\*\\*(?:" + FIELD_VARIANTS[field] + r"):\\*\\*", new):',
+     "        if not found:",
+     ["TestAClassLessChainIsNotAField.test_a_class_less_item_can_still_be_GIVEN_a_class"]),
 
     ("re-check the stray refusal drops its --deferred arm",
      "    if stray and (args.classe or args.deferred is not None):",
@@ -939,10 +1027,10 @@ MUTATIONS = [
 
     ("T121 a second claim is let through (two sessions hold the same item)",
      '    if held is not None:\n'
-     '        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. '
+     '        fail(f"{label} is already {claim_mark(*claim_value(held))}. '
      'Nothing was "',
      '    if False:\n'
-     '        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. '
+     '        fail(f"{label} is already {claim_mark(*claim_value(held))}. '
      'Nothing was "',
      ["TestClaim.test_a_second_claim_is_refused_naming_the_owner_and_the_moment",
       "TestClaim.test_the_same_owner_cannot_reclaim_it_either",
@@ -951,9 +1039,9 @@ MUTATIONS = [
     # the refusal is the whole product of the guard: "already claimed" with no name
     # tells the caller nothing to act on, and no session to go ask
     ("T121 the refusal stops naming the owner and the moment",
-     '        fail(f"T{args.id:03d} is already {claim_mark(*claim_value(held))}. '
+     '        fail(f"{label} is already {claim_mark(*claim_value(held))}. '
      'Nothing was "',
-     '        fail(f"T{args.id:03d} is already claimed. Nothing was "',
+     '        fail(f"{label} is already claimed. Nothing was "',
      ["TestClaim.test_a_second_claim_is_refused_naming_the_owner_and_the_moment",
       "TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
 
@@ -1008,20 +1096,20 @@ MUTATIONS = [
     # release that demanded a host would refuse a diagnosis about a claim the item
     # does not even have
     ("T121 release demands a host it does not need",
-     "    held = claim_segment(args.id, block)\n    if held is None:",
+     "    held = claim_segment(block)\n    if held is None:",
      '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
-     '        fail(f"T{args.id:03d} cannot hold a claim")\n'
-     "    held = claim_segment(args.id, block)\n    if held is None:",
+     '        fail(f"{label} cannot hold a claim")\n'
+     "    held = claim_segment(block)\n    if held is None:",
      ["TestClaim.test_release_on_a_chainless_item_with_no_marker_is_still_an_honest_no_op"]),
 
     # the order of two refusals: only the stray one is terminal, and preempting it
     # printed a remedy that MUTATED the file and left the real refusal standing
     ("T121 the missing-host refusal preempts the terminal stray one",
-     "    held = claim_segment(args.id, block)\n    if held is not None:",
+     "    held = claim_segment(block)\n    if held is not None:",
      '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
-     '        fail(f"T{args.id:03d}: give it a class first: `tk-queue edit '
-     'T{args.id:03d} --class AUTONOMOUS`")\n'
-     "    held = claim_segment(args.id, block)\n    if held is not None:",
+     '        fail(f"{label}: give it a class first: `tk-queue edit '
+     '{label} --class AUTONOMOUS`")\n'
+     "    held = claim_segment(block)\n    if held is not None:",
      ["TestClaim.test_a_stray_marker_is_answered_BEFORE_the_missing_host"]),
 
     ("T121 an ambiguously claimed item is displayed as FREE",
@@ -1062,8 +1150,8 @@ MUTATIONS = [
      ["TestClaim.test_a_broken_chain_is_told_WHERE_it_stops_and_never_guesses_why"]),
 
     ("T121 two claims in the chain are guessed (the first wins) instead of refused",
-     "    if len(segs) > 1:\n        fail(f\"T{iid:03d} carries {len(segs)} **Claimed:**",
-     "    if False:\n        fail(f\"T{iid:03d} carries {len(segs)} **Claimed:**",
+     "    if len(segs) > 1:\n        fail(f\"{label} carries {len(segs)} **Claimed:**",
+     "    if False:\n        fail(f\"{label} carries {len(segs)} **Claimed:**",
      ["TestClaim.test_two_claim_fields_in_the_chain_are_refused_as_ambiguous"]),
 
     ("T121 Claimed stops being a field the readers know (it leaves FIELD_VARIANTS)",
@@ -1097,10 +1185,10 @@ MUTATIONS = [
     # ceiling makes a legacy oversized item unclaimable without --force
     ("T121 claiming is measured against the block ceiling",
      "    splice_item(memdir, content, block, start, new)\n"
-     '    print(f"T{args.id:03d} claimed by {args.owner} ({stamp})")',
+     '    print(f"{label} claimed by {args.owner} ({stamp})")',
      "    check_ceiling(new, False)\n"
      "    splice_item(memdir, content, block, start, new)\n"
-     '    print(f"T{args.id:03d} claimed by {args.owner} ({stamp})")',
+     '    print(f"{label} claimed by {args.owner} ({stamp})")',
      ["TestClaim.test_claiming_a_legacy_oversized_item_needs_no_force"]),
 
     ("T121 release splices the field out without the removal-site repair",
@@ -1111,18 +1199,18 @@ MUTATIONS = [
       "TestClaim.test_a_claim_that_does_not_parse_can_still_be_released"]),
 
     ("T121 release reports a release it did not perform",
-     '        print(f"T{args.id:03d} carries no claim — nothing to release")',
-     '        print(f"T{args.id:03d} released")',
+     '        print(f"{label} carries no claim — nothing to release")',
+     '        print(f"{label} released")',
      ["TestClaim.test_releasing_an_unclaimed_item_says_so_and_changes_nothing"]),
 
     ("T121 release stops naming the claim it dropped (a silent steal)",
-     '    print(f"T{args.id:03d} released — it was {mark}")',
-     '    print(f"T{args.id:03d} released")',
+     '    print(f"{label} released — it was {mark}")',
+     '    print(f"{label} released")',
      ["TestClaim.test_release_names_the_claim_it_dropped"]),
 
     ("T121 list stops showing the mark",
-     '    return f"{label}  {cls:<10}  {title}" + (f"  [{mark}]" if mark else "")',
-     '    return f"{label}  {cls:<10}  {title}"',
+     '+ (f"  [{mark}]" if mark else "")',
+     '+ ""',
      ["TestClaim.test_list_marks_the_claimed_item_and_only_that_one"]),
 
     # the two-command bypass: a flag that can WRITE this field takes an item
@@ -1158,7 +1246,8 @@ MUTATIONS = [
     # included. It drops an AUTONOMOUS item out of every package over a class word
     # quoted in its own text
     ("T126 pack reads the class the way `list` displays it, not from the chain",
-     "    cls = chain_class(block)", "    cls = item_class(block)",
+     "    cls = chain_class(block)",
+     "    cls = (lambda m: m.group(1) if m else None)(CLASS_VALUE_RE.search(block))",
      ["TestPack.test_a_class_QUOTED_IN_PROSE_does_not_decide_the_package"]),
 
     ("T126 pack guesses a class where the chain names two",
@@ -1327,9 +1416,9 @@ MUTATIONS = [
 
     ("T126 pack packages the items already closed",
      '        if kind != "item-open":\n            continue\n        iid = item_id(text)\n'
-     "        # `is not None`, not truthiness:",
+     "        # the item's own spelling, from item_label:",
      '        if kind == "other":\n            continue\n        iid = item_id(text)\n'
-     "        # `is not None`, not truthiness:",
+     "        # the item's own spelling, from item_label:",
      ["TestPack.test_a_checked_item_is_not_a_candidate"]),
 
     ("T126 the repair is repeated once per item instead of once per shape",
@@ -1511,10 +1600,460 @@ MUTATIONS = [
      '        fixed = f"{item_title(block, limit=400)} {link}"',
      ["TestHandoffCreation.test_the_remedy_never_truncates_the_item_it_rewrites"]),
 
+    ("BOM read() lets one at the head through to the `^`-anchored grammars again",
+     '    with open(path, encoding="utf-8-sig") as f:\n        return f.read()',
+     '    with open(path, encoding="utf-8") as f:\n        return f.read()',
+     ["TestByteOrderMark.test_the_first_item_is_neither_hidden_nor_blamed_on_a_concurrent_writer",
+      "TestByteOrderMark.test_the_hidden_items_id_is_never_handed_out_twice",
+      "TestByteOrderMark.test_a_bom_in_the_done_log_keeps_its_first_entry_allocated"]),
+     # NOT test_a_bom_further_INTO_the_file_is_left_alone: it passes with the
+     # defect restored, by construction — it guards the OPPOSITE direction, and
+     # naming it here would claim a proof this run cannot make
+
+    # the other direction, which no mutation above covers: a strip that reaches
+    # PAST the head silently edits the user's own text
+    ("BOM the strip reaches past the head, into the user's own text",
+     '    with open(path, encoding="utf-8-sig") as f:\n        return f.read()',
+     '    with open(path, encoding="utf-8") as f:\n'
+     '        return f.read().replace("\\ufeff", "")',
+     ["TestByteOrderMark.test_a_bom_further_INTO_the_file_is_left_alone"]),
+
+    ("ID the label is rebuilt from the parsed number, so T0001 prints as T001 again",
+     '    m = ITEM_ID_RE.match(text)\n    return ("T" + m.group(2)) if m else "----"',
+     '    iid = item_id(text)\n    return f"T{iid:03d}" if iid else "----"',
+     ["TestIdSpelling.test_list_prints_each_item_under_its_own_spelling",
+      "TestIdSpelling.test_pack_reads_the_id_the_way_list_does"]),
+     # NOT the two allocation tests: the display is not what they measure, and
+     # naming a test that passes here would claim a proof this run cannot make
+
+    # the WRONG fix for the collision, and the reason the repair had to stay in
+    # the display: capping the width hides T0001 from the allocator, which hands
+    # its number out again — and breaks T1000 the day IDs reach four digits
+    ("ID the slot hard-caps the width at three digits",
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]{3,})(?:~~)?\\*\\*"',
+     'ID_SLOT = r"\\*\\*(?:~~)?T([0-9]{3})(?:~~)?\\*\\*"',
+     ["TestIdSpelling.test_a_wide_spelling_is_still_an_allocated_id",
+      "TestIdSpelling.test_a_four_digit_id_is_canonical_and_is_not_capped"]),
+
+    # the guard's own boundary, not the whole warning: a pair stops counting as
+    # ambiguous and the silence is back, while a triple would still warn
+    ("ID two open items under one number go back to being resolved in silence",
+     "    if len(found) > 1:\n        print(ambiguous_id_message(",
+     "    if len(found) > 2:\n        print(ambiguous_id_message(",
+     ["TestAmbiguousId.test_edit_says_which_occurrence_it_acted_on_and_still_acts",
+      "TestAmbiguousId.test_the_warning_sits_where_the_ID_is_RESOLVED_not_in_edit",
+      "TestAmbiguousId.test_a_wide_spelling_is_the_same_ambiguity"]),
+
+    ("ID every resolution warns, ambiguous or not",
+     "    if len(found) > 1:\n        print(ambiguous_id_message(",
+     "    if len(found) >= 1:\n        print(ambiguous_id_message(",
+     ["TestAmbiguousId.test_an_ID_carried_by_ONE_item_is_not_warned_about"]),
+
+    ("ID `list` stops marking a duplicated ID (only a triple would count)",
+     "ids.count(i) > 1", "ids.count(i) > 2",
+     ["TestAmbiguousId.test_list_marks_every_row_under_a_duplicated_id"]),
+
+    ("ID `list` marks every row as duplicated, which marks nothing",
+     "ids.count(i) > 1", "ids.count(i) > 0",
+     ["TestAmbiguousId.test_list_marks_every_row_under_a_duplicated_id",
+      "TestAmbiguousId.test_an_ID_carried_by_ONE_item_is_not_warned_about"]),
+
+    # --- T121 `migrate` folds a chain that sits off the first line ----------
+    # The defect itself: `migrate` was the command documented as the repair for
+    # legacy shapes and folded nothing, so 31 of 155 real open items stayed
+    # invisible to every gate. NOT named here are the three tests that pass with
+    # the fold off by construction — the canonical queue, the item with no field
+    # at all, and the second-run no-op, which is a no-op either way
+    ("T121 `migrate` folds nothing again: the fields stay off the first line",
+     "            new, refusal = fold_chain_onto_first_line(text)",
+     "            new, refusal = None, None",
+     ["TestMigrateFold.test_the_legacy_shape_is_folded_and_the_prose_survives_it",
+      "TestMigrateFold.test_after_the_fold_pack_claim_and_edit_all_reach_the_item",
+      "TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too",
+      "TestMigrateFold.test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass",
+      "TestMigrateFold.test_the_two_populations_are_separated_in_ONE_run",
+      "TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
+
+    # the readback: the fold may RELOCATE a chain, never CONSTRUCT one. Off, the
+    # command joins the lines anyway and writes a field the item never carried.
+    # NOT named: the marker-whose-value-is-on-the-next-line test. That shape is
+    # refused one guard earlier (its last line opens mid-value, so it carries no
+    # field RUN), so it passes with this one off — naming it would claim a proof
+    # this run cannot make. The pair below is what decides that shape
+    ("T121 the fold stops asking the reader what the folded line gives back",
+     "    if ([m.group(0).rstrip() for m in run]\n"
+     "            != [m.group(0).rstrip() for m in chain]):",
+     "    if False:",
+     ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
+
+    # the block whose lines carry no field RUN, joined blindly and returned — the
+    # decision the `not run` refusal and the readback make TOGETHER, and the only
+    # one that answers the marker-and-value-on-different-lines shape. The join
+    # itself still runs: what is switched off is the rule, not the step
+    ("T121 the fold trusts the join on a block it can read no field run out of",
+     "    if not run:\n        return None, FOLD_REFUSAL",
+     "    if not run:\n        return (\" \".join(ln.strip() for ln in lines)\n"
+     "                + block[len(block.rstrip(\"\\n\")):]), None",
+     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
+
+    # the whitespace half of that comparison, on its own: a chain WRAPPED over two
+    # continuation lines is whole, and refusing it repairs an item the fold could lift
+    ("T121 the readback counts the blank at a line joint as a changed value",
+     "    if ([m.group(0).rstrip() for m in run]\n"
+     "            != [m.group(0).rstrip() for m in chain]):",
+     "    if [m.group(0) for m in run] != [m.group(0) for m in chain]:",
+     ["TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too"]),
+
+    # a fold that lifts nothing still rewrites the user's line and reports it as
+    # repaired — the one direction a data-rewriting command may never take
+    ("T121 an item whose lines carry no field RUN is folded anyway",
+     "    if not run:\n        return None, FOLD_REFUSAL",
+     "    if False:\n        return None, FOLD_REFUSAL",
+     ["TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
+
+    # the weaker question the guard deliberately does not ask: "does ANY chain end
+    # the first line" answers YES for a **Class:** whose value sits on the next one,
+    # and that item — the shape the repairs text calls unfoldable — is passed over
+    # in SILENCE, which is the outcome the report exists to prevent
+    ("T121 the skip asks for any chain instead of one that reaches the class",
+     "    if chain_class(block) is not None:", "    if field_chain(block):",
+     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED"]),
+
+    ("T121 an item with no field off the first line is dragged into the fold's report",
+     '    if not EMBEDDED_MARKER_RE.search("\\n".join(lines[1:])):', "    if False:",
+     ["TestMigrateFold.test_an_item_with_no_field_at_all_is_neither_folded_nor_reported"]),
+
+    # the two report lines, each on its own: silence about what was rewritten, and
+    # silence about what was left, are different failures of the same command
+    ("T121 the fold rewrites the file and says nothing about it",
+     "    if folded:\n        print(", "    if False:\n        print(",
+     ["TestMigrateFold.test_the_legacy_shape_is_folded_and_the_prose_survives_it",
+      "TestMigrateFold.test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass",
+      "TestMigrateFold.test_the_two_populations_are_separated_in_ONE_run"]),
+
+    ("T121 the items the fold could NOT lift go unreported (silent partial success)",
+     "    if left_alone:\n        # grouped BY REASON",
+     "    if False:\n        # grouped BY REASON",
+     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED",
+      "TestMigrateFold.test_the_two_populations_are_separated_in_ONE_run"]),
+
+    # the ORDER inside the loop: read before the ID is assigned, the label of an
+    # item that gained both is `----`, which names no item the caller can act on
+    ("T121 the report reads the label before `migrate` assigns the ID",
+     "            if item_id(text) is None:\n"
+     "                nid += 1\n"
+     '                text = text.replace("- [ ] ", f"- [ ] **T{nid:03d}** — ", 1)\n'
+     "            if new is not None:\n"
+     "                folded.append(item_label(text))\n"
+     "            elif refusal:\n"
+     "                left_alone.append((item_label(text), refusal))",
+     "            if new is not None:\n"
+     "                folded.append(item_label(text))\n"
+     "            elif refusal:\n"
+     "                left_alone.append((item_label(text), refusal))\n"
+     "            if item_id(text) is None:\n"
+     "                nid += 1\n"
+     '                text = text.replace("- [ ] ", f"- [ ] **T{nid:03d}** — ", 1)',
+     ["TestMigrateFold.test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass"]),
+
+    # --- review#3: the fold flattened the item's MARKDOWN -------------------
+    # It joined every line of the block into one and read only the field segments
+    # back, so 8 of the 11 items it folded across the real queues lost their list
+    # or their line breaks and were reported as folded. Each entry below puts one
+    # half of the repair back.
+
+    # the defect itself: every intervening line absorbed, bullets included
+    ("review#3 the fold absorbs every line between the head and the chain",
+     "    j = 1\n    while j < first and not opens_a_block(lines, j):\n        j += 1",
+     "    j = first",
+     ["TestFoldKeepsTheItemsMarkdown."
+      "test_a_bulleted_list_between_the_head_and_the_chain_survives_the_fold",
+      "TestFoldKeepsTheItemsMarkdown.test_the_gates_reach_an_item_folded_AROUND_its_list",
+      "TestFoldKeepsTheItemsMarkdown.test_prose_that_wraps_AFTER_a_block_is_not_lifted_over_it",
+      "TestFoldKeepsTheItemsMarkdown."
+      "test_both_populations_fold_in_ONE_run_each_keeping_its_own_shape"]),
+
+    # the classifier stops asking CommonMark's block-start set. Nothing is
+    # flattened even so — the absorption audit refuses the item instead, because a
+    # bullet does not open the way a wrapped sentence opens — which is the whole
+    # point of the default having changed direction
+    ("review#3 a line that opens a block is joinable like any other",
+     "    if BLOCK_START_RE.match(stripped):\n        return True",
+     "    if False:\n        return True",
+     ["TestFoldKeepsTheItemsMarkdown."
+      "test_a_bulleted_list_between_the_head_and_the_chain_survives_the_fold",
+      "TestFoldKeepsTheItemsMarkdown.test_the_gates_reach_an_item_folded_AROUND_its_list",
+      "TestFoldKeepsTheItemsMarkdown.test_prose_that_wraps_AFTER_a_block_is_not_lifted_over_it"]),
+
+    # the same rule read out of the regex: with the bullet arm gone the fold stops
+    # seeing a list, and the item comes back refused instead of folded around it
+    ("review#3 a bullet stops opening a Markdown block",
+     "      [-*+][ \\t]           # a bullet",
+     "      (?!)                 # a bullet",
+     ["TestFoldKeepsTheItemsMarkdown."
+      "test_a_bulleted_list_between_the_head_and_the_chain_survives_the_fold",
+      "TestFoldKeepsTheItemsMarkdown.test_the_gates_reach_an_item_folded_AROUND_its_list",
+      "TestFoldKeepsTheItemsMarkdown.test_prose_that_wraps_AFTER_a_block_is_not_lifted_over_it",
+      "TestFoldKeepsTheItemsMarkdown."
+      "test_a_marker_stranded_on_a_BLOCK_line_is_left_and_REPORTED"]),
+
+    # the other direction, and the expensive one: 7 of those 8 items are a
+    # hard-wrapped sentence, which Markdown renders identically joined. Kept as
+    # its own line, the chain lands inside the unclosed parenthesis the wrap left
+    ("review#3 nothing is absorbed, so a wrapped sentence is cut by the chain",
+     "    while j < first and not opens_a_block(lines, j):",
+     "    while j < first and False:",
+     ["TestFoldKeepsTheItemsMarkdown.test_a_hard_wrapped_sentence_is_still_absorbed_into_the_head",
+      "TestFoldKeepsTheItemsMarkdown."
+      "test_both_populations_fold_in_ONE_run_each_keeping_its_own_shape",
+      "TestMigrateFold.test_the_legacy_shape_is_folded_and_the_prose_survives_it",
+      "TestMigrateFold.test_after_the_fold_pack_claim_and_edit_all_reach_the_item",
+      "TestMigrateFold.test_the_frontmatter_headings_and_the_done_log_move_stay_intact",
+      "TestMigrateFold.test_the_two_populations_are_separated_in_ONE_run"]),
+
+    # the lines that stay, stripped on the way through: the structure survives and
+    # the NESTING does not, which is the half a block-level check cannot see
+    ("review#3 the lines that stay are re-indented on the way through",
+     "    kept = lines[j:first]", "    kept = [ln.strip() for ln in lines[j:first]]",
+     ["TestFoldKeepsTheItemsMarkdown."
+      "test_a_bulleted_list_between_the_head_and_the_chain_survives_the_fold"]),
+
+    # half a chain lifted leaves an item that reads as repaired and is not
+    ("review#3 the fold lifts half a chain, leaving a marker off the first line",
+     '    if EMBEDDED_MARKER_RE.search("\\n".join(kept)):\n        return None, FOLD_SPLIT_REFUSAL',
+     '    if False:\n        return None, FOLD_SPLIT_REFUSAL',
+     ["TestFoldKeepsTheItemsMarkdown."
+      "test_a_marker_stranded_on_a_BLOCK_line_is_left_and_REPORTED"]),
+
+    # the report gained a second reason, and a reader repairs the shape the
+    # sentence names — melted into one line it sends them after the wrong thing
+    ("review#3 both refusals are reported under the same reason",
+     "            by_reason.setdefault(why, []).append(lab)",
+     "            by_reason.setdefault(FOLD_REFUSAL, []).append(lab)",
+     ["TestFoldKeepsTheItemsMarkdown.test_the_two_refusals_are_reported_under_their_OWN_reasons",
+      "TestFoldKeepsTheItemsMarkdown."
+      "test_a_marker_stranded_on_a_BLOCK_line_is_left_and_REPORTED"]),
+
+    # --- review#3: T000 is an ID -------------------------------------------
+    # the mark is guarded `is not None` because `dup` IS the id, and 0 is falsy.
+    # Correct since it was written, and untested: T000 appeared nowhere in the
+    # suite, so the truthy spelling left all 9 tests of the owning classes green
+    ("review#3 the duplicate mark is dropped for the one ID that is falsy (T000)",
+     '            + (f"  [{AMBIGUOUS_MARK % dup}]" if dup is not None else ""))',
+     '            + (f"  [{AMBIGUOUS_MARK % dup}]" if dup else ""))',
+     ["TestTheZeroIdIsStillAnId.test_two_items_under_T000_are_both_marked_as_duplicates"]),
+
     ("T122 a briefing is written for an item that is not open (an orphan at birth)",
      "    content, block, start = find_open_item(memdir, args.id)\n    values = {dest:",
      '    content, block, start = "", "", 0\n    values = {dest:',
      ["TestHandoffCreation.test_an_item_that_is_not_open_gets_no_briefing"]),
+
+    # --- T121: the NAME an item gets back is read off its own block ---------
+    # `int("0001") == 1`, so a label rebuilt from the number typed is the label of
+    # a DIFFERENT item. Each entry below puts one command's re-rendering back.
+
+    ("T121 the done-log LINE records a re-rendered ID (the durable record)",
+     '    line = f"- {today} — {marker} — {label} {text} — {outcome}"',
+     '    line = f"- {today} — {marker} — T{args.id:03d} {text} — {outcome}"',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_done_log_records_the_item_under_its_own_spelling",
+      "TestResolvedItemKeepsItsOwnSpelling.test_cancel_writes_the_same_name_into_the_log"]),
+
+    ("T121 done/cancel name the item by the number typed, not by the block",
+     "    label = item_label(block)\n"
+     "    ensure_single_line(outcome=outcome, summary=args.summary)",
+     '    label = f"T{args.id:03d}"\n'
+     "    ensure_single_line(outcome=outcome, summary=args.summary)",
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_done_log_records_the_item_under_its_own_spelling",
+      "TestResolvedItemKeepsItsOwnSpelling.test_cancel_writes_the_same_name_into_the_log"]),
+
+    # the refusal that HANDS OVER A COMMAND: a remedy addressed to T001 while the
+    # item is T0001 rewrites another item, and --text eats its prose
+    ("T121 the claim refusal names a re-rendered ID in the remedy it prints",
+     '    label = item_label(block)\n    head = (f"{label} cannot hold a claim',
+     '    label = f"T{item_id(block):03d}"\n    head = (f"{label} cannot hold a claim',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_refusal_names_the_item_and_its_remedy_addresses_that_item",
+      "TestResolvedItemKeepsItsOwnSpelling.test_the_old_remedy_was_a_command_about_a_DIFFERENT_open_item"]),
+
+    ("T121 the ambiguous and stray claim refusals name a re-rendered ID",
+     '    label = item_label(block)\n    segs, markers = qualified_fields(block, "Claimed")',
+     '    label = f"T{item_id(block):03d}"\n'
+     '    segs, markers = qualified_fields(block, "Claimed")',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_ambiguous_and_stray_claim_refusals_name_the_item"]),
+
+    ("T121 edit reports a re-rendered ID",
+     "    label = item_label(block)\n    ensure_single_line(text=args.text",
+     '    label = f"T{args.id:03d}"\n    ensure_single_line(text=args.text',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_edit_reports_the_item_it_rewrote"]),
+
+    ("T121 claim reports a re-rendered ID",
+     "    label = item_label(block)\n    held = claim_segment(block)",
+     '    label = f"T{args.id:03d}"\n    held = claim_segment(block)',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_claim_release_and_bump_name_the_item_they_touched"]),
+
+    ("T121 release reports a re-rendered ID",
+     "    label = item_label(block)\n    # No host check here",
+     '    label = f"T{args.id:03d}"\n    # No host check here',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_claim_release_and_bump_name_the_item_they_touched"]),
+
+    ("T121 bump reports a re-rendered ID",
+     '    label = item_label(block)\n    path = os.path.join(memdir, "next-steps.md")',
+     '    label = f"T{args.id:03d}"\n'
+     '    path = os.path.join(memdir, "next-steps.md")',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_claim_release_and_bump_name_the_item_they_touched"]),
+
+    ("T121 the deferral gate names a re-rendered ID",
+     "    label = item_label(block)\n    setting = args.deferred is not None",
+     '    label = f"T{args.id:03d}"\n    setting = args.deferred is not None',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_the_deferral_refusal_names_the_item"]),
+
+    # the one branch of missing_item_message that HAS a block: `migrate` moves a
+    # ticked line VERBATIM, so the log will carry that spelling and no other
+    ("T121 the already-ticked branch names a re-rendered ID",
+     '            return (f"{item_label(text)} is in next-steps.md but already ticked [x]',
+     '            return (f"{label} is in next-steps.md but already ticked [x]',
+     ["TestResolvedItemKeepsItsOwnSpelling.test_an_item_already_ticked_is_named_by_its_own_spelling"]),
+    # --- review#4: the classifier's DEFAULT was the destructive direction ---
+    # The enumeration was the whole guard and its default was ABSORB, so every
+    # shape not on it reproduced the flattening — and the structure readback
+    # re-asked the enumeration's own question, so it agreed. Each entry below puts
+    # back one arm of the repair.
+
+    # the audit itself: with it off, the shape reading is again the only vote, and
+    # a shape nobody enumerated is absorbed exactly as before
+    ("review#4 an unrecognised shape is absorbed again (the absorption audit is off)",
+     "    refusal = absorption_audit(lines, j)\n    if refusal:\n        return None, refusal",
+     "    refusal = None\n    if refusal:\n        return None, refusal",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_is_REFUSED_and_not_flattened",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_that_OPENS_like_prose_is_refused_too",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_two_verdicts_land_in_ONE_run_without_touching_each_other"]),
+
+    # the geometry arm alone: every break becomes wide enough, so a line the
+    # author chose to break reads as one a wrapper made
+    ("review#4 the geometry stops distinguishing an author's break from a wrapper's",
+     "WRAP_COLUMN_FLOOR = 72", "WRAP_COLUMN_FLOOR = 0",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_that_OPENS_like_prose_is_refused_too"]),
+
+    # the opening arm alone: `!!!` opens like a sentence again
+    ("review#4 any character may open a hard-wrapped line",
+     "        if not (opener.isalnum() or opener in PROSE_OPENERS\n"
+     '                or unicodedata.category(opener) == "So"):\n'
+     "            return FOLD_PROSE_REFUSAL",
+     "        if False:\n            return FOLD_PROSE_REFUSAL",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_is_REFUSED_and_not_flattened",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_two_verdicts_land_in_ONE_run_without_touching_each_other"]),
+
+    # the opening arm, from the other side: an emoji and a wiki link stop reading
+    # as prose, and the population the fold exists to serve is refused wholesale
+    ("review#4 only a letter or a digit may open a hard-wrapped line",
+     "        if not (opener.isalnum() or opener in PROSE_OPENERS\n"
+     '                or unicodedata.category(opener) == "So"):',
+     "        if not opener.isalnum():",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_hard_wrapped_population_is_still_absorbed_whole",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_two_verdicts_land_in_ONE_run_without_touching_each_other"]),
+
+    # one shape per entry, because each is a separate reading of the corpus and a
+    # separate way to be wrong. The setext arm degrades to a REFUSAL rather than a
+    # flattening — the layered default working — and the fold-around is still lost
+    ("review#4 a setext underline is a paragraph continuation again",
+     "    if SETEXT_UNDERLINE_RE.match(stripped) or REFERENCE_DEF_RE.match(stripped):",
+     "    if REFERENCE_DEF_RE.match(stripped):",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_each_shape_the_join_used_to_flatten_keeps_its_own_lines"]),
+
+    # this one really is flattened: `[` opens prose in the real queues (a wiki
+    # link), so no other arm catches a link reference or a footnote definition
+    ("review#4 a link reference and a footnote definition are prose again",
+     "    if SETEXT_UNDERLINE_RE.match(stripped) or REFERENCE_DEF_RE.match(stripped):",
+     "    if SETEXT_UNDERLINE_RE.match(stripped):",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_each_shape_the_join_used_to_flatten_keeps_its_own_lines"]),
+
+    # and this one too: a table head row opens with a letter like any sentence,
+    # and only the delimiter row BELOW it says otherwise
+    ("review#4 a table head row without a leading pipe is prose again",
+     '    return "|" in stripped and bool(TABLE_DELIMITER_RE.match(nxt.strip()))',
+     "    return False",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_each_shape_the_join_used_to_flatten_keeps_its_own_lines",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_gates_reach_an_item_folded_around_a_table_written_without_pipes"]),
+
+    # the lookahead is what makes the rule a TABLE rule and not a "line with a
+    # pipe" rule: without it a sentence carrying a pipe stops being prose
+    ("review#4 any line with a pipe in it opens a table",
+     '    return "|" in stripped and bool(TABLE_DELIMITER_RE.match(nxt.strip()))',
+     '    return "|" in stripped',
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_a_wrapped_sentence_that_merely_carries_a_pipe_is_not_a_table"]),
+
+    # --- review#4: a field appended to a class-less item reaches no reader --
+    ("review#4 a field is appended where the position rule can never read it",
+     '            if field != "Class" and not real_fields(new, "Class"):\n                fail(f"{label} names no **Class:** in its field chain, so an appended "',
+     '            if False:\n                fail(f"{label} names no **Class:** in its field chain, so an appended "',
+     ["TestAFieldAppendedBeforeTheAnchorIsRefused.test_setting_a_field_on_a_class_less_item_is_refused",
+      "TestAFieldAppendedBeforeTheAnchorIsRefused.test_the_file_and_the_reader_no_longer_disagree_about_the_field",
+      "TestAFieldAppendedBeforeTheAnchorIsRefused.test_every_field_that_is_APPENDED_is_covered_not_only_effort",
+      "TestAFieldAppendedBeforeTheAnchorIsRefused.test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through"]),
+
+    # the exemption --class depends on: it is the flag that GIVES the anchor, and
+    # a rule that refused it would lock the repair out of its own population
+    ("review#4 the rule swallows --class, the one flag that gives the anchor",
+     '            if field != "Class" and not real_fields(new, "Class"):\n                fail(f"{label} names no **Class:** in its field chain, so an appended "',
+     '            if not real_fields(new, "Class"):\n                fail(f"{label} names no **Class:** in its field chain, so an appended "',
+     ["TestAFieldAppendedBeforeTheAnchorIsRefused.test_class_first_in_ONE_call_lands_the_field_inside_the_chain",
+      "TestAFieldAppendedBeforeTheAnchorIsRefused.test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through"]),
+
+    # --- review#5: the setext protection only looked at the underline -------
+    # The underline was kept and the TITLE above it — which the underline
+    # retroactively makes a heading — was absorbed, so the item came out with its
+    # heading text merged into unrelated prose and the underline orphaned. The
+    # repair is the table-head lookahead read from the other side.
+    ("review#5 the line a setext underline promotes is prose again",
+     "    if SETEXT_UNDERLINE_RE.match(nxt.strip()):\n"
+     "        return True                      # this line is the heading that underlines",
+     "    if False:\n"
+     "        return True                      # this line is the heading that underlines",
+     ["TestASetextTitleIsKeptWithItsUnderline."
+      "test_the_title_the_underline_promotes_keeps_its_own_line",
+      "TestASetextTitleIsKeptWithItsUnderline."
+      "test_the_gates_reach_the_item_folded_around_the_heading"]),
+
+    # the over-refusal direction, which the arm above cannot reach: what makes
+    # this a SETEXT rule and not a "there is a line below" rule is the shape of
+    # that line. Without it every wrapped sentence stops being absorbed, and the
+    # fold loses the population it exists for
+    ("review#5 any non-blank line below makes this one a heading",
+     "    if SETEXT_UNDERLINE_RE.match(nxt.strip()):",
+     "    if nxt.strip():",
+     ["TestASetextTitleIsKeptWithItsUnderline."
+      "test_an_ordinary_hard_wrapped_line_is_STILL_absorbed",
+      "TestASetextTitleIsKeptWithItsUnderline."
+      "test_the_whole_hard_wrapped_population_is_still_absorbed_whole",
+      "TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_the_hard_wrapped_population_is_still_absorbed_whole"]),
+
+    # --- review#5: `--<field> none` on a class-less item printed success -----
+    ("review#5 a clear on a class-less item reports success and writes nothing",
+     '            if not real_fields(new, "Class"):\n'
+     '                fail(f"{label} names no **Class:** in its field chain, so no segment of "',
+     '            if False:\n'
+     '                fail(f"{label} names no **Class:** in its field chain, so no segment of "',
+     ["TestClearingOnAClassLessItemIsRefused.test_every_clearable_flag_is_refused_and_says_so",
+      "TestClearingOnAClassLessItemIsRefused."
+      "test_the_remedy_the_refusal_PRINTS_runs_and_leaves_the_item_anchored"]),
+
+    # the over-refusal direction: a rule that reached the ANCHORED item would take
+    # the clearing command away from every item `add` ever wrote
+    ("review#5 the clear is refused on every item, anchored or not",
+     '            if not real_fields(new, "Class"):',
+     "            if True:",
+     ["TestClearingOnAClassLessItemIsRefused.test_an_anchored_item_still_CLEARS_the_field_it_carries",
+      "TestRiskDeletion.test_edit_clears_the_risk_field",
+      "TestClearingKeepsTheFileIntact.test_clearing_a_risk_rewrites_only_that_field"]),
 ]
 
 
@@ -1536,7 +2075,19 @@ def main():
                                   "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
                                   "TestEnvField", "TestClaim",
                                   "TestPack", "TestHandoffCreation",
-                                  "TestHandoffLifecycle"])
+                                  "TestHandoffLifecycle", "TestByteOrderMark",
+                                  "TestIdSpelling", "TestAmbiguousId",
+                                  "TestMigrateFold",
+                                  "TestProseWearingAFieldName",
+                                  "TestListReadsTheClassFromTheChain",
+                                  "TestResolvedItemKeepsItsOwnSpelling",
+                                  "TestFoldKeepsTheItemsMarkdown",
+                                  "TestAClassLessChainIsNotAField",
+                                  "TestTheZeroIdIsStillAnId",
+                                  "TestFoldFailsSafeOnShapesNobodyEnumerated",
+                                  "TestAFieldAppendedBeforeTheAnchorIsRefused",
+                                  "TestASetextTitleIsKeptWithItsUnderline",
+                                  "TestClearingOnAClassLessItemIsRefused"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

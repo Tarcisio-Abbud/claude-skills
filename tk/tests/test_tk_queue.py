@@ -16,6 +16,7 @@ import datetime
 import importlib.machinery
 import importlib.util
 import os
+import shlex
 import re
 import shutil
 import subprocess
@@ -1449,12 +1450,18 @@ class TestDecisionDeferralGate(QueueTest):
         self.seed(legacy)
         r = self.run_tk("edit", "T001", "--class", "DECISION")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("**Class:** AUTONOMOUS.", self.body())          # class unchanged
-        self.assertIn("nota de contexto", self.body())                # prose intact
+        self.assertEqual(self.body(), HEADER + legacy)                # class and prose intact
         # and the same marker cannot be deleted by clearing it either
         r = self.run_tk("edit", "T001", "--class", "BLOCKED", "--deferred", "none")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("nota de contexto", self.body())
+        self.assertEqual(self.body(), HEADER + legacy)
+        # WHICH guard answers, and not merely that one did. Since T121 the field
+        # locator refuses this shape too, so the outcome alone no longer proves the
+        # deferral's own gate ran: it is the one that names the deferral's POSITION,
+        # and it runs FIRST precisely so the caller reads that diagnosis and not the
+        # generic one. Without this line the stray guard could be deleted whole and
+        # every assertion above would still pass.
+        self.assertIn("away from the position a deferral is written in", r.stderr)
 
     def test_an_edit_that_never_consults_the_deferral_stays_allowed(self):
         """The over-refusal direction: refusing that item outright would make it
@@ -3437,6 +3444,1550 @@ class TestHandoffLifecycle(HandoffTest):
                          f"T005 → done-log as FEITO ({self.today()})\n"
                          "handoff-T005.md removed\n")
         self.assertIsNone(self.brief(5))
+
+
+# --- a BOM at the head of a queue file -----------------------------------
+
+class TestByteOrderMark(QueueTest):
+    """A UTF-8 BOM (U+FEFF) surviving at byte 0 is a CHARACTER sitting between
+    `^` and the first line, and every reader of these files anchors with `^`
+    under re.M. So the first line stops matching — only the first, since `^`
+    also matches after every newline.
+
+    The blast radius was MEASURED, and it is narrower than "the queue reads as
+    empty": in front of the usual frontmatter the BOM is harmless, because
+    nothing is anchored to `---`. It bites when the file's first line is a
+    STRUCTURAL one — an item marker in next-steps.md, an entry in done-log.md —
+    and then it bites hard: the item vanishes from `list`, `edit` on its ID
+    answers "Another writer very likely removed or clobbered it" (a confident
+    wrong answer, sending the caller after a writer that never existed), and
+    `add` hands its number OUT AGAIN.
+
+    The fixtures below therefore carry NO header. One with the header would pass
+    with the defect restored, and prove nothing.
+    """
+
+    BOM = "\ufeff"
+
+    def seed_bom(self, *items):
+        self.write("next-steps.md", self.BOM + "".join(items))
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c", "--source", "2026-08-20")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    def test_the_first_item_is_neither_hidden_nor_blamed_on_a_concurrent_writer(self):
+        self.seed_bom(item(1, "um"), item(2, "dois"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+        self.assertIn("T002", r.stdout)
+        e = self.run_tk("edit", "T001", "--effort", "M")
+        self.assertEqual(e.returncode, 0, e.stderr)
+        self.assertNotIn("Another writer", e.stderr)
+        # the WHOLE file, never an assertNotIn: `edit` REWRITES it, and a rewrite
+        # that dropped the sibling or left the BOM in place passes any absence
+        # check. The BOM is gone because write_atomic stays utf-8 — the queue
+        # file is normalised by the first command that writes it
+        self.assertEqual(self.body(), item(1, "um", effort="M") + item(2, "dois"))
+
+    def test_the_hidden_items_id_is_never_handed_out_twice(self):
+        """The sharp end. With the BOM'd item ALONE in the file, `max_id` sees
+        nothing and `add` re-issues its number — two open items under one ID,
+        which is the outcome the whole ID grammar exists to prevent."""
+        self.seed_bom(item(1, "um"))
+        self.assertEqual(self.add(), "T002")
+        self.assertEqual(re.findall(r"\*\*T([0-9]{3})\*\*", self.body()), ["001", "002"])
+
+    def test_a_bom_in_the_done_log_keeps_its_first_entry_allocated(self):
+        """The same read(), the other file. A log whose first line is an entry
+        loses that entry: the ID it closed reads as free, so `add` re-issues it,
+        and `edit` on it is answered from the wrong branch."""
+        self.write("next-steps.md", HEADER)     # only the LOG carries the BOM here
+        self.write("done-log.md", self.BOM + "- 2026-08-01 — FEITO — T007 sete — PR #1\n")
+        self.assertEqual(self.add(), "T008")
+        e = self.run_tk("edit", "T007", "--effort", "L")
+        self.assertEqual(e.returncode, 1)
+        self.assertIn("already left the queue", e.stderr)
+        self.assertNotIn("Another writer", e.stderr)
+
+    def test_a_bom_further_INTO_the_file_is_left_alone(self):
+        """utf-8-sig strips ONE BOM at the head and is plain utf-8 everywhere
+        else. The inverse fix — stripping every U+FEFF out of the text — would
+        silently edit the user's own words, and only this direction can see it."""
+        self.seed(item(1, "um\ufeffdois"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("um\ufeffdois", r.stdout)
+        e = self.run_tk("edit", "T001", "--effort", "M")   # a full rewrite of the file
+        self.assertEqual(e.returncode, 0, e.stderr)
+        self.assertEqual(self.body(), HEADER + item(1, "um\ufeffdois", effort="M"))
+
+
+# --- one number, two spellings -------------------------------------------
+
+class TestIdSpelling(QueueTest):
+    """`int("0001") == int("001")`, so a label rebuilt from the parsed number
+    showed `T001` for BOTH items — the collision reached the DISPLAY, and a
+    caller reading `list` could not see that two items existed at all.
+
+    The repair is in the display only, never in the grammar: `T0001` must go on
+    counting as an allocated ID. The tolerances of ITEM_ID_RE are deliberately
+    one-way (they may make MORE IDs count as taken, never fewer), and a width cap
+    that hid `T0001` from the allocator would hand its number out a second time —
+    the outcome the whole ID grammar exists to prevent. A cap would also break
+    the day IDs legitimately reach four digits: `T0001` is a NON-canonical
+    spelling of 1, `T1000` is the canonical spelling of 1000.
+    """
+
+    def wide(self, text="item de id largo"):
+        """T0001: the same number as T001, spelled a digit wider."""
+        return item(1, text).replace("**T001**", "**T0001**", 1)
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c", "--source", "2026-08-20")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    def test_list_prints_each_item_under_its_own_spelling(self):
+        self.seed(item(1, "item curto"), self.wide())
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # the WHOLE listing: the defect printed two identical lines, and any
+        # assertIn("T0001") would also pass on a listing that showed T0001 twice.
+        # The duplicate mark belongs to the ambiguity these two also are — one
+        # number, two items — and is measured by TestAmbiguousId
+        self.assertEqual(r.stdout,
+                         "T001  AUTONOMOUS  item curto  [duplicate ID 1]\n"
+                         "T0001  AUTONOMOUS  item de id largo  [duplicate ID 1]\n"
+                         "\nduplicate IDs: only the FIRST item under each is reachable"
+                         " — renumber the others by hand in next-steps.md.\n")
+
+    def test_pack_reads_the_id_the_way_list_does(self):
+        """Two renderings of one ID is how the package and the listing come to
+        disagree about which item a line is about."""
+        self.seed(item(1, "item curto"), self.wide())
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001  S             item curto\n", r.stdout)
+        self.assertIn("T0001  S             item de id largo\n", r.stdout)
+
+    def test_a_wide_spelling_is_still_an_allocated_id(self):
+        """The one-way rule, at its sharp end: with `T0001` ALONE in the file, a
+        fix that stopped the allocator seeing it re-issues 1, and the queue ends
+        with two open items under one number."""
+        self.seed(self.wide())
+        self.assertEqual(self.add(), "T002")
+        self.assertEqual(re.findall(r"\*\*T([0-9]+)\*\*", self.body()), ["0001", "002"])
+
+    def test_a_four_digit_id_is_canonical_and_is_not_capped(self):
+        """The future the cap would break. T1000 is not a wide spelling of
+        anything — it is the only spelling of 1000."""
+        self.seed(item(1000, "item de quatro digitos"))
+        r = self.run_tk("list")
+        self.assertEqual(r.stdout, "T1000  AUTONOMOUS  item de quatro digitos\n")
+        self.assertEqual(self.add(), "T1001")
+
+
+# --- one number, more than one open item ---------------------------------
+
+class TestAmbiguousId(QueueTest):
+    """Two items at one address. It happens two ways — the same ID written
+    twice, and a width collision (`T001` + `T0001`, one number to `int()`) — and
+    it is ONE failure, so it gets one answer: act on the first occurrence, and
+    say which one that was.
+
+    Not a refusal, decided 2026-08-18: refusing would freeze the whole queue
+    over two lines a human has to repair by hand, and the queue's other items are
+    innocent. Silence was the defect — `edit T005` printed "T005 updated", true
+    about the line it touched and a lie about the request, with nothing anywhere
+    saying a second T005 existed.
+    """
+
+    WARNING = ('tk-queue: warning: duplicate ID 5 — 2 open items carry it (T005, T005). '
+               'Acting on the FIRST, T005 "primeira ocorrencia"; the rest stay '
+               'unreachable until one of them is renumbered by hand in next-steps.md.\n')
+
+    def wide(self, text="item de id largo"):
+        return item(1, text).replace("**T001**", "**T0001**", 1)
+
+    def test_list_marks_every_row_under_a_duplicated_id(self):
+        """The whole listing, because the mark is only worth anything if the rows
+        that are NOT ambiguous stay unmarked — a mark on every line says nothing."""
+        self.seed(item(5, "primeira ocorrencia"), item(7, "item sozinho"),
+                  item(5, "segunda ocorrencia"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout,
+                         "T005  AUTONOMOUS  primeira ocorrencia  [duplicate ID 5]\n"
+                         "T007  AUTONOMOUS  item sozinho\n"
+                         "T005  AUTONOMOUS  segunda ocorrencia  [duplicate ID 5]\n"
+                         "\nduplicate IDs: only the FIRST item under each is reachable"
+                         " — renumber the others by hand in next-steps.md.\n")
+
+    def test_edit_says_which_occurrence_it_acted_on_and_still_acts(self):
+        self.seed(item(5, "primeira ocorrencia"), item(5, "segunda ocorrencia"))
+        r = self.run_tk("edit", "5", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)      # a warning, never a refusal
+        self.assertIn(self.WARNING, r.stderr)
+        self.assertEqual(r.stdout, "T005 updated\n")
+        # the WHOLE file: `edit` rewrites it, and an absence check would pass just
+        # as happily on one where the second occurrence had been eaten
+        self.assertEqual(self.body(),
+                         HEADER + item(5, "primeira ocorrencia", effort="M")
+                         + item(5, "segunda ocorrencia"))
+
+    def test_the_warning_sits_where_the_ID_is_RESOLVED_not_in_edit(self):
+        """`done` and `cancel` resolve through the same function, so neither can
+        keep the silence `edit` lost."""
+        for cmd, extra in (("done", ("--how", "PR #1")), ("cancel", ("--why", "n/a"))):
+            with self.subTest(cmd=cmd):
+                self.seed(item(5, "primeira ocorrencia"), item(5, "segunda ocorrencia"),
+                          log="")
+                r = self.run_tk(cmd, "5", *extra)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn(self.WARNING, r.stderr)
+                # the first went to the log, the second is still in the queue
+                self.assertEqual(self.body(), HEADER + item(5, "segunda ocorrencia"))
+                self.assertIn("primeira ocorrencia", self.body("done-log.md"))
+
+    def test_a_wide_spelling_is_the_same_ambiguity(self):
+        """The bridge to the other defect: `edit T0001` cannot reach the item
+        spelled T0001 — `int("0001")` is 1 — so it must not pretend it did."""
+        self.seed(item(1, "item curto"), self.wide())
+        r = self.run_tk("edit", "T0001", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('tk-queue: warning: duplicate ID 1 — 2 open items carry it '
+                      '(T001, T0001). Acting on the FIRST, T001 "item curto"; the rest '
+                      'stay unreachable until one of them is renumbered by hand in '
+                      'next-steps.md.\n', r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + item(1, "item curto", effort="M") + self.wide())
+
+    def test_an_ID_carried_by_ONE_item_is_not_warned_about(self):
+        """The other direction, and the only one that can see a warning fired at
+        every resolution — which would train the reader to ignore it."""
+        self.seed(item(5, "unico"), item(6, "outro"))
+        r = self.run_tk("edit", "5", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("duplicate ID", r.stderr)
+        self.assertNotIn("duplicate ID", self.run_tk("list").stdout)
+
+
+# --- T121: `migrate` folds a chain that sits off the first line -----------
+# field_chain reads the run of `**Field:** value.` segments ENDING THE FIRST
+# LINE. An item whose fields sit on a continuation line therefore has, to every
+# gate, no fields at all — 31 of the 155 open items across the real queues carry
+# exactly that shape. `migrate` is the command documented as the repair for
+# legacy shapes, and it folded nothing: measured on the real shape below, the
+# file came back byte-identical while `pack` excluded the item and `claim`
+# refused it.
+#
+# The command rewrites next-steps.md, which holds the user's own prose and has
+# no other copy, so every test here asserts the WHOLE file. `assertNotIn` on a
+# marker passes just as happily against one this command truncated — that exact
+# vacuity was measured on `--risk none` in this script, with the suite green.
+
+FOLD_LEGACY = ("- [ ] **T007** — **#9 Ingestao automatica do extrato BTG** (e-mail/OneDrive) —\n"
+               "  `ready-for-agent`.\n"
+               "  **Class:** AUTONOMOUS. **Effort:** L. **Source:** tracker "
+               "**Project:** automacao-financeira.\n")
+FOLD_CANONICAL = ("- [ ] **T007** — **#9 Ingestao automatica do extrato BTG** "
+                  "(e-mail/OneDrive) — `ready-for-agent`. **Class:** AUTONOMOUS. "
+                  "**Effort:** L. **Source:** tracker **Project:** automacao-financeira.\n")
+
+
+class TestMigrateFold(QueueTest):
+    FOLDED_LINE = ("1 item(s) with fields off the first line: folded up, where every gate "
+                   "reads them — T007\n")
+
+    def left_alone(self, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: folding would have to "
+                "GUESS which text is a field value — " + ", ".join(labels)
+                + ". Close each with `cancel` and re-add it clean.\n")
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    # --- the shape, and the gates it was invisible to ---------------------
+
+    def test_the_legacy_shape_is_folded_and_the_prose_survives_it(self):
+        """The real shape off the root queue. The join replaces a newline and the
+        indentation after it with ONE blank and moves no other character — which is
+        why the assertion is the whole file and not a marker's presence."""
+        self.seed(FOLD_LEGACY)
+        self.assertIn(self.FOLDED_LINE, self.migrate().stdout)
+        self.assertEqual(self.body(), HEADER + FOLD_CANONICAL)
+
+    def test_after_the_fold_pack_claim_and_edit_all_reach_the_item(self):
+        """The three gates that could not see the item before, run for real. Each
+        was refused on this exact fixture on `main`: excluded from the package,
+        `claim` refused naming the fold as the remedy, `edit --effort` refused by
+        the marker-outside-the-chain guard."""
+        self.seed(FOLD_LEGACY)
+        self.migrate()
+        self.assertIn("T007  L", self.run_tk("pack").stdout)
+        r = self.run_tk("claim", "T007", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("claimed by alpha", self.run_tk("list").stdout)
+        self.assertEqual(self.run_tk("release", "T007").returncode, 0)
+        r = self.run_tk("edit", "T007", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + FOLD_CANONICAL.replace("**Effort:** L.", "**Effort:** M."))
+
+    def test_a_chain_spread_over_TWO_continuation_lines_is_folded_too(self):
+        """The joint between two field lines is a newline where the line's own
+        segments carry a blank. Compared raw, that whitespace reads as a changed
+        value and this item — a chain that is whole, merely wrapped — is refused."""
+        self.seed("- [ ] **T001** — algo\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S.\n"
+                  "  **Criterion:** A: x. **Source:** 2026-08-13\n")
+        self.migrate()
+        self.assertEqual(self.body(), HEADER + LEGACY.replace("\n  ", " ") % 1)
+
+    def test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass(self):
+        """Both repairs are `migrate`'s, and the report has to name the number the
+        item leaves with — read before the ID is assigned it is reported as `----`,
+        which names no item at all."""
+        self.seed("- [ ] legado sem ID\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
+        r = self.migrate()
+        self.assertIn("IDs assigned up to T001", r.stdout)
+        self.assertIn("folded up, where every gate reads them — T001\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T001** — legado sem ID **Class:** AUTONOMOUS. "
+                         "**Effort:** S. **Source:** 2026-08-13\n")
+
+    # --- idempotency: the command runs on a queue it already rewrote ------
+
+    def test_a_second_migrate_is_a_no_op_on_the_file_and_says_nothing(self):
+        """A repair that re-applies itself is a repair nobody can run twice. The
+        second run must leave the bytes alone AND stop claiming a fold."""
+        self.seed(FOLD_LEGACY, item(9, "ja canonico"))
+        self.migrate()
+        once = self.body()
+        r = self.migrate()
+        self.assertEqual(self.body(), once)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertNotIn("left exactly as they are", r.stdout)
+
+    def test_an_already_canonical_queue_is_untouched_and_silent(self):
+        """The other direction, and the only one that can catch a fold firing on
+        every item: a command that rewrites what is already right has no way to
+        report that it changed nothing."""
+        self.seed(item(1, "um"), item(2, "dois", project="tk"), item(3, "tres", risk="x"))
+        before = self.body()
+        r = self.migrate()
+        self.assertEqual(self.body(), before)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertNotIn("left exactly as they are", r.stdout)
+
+    def test_the_frontmatter_headings_and_the_done_log_move_stay_intact(self):
+        """The fold runs inside the command that also moves [x] items out, so the
+        whole file — both files — is the assertion."""
+        self.seed("- [x] legado feito, movido verbatim\n\n",
+                  "## Bloco com cabeçalho\n\n", FOLD_LEGACY)
+        self.migrate()
+        self.assertEqual(self.body(),
+                         HEADER + "## Bloco com cabeçalho\n\n" + FOLD_CANONICAL)
+        self.assertIn("- [x] legado feito, movido verbatim", self.body("done-log.md"))
+
+    # --- what the fold REFUSES to guess, and says it refused -------------
+
+    def test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED(self):
+        """The shape the repairs text names as unfoldable. Joined blindly the
+        **Class:** takes whatever follows as its value, and what follows may be a
+        note — a class nobody wrote. Silence here is the worst outcome available:
+        the caller reads a fold report, sees no mention of this item, and believes
+        the queue is repaired."""
+        seeded = ("- [ ] **T002** — marcador e valor em linhas diferentes **Class:**\n"
+                  "  AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.left_alone("T002"), r.stdout)
+
+    def test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED(self):
+        """Folded, the note lands inside the last field's value — FIELD_SEGMENT_RE's
+        body is greedy — and `**Source:** 2026-08-13 nota solta.` is what every
+        reader would then report as the source."""
+        seeded = ("- [ ] **T003** — nota depois dos campos\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n"
+                  "  nota solta depois dos campos.\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.left_alone("T003"), r.stdout)
+
+    def test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED(self):
+        """The shape claim_unwritable_message already refuses to promise the fold
+        for. The prose marker ends in a period and would join the chain from the
+        left, so the folded chain is not the one the item carried."""
+        seeded = ("- [ ] **T004** — ver a **Deferred:** nota de contexto.\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.left_alone("T004"), r.stdout)
+
+    def test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED(self):
+        """A continuation line carrying a marker whose run does not reach the end of
+        the line — a bold word after it stops it. Folding here repairs NOTHING, and
+        a fold that repairs nothing still rewrites the user's line and reports it as
+        repaired: the one direction a data-rewriting command may never take."""
+        seeded = ("- [ ] **T008** — texto\n"
+                  "  ver a **Risk:** de **produção** antes.\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.left_alone("T008"), r.stdout)
+
+    def test_an_item_with_no_field_at_all_is_neither_folded_nor_reported(self):
+        """A different defect with a different repair (`edit --class`). Named in
+        the fold's report it would send the caller to `cancel` + re-add for an item
+        one flag fixes — and a report that names items the fold is not about is one
+        its reader learns to skip."""
+        seeded = "- [ ] **T005** — item sem campo nenhum\n  so prosa de continuacao.\n"
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertNotIn("left exactly as they are", r.stdout)
+        self.assertNotIn("folded up", r.stdout)
+
+    def test_the_two_populations_are_separated_in_ONE_run(self):
+        """The report is only worth reading if it discriminates: a run over both
+        shapes must fold one, leave the other, and name each under its own line."""
+        self.seed(FOLD_LEGACY,
+                  "- [ ] **T003** — nota depois dos campos\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n"
+                  "  nota solta depois dos campos.\n")
+        r = self.migrate()
+        self.assertIn(self.FOLDED_LINE, r.stdout)
+        self.assertIn(self.left_alone("T003"), r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + FOLD_CANONICAL
+                         + "- [ ] **T003** — nota depois dos campos\n"
+                         "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n"
+                         "  nota solta depois dos campos.\n")
+
+
+# --- T121: prose that WEARS a real field's name is not a field -------------
+#
+# field_chain's two conditions — contiguous, and a value ending in '.' — do not
+# separate prose that QUOTES a real field name from the field it imitates.
+# Ordinary prose ending in a period was never the trigger: it forms no segment at
+# all. Bolding the field's own name is what creates one, and the run then reaches
+# back over it as if the user had written a field there.
+#
+# Both directions were measured on `main`, each exiting 0 and printing "updated",
+# against next-steps.md — a user-data file with no other copy of the prose:
+#
+#   edit T011 --project tk    OVERWROTE "de outra fila inteira"
+#   edit T012 --risk none     DELETED the quoted segment whole
+#
+# So every assertion below is the WHOLE file. `assertNotIn("**Risk:**")` passes
+# just as happily against a file this command corrupted — that exact vacuity was
+# measured on `--risk none` in this very script, with the suite green.
+
+PROSE_PROJECT = ("- [ ] **T011** — o item cita o **Project:** de outra fila inteira. "
+                 "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+PROSE_RISK = ("- [ ] **T012** — nota de risco: **Risk:** so vale ate o merge da #22. "
+              "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: y.\n")
+
+
+class TestProseWearingAFieldName(QueueTest):
+    """The chain begins at **Class:**, and a segment before it is prose.
+
+    The position rule the gates already read through (qualified_fields) now also
+    locates the segment `edit` WRITES. Neither item below ever carried the field
+    the command named — the marker is in the user's own sentence — so there is
+    nothing to edit and the command says so instead of picking the sentence.
+    """
+
+    def test_setting_a_field_named_only_in_prose_is_refused(self):
+        self.seed(PROSE_PROJECT)
+        r = self.run_tk("edit", "T011", "--project", "tk")
+        # the FILE first, and whole. A returncode assertion placed ahead of it
+        # short-circuits the one that matters, and what this defect does to the
+        # text is the finding — "it exited 1" is only how the caller learns of it
+        self.assertEqual(self.body(), HEADER + PROSE_PROJECT)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("OUTSIDE its field chain", r.stderr)
+        self.assertIn("Nothing was changed", r.stderr)
+
+    def test_CLEARING_a_field_named_only_in_prose_is_refused(self):
+        """The deletion path, and the worse half: the words were not overwritten
+        but removed, and a removal leaves nothing to restore from."""
+        self.seed(PROSE_RISK)
+        r = self.run_tk("edit", "T012", "--risk", "none")
+        self.assertEqual(self.body(), HEADER + PROSE_RISK)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("OUTSIDE its field chain", r.stderr)
+        self.assertIn("Nothing was changed", r.stderr)
+
+    def test_a_field_the_prose_does_NOT_name_still_edits(self):
+        """The over-refusal direction. One quoted marker may not make the whole
+        item uneditable: a guard that fires on every flag teaches the caller to
+        cancel + re-add items that are merely untidy, which is the habit this
+        refusal exists to avoid."""
+        self.seed(PROSE_PROJECT)
+        r = self.run_tk("edit", "T011", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + PROSE_PROJECT.replace("**Effort:** S.", "**Effort:** M."))
+
+    def test_the_anchor_does_not_move_the_fields_of_an_ordinary_item(self):
+        """The rule must be a no-op on everything compose_item writes, which puts
+        every field after **Class:** — Source included, the one written last and
+        without a period. A position rule that slipped by one would make the
+        canonical item, not the malformed one, the population it refuses."""
+        for flag, val, old, repl in (
+                ("--project", "ambiente", "**Project:** tk.", "**Project:** ambiente."),
+                ("--risk", "none", " **Risk:** dano X.", ""),
+                ("--risk", "dano Y", "**Risk:** dano X.", "**Risk:** dano Y."),
+                ("--class", "BLOCKED", "**Class:** AUTONOMOUS.", "**Class:** BLOCKED."),
+                ("--effort", "L", "**Effort:** S.", "**Effort:** L.")):
+            with self.subTest(flag=flag, val=val):
+                seeded = item(1, "um", project="tk", risk="dano X")
+                self.seed(seeded)
+                r = self.run_tk("edit", "T001", flag, val)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(self.body(), HEADER + seeded.replace(old, repl))
+
+    def test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_edit_through(self):
+        """A refusal is only acceptable while its remedy is reachable, so the
+        printed one is run for real and the refused command re-tried after it.
+
+        `--text` is NOT a remedy here and the message does not offer it: the
+        rewrite keeps everything from the FIRST marker in the block on, and that
+        marker is the quoted one — the prose would survive as a field.
+        """
+        self.seed(PROSE_PROJECT)
+        self.assertEqual(self.run_tk("edit", "T011", "--project", "tk").returncode, 1)
+        r = self.run_tk("cancel", "T011", "--why", "reescrito sem o marcador em prosa")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.run_tk("add", "o item cita o campo Project de outra fila inteira",
+                        "--class", "AUTONOMOUS", "--effort", "S", "--criterion", "A: x")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added T012", r.stdout)
+        r = self.run_tk("edit", "T012", "--project", "tk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Project:** tk.", self.body())
+
+
+# --- T121: `list` and the gate must read the class from the same place -----
+#
+# `item_class` searched the WHOLE block and took the leftmost match; the gate
+# reads the field chain (`chain_class`). Measured on `main`, one item, one run:
+#
+#   list   T009  BLOCKED      <- from the item's own sentence
+#   pack   T009  S  ...       <- eligible, i.e. the gate read AUTONOMOUS
+#
+# The gate was already right, so the display is what moves. What makes it
+# non-trivial is the population underneath: a legacy item carries its fields on a
+# continuation line, and reading the chain ALONE shows every one of them with no
+# class at all. `migrate` folds those, but folding is a command a human runs.
+
+PROSE_CLASS = ("- [ ] **T009** — item que fala de **Class:** BLOCKED em prosa, mas nao e "
+               "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+TWO_CLASSES = ("- [ ] **T010** — cita **Class:** DECISION. **Class:** AUTONOMOUS. "
+               "**Effort:** S. **Criterion:** A: x.\n")
+CLASS_OFF_LINE = ("- [ ] **T007** — legado com campos fora da primeira linha\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** L. **Source:** tracker\n")
+
+
+class TestListReadsTheClassFromTheChain(QueueTest):
+    """One reader for the display and for the gate, wherever there is a chain.
+
+    A `list` that says BLOCKED over a `pack` that says AUTONOMOUS is worse than
+    either being wrong on its own: `list` is the screen a human reads before
+    dispatching, and nothing on it says the two readers have parted.
+    """
+
+    def test_a_class_named_only_in_PROSE_is_not_the_one_list_shows(self):
+        self.seed(PROSE_CLASS)
+        self.assertIn("T009  AUTONOMOUS  item que fala de",
+                      self.run_tk("list").stdout)
+
+    def test_list_and_pack_no_longer_disagree_about_the_same_item(self):
+        """The defect itself, asserted as the disagreement it was: the two
+        commands are run over ONE queue and made to answer the same thing. Either
+        assertion alone would still pass while the readers diverged."""
+        self.seed(PROSE_CLASS)
+        self.assertIn("T009  AUTONOMOUS", self.run_tk("list").stdout)
+        pack = self.run_tk("pack").stdout
+        self.assertIn("eligible (1 of 1", pack)
+        self.assertNotIn("class is BLOCKED", pack)
+
+    def test_a_legacy_item_with_its_fields_OFF_the_first_line_still_shows_its_class(self):
+        """The regression the chain-only reading would cause, and the reason the
+        block-wide search stays as the fallback. `pack` excludes this item and says
+        why — that is a different question from what the item IS, and `list` must
+        still show the class the user wrote."""
+        self.seed(CLASS_OFF_LINE)
+        out = self.run_tk("list").stdout
+        self.assertIn("T007  AUTONOMOUS", out)
+        self.assertNotIn("T007  ?", out)
+
+    def test_a_class_the_GATE_calls_ambiguous_is_shown_as_unknown_not_guessed(self):
+        """Two classes inside the chain: `chain_class` refuses to pick one, so the
+        display may not pick one either. Showing the leftmost here is how `list`
+        would print a class no gate would honour."""
+        self.seed(TWO_CLASSES)
+        out = self.run_tk("list").stdout
+        self.assertIn("T010  ?", out)
+        self.assertNotIn("DECISION", out)
+        self.assertIn("2 **Class:** fields in the chain", self.run_tk("pack").stdout)
+
+    def test_an_ordinary_item_is_displayed_exactly_as_before(self):
+        """The population that is not legacy and not malformed — the one every
+        other test in this file seeds. A reader change that moved these would be
+        the defect, not the fix."""
+        self.seed(item(1, "um"), item(2, "dois", klass="DECISION"),
+                  item(3, "tres", klass="RECURRING"))
+        out = self.run_tk("list").stdout
+        for line in ("T001  AUTONOMOUS  um", "T002  DECISION    dois",
+                     "T003  RECURRING   tres"):
+            self.assertIn(line, out)
+
+
+# --- T121: a resolved ID names the item it REACHED ------------------------
+#
+# `item_label` gave `list` and `pack` the item's own spelling. The commands that
+# RESOLVE an ID went on re-rendering the parsed number, and `int("0001") == 1`.
+# Two measured faces, one root — both on a lone `T0001`:
+#
+#   claim T0001 -> "T001 cannot hold a claim ... `tk-queue edit T001 --text ...`"
+#   done  T0001 -> "- 2026-08-20 - FEITO - T001 item largo. - feito"
+#
+# The first HANDS THE CALLER A COMMAND. In a queue that also holds a real T001 it
+# is a command about that OTHER item, and `--text` replaces everything between
+# the head and the first field, continuation prose included. The second is the
+# durable record: the done-log outlives the item, and it was left naming an ID no
+# item ever carried, which no grep for the real one will ever find.
+#
+# The ID stays the ADDRESS — `done 1`, `done T001` and `done T0001` are one call,
+# and two items under one number are the ambiguity TestAmbiguousId measures. What
+# moves is the NAME every message and record gives back.
+
+WIDE_OFF_LINE = ("- [ ] **T0001** — legado de id largo, campos fora da 1a linha\n"
+                 "  **Class:** AUTONOMOUS. **Effort:** L. **Source:** tracker\n")
+
+
+class TestResolvedItemKeepsItsOwnSpelling(QueueTest):
+    """Every message and record ABOUT an item names the block that was acted on,
+    read off that block with `item_label` — never rebuilt from the number the
+    caller typed."""
+
+    def wide(self, text="item de id largo", **kw):
+        """T0001: the same number as T001, spelled a digit wider."""
+        return item(1, text, **kw).replace("**T001**", "**T0001**", 1)
+
+    def today(self):
+        return datetime.date.today().isoformat()
+
+    def add(self, text="novo"):
+        r = self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: c")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.split()[1].rstrip(":")
+
+    # --- the refusal that hands over a command ---------------------------
+    def test_the_refusal_names_the_item_and_its_remedy_addresses_that_item(self):
+        self.seed(WIDE_OFF_LINE)
+        r = self.run_tk("claim", "T0001", "--as", "teste")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 cannot hold a claim the reader would find", r.stderr)
+        self.assertIn('`tk-queue edit T0001 --text "<the item\'s whole text>"`', r.stderr)
+        self.assertNotIn("T001 cannot hold", r.stderr)
+        self.assertNotIn("edit T001 --text", r.stderr)
+        # a refusal writes nothing, and the WHOLE file says so: an absence check
+        # would pass just as happily on a file this run had truncated
+        self.assertEqual(self.body(), HEADER + WIDE_OFF_LINE)
+
+    def test_the_old_remedy_was_a_command_about_a_DIFFERENT_open_item(self):
+        """The destruction that was one paste away. With a real T001 in the same
+        queue, `tk-queue edit T001 --text "<the item's whole text>"` addresses
+        that item — and --text replaces everything between its head and its first
+        field. `list` shows the two as the two items they are; the refusal has to
+        name the one it is about."""
+        other = item(1, "item curto de verdade")
+        self.seed(WIDE_OFF_LINE, other)
+        self.assertIn("T001  AUTONOMOUS  item curto de verdade",
+                      self.run_tk("list").stdout)
+        r = self.run_tk("claim", "T0001", "--as", "teste")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 cannot hold a claim", r.stderr)
+        self.assertIn("tk-queue edit T0001 --text", r.stderr)
+        self.assertNotIn("T001 cannot hold", r.stderr)
+        self.assertNotIn("edit T001 --text", r.stderr)
+        self.assertEqual(self.body(), HEADER + WIDE_OFF_LINE + other)
+
+    # --- the record that outlives the item -------------------------------
+    def test_the_done_log_records_the_item_under_its_own_spelling(self):
+        """The WHOLE entry line, because this one is user data with no other
+        copy: `assertIn("T0001")` passes on a line that also still says T001."""
+        self.seed(self.wide(), log="")
+        r = self.run_tk("done", "T0001", "--how", "feito")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, f"T0001 → done-log as FEITO ({self.today()})\n")
+        entries = [ln for ln in self.body("done-log.md").splitlines()
+                   if ln.startswith("- 2")]
+        self.assertEqual(
+            entries, [f"- {self.today()} — FEITO — T0001 item de id largo — feito"])
+
+    def test_cancel_writes_the_same_name_into_the_log(self):
+        """`done` and `cancel` are one function, and a fix in one of two copies
+        is how the log would come to spell the same item two ways."""
+        self.seed(self.wide(), log="")
+        r = self.run_tk("cancel", "T0001", "--why", "nao vale")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, f"T0001 → done-log as DESCARTADO ({self.today()})\n")
+        entries = [ln for ln in self.body("done-log.md").splitlines()
+                   if ln.startswith("- 2")]
+        self.assertEqual(
+            entries,
+            [f"- {self.today()} — DESCARTADO — T0001 item de id largo — nao vale"])
+
+    def test_the_recorded_spelling_is_still_the_one_the_readers_parse(self):
+        """LOG_ID_RE reads the log's ID column and `max_id` allocates from it, so
+        a label the log grammar cannot parse hands 1 out a second time — the
+        outcome the whole ID grammar exists to prevent."""
+        self.seed(self.wide(), log="")
+        self.assertEqual(self.run_tk("done", "T0001", "--how", "feito").returncode, 0)
+        self.assertEqual(self.add(), "T002")
+        self.assertIn("T0001 item de id largo", self.run_tk("report").stdout)
+
+    # --- every other command that resolves an ID -------------------------
+    def test_edit_reports_the_item_it_rewrote(self):
+        self.seed(self.wide())
+        r = self.run_tk("edit", "T0001", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "T0001 updated\n")
+        self.assertEqual(self.body(), HEADER + self.wide(effort="M"))
+
+    def test_claim_release_and_bump_name_the_item_they_touched(self):
+        self.seed(item(2, "outro"), self.wide())
+        r = self.run_tk("claim", "T0001", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, r"\AT0001 claimed by alpha ")
+        r = self.run_tk("claim", "T0001", "--as", "beta")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 is already claimed by alpha since", r.stderr)
+        self.assertIn("`tk-queue release T0001`", r.stderr)
+        r = self.run_tk("release", "T0001")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T0001 released — it was claimed by alpha since", r.stdout)
+        self.assertEqual(self.run_tk("release", "T0001").stdout,
+                         "T0001 carries no claim — nothing to release\n")
+        self.assertEqual(self.run_tk("bump", "T0001").stdout,
+                         "T0001 → top of the queue\n")
+        self.assertEqual(self.run_tk("bump", "T0001").stdout,
+                         "T0001 is already at the top of the queue\n")
+
+    def test_the_deferral_refusal_names_the_item(self):
+        """`edit`'s deferral gate reasons about the item's resulting CLASS and
+        says which item it is talking about."""
+        self.seed(self.wide())
+        r = self.run_tk("edit", "T0001", "--deferred", "esperando o Guilherme.")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 is AUTONOMOUS.", r.stderr)
+        self.assertNotIn("T001 is AUTONOMOUS.", r.stderr)
+        self.assertEqual(self.body(), HEADER + self.wide())
+
+    def test_an_item_already_ticked_is_named_by_its_own_spelling(self):
+        """The one branch of missing_item_message that HAS a block. `migrate`
+        moves a ticked line VERBATIM, so the log will carry T0001 and nothing
+        else — a message saying T001 sends the reader to grep a name the history
+        does not contain, which is the branch's whole instruction."""
+        self.seed(self.wide().replace("- [ ]", "- [x]", 1))
+        r = self.run_tk("done", "T0001", "--how", "feito")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T0001 is in next-steps.md but already ticked [x]", r.stderr)
+        self.assertNotIn("T001 is in next-steps.md", r.stderr)
+        # the remedy it prints, run: the log really does carry that spelling
+        self.assertEqual(self.run_tk("migrate").returncode, 0)
+        self.assertIn("**T0001**", self.body("done-log.md"))
+
+    def test_the_ambiguous_and_stray_claim_refusals_name_the_item(self):
+        """`claim_segment` reads the claim for both `claim` and `release`, and its
+        two refusals are about the item — which is the one they have to name."""
+        two = ("- [ ] **T0001** — um **Class:** AUTONOMOUS. **Effort:** S. "
+               "**Criterion:** A: x. **Claimed:** alfa since 2026-08-19T10:00:00Z. "
+               "**Claimed:** bravo since 2026-08-19T11:00:00Z.\n")
+        self.seed(two)
+        r = self.run_tk("claim", "T0001", "--as", "charlie")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("T0001 carries 2 **Claimed:** fields", r.stderr)
+        self.assertNotIn("T001 carries", r.stderr)
+        self.assertEqual(self.body(), HEADER + two)
+
+        stray = "- [ ] **T0001** — algo\n  nota: **Claimed:** ver depois\n"
+        self.seed(stray)
+        r = self.run_tk("release", "T0001")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("T0001 carries a **Claimed:** marker away from the position",
+                      r.stderr)
+        self.assertNotIn("T001 carries", r.stderr)
+        self.assertEqual(self.body(), HEADER + stray)
+
+    # --- where there is no item, there is no label -----------------------
+    def test_an_ID_that_reaches_no_item_keeps_the_canonical_rendering(self):
+        """No block was resolved, so there is nothing to read a label off — and
+        the branch that says so must not go looking for one."""
+        self.seed(item(2, "dois"),
+                  log="- 2026-08-01 — FEITO — T001 um — PR #1\n")
+        r = self.run_tk("done", "999", "--how", "x")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T999 was never allocated", r.stderr)
+        r = self.run_tk("edit", "T001", "--effort", "M")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("T001 already left the queue", r.stderr)
+
+    def test_an_ordinary_item_is_reported_exactly_as_before(self):
+        """Canonical spelling is zero-padded to three, so for every item a WRITER
+        of these files produced the label IS the old rendering. Moving these
+        would be the defect, not the fix."""
+        self.seed(item(1, "um"), log="")
+        self.assertEqual(self.run_tk("edit", "T001", "--effort", "M").stdout,
+                         "T001 updated\n")
+        self.assertEqual(self.run_tk("bump", "1").stdout,
+                         "T001 is already at the top of the queue\n")
+        r = self.run_tk("done", "1", "--how", "PR #1")
+        self.assertEqual(r.stdout, f"T001 → done-log as FEITO ({self.today()})\n")
+        self.assertIn(f"- {self.today()} — FEITO — T001 um — PR #1",
+                      self.body("done-log.md"))
+
+
+# --- review#3: the fold flattened the item's MARKDOWN -----------------------
+#
+# `fold_chain_onto_first_line` validated the trailing field run and then joined
+# EVERY line of the block into one. Its readback re-derived only the field
+# SEGMENTS, so prose in between was never looked at: the join passed while the
+# structure that made it readable was gone. Measured on the real queues before
+# the repair — 8 of the 11 items the command folded carried prose in between:
+#
+#   automacao-financeira T037   a five-item bulleted list → one run-on line
+#   the m365 queue T018         an eleven-line note → one run-on line
+#
+# and `migrate` printed "folded up" for both, on a file with no other copy.
+#
+# The repair splits the two populations the corpus actually holds. A hard-wrapped
+# sentence is absorbed as before — its soft line break renders as one blank
+# either way, so the join changes nothing a reader sees, and 7 of those 8 items
+# are exactly that. A line that OPENS a Markdown block keeps its own line, its
+# own place and its own indentation.
+#
+# Every test here asserts the WHOLE file, both because this command rewrites user
+# data and because the defect was invisible to any assertion narrower than that.
+
+FOLD_LIST = ("- [ ] **T005** — item com lista aninhada abaixo\n"
+             "  - sub ponto A\n"
+             "    - sub ponto A.1, aninhado\n"
+             "  - sub ponto B\n"
+             "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+FOLD_LIST_FOLDED = ("- [ ] **T005** — item com lista aninhada abaixo **Class:** AUTONOMOUS. "
+                    "**Effort:** S. **Criterion:** A: x.\n"
+                    "  - sub ponto A\n"
+                    "    - sub ponto A.1, aninhado\n"
+                    "  - sub ponto B\n")
+FOLD_WRAPPED = ("- [ ] **T006** — item cuja frase quebra no meio de um parenteses (parte um,\n"
+                "  parte dois) e segue ate o fim.\n"
+                "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: y.\n")
+FOLD_WRAPPED_FOLDED = ("- [ ] **T006** — item cuja frase quebra no meio de um parenteses "
+                       "(parte um, parte dois) e segue ate o fim. **Class:** AUTONOMOUS. "
+                       "**Effort:** S. **Criterion:** A: y.\n")
+
+
+class TestFoldKeepsTheItemsMarkdown(QueueTest):
+    """What the fold may absorb, and what it may only relocate around."""
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def split_refusal(self, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: a **Field:** marker "
+                "would stay off the first line, and a chain the fold only half lifts is "
+                "not a chain any gate can read — " + ", ".join(labels)
+                + ". Close each with `cancel` and re-add it clean.\n")
+
+    # --- the block structure the join used to eat ------------------------
+
+    def test_a_bulleted_list_between_the_head_and_the_chain_survives_the_fold(self):
+        """The T037 shape, and the whole finding: every bullet keeps its own line
+        and its own indentation, the nested one included, while the chain moves up
+        to where the gates read it. Asserted as the whole file — the old readback
+        compared the field segments alone and passed on the flattened item."""
+        self.seed(FOLD_LIST)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+        self.assertEqual(self.body(), HEADER + FOLD_LIST_FOLDED)
+
+    def test_the_gates_reach_an_item_folded_AROUND_its_list(self):
+        """The fold is only worth the rewrite if the gates can read the result, and
+        only acceptable if the list is still there afterwards. Both, end to end."""
+        self.seed(FOLD_LIST)
+        self.migrate()
+        self.assertIn("T005  S", self.run_tk("pack").stdout)
+        self.assertEqual(self.run_tk("claim", "T005", "--as", "alpha").returncode, 0)
+        self.assertEqual(self.run_tk("release", "T005").returncode, 0)
+        r = self.run_tk("edit", "T005", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + FOLD_LIST_FOLDED.replace("**Effort:** S.", "**Effort:** L."))
+
+    def test_prose_that_wraps_AFTER_a_block_is_not_lifted_over_it(self):
+        """Only the wrapped lines that OPEN the block are absorbed. Lifting a line
+        from under a bullet would move that text above the bullet it belongs to —
+        the reordering is silent, and the item then says something else."""
+        seeded = ("- [ ] **T009** — cabeca do item\n"
+                  "  - primeiro ponto, que quebra\n"
+                  "  a linha no meio\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+        self.seed(seeded)
+        self.migrate()
+        self.assertEqual(self.body(),
+                         HEADER
+                         + "- [ ] **T009** — cabeca do item **Class:** AUTONOMOUS. "
+                           "**Effort:** S. **Criterion:** A: x.\n"
+                           "  - primeiro ponto, que quebra\n"
+                           "  a linha no meio\n")
+
+    # --- and the population the join was RIGHT about ----------------------
+
+    def test_a_hard_wrapped_sentence_is_still_absorbed_into_the_head(self):
+        """The other direction, and the expensive one to get wrong: 7 of the 8 real
+        items are a sentence broken at column ~95, several mid-parenthesis. Kept as
+        a line, the fields land inside the unclosed parenthesis and the item reads
+        worse than before the command ran. Markdown renders the soft break as one
+        blank, so absorbing it changes nothing a reader sees."""
+        self.seed(FOLD_WRAPPED)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
+        self.assertEqual(self.body(), HEADER + FOLD_WRAPPED_FOLDED)
+
+    def test_both_populations_fold_in_ONE_run_each_keeping_its_own_shape(self):
+        self.seed(FOLD_LIST, FOLD_WRAPPED)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T005, T006\n", r.stdout)
+        self.assertEqual(self.body(), HEADER + FOLD_LIST_FOLDED + FOLD_WRAPPED_FOLDED)
+
+    # --- the marker the fold would leave behind ---------------------------
+
+    def test_a_marker_stranded_on_a_BLOCK_line_is_left_and_REPORTED(self):
+        """A bullet that quotes a field marker cannot be absorbed, so folding the
+        run below it would leave a marker off the first line — half a chain, on an
+        item that now reads as repaired. Nothing here can tell the rest of a split
+        chain from prose quoting a marker, so the item is left whole and named."""
+        seeded = ("- [ ] **T010** — cabeca\n"
+                  "  - ponto que cita o **Risk:** de outro item.\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.split_refusal("T010"), r.stdout)
+
+    def test_the_two_refusals_are_reported_under_their_OWN_reasons(self):
+        """The report gained a second reason, and a reader repairs the shape the
+        sentence names. Melted into one line, the split-chain item is filed under a
+        sentence about guessing values and sends its reader after the wrong thing."""
+        self.seed("- [ ] **T010** — cabeca\n"
+                  "  - ponto que cita o **Risk:** de outro item.\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n",
+                  "- [ ] **T011** — nota depois dos campos\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n"
+                  "  nota solta depois dos campos.\n")
+        r = self.migrate()
+        self.assertIn(self.split_refusal("T010"), r.stdout)
+        self.assertIn("1 item(s) left exactly as they are: folding would have to GUESS "
+                      "which text is a field value — T011.", r.stdout)
+
+
+# --- review#3: a chain with no **Class:** anchors NOTHING -------------------
+#
+# `real_fields` answered a class-less chain with the WHOLE chain, and `edit`
+# writes through `real_fields`. So on an item that carries no class, the position
+# rule had no position to measure from and the item's own prose was the field —
+# the original destructive bug, alive on one population. Measured on `main`:
+#
+#   edit T021 --project tk   OVERWROTE "de outra fila inteira"
+#   edit T022 --risk none    DELETED the imitating segment whole
+#
+# both exiting 0 and printing "updated". The fallback was written so that
+# `edit --class` could still repair a class-less item, and it never had to:
+# **Class:** is not in that item's chain, so the locator comes back empty for it
+# either way and the flag APPENDS. Every test below asserts the whole file.
+
+CLASSLESS_PROJECT = ("- [ ] **T021** — item, cita o **Project:** de outra fila inteira. "
+                     "**Criterion:** ok.\n")
+CLASSLESS_RISK = ("- [ ] **T022** — item, ver a **Risk:** nota de contexto importante. "
+                  "**Criterion:** ok.\n")
+CLASSLESS_REAL = "- [ ] **T023** — legado sem classe. **Effort:** M. **Criterion:** ok.\n"
+
+
+class TestAClassLessChainIsNotAField(QueueTest):
+
+    def test_setting_a_field_on_a_class_less_item_is_refused(self):
+        self.seed(CLASSLESS_PROJECT)
+        r = self.run_tk("edit", "T021", "--project", "tk")
+        # the FILE first, and whole: what this defect did to the text is the
+        # finding, and "it exited 1" is only how the caller learns of it
+        self.assertEqual(self.body(), HEADER + CLASSLESS_PROJECT)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("T021 names no **Class:** in its field chain", r.stderr)
+        self.assertIn("Nothing was changed", r.stderr)
+
+    def test_CLEARING_a_field_on_a_class_less_item_is_refused(self):
+        """The deletion path, and the worse half: the words are not overwritten but
+        removed, and a removal leaves nothing to restore from."""
+        self.seed(CLASSLESS_RISK)
+        r = self.run_tk("edit", "T022", "--risk", "none")
+        self.assertEqual(self.body(), HEADER + CLASSLESS_RISK)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("T022 names no **Class:** in its field chain", r.stderr)
+        # this guard's OWN sentence, and not merely the prefix the next one shares:
+        # review#5 put a second refusal on the clearing branch below, so with the
+        # position rule mutated back to eating this prose, THAT one answers and the
+        # item is still safe — the file unchanged, the exit 1, and the shared prefix
+        # all identical. Two corrections of one incident masking each other is what
+        # the mutation run reported, and asserting the distinguishing clause is what
+        # keeps this test proving the rule it was written for
+        self.assertIn("would rewrite that prose (and with `none`, DELETE it)", r.stderr)
+
+    def test_a_field_the_class_less_item_really_carries_is_refused_too(self):
+        """The cost of the rule, paid deliberately and measured: with no anchor,
+        a real **Effort:** and a quoted one are the same string in the same place.
+        The refusal is what the command may do about that; picking one is what it
+        may not. Zero of the 202 real open items are in this population."""
+        self.seed(CLASSLESS_REAL)
+        r = self.run_tk("edit", "T023", "--effort", "L")
+        self.assertEqual(self.body(), HEADER + CLASSLESS_REAL)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("T023 names no **Class:** in its field chain", r.stderr)
+
+    # --- and the repair the rule must NOT lock out ------------------------
+
+    def test_a_class_less_item_can_still_be_GIVEN_a_class(self):
+        """`--class` is the flag that gives the item its anchor. It is never
+        located in the chain of an item that carries none — it is appended — so
+        the position rule has nothing to say about it, and a rule that refused it
+        would lock the repair out of the one population it exists for."""
+        for seeded, iid in ((CLASSLESS_REAL, "T023"), (CLASSLESS_PROJECT, "T021")):
+            with self.subTest(item=iid):
+                self.seed(seeded)
+                r = self.run_tk("edit", iid, "--class", "AUTONOMOUS")
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(r.stdout, f"{iid} updated\n")
+                self.assertEqual(self.body(),
+                                 HEADER + seeded.rstrip("\n")
+                                 + " **Class:** AUTONOMOUS.\n")
+                self.assertIn(f"{iid}  AUTONOMOUS", self.run_tk("list").stdout)
+
+    def test_the_refusal_does_not_offer_a_remedy_that_is_a_dead_end(self):
+        """`--class` appends the anchor at the END of the line, so the fields
+        already in the chain stay before it and stay unwritable. A refusal that
+        named it as the remedy would send the caller to run it and meet the same
+        refusal — so it says, in the same sentence, that it is not the remedy."""
+        self.seed(CLASSLESS_REAL)
+        r = self.run_tk("edit", "T023", "--effort", "L")
+        self.assertIn("is NOT the remedy for this", r.stderr)
+        self.assertEqual(self.run_tk("edit", "T023", "--class", "AUTONOMOUS").returncode, 0)
+        again = self.run_tk("edit", "T023", "--effort", "L")
+        self.assertEqual(again.returncode, 1, again.stdout)      # the dead end, run
+
+    def test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_edit_through(self):
+        """A refusal is only acceptable while its remedy is reachable, so the
+        printed one is run for real and the refused command re-tried after it."""
+        self.seed(CLASSLESS_PROJECT, log="")
+        self.assertEqual(self.run_tk("edit", "T021", "--project", "tk").returncode, 1)
+        r = self.run_tk("cancel", "T021", "--why", "reescrito com uma classe")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.run_tk("add", "o item cita o campo Project de outra fila inteira",
+                        "--class", "AUTONOMOUS", "--effort", "S", "--criterion", "A: x")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.run_tk("edit", "T022", "--project", "tk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Project:** tk.", self.body())
+
+    def test_an_anchored_item_is_untouched_by_the_rule(self):
+        """The over-refusal direction. Every item `add` writes carries a class, so
+        a rule that reached them would refuse the whole queue."""
+        seeded = item(1, "um", project="tk", risk="dano X")
+        self.seed(seeded)
+        r = self.run_tk("edit", "T001", "--project", "ambiente")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + seeded.replace("**Project:** tk.", "**Project:** ambiente."))
+
+
+# --- review#3: T000 is an ID, and the mark is guarded `is not None` ---------
+#
+# `list_line` prints the duplicate mark `if dup is not None` on purpose: `dup` is
+# the ID itself, and `if dup` drops the mark for T000 — the one allocated ID that
+# is falsy. The guard was correct and untested: T000 appeared nowhere in this
+# file, and swapping it for `if dup` left every test of the owning classes green.
+
+
+class TestTheZeroIdIsStillAnId(QueueTest):
+
+    def test_two_items_under_T000_are_both_marked_as_duplicates(self):
+        """The whole listing: a mark on every row says nothing, so the row that is
+        NOT ambiguous has to come back unmarked in the same output."""
+        self.seed(item(0, "primeira ocorrencia"), item(7, "item sozinho"),
+                  item(0, "segunda ocorrencia"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout,
+                         "T000  AUTONOMOUS  primeira ocorrencia  [duplicate ID 0]\n"
+                         "T007  AUTONOMOUS  item sozinho\n"
+                         "T000  AUTONOMOUS  segunda ocorrencia  [duplicate ID 0]\n"
+                         "\nduplicate IDs: only the FIRST item under each is reachable"
+                         " — renumber the others by hand in next-steps.md.\n")
+
+
+# --- review#4: the classifier's DEFAULT was the destructive direction -------
+#
+# The round before this one stopped `migrate` flattening an item's Markdown by
+# classifying each continuation line: a line that OPENS a block keeps its own
+# line, anything else is absorbed. The enumeration was the whole guard, and its
+# default was ABSORB — so every block shape not on the list reproduced the defect
+# the list was written to close, and the structure readback could not see it: it
+# counted the SAME regex's hits before and after the join, so for a shape the
+# regex never matched both counts were zero and the check agreed with the
+# flattening it was there to stop.
+#
+# Four shapes were found by reading, in one round — a setext underline, a link
+# reference definition, a GFM footnote definition, and a table head row written
+# without its leading pipe. They are enumerated now. The fifth nobody has read
+# yet is what changed the default: an absorption must be LICENSED by two
+# questions the enumeration cannot answer for itself (the geometry of the break,
+# and the character the line opens with), and an item neither licences is left
+# exactly as it is and named in the report.
+#
+# Every test here asserts the WHOLE file: this command rewrites user data, and
+# the defect it replays was invisible to any narrower assertion.
+
+R4_HEAD = ("- [ ] **T005** — cabeca escrita longa o bastante para que a quebra "
+           "seguinte caia numa coluna de wrap\n")
+R4_CHAIN = "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n"
+R4_FOLDED_HEAD = (R4_HEAD.rstrip("\n") + " **Class:** AUTONOMOUS. **Effort:** S. "
+                  "**Criterion:** A: x.\n")
+
+# one entry per shape: (name, the lines between the head and the chain)
+R4_SHAPES = (
+    ("sublinhado setext", "  ===\n"),
+    ("definicao de referencia de link", '  [ref]: https://exemplo.invalid "titulo"\n'),
+    ("definicao de nota de rodape", "  [^1]: a nota de rodape\n"),
+    ("tabela GFM sem pipe inicial", "  Col A | Col B\n  --- | ---\n  Val 1 | Val 2\n"),
+)
+
+# the population the fold must keep absorbing — a sentence hard-wrapped at column
+# ~95, which is 7 of the 8 real items with prose between head and chain. Each line
+# opens the way the real ones do: a code span, a parenthesis, an emoji, a wiki
+# link, a bold run. An over-tight rule refuses these, and the item then reads with
+# its field chain inside the parenthesis the wrap left open.
+R4_WRAPPED = (
+    "- [ ] **T006** — item cuja frase quebra no meio de um parenteses (parte um, parte dois\n"
+    "  `docs/proposta.md` + `docs/regua.md` + **`docs/esquema.md`** (novo, com a faixa de\n"
+    "  (diferenciacao vai pelo pro-labore futuro — posicao fixada no CONTEXT.md). Falta so\n"
+    "  ✅ **`Administrativo`** concedido, conferido na leitura de volta e no dry-run do dia\n"
+    "  [[nota-do-wiki]]): (a) decidir se as duas listas do vault tambem migram; (b) decidir\n"
+    "  **(c)** deixou de ser trabalho manual, e a caixa de entrada foi zerada nesse mesmo dia.\n"
+    "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: y.\n")
+R4_WRAPPED_FOLDED = (
+    "- [ ] **T006** — item cuja frase quebra no meio de um parenteses (parte um, parte dois "
+    "`docs/proposta.md` + `docs/regua.md` + **`docs/esquema.md`** (novo, com a faixa de "
+    "(diferenciacao vai pelo pro-labore futuro — posicao fixada no CONTEXT.md). Falta so "
+    "✅ **`Administrativo`** concedido, conferido na leitura de volta e no dry-run do dia "
+    "[[nota-do-wiki]]): (a) decidir se as duas listas do vault tambem migram; (b) decidir "
+    "**(c)** deixou de ser trabalho manual, e a caixa de entrada foi zerada nesse mesmo dia. "
+    "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: y.\n")
+
+
+class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def prose_refusal(self, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: a line between the "
+                "head and the chain is not the hard-wrapped prose the fold may absorb, "
+                "and absorbing a shape nobody recognised is how structure is lost in "
+                "silence — " + ", ".join(labels)
+                + ". Close each with `cancel` and re-add it clean.\n")
+
+    # --- the four shapes the enumeration was missing ----------------------
+
+    def test_each_shape_the_join_used_to_flatten_keeps_its_own_lines(self):
+        """All four, folded AROUND instead of over: the chain reaches the first
+        line, where the gates read it, and the block keeps every line it had.
+        Each was measured absorbed and reported as `folded up` — a success line
+        printed over destroyed structure, on a file with no other copy.
+
+        The head is deliberately long, so the break below it is one a wrapper
+        would make: the shape reading is the only thing that saves these, and a
+        fixture with a short head would let the geometry answer instead and prove
+        nothing about the enumeration."""
+        for name, middle in R4_SHAPES:
+            with self.subTest(shape=name):
+                self.seed(R4_HEAD.rstrip("\n") + "\n" + middle + R4_CHAIN)
+                r = self.migrate()
+                self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+                self.assertEqual(self.body(), HEADER + R4_FOLDED_HEAD + middle)
+
+    def test_the_gates_reach_an_item_folded_around_a_table_written_without_pipes(self):
+        """A fold is only worth a rewrite of user data if the readers can use the
+        result, and only acceptable if the table is still a table afterwards."""
+        self.seed(R4_HEAD.rstrip("\n") + "\n" + R4_SHAPES[3][1] + R4_CHAIN)
+        self.migrate()
+        self.assertIn("T005  S", self.run_tk("pack").stdout)
+        r = self.run_tk("edit", "T005", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + R4_FOLDED_HEAD.replace("**Effort:** S.", "**Effort:** L.")
+                         + R4_SHAPES[3][1])
+
+    # --- and the shapes NOBODY enumerated, which is the point --------------
+
+    def test_a_shape_no_one_enumerated_is_REFUSED_and_not_flattened(self):
+        """The finding this round is about, and the only test here that would
+        still hold if the four shapes above had never been added.
+
+        `!!! note` opens an admonition in Python-Markdown and MkDocs. It is on no
+        list in this file, on purpose: it stands for the shape the next reader
+        writes and nobody has enumerated. The fold does not recognise it, does not
+        guess, and does not touch the item — a refusal costs one command, and a
+        flattened queue file has no other copy."""
+        seeded = R4_HEAD.rstrip("\n") + "\n" + '  !!! note "Atencao"\n' + R4_CHAIN
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertNotIn("folded up", r.stdout)
+        # the MESSAGE, not merely "the file is unchanged": a crash leaves the file
+        # unchanged too, and would read here as a guard doing its job
+        self.assertIn(self.prose_refusal("T005"), r.stdout)
+
+    def test_a_shape_no_one_enumerated_that_OPENS_like_prose_is_refused_too(self):
+        """The second licence, and the arm the first test cannot reach. A
+        `chave: valor` metadata line opens with a letter, exactly as a wrapped
+        sentence does, so nothing about its first character betrays it. What does
+        is the GEOMETRY: the line above it is 30 columns wide, so the break was
+        the author's and not a wrapper's, and no wrapped paragraph looks like
+        that."""
+        seeded = ("- [ ] **T007** — cabeca curta\n"
+                  "  chave: valor\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.prose_refusal("T007"), r.stdout)
+
+    # --- the population the fold must NOT stop absorbing -------------------
+
+    def test_the_hard_wrapped_population_is_still_absorbed_whole(self):
+        """The regression the fail-safe default could break, and the expensive one:
+        7 of the 8 real items with prose between head and chain are one sentence
+        hard-wrapped at column ~95. Keeping those lines lands the field chain
+        inside the parenthesis the wrap left open, so `keep everything not proven
+        to be prose` reads worse than the defect it replaces. Every opener the real
+        corpus uses is here — code span, parenthesis, emoji, wiki link, bold run."""
+        self.seed(R4_WRAPPED)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
+        self.assertEqual(self.body(), HEADER + R4_WRAPPED_FOLDED)
+
+    def test_a_wrapped_sentence_that_merely_carries_a_pipe_is_not_a_table(self):
+        """The over-refusal direction of the table rule, and why it needs the line
+        BELOW: a pipe is a character prose uses. Without the lookahead the rule
+        reads `a | b` in the middle of a sentence as a table head, and the item is
+        folded around a line that was never a block."""
+        self.seed("- [ ] **T011** — cabeca longa o bastante para que a quebra seguinte caia "
+                  "numa coluna de wrap\n"
+                  "  o comando imprime `folded | refused | untouched` e segue a frase ate o "
+                  "fim dela.\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T011\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER
+                         + "- [ ] **T011** — cabeca longa o bastante para que a quebra "
+                           "seguinte caia numa coluna de wrap o comando imprime "
+                           "`folded | refused | untouched` e segue a frase ate o fim dela. "
+                           "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+
+    def test_the_two_verdicts_land_in_ONE_run_without_touching_each_other(self):
+        """A queue holds both populations, and the report must name the item it
+        could not fold beside the ones it did — a run that folded most of a queue
+        and stayed silent about the rest reports success for a job half done."""
+        refused = R4_HEAD.replace("T005", "T008").rstrip("\n") + "\n" \
+            + '  !!! note "Atencao"\n' + R4_CHAIN
+        self.seed(R4_WRAPPED, refused)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + R4_WRAPPED_FOLDED + refused)
+        self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
+        self.assertIn(self.prose_refusal("T008"), r.stdout)
+
+
+# --- review#4: a field appended to a class-less item is unreachable forever --
+#
+# `real_fields` answers [] for every field while the chain names no **Class:**,
+# so a field appended to such an item is a field no gate and no report may read.
+# `edit --effort L` appended one anyway and printed "updated"; the `--class` that
+# came next appended the anchor at the END of the line, BEHIND it; and `pack`
+# went on showing the item's Effort as `?`. The refusal that already existed
+# covered only the item that carried the marker ALREADY — the same trap, on the
+# same population, one branch to the left.
+
+R4_BARE = "- [ ] **T009** — legado sem classe nenhuma.\n"
+
+
+class TestAFieldAppendedBeforeTheAnchorIsRefused(QueueTest):
+
+    def test_setting_a_field_on_a_class_less_item_is_refused(self):
+        self.seed(R4_BARE)
+        r = self.run_tk("edit", "T009", "--effort", "L")
+        self.assertEqual(self.body(), HEADER + R4_BARE)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("T009 names no **Class:** in its field chain, so an appended "
+                      "**Effort:** would sit BEFORE the anchor", r.stderr)
+        self.assertIn("Nothing was changed", r.stderr)
+
+    def test_the_file_and_the_reader_no_longer_disagree_about_the_field(self):
+        """The whole sequence as it was measured: `--effort L` exited 0, `--class`
+        exited 0, and `pack` went on printing Effort `?` over a file that said `L`.
+        The file and its reader disagreeing is the finding — not the `?`.
+
+        They agree now, and they agree the honest way: nothing was written, so
+        nothing claims a value the reader cannot see."""
+        self.seed(R4_BARE)
+        self.assertEqual(self.run_tk("edit", "T009", "--effort", "L").returncode, 1)
+        self.assertEqual(self.run_tk("edit", "T009", "--class", "AUTONOMOUS").returncode, 0)
+        self.assertEqual(self.body(),
+                         HEADER + R4_BARE.rstrip("\n") + " **Class:** AUTONOMOUS.\n")
+        self.assertNotIn("**Effort:**", self.body())
+        self.assertIn("T009  ?", self.run_tk("pack").stdout)
+
+    def test_every_field_that_is_APPENDED_is_covered_not_only_effort(self):
+        """One branch, every flag that reaches it: a rule that held for --effort
+        and not for --risk would leave the same trap open one flag over."""
+        for flag, value, marker in (("--effort", "L", "Effort"), ("--risk", "apaga X", "Risk"),
+                                    ("--criterion", "A: y", "Criterion"),
+                                    ("--project", "tk", "Project")):
+            with self.subTest(flag=flag):
+                self.seed(R4_BARE)
+                r = self.run_tk("edit", "T009", flag, value)
+                self.assertEqual(self.body(), HEADER + R4_BARE)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(f"an appended **{marker}:** would sit BEFORE the anchor",
+                              r.stderr)
+
+    def test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through(self):
+        """A refusal is only acceptable while its remedy is reachable, so the
+        printed one is run for real — literally, with the caller's own value read
+        back off the message — and the field is then where `pack` reads it."""
+        self.seed(R4_BARE)
+        r = self.run_tk("edit", "T009", "--criterion", "A: o relatorio sai com 'aspas'")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        printed = re.search(r"Run `tk-queue (edit .*?)` — one command", r.stderr).group(1)
+        argv = shlex.split(printed.replace("<CLASS>", "AUTONOMOUS"))
+        again = self.run_tk(*argv)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + R4_BARE.rstrip("\n")
+                         + " **Class:** AUTONOMOUS. **Criterion:** A: o relatorio sai com "
+                           "'aspas'.\n")
+
+    def test_class_first_in_ONE_call_lands_the_field_inside_the_chain(self):
+        """The over-refusal direction: the rule may not lock out the call that is
+        already correct. `--class` is applied before every other flag, so one
+        command gives the item its anchor and its fields in the right order."""
+        self.seed(R4_BARE)
+        r = self.run_tk("edit", "T009", "--effort", "L", "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + R4_BARE.rstrip("\n")
+                         + " **Class:** AUTONOMOUS. **Effort:** L.\n")
+        self.assertIn("T009  L", self.run_tk("pack").stdout)
+
+    def test_an_anchored_item_is_untouched_by_the_rule(self):
+        """Every item `add` writes carries a class, so a rule that reached them
+        would refuse the whole queue."""
+        seeded = item(1, "um")
+        self.seed(seeded)
+        r = self.run_tk("edit", "T001", "--project", "tk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Project:** tk.", self.body())
+
+
+# --- review#5: the setext protection was asymmetric -------------------------
+#
+# `opens_a_block` recognised the setext UNDERLINE and kept it, and never looked
+# BACK at the title line the underline retroactively turns into a heading. That
+# title is plain prose by its first character and past the wrap column by its
+# geometry, so both of `absorption_audit`'s licences passed it and the fold
+# absorbed it — leaving the heading text merged into unrelated prose AND the
+# underline orphaned, underlining nothing, reported as `folded up`.
+#
+# The repair is the lookahead the table-head rule already had, read from the
+# other side: if the NEXT line is a setext underline, THIS line belongs to that
+# block. Every test below asserts the WHOLE file — this command rewrites user
+# data, and the defect it replays survives any narrower assertion.
+
+R5_LONG_HEAD = ("- [ ] **T005** — cabeca do item que e uma frase longa o suficiente "
+                "para passar da coluna de wrap sem duvida nenhuma\n")
+R5_FOLDED_HEAD = (R5_LONG_HEAD.rstrip("\n")
+                  + " **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+
+
+class TestASetextTitleIsKeptWithItsUnderline(QueueTest):
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def test_the_title_the_underline_promotes_keeps_its_own_line(self):
+        """Both spellings of the underline, each measured absorbed: `===`, which
+        is only ever a setext underline, and `---`, which is a setext H2 here and
+        a thematic break after a blank. The reading is stated in `opens_a_block`;
+        what this asserts is that neither spelling leaves the title behind."""
+        for name, rule in (("igual", "  ===============\n"),
+                           ("hifen", "  ---------------\n")):
+            with self.subTest(sublinhado=name):
+                middle = "  Titulo da secao\n" + rule
+                self.seed(R5_LONG_HEAD + middle + R4_CHAIN)
+                r = self.migrate()
+                self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+                self.assertEqual(self.body(), HEADER + R5_FOLDED_HEAD + middle)
+
+    def test_the_gates_reach_the_item_folded_around_the_heading(self):
+        """A fold is only worth rewriting user data if the readers can use the
+        result — and only acceptable if the heading is still a heading after."""
+        middle = "  Titulo da secao\n  ===============\n"
+        self.seed(R5_LONG_HEAD + middle + R4_CHAIN)
+        self.migrate()
+        self.assertIn("T005  S", self.run_tk("pack").stdout)
+        r = self.run_tk("edit", "T005", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + R5_FOLDED_HEAD.replace("**Effort:** S.", "**Effort:** L.")
+                         + middle)
+
+    def test_an_ordinary_hard_wrapped_line_is_STILL_absorbed(self):
+        """The regression the lookahead could buy, and the expensive one: the same
+        title line, with no underline under it, is ordinary wrapped prose and must
+        go on being absorbed. A rule that kept it would cost the fold the very
+        population it exists for — 7 of the 8 real items with prose between head
+        and chain are one sentence hard-wrapped at column ~95."""
+        self.seed(R5_LONG_HEAD + "  Titulo da secao\n" + R4_CHAIN)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + R5_LONG_HEAD.rstrip("\n")
+                         + " Titulo da secao **Class:** AUTONOMOUS. **Effort:** S. "
+                           "**Criterion:** A: x.\n")
+
+    def test_the_whole_hard_wrapped_population_is_still_absorbed_whole(self):
+        """The same direction, on the real corpus's own shapes rather than one
+        line: every opener the queues use, none of them followed by an underline."""
+        self.seed(R4_WRAPPED)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
+        self.assertEqual(self.body(), HEADER + R4_WRAPPED_FOLDED)
+
+
+# --- review#5: `--<field> none` on a class-less item printed success ---------
+#
+# The refusal that stopped a field being APPENDED where no reader may honour it
+# sits on the branch that WRITES. The three clearable flags take an early
+# `continue` above it, so they never reached it: `edit T009 --risk none` on a
+# class-less item printed "T009 updated" and left the file byte-identical, and so
+# did `--env none` and `--deferred none` — three commands exiting 0 over a file
+# none of them touched, which is the pattern the append refusal exists to close.
+
+
+class TestClearingOnAClassLessItemIsRefused(QueueTest):
+
+    def refusal(self, field):
+        return (f"T009 names no **Class:** in its field chain, so no segment of that "
+                f"chain is a real **{field}:** for any reader")
+
+    def test_every_clearable_flag_is_refused_and_says_so(self):
+        """One branch, all three flags that reach it: a rule that held for --risk
+        and not for --env would leave the same trap open one flag over.
+
+        The MESSAGE is asserted, not merely a nonzero exit — a mutant that CRASHES
+        also exits nonzero and also leaves the file alone, and would read here as
+        the guard doing its job."""
+        for flag, field in (("--risk", "Risk"), ("--env", "Env"),
+                            ("--deferred", "Deferred")):
+            with self.subTest(flag=flag):
+                self.seed(R4_BARE)
+                r = self.run_tk("edit", "T009", flag, "none")
+                self.assertEqual(self.body(), HEADER + R4_BARE)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(self.refusal(field), r.stderr)
+                self.assertIn("it is the flag that DELETES", r.stderr)
+                self.assertIn("Nothing was changed", r.stderr)
+                self.assertNotIn("T009 updated", r.stdout)
+
+    def test_the_remedy_the_refusal_PRINTS_runs_and_leaves_the_item_anchored(self):
+        """A refusal is acceptable only while its remedy is reachable, so the
+        printed one is run for real — read back off the message, not retyped."""
+        for flag, field in (("--risk", "Risk"), ("--env", "Env"),
+                            ("--deferred", "Deferred")):
+            with self.subTest(flag=flag):
+                self.seed(R4_BARE)
+                r = self.run_tk("edit", "T009", flag, "none")
+                self.assertEqual(r.returncode, 1, r.stdout)
+                printed = re.search(r"Run `tk-queue (edit .*?)` — one command",
+                                    r.stderr).group(1)
+                argv = shlex.split(printed.replace("<CLASS>", "AUTONOMOUS"))
+                again = self.run_tk(*argv)
+                self.assertEqual(again.returncode, 0, again.stderr)
+                self.assertEqual(self.body(),
+                                 HEADER + R4_BARE.rstrip("\n")
+                                 + " **Class:** AUTONOMOUS.\n")
+                self.assertNotIn(f"**{field}:**", self.body())
+
+    def test_an_anchored_item_still_CLEARS_the_field_it_carries(self):
+        """The over-refusal direction, and the one that would break the command
+        outright: the rule may only reach the item with no anchor."""
+        self.site(SITE)
+        seeded = ("- [ ] **T001** — item normal **Class:** AUTONOMOUS. **Effort:** S. "
+                  "**Risk:** apaga X. **Env:** bravo. **Criterion:** A: x.\n")
+        self.seed(seeded)
+        r = self.run_tk("edit", "T001", "--risk", "none", "--env", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T001** — item normal **Class:** AUTONOMOUS. "
+                                  "**Effort:** S. **Criterion:** A: x.\n")
+
+    def test_an_anchored_item_with_nothing_to_clear_is_untouched_and_reported(self):
+        """The neighbouring population, asserted so the refusal's edge is on the
+        record: an ANCHORED item with no Risk at all still answers "updated" and
+        is left byte-identical. The chain anchors, so `real_fields` really did
+        look and really did find none — which is the difference this rule is
+        about, and the residue the refusal deliberately does not extend to."""
+        seeded = item(1, "um")
+        self.seed(seeded)
+        r = self.run_tk("edit", "T001", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), HEADER + seeded)
 
 
 if __name__ == "__main__":
