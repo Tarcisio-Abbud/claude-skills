@@ -717,18 +717,30 @@ def real_fields(block, field):
     before it is the item's own prose wearing a field's shape (see field_chain).
     Class qualifies AT that anchor; every other field qualifies after it.
 
-    A chain that names NO class anchors nothing, and this answers with the whole
-    chain. That is a fallback, not a rule: the class-less item is legacy, no gate
-    reads it (chain_class, qualified_fields and claim_readback all come back
-    empty), and `edit --class` is the one command that repairs it — a position rule
-    with no position to measure from would lock the repair out of the very items it
-    exists for. `qualified_fields` adds the stricter answer the gates need.
+    A chain that names NO class anchors nothing, so NOTHING in it is a real field
+    — for a reader or for a writer. Answering with the whole chain instead, which
+    is what this did, is the original destructive bug alive on one population: on
+    `— item, cita o **Project:** de outra fila inteira. **Criterion:** ok.` there is
+    no **Class:** to measure from, the whole chain came back as real, and
+    `edit --project tk` OVERWROTE those four words while `edit --risk none` DELETED
+    the imitating segment whole — each exiting 0, printing "updated", on text with
+    no other copy.
+
+    That fallback was written to keep `edit --class` reaching the very items it
+    repairs, and it never had to: **Class:** is not IN the chain of a class-less
+    item, so this returns [] for it either way, and `cmd_edit` appends. What the
+    fallback bought was only the destruction above. The class-less item stays
+    repairable, and its other fields stay unreachable until it is repaired — see
+    the refusal in cmd_edit, which says so and names what to run.
+
+    `qualified_fields` used to add this rule a second time; it now reads it here,
+    because two copies is how one of them keeps a position the other dropped.
     """
     chain = field_chain(block)
     names = [canonical_field(m.group(1)) for m in chain]
-    lo = 0
-    if "Class" in names:
-        lo = names.index("Class") + (0 if field == "Class" else 1)
+    if "Class" not in names:
+        return []
+    lo = names.index("Class") + (0 if field == "Class" else 1)
     return [m for i, m in enumerate(chain) if names[i] == field and i >= lo]
 
 
@@ -758,14 +770,13 @@ def qualified_fields(block, field):
     the two gates part company (one refuses only when the command depends on the
     field; the other always does, since every claim command depends on it).
 
-    The rule itself lives in `real_fields`, and this is the ONE place that adds to
-    it: a chain with no **Class:** anchors nothing, so nothing in it qualifies for a
-    GATE. Two copies of the rule is how one of them would keep a position the other
-    had already dropped.
+    The rule itself lives in `real_fields` — including the part this file once
+    added here, that a chain with no **Class:** anchors nothing. It moved down
+    there when the same missing anchor was measured DESTROYING prose through the
+    writer, which reads `real_fields` directly: a rule the gates applied and the
+    writer did not is exactly the asymmetry that bug was made of.
     """
-    names = [canonical_field(m.group(1)) for m in field_chain(block)]
-    segs = real_fields(block, field) if "Class" in names else []
-    return segs, len(FIELD_MARKER_RE[field].findall(block))
+    return real_fields(block, field), len(FIELD_MARKER_RE[field].findall(block))
 
 
 def chain_breaker(candidate):
@@ -1393,7 +1404,9 @@ REPAIR_CANCEL = ("a chain no gate can read: `tk-queue cancel <id> --why \"<why>\
 REPAIR_FOLD = ("fields off the first line: `tk-queue migrate` folds them up, every item in "
                "one pass, and names the ones it left alone — the same fold, per item, is "
                "`tk-queue edit <id> --text \"<the item's whole text>\"`. Where a marker and "
-               "its value sit on different lines the fold cannot join them, and the repair "
+               "its value sit on different lines the fold cannot join them, and where a "
+               "marker sits on a line it may not absorb — a bullet, a quote, anything that "
+               "opens a Markdown block — it will not lift half a chain; the repair for both "
                "is `cancel` + re-add")
 REPAIR_CLASSLESS = "no **Class:** at all: `tk-queue edit <id> --class AUTONOMOUS`"
 REPAIR_RELEASE = ("a claim whose session is gone: `tk-queue release <id>` hands the item "
@@ -2245,6 +2258,19 @@ def cmd_edit(args):
                  f"chain, so `--{field.lower()}` is ambiguous. Nothing was changed. Close "
                  "it with `cancel` and re-add it clean.")
         if not found and re.search(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*", new):
+            # the class-less item gets its own sentence, because the generic one
+            # below would send the caller looking for a **Class:** the item has
+            # not got. `--class` is exempt: it is the flag that GIVES the item
+            # one, it is never located in the chain of an item that carries none,
+            # and refusing it here would lock the repair out of its own population
+            if field != "Class" and not real_fields(new, "Class"):
+                fail(f"{label} names no **Class:** in its field chain, so nothing in that "
+                     "chain can be told from the item's own prose wearing a field's name — "
+                     f"`--{field.lower()}` would rewrite that prose (and with `none`, DELETE "
+                     "it). Nothing was changed. Close the item with `cancel` and re-add it "
+                     f"clean. `tk-queue edit {label} --class <CLASS>` is NOT the remedy for "
+                     "this: it gives the item a class, which is worth doing, and the fields "
+                     "already in the chain stay where no reader may write them.")
             fail(f"{label} has a **{field}:** marker OUTSIDE its field chain — in "
                  "the item's own prose (before the **Class:** the chain begins at) or on "
                  "a continuation line — and none inside it. Nothing was changed. Editing "
@@ -2456,9 +2482,53 @@ def cmd_report(args):
 # and the per-item alternative is retyping the item's whole text into
 # `edit --text`, once per item, by hand.
 
-# printed with the IDs it applies to, never per item: the shapes it covers are
-# several and the sentence is long
+# printed with the IDs it applies to, never per item: the shapes each covers are
+# several and the sentences are long. TWO reasons, not one: a report that melted
+# them into a single line would name the split-chain item under a sentence about
+# guessing values, and the reader repairs the wrong thing
 FOLD_REFUSAL = "folding would have to GUESS which text is a field value"
+FOLD_SPLIT_REFUSAL = ("a **Field:** marker would stay off the first line, and a chain "
+                      "the fold only half lifts is not a chain any gate can read")
+
+
+# every line-shape that OPENS a Markdown block, from CommonMark's block-start
+# set: a list item, an ordered item, a heading, a quote, a fence, a table row, a
+# thematic break, raw HTML. A line that opens none of these and continues the
+# paragraph above renders identically joined or wrapped — that is the whole
+# licence the join has, and it is why this list is the conservative direction:
+# a shape missing from it merely keeps its own line (nothing is lost), while a
+# shape wrongly ON it would be flattened. The readback measures that direction.
+BLOCK_START_RE = re.compile(r"""
+      [-*+][ \t]           # a bullet
+    | [0-9]+[.)][ \t]      # an ordered item
+    | \#{1,6}[ \t]        # a heading
+    | >                    # a quote
+    | ```|~~~              # a fence
+    | \|                   # a table row
+    | (?:-[ \t]*){3,}$     # a thematic break, in its three spellings
+    | (?:\*[ \t]*){3,}$
+    | (?:_[ \t]*){3,}$
+    | <                    # raw HTML
+""", re.X)
+
+
+def joins_into_the_paragraph(line):
+    """Whether the fold may absorb this continuation line into the first one.
+
+    True only for a LAZY PARAGRAPH CONTINUATION — a hard-wrapped sentence, whose
+    soft line break Markdown already renders as one blank. Joining one of those
+    changes the rendered item by nothing at all, and 7 of the 8 real items with
+    prose between their head and their chain are exactly that: a sentence broken
+    at column ~95, several of them mid-parenthesis.
+
+    False for a line that OPENS a block, and for anything indented far enough to
+    be a code block — those carry structure that a join destroys, which is the
+    defect this predicate exists for. False is the safe answer in both cases: the
+    line simply keeps its own line, below the folded head.
+    """
+    indent = len(line) - len(line.lstrip())
+    return (indent < 4 and "\t" not in line[:indent] and bool(line.strip())
+            and not BLOCK_START_RE.match(line.strip()))
 
 
 def field_run(line):
@@ -2497,23 +2567,43 @@ def fold_chain_onto_first_line(block):
     left alone) — at most one of the two is not None, and (None, None) means
     there was nothing to fold.
 
-    The fold RELOCATES a chain that is already whole; it never CONSTRUCTS one.
-    That is the line between a rewrite this command can prove and a guess it
-    must not make on a file holding the user's own prose, and it is drawn by
-    reading the item twice: the segments its trailing FIELD LINES already carry,
-    and the chain `field_chain` reads back out of the folded line. Equal, every
-    reader gets exactly the strings it got before, from a position the position
-    rule can finally see — the join moves no character of prose, it only
-    replaces a newline and the indentation after it with one blank. Different,
-    the fold would have invented a field, so nothing is moved and the caller is
-    told which items were left: a marker in the item's own prose joins the chain
-    from the left (the shape claim_unwritable_message already refuses to promise
-    the fold for), and a chain spread across a line that opens mid-value takes
-    the wrong text as its value.
+    The fold moves the FIELD LINES and nothing else. Every other line of the
+    block — a nested list, a paragraph, an indented note — stays a line, with
+    its own indentation, exactly where the user wrote it. Only the chain
+    changes address, and the price is one of order: the fields end the first
+    line, so they now precede prose that used to sit above them, which is where
+    compose_item puts them on every item this queue writes itself.
 
-    The readback is the gate, not a proxy for it — the same lesson claim_readback
-    paid for: what a reader will find is only answerable by asking that reader
-    about the text that would actually be written.
+    That price is the cheap half of the choice. The expensive half was measured:
+    joining EVERY line of the block into one — which is what this did — turned
+    `automacao-financeira` T037's five-item bulleted list and the m365 queue's
+    T018, an eleven-line note, into one run-on line each, and reported both as
+    folded. No
+    character was lost, so the old docstring's claim ("the join moves no character
+    of prose") stayed true while the structure that made the text readable was
+    gone, in the user's only copy. 8 of the 11 items this command folded across the
+    real queues carried prose in between.
+
+    The fold RELOCATES a chain that is already whole; it never CONSTRUCTS one.
+    That line is drawn by reading the item twice: the segments its trailing FIELD
+    LINES already carry, and what `field_chain` reads back out of the folded line.
+    Equal, every reader gets exactly the strings it got before, from a position the
+    position rule can finally see. Different, the fold would have invented a field,
+    so nothing is moved and the caller is told which items were left: a marker in
+    the item's own prose joins the chain from the left (the shape
+    claim_unwritable_message already refuses to promise the fold for), and a chain
+    spread across a line that opens mid-value takes the wrong text as its value.
+
+    The readback asks about the PROSE too, and that is the half this lacked. It
+    verifies both promises: the folded first line, up to where the reader finds
+    the chain beginning, is the original first line; and every remaining line is
+    an original continuation line, byte for byte. A readback that re-derives only
+    the field segments cannot see prose the join swallowed — it compared the two
+    things the join left alone and passed while the item was flattened.
+
+    A marker left among the lines that stay is refused outright. Nothing here can
+    tell the rest of a split chain from prose that merely quotes a marker, and
+    lifting half a chain leaves an item that reads as repaired and is not.
     """
     if chain_class(block) is not None:
         # the item is already in the shape every gate reads — its chain ends the
@@ -2529,23 +2619,57 @@ def fold_chain_onto_first_line(block):
         # is a different defect with a different repair (`edit --class`), and
         # reporting it here would name the fold for a shape the fold is not about
         return None, None
-    run = []
+    run, first = [], len(lines)
     for line in reversed(lines[1:]):
         segs = field_run(line)
         if segs is None:
             break
         run[:0] = segs
+        first -= 1
     if not run:
         return None, FOLD_REFUSAL
-    folded = " ".join(ln.strip() for ln in lines) + block[len(block.rstrip("\n")):]
+    # the lines BETWEEN the head and the field run, split where the paragraph
+    # stops: the wrapped ones are absorbed, and everything from the first block
+    # onwards keeps its own line, in its own place, with its own indentation
+    j = 1
+    while j < first and joins_into_the_paragraph(lines[j]):
+        j += 1
+    kept = lines[j:first]
+    if EMBEDDED_MARKER_RE.search("\n".join(kept)):
+        return None, FOLD_SPLIT_REFUSAL
+    head = " ".join([ln.strip() for ln in lines[:j]] + [ln.strip() for ln in lines[first:]])
+    folded = "\n".join([head] + kept) + block[len(block.rstrip("\n")):]
     # rstripped, and only rstripped: FIELD_SEGMENT_RE's body is greedy, so a
     # segment swallows the blank that separates it from the next marker — one
     # blank where the line ended, none where the file's newline used to be. A
     # raw comparison called that whitespace a changed value and refused an item
     # whose chain merely spanned two continuation lines. Absorbed PROSE, the
     # thing this gate is for, is not whitespace and still shows.
+    chain = field_chain(folded)
     if ([m.group(0).rstrip() for m in run]
-            != [m.group(0).rstrip() for m in field_chain(folded)]):
+            != [m.group(0).rstrip() for m in chain]):
+        return None, FOLD_REFUSAL
+    # the PROSE half of the readback, and the half this lacked. Re-derived from
+    # the block as it arrived, not from the pieces the join was built out of: a
+    # comparison over those pieces is the join asking itself, and it passed while
+    # the item was being flattened. Two questions, one per promise —
+    #   structure  every line that OPENS a Markdown block is still a line of its
+    #              own. A bullet the join swallowed is missing from the second
+    #              list and the fold is refused, which is the T037 defect
+    #   verbatim   the lines that stayed are the lines that arrived, indentation
+    #              included — stripping them would keep the structure and lose
+    #              the nesting
+    #
+    # The structure question re-asks BLOCK_START_RE, which is also what decided
+    # the join, so no mutation can make it the sole reason a test falls; it is
+    # kept because it changes the DIRECTION of an unforeseen failure — a shape the
+    # predicate misreads comes back refused instead of flattened, and a refusal on
+    # this file costs a command while a flattening costs the text.
+    back = folded.rstrip("\n").split("\n")
+    blocks_in = [ln for ln in lines[1:] if BLOCK_START_RE.match(ln.strip())]
+    if [ln for ln in back[1:] if BLOCK_START_RE.match(ln.strip())] != blocks_in:
+        return None, FOLD_REFUSAL
+    if back[1:] != lines[j:first]:
         return None, FOLD_REFUSAL
     return folded, None
 
@@ -2588,7 +2712,7 @@ def cmd_migrate(args):
             if new is not None:
                 folded.append(item_label(text))
             elif refusal:
-                left_alone.append(item_label(text))
+                left_alone.append((item_label(text), refusal))
         if dropped_prev and out:
             # collapse surplus blank lines only at the junction left by the removal
             prev = out.pop()
@@ -2612,8 +2736,15 @@ def cmd_migrate(args):
         print(f"{len(folded)} item(s) with fields off the first line: folded up, where "
               "every gate reads them — " + ", ".join(folded))
     if left_alone:
-        print(f"{len(left_alone)} item(s) left exactly as they are: {FOLD_REFUSAL} — "
-              + ", ".join(left_alone) + ". Close each with `cancel` and re-add it clean.")
+        # grouped BY REASON, one line each: the fold refuses for two different
+        # shapes and a reader repairs the shape the sentence names. Insertion
+        # order, so a queue with one shape reads exactly as it did before
+        by_reason = {}
+        for lab, why in left_alone:
+            by_reason.setdefault(why, []).append(lab)
+        for why, labels in by_reason.items():
+            print(f"{len(labels)} item(s) left exactly as they are: {why} — "
+                  + ", ".join(labels) + ". Close each with `cancel` and re-add it clean.")
     # `migrate` closes items too — that is its whole job — so it is a closing path,
     # and a closing path that left the briefing behind would be the orphan every
     # other one refuses to make. Measured: a legacy [x] item with a briefing left
