@@ -657,6 +657,29 @@ MUTATIONS = [
      "    if stray and (args.classe or args.deferred is not None):", "    if stray:",
      ["TestDecisionDeferralGate.test_an_edit_that_never_consults_the_deferral_stays_allowed"]),
 
+    # --- T121: `list` reads the class from the chain, like the gate ----------
+
+    ("T121 `list` reads the class from the whole block again (prose beats the field)",
+     '    if real_fields(block, "Class"):\n        return chain_class(block)',
+     '    if False:\n        return chain_class(block)',
+     ["TestListReadsTheClassFromTheChain."
+      "test_a_class_named_only_in_PROSE_is_not_the_one_list_shows",
+      "TestListReadsTheClassFromTheChain."
+      "test_list_and_pack_no_longer_disagree_about_the_same_item",
+      "TestListReadsTheClassFromTheChain."
+      "test_a_class_the_GATE_calls_ambiguous_is_shown_as_unknown_not_guessed"]),
+
+    # the over-correction direction, and the one a naive fix takes: reading the
+    # chain ALONE shows every unfolded legacy item with no class at all
+    ("T121 `list` reads the chain ALONE, so a legacy item loses its class",
+     '    if real_fields(block, "Class"):\n'
+     '        return chain_class(block)\n'
+     '    m = CLASS_VALUE_RE.search(block)\n'
+     '    return m.group(1) if m else None',
+     "    return chain_class(block)",
+     ["TestListReadsTheClassFromTheChain."
+      "test_a_legacy_item_with_its_fields_OFF_the_first_line_still_shows_its_class"]),
+
     # --- T121: prose wearing a real field's NAME -----------------------------
 
     # the locator goes back to reading the chain RAW, which is what `edit` did
@@ -705,7 +728,7 @@ MUTATIONS = [
 
     ("re-check the gate reads the class the loose way `list` displays it",
      "    result_class = args.classe or chain_class(block)",
-     "    result_class = args.classe or item_class(block)",
+     "    result_class = args.classe or (lambda m: m.group(1) if m else None)(CLASS_VALUE_RE.search(block))",
      ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
 
     ("re-check an ambiguous class in the chain is guessed instead of refused",
@@ -1182,7 +1205,8 @@ MUTATIONS = [
     # included. It drops an AUTONOMOUS item out of every package over a class word
     # quoted in its own text
     ("T126 pack reads the class the way `list` displays it, not from the chain",
-     "    cls = chain_class(block)", "    cls = item_class(block)",
+     "    cls = chain_class(block)",
+     "    cls = (lambda m: m.group(1) if m else None)(CLASS_VALUE_RE.search(block))",
      ["TestPack.test_a_class_QUOTED_IN_PROSE_does_not_decide_the_package"]),
 
     ("T126 pack guesses a class where the chain names two",
@@ -1728,7 +1752,8 @@ def main():
                                   "TestHandoffLifecycle", "TestByteOrderMark",
                                   "TestIdSpelling", "TestAmbiguousId",
                                   "TestMigrateFold",
-                                  "TestProseWearingAFieldName"])
+                                  "TestProseWearingAFieldName",
+                                  "TestListReadsTheClassFromTheChain"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

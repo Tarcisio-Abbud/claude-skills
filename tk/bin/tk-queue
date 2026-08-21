@@ -659,9 +659,28 @@ CLASS_VALUE_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Class"] + r"):\*\*\s*([
 
 
 def item_class(block):
-    """The class word an item carries, or None. One spelling for `list` and for
-    the deferral gate: a class the display reads and the gate does not is how the
-    two would disagree about what an item IS."""
+    """The class word `list` DISPLAYS, or None. One spelling for the display and
+    for the gates wherever the item has a chain to read it from: a class the
+    display shows and the gate does not is how the two come to disagree about what
+    an item IS.
+
+    Read from the FIELD CHAIN, through `chain_class`. Searching the whole block and
+    taking the LEFTMOST match — which is what this did — showed
+    `item que fala de **Class:** BLOCKED em prosa, mas nao e **Class:**
+    AUTONOMOUS.` as BLOCKED on `list` while `pack` packaged that same item,
+    correctly, as AUTONOMOUS. Two readers parting company is worse than either
+    being wrong alone: `list` is the screen a human reads before dispatching, and
+    nothing on it said the gate had answered differently.
+
+    The block-wide search survives as the FALLBACK, and only for a chain that names
+    no class at all — the legacy item whose fields sit on a continuation line.
+    `migrate` folds those, but folding is a command a human runs, and unfolded
+    items exist in every real queue until they run it; showing all of them with no
+    class would be a worse display than the one this replaces. Reading the chain
+    ALONE is therefore not the fix, and was measured regressing exactly there.
+    """
+    if real_fields(block, "Class"):
+        return chain_class(block)
     m = CLASS_VALUE_RE.search(block)
     return m.group(1) if m else None
 

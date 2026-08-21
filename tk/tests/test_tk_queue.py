@@ -3981,5 +3981,81 @@ class TestProseWearingAFieldName(QueueTest):
         self.assertIn("**Project:** tk.", self.body())
 
 
+# --- T121: `list` and the gate must read the class from the same place -----
+#
+# `item_class` searched the WHOLE block and took the leftmost match; the gate
+# reads the field chain (`chain_class`). Measured on `main`, one item, one run:
+#
+#   list   T009  BLOCKED      <- from the item's own sentence
+#   pack   T009  S  ...       <- eligible, i.e. the gate read AUTONOMOUS
+#
+# The gate was already right, so the display is what moves. What makes it
+# non-trivial is the population underneath: a legacy item carries its fields on a
+# continuation line, and reading the chain ALONE shows every one of them with no
+# class at all. `migrate` folds those, but folding is a command a human runs.
+
+PROSE_CLASS = ("- [ ] **T009** — item que fala de **Class:** BLOCKED em prosa, mas nao e "
+               "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+TWO_CLASSES = ("- [ ] **T010** — cita **Class:** DECISION. **Class:** AUTONOMOUS. "
+               "**Effort:** S. **Criterion:** A: x.\n")
+CLASS_OFF_LINE = ("- [ ] **T007** — legado com campos fora da primeira linha\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** L. **Source:** tracker\n")
+
+
+class TestListReadsTheClassFromTheChain(QueueTest):
+    """One reader for the display and for the gate, wherever there is a chain.
+
+    A `list` that says BLOCKED over a `pack` that says AUTONOMOUS is worse than
+    either being wrong on its own: `list` is the screen a human reads before
+    dispatching, and nothing on it says the two readers have parted.
+    """
+
+    def test_a_class_named_only_in_PROSE_is_not_the_one_list_shows(self):
+        self.seed(PROSE_CLASS)
+        self.assertIn("T009  AUTONOMOUS  item que fala de",
+                      self.run_tk("list").stdout)
+
+    def test_list_and_pack_no_longer_disagree_about_the_same_item(self):
+        """The defect itself, asserted as the disagreement it was: the two
+        commands are run over ONE queue and made to answer the same thing. Either
+        assertion alone would still pass while the readers diverged."""
+        self.seed(PROSE_CLASS)
+        self.assertIn("T009  AUTONOMOUS", self.run_tk("list").stdout)
+        pack = self.run_tk("pack").stdout
+        self.assertIn("eligible (1 of 1", pack)
+        self.assertNotIn("class is BLOCKED", pack)
+
+    def test_a_legacy_item_with_its_fields_OFF_the_first_line_still_shows_its_class(self):
+        """The regression the chain-only reading would cause, and the reason the
+        block-wide search stays as the fallback. `pack` excludes this item and says
+        why — that is a different question from what the item IS, and `list` must
+        still show the class the user wrote."""
+        self.seed(CLASS_OFF_LINE)
+        out = self.run_tk("list").stdout
+        self.assertIn("T007  AUTONOMOUS", out)
+        self.assertNotIn("T007  ?", out)
+
+    def test_a_class_the_GATE_calls_ambiguous_is_shown_as_unknown_not_guessed(self):
+        """Two classes inside the chain: `chain_class` refuses to pick one, so the
+        display may not pick one either. Showing the leftmost here is how `list`
+        would print a class no gate would honour."""
+        self.seed(TWO_CLASSES)
+        out = self.run_tk("list").stdout
+        self.assertIn("T010  ?", out)
+        self.assertNotIn("DECISION", out)
+        self.assertIn("2 **Class:** fields in the chain", self.run_tk("pack").stdout)
+
+    def test_an_ordinary_item_is_displayed_exactly_as_before(self):
+        """The population that is not legacy and not malformed — the one every
+        other test in this file seeds. A reader change that moved these would be
+        the defect, not the fix."""
+        self.seed(item(1, "um"), item(2, "dois", klass="DECISION"),
+                  item(3, "tres", klass="RECURRING"))
+        out = self.run_tk("list").stdout
+        for line in ("T001  AUTONOMOUS  um", "T002  DECISION    dois",
+                     "T003  RECURRING   tres"):
+            self.assertIn(line, out)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
