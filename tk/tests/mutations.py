@@ -363,14 +363,14 @@ MUTATIONS = [
     # --- review#2: the real field is the one in the CHAIN ------------------
 
     ("review#2 the real field is the LAST marker in the block again (note eaten)",
-     "        found = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]",
+     "        found = real_fields(new, field)",
      '        found = list(re.finditer(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
      'r"):\\*\\*[^*\\n]*", new))[-1:]',
      ["TestFieldChain.test_clearing_hits_the_real_field_and_spares_the_note",
       "TestFieldChain.test_setting_hits_the_real_field_and_spares_the_note"]),
 
     ("T065/review#2 the real field is the FIRST marker in the block again (prose eaten)",
-     "        found = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]",
+     "        found = real_fields(new, field)",
      '        found = list(re.finditer(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
      'r"):\\*\\*[^*\\n]*", new))[:1]',
      ["TestEmbeddedMarker.test_edit_rewrites_the_real_field_not_prose_that_looks_like_one",
@@ -403,7 +403,7 @@ MUTATIONS = [
      ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
 
     ("review#2 a duplicated field in the chain is guessed instead of refused",
-     "        if len(found) > 1:", "        if False:",
+     "        if len(in_chain) > 1:", "        if False:",
      ["TestFieldChain.test_an_ambiguous_chain_is_refused_not_guessed"]),
 
     # --- review#2: which flags the BLOCK ceiling covers --------------------
@@ -640,8 +640,8 @@ MUTATIONS = [
     # one position rule, two gates: prose absorbed into the chain satisfies the
     # deferral gate in one direction and gets DELETED by `release` in the other
     ("2ª review a field anywhere in the chain counts, so prose satisfies the gate",
-     '        segs = [m for i, m in enumerate(chain) if names[i] == field and i > after]',
-     '        segs = [m for i, m in enumerate(chain) if names[i] == field]',
+     '    return [m for i, m in enumerate(chain) if names[i] == field and i >= lo]',
+     '    return [m for i, m in enumerate(chain) if names[i] == field]',
      ["TestDecisionDeferralGate."
       "test_prose_that_looks_like_a_deferral_never_satisfies_the_gate",
       "TestClaim.test_prose_ending_in_a_period_before_the_fields_is_not_a_claim"]),
@@ -656,6 +656,30 @@ MUTATIONS = [
     ("2ª review the stray guard fires even when the edit never touches the deferral",
      "    if stray and (args.classe or args.deferred is not None):", "    if stray:",
      ["TestDecisionDeferralGate.test_an_edit_that_never_consults_the_deferral_stays_allowed"]),
+
+    # --- T121: prose wearing a real field's NAME -----------------------------
+
+    # the locator goes back to reading the chain RAW, which is what `edit` did
+    # before: a segment the item's own sentence opens is written, or deleted
+    ("T121 the edit locator reads the chain raw again (quoted prose eaten)",
+     "        found = real_fields(new, field)", "        found = in_chain",
+     ["TestProseWearingAFieldName.test_setting_a_field_named_only_in_prose_is_refused",
+      "TestProseWearingAFieldName.test_CLEARING_a_field_named_only_in_prose_is_refused"]),
+
+    # the off-by-one in the other direction: Class anchors the chain AT its own
+    # segment, so treating it like every other field locks `--class` out of every
+    # canonical item — the over-refusal this rule must not buy
+    ("T121 the anchor excludes the **Class:** it is anchored on",
+     '        lo = names.index("Class") + (0 if field == "Class" else 1)',
+     '        lo = names.index("Class") + 1',
+     ["TestProseWearingAFieldName."
+      "test_the_anchor_does_not_move_the_fields_of_an_ordinary_item"]),
+
+    # the ambiguity COUNT is deliberately not positional: an item that quotes the
+    # marker AND carries the real field is refused, not silently resolved
+    ("T121 the ambiguity count becomes positional (a quoted marker stops counting)",
+     "        if len(in_chain) > 1:", "        if len(found) > 1:",
+     ["TestFieldChain.test_an_ambiguous_chain_is_refused_not_guessed"]),
 
     # --- 2nd pair of eyes: an item's TEXT is not its ADDRESS ------------------
 
@@ -690,8 +714,8 @@ MUTATIONS = [
      ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
 
     ("re-check a deferral counts with no Class in the chain to qualify",
-     '    if "Class" in names:\n        after = names.index("Class")',
-     '    if True:\n        after = names.index("Class") if "Class" in names else -1',
+     '    segs = real_fields(block, field) if "Class" in names else []',
+     '    segs = real_fields(block, field)',
      ["TestDecisionDeferralGate.test_a_chain_with_no_class_carries_no_deferral_to_find"]),
 
     ("re-check the stray refusal drops its --deferred arm",
@@ -1703,7 +1727,8 @@ def main():
                                   "TestPack", "TestHandoffCreation",
                                   "TestHandoffLifecycle", "TestByteOrderMark",
                                   "TestIdSpelling", "TestAmbiguousId",
-                                  "TestMigrateFold"])
+                                  "TestMigrateFold",
+                                  "TestProseWearingAFieldName"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

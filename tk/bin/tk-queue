@@ -588,6 +588,17 @@ def field_chain(block):
                  what tells `**Project:** para o done-log **Class:** ...` (prose)
                  from `**Project:** tk. **Source:** ...` (a real field).
 
+    Neither condition separates prose that carries a REAL FIELD NAME in bold-colon
+    and ends in a period — `o item cita o **Project:** de outra fila inteira.
+    **Class:** …` — from the field it imitates: it is contiguous, it ends in a
+    period, so it joins the run. Ordinary prose ending in '.' is not a segment at
+    all and never had this problem; quoting the marker is what creates it. That is
+    why no writer LOCATES a field in this chain raw — the POSITION rule
+    (real_fields) is what separates the two, and both directions are measured on
+    the shape above: `edit --project tk` overwrote those four words and
+    `edit --risk none` DELETED the imitating segment whole, each exiting 0 and
+    printing "updated", with no other copy of the text anywhere.
+
     Ambiguity is left for the caller to resolve (see cmd_edit), never guessed:
     a refusal costs one command, deleted text is not recoverable.
     """
@@ -679,6 +690,29 @@ def chain_class(block):
     return value.group(1) if value else None
 
 
+def real_fields(block, field):
+    """The chain segments that really ARE `field` — the POSITION rule, spelled once
+    for every reader that locates a field to display or to WRITE.
+
+    The chain begins at the **Class:** compose_item writes first, and a segment
+    before it is the item's own prose wearing a field's shape (see field_chain).
+    Class qualifies AT that anchor; every other field qualifies after it.
+
+    A chain that names NO class anchors nothing, and this answers with the whole
+    chain. That is a fallback, not a rule: the class-less item is legacy, no gate
+    reads it (chain_class, qualified_fields and claim_readback all come back
+    empty), and `edit --class` is the one command that repairs it — a position rule
+    with no position to measure from would lock the repair out of the very items it
+    exists for. `qualified_fields` adds the stricter answer the gates need.
+    """
+    chain = field_chain(block)
+    names = [canonical_field(m.group(1)) for m in chain]
+    lo = 0
+    if "Class" in names:
+        lo = names.index("Class") + (0 if field == "Class" else 1)
+    return [m for i, m in enumerate(chain) if names[i] == field and i >= lo]
+
+
 def qualified_fields(block, field):
     """(the chain segments of `field` that QUALIFY, how many `field` markers the
     whole block carries) — the position rule every gate reads its field through.
@@ -704,13 +738,14 @@ def qualified_fields(block, field):
     nothing is guessed — see deferral_for_edit and claim_segment, which is where
     the two gates part company (one refuses only when the command depends on the
     field; the other always does, since every claim command depends on it).
+
+    The rule itself lives in `real_fields`, and this is the ONE place that adds to
+    it: a chain with no **Class:** anchors nothing, so nothing in it qualifies for a
+    GATE. Two copies of the rule is how one of them would keep a position the other
+    had already dropped.
     """
-    chain = field_chain(block)
-    names = [canonical_field(m.group(1)) for m in chain]
-    segs = []
-    if "Class" in names:
-        after = names.index("Class")
-        segs = [m for i, m in enumerate(chain) if names[i] == field and i > after]
+    names = [canonical_field(m.group(1)) for m in field_chain(block)]
+    segs = real_fields(block, field) if "Class" in names else []
     return segs, len(FIELD_MARKER_RE[field].findall(block))
 
 
@@ -2151,19 +2186,30 @@ def cmd_edit(args):
             continue
         # the real field is the one in the item's FIELD CHAIN — never merely the
         # last marker in the block, which lands on a continuation note (see
-        # field_chain). Ambiguity is refused, not guessed: the caller fixes a
-        # refusal with one command, and cannot undo deleted text
-        found = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]
-        if len(found) > 1:
-            fail(f"T{args.id:03d} carries {len(found)} **{field}:** fields in its field "
+        # field_chain) — and, among the chain, the one the POSITION rule reads: a
+        # segment BEFORE the **Class:** the chain begins at is the item's own prose
+        # wearing the field's shape (see real_fields). Ambiguity is refused, not
+        # guessed: the caller fixes a refusal with one command, and cannot undo
+        # deleted text.
+        #
+        # The count and the locator ask DIFFERENT questions on purpose. Counting over
+        # the whole chain keeps a prose segment visible where it makes the command
+        # ambiguous — the item that quotes **Project:** in its text AND carries a real
+        # one — instead of letting the position rule quietly resolve it; the locator
+        # is positional, so the same prose can never be the segment that gets written.
+        in_chain = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]
+        found = real_fields(new, field)
+        if len(in_chain) > 1:
+            fail(f"T{args.id:03d} carries {len(in_chain)} **{field}:** fields in its field "
                  f"chain, so `--{field.lower()}` is ambiguous. Nothing was changed. Close "
                  "it with `cancel` and re-add it clean.")
         if not found and re.search(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*", new):
             fail(f"T{args.id:03d} has a **{field}:** marker OUTSIDE its field chain — in "
-                 "the item's own prose or on a continuation line — and none inside it. "
-                 "Nothing was changed. Editing that marker would rewrite prose you did "
-                 "not point at (and on `--risk none`, DELETE it). Close the item with "
-                 "`cancel` and re-add it clean.")
+                 "the item's own prose (before the **Class:** the chain begins at) or on "
+                 "a continuation line — and none inside it. Nothing was changed. Editing "
+                 "that marker would rewrite prose you did not point at (and on "
+                 "`--risk none`, DELETE it). Close the item with `cancel` and re-add it "
+                 "clean.")
         if field in CLEARABLE and clears_field(flag):
             if found:
                 new = clear_field_segment(new, found[0])

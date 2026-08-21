@@ -1449,12 +1449,18 @@ class TestDecisionDeferralGate(QueueTest):
         self.seed(legacy)
         r = self.run_tk("edit", "T001", "--class", "DECISION")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("**Class:** AUTONOMOUS.", self.body())          # class unchanged
-        self.assertIn("nota de contexto", self.body())                # prose intact
+        self.assertEqual(self.body(), HEADER + legacy)                # class and prose intact
         # and the same marker cannot be deleted by clearing it either
         r = self.run_tk("edit", "T001", "--class", "BLOCKED", "--deferred", "none")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("nota de contexto", self.body())
+        self.assertEqual(self.body(), HEADER + legacy)
+        # WHICH guard answers, and not merely that one did. Since T121 the field
+        # locator refuses this shape too, so the outcome alone no longer proves the
+        # deferral's own gate ran: it is the one that names the deferral's POSITION,
+        # and it runs FIRST precisely so the caller reads that diagnosis and not the
+        # generic one. Without this line the stray guard could be deleted whole and
+        # every assertion above would still pass.
+        self.assertIn("away from the position a deferral is written in", r.stderr)
 
     def test_an_edit_that_never_consults_the_deferral_stays_allowed(self):
         """The over-refusal direction: refusing that item outright would make it
@@ -3869,6 +3875,110 @@ class TestMigrateFold(QueueTest):
                          + "- [ ] **T003** — nota depois dos campos\n"
                          "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n"
                          "  nota solta depois dos campos.\n")
+
+
+# --- T121: prose that WEARS a real field's name is not a field -------------
+#
+# field_chain's two conditions — contiguous, and a value ending in '.' — do not
+# separate prose that QUOTES a real field name from the field it imitates.
+# Ordinary prose ending in a period was never the trigger: it forms no segment at
+# all. Bolding the field's own name is what creates one, and the run then reaches
+# back over it as if the user had written a field there.
+#
+# Both directions were measured on `main`, each exiting 0 and printing "updated",
+# against next-steps.md — a user-data file with no other copy of the prose:
+#
+#   edit T011 --project tk    OVERWROTE "de outra fila inteira"
+#   edit T012 --risk none     DELETED the quoted segment whole
+#
+# So every assertion below is the WHOLE file. `assertNotIn("**Risk:**")` passes
+# just as happily against a file this command corrupted — that exact vacuity was
+# measured on `--risk none` in this very script, with the suite green.
+
+PROSE_PROJECT = ("- [ ] **T011** — o item cita o **Project:** de outra fila inteira. "
+                 "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+PROSE_RISK = ("- [ ] **T012** — nota de risco: **Risk:** so vale ate o merge da #22. "
+              "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: y.\n")
+
+
+class TestProseWearingAFieldName(QueueTest):
+    """The chain begins at **Class:**, and a segment before it is prose.
+
+    The position rule the gates already read through (qualified_fields) now also
+    locates the segment `edit` WRITES. Neither item below ever carried the field
+    the command named — the marker is in the user's own sentence — so there is
+    nothing to edit and the command says so instead of picking the sentence.
+    """
+
+    def test_setting_a_field_named_only_in_prose_is_refused(self):
+        self.seed(PROSE_PROJECT)
+        r = self.run_tk("edit", "T011", "--project", "tk")
+        # the FILE first, and whole. A returncode assertion placed ahead of it
+        # short-circuits the one that matters, and what this defect does to the
+        # text is the finding — "it exited 1" is only how the caller learns of it
+        self.assertEqual(self.body(), HEADER + PROSE_PROJECT)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("OUTSIDE its field chain", r.stderr)
+        self.assertIn("Nothing was changed", r.stderr)
+
+    def test_CLEARING_a_field_named_only_in_prose_is_refused(self):
+        """The deletion path, and the worse half: the words were not overwritten
+        but removed, and a removal leaves nothing to restore from."""
+        self.seed(PROSE_RISK)
+        r = self.run_tk("edit", "T012", "--risk", "none")
+        self.assertEqual(self.body(), HEADER + PROSE_RISK)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("OUTSIDE its field chain", r.stderr)
+        self.assertIn("Nothing was changed", r.stderr)
+
+    def test_a_field_the_prose_does_NOT_name_still_edits(self):
+        """The over-refusal direction. One quoted marker may not make the whole
+        item uneditable: a guard that fires on every flag teaches the caller to
+        cancel + re-add items that are merely untidy, which is the habit this
+        refusal exists to avoid."""
+        self.seed(PROSE_PROJECT)
+        r = self.run_tk("edit", "T011", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + PROSE_PROJECT.replace("**Effort:** S.", "**Effort:** M."))
+
+    def test_the_anchor_does_not_move_the_fields_of_an_ordinary_item(self):
+        """The rule must be a no-op on everything compose_item writes, which puts
+        every field after **Class:** — Source included, the one written last and
+        without a period. A position rule that slipped by one would make the
+        canonical item, not the malformed one, the population it refuses."""
+        for flag, val, old, repl in (
+                ("--project", "ambiente", "**Project:** tk.", "**Project:** ambiente."),
+                ("--risk", "none", " **Risk:** dano X.", ""),
+                ("--risk", "dano Y", "**Risk:** dano X.", "**Risk:** dano Y."),
+                ("--class", "BLOCKED", "**Class:** AUTONOMOUS.", "**Class:** BLOCKED."),
+                ("--effort", "L", "**Effort:** S.", "**Effort:** L.")):
+            with self.subTest(flag=flag, val=val):
+                seeded = item(1, "um", project="tk", risk="dano X")
+                self.seed(seeded)
+                r = self.run_tk("edit", "T001", flag, val)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(self.body(), HEADER + seeded.replace(old, repl))
+
+    def test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_edit_through(self):
+        """A refusal is only acceptable while its remedy is reachable, so the
+        printed one is run for real and the refused command re-tried after it.
+
+        `--text` is NOT a remedy here and the message does not offer it: the
+        rewrite keeps everything from the FIRST marker in the block on, and that
+        marker is the quoted one — the prose would survive as a field.
+        """
+        self.seed(PROSE_PROJECT)
+        self.assertEqual(self.run_tk("edit", "T011", "--project", "tk").returncode, 1)
+        r = self.run_tk("cancel", "T011", "--why", "reescrito sem o marcador em prosa")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.run_tk("add", "o item cita o campo Project de outra fila inteira",
+                        "--class", "AUTONOMOUS", "--effort", "S", "--criterion", "A: x")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added T012", r.stdout)
+        r = self.run_tk("edit", "T012", "--project", "tk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Project:** tk.", self.body())
 
 
 if __name__ == "__main__":
