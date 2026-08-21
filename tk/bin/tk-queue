@@ -2279,6 +2279,32 @@ def cmd_edit(args):
                  "`--risk none`, DELETE it). Close the item with `cancel` and re-add it "
                  "clean.")
         if field in CLEARABLE and clears_field(flag):
+            # The same anchor rule as the append branch below, and the same
+            # population — the class-less legacy item — reached by the branch that
+            # takes an early `continue` and never gets there. Measured: `edit T009
+            # --risk none` on an item with no **Class:** printed "T009 updated" and
+            # wrote nothing, and so did `--env none` and `--deferred none`. Three
+            # commands exiting 0 over a file none of them touched.
+            #
+            # A refusal, not "nothing needed clearing": `real_fields` answers [] for
+            # EVERY field while the anchor is missing, so `found` being empty is not
+            # the command reading an item that carries no Risk — it is the command
+            # unable to look. Reporting the absence would be asserting what it could
+            # not check, and this is the DELETING path, where being wrong is the
+            # expensive direction. (The guard above already refuses the class-less
+            # item that does carry the marker, naming the deletion; what reaches
+            # here is the one that carries none, and it gets the same verdict for
+            # the same reason.) It is also what the non-clearable flags do one
+            # branch to the right, so every flag but `--class` — which is the one
+            # that GIVES the anchor — now answers this item alike.
+            if not real_fields(new, "Class"):
+                fail(f"{label} names no **Class:** in its field chain, so no segment of "
+                     f"that chain is a real **{field}:** for any reader — `--{field.lower()} "
+                     f"{FIELD_CLEAR}` cannot tell an item that carries none from one whose "
+                     "fields no gate may read, and it is the flag that DELETES. Nothing was "
+                     f"changed. Run `tk-queue edit {label} --class <CLASS> "
+                     f"--{field.lower()} {FIELD_CLEAR}` — one command, class first, and the "
+                     "clear reads a chain that anchors.")
             if found:
                 new = clear_field_segment(new, found[0])
             continue

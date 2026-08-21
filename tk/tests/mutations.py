@@ -2036,6 +2036,24 @@ MUTATIONS = [
       "TestFoldFailsSafeOnShapesNobodyEnumerated."
       "test_the_hard_wrapped_population_is_still_absorbed_whole"]),
 
+    # --- review#5: `--<field> none` on a class-less item printed success -----
+    ("review#5 a clear on a class-less item reports success and writes nothing",
+     '            if not real_fields(new, "Class"):\n'
+     '                fail(f"{label} names no **Class:** in its field chain, so no segment of "',
+     '            if False:\n'
+     '                fail(f"{label} names no **Class:** in its field chain, so no segment of "',
+     ["TestClearingOnAClassLessItemIsRefused.test_every_clearable_flag_is_refused_and_says_so",
+      "TestClearingOnAClassLessItemIsRefused."
+      "test_the_remedy_the_refusal_PRINTS_runs_and_leaves_the_item_anchored"]),
+
+    # the over-refusal direction: a rule that reached the ANCHORED item would take
+    # the clearing command away from every item `add` ever wrote
+    ("review#5 the clear is refused on every item, anchored or not",
+     '            if not real_fields(new, "Class"):',
+     "            if True:",
+     ["TestClearingOnAClassLessItemIsRefused.test_an_anchored_item_still_CLEARS_the_field_it_carries",
+      "TestRiskDeletion.test_edit_clears_the_risk_field",
+      "TestClearingKeepsTheFileIntact.test_clearing_a_risk_rewrites_only_that_field"]),
 ]
 
 
@@ -2068,7 +2086,8 @@ def main():
                                   "TestTheZeroIdIsStillAnId",
                                   "TestFoldFailsSafeOnShapesNobodyEnumerated",
                                   "TestAFieldAppendedBeforeTheAnchorIsRefused",
-                                  "TestASetextTitleIsKeptWithItsUnderline"])
+                                  "TestASetextTitleIsKeptWithItsUnderline",
+                                  "TestClearingOnAClassLessItemIsRefused"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

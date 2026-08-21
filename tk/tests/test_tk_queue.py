@@ -4455,6 +4455,14 @@ class TestAClassLessChainIsNotAField(QueueTest):
         self.assertEqual(self.body(), HEADER + CLASSLESS_RISK)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("T022 names no **Class:** in its field chain", r.stderr)
+        # this guard's OWN sentence, and not merely the prefix the next one shares:
+        # review#5 put a second refusal on the clearing branch below, so with the
+        # position rule mutated back to eating this prose, THAT one answers and the
+        # item is still safe — the file unchanged, the exit 1, and the shared prefix
+        # all identical. Two corrections of one incident masking each other is what
+        # the mutation run reported, and asserting the distinguishing clause is what
+        # keeps this test proving the rule it was written for
+        self.assertIn("would rewrite that prose (and with `none`, DELETE it)", r.stderr)
 
     def test_a_field_the_class_less_item_really_carries_is_refused_too(self):
         """The cost of the rule, paid deliberately and measured: with no anchor,
@@ -4900,6 +4908,86 @@ class TestASetextTitleIsKeptWithItsUnderline(QueueTest):
         r = self.migrate()
         self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
         self.assertEqual(self.body(), HEADER + R4_WRAPPED_FOLDED)
+
+
+# --- review#5: `--<field> none` on a class-less item printed success ---------
+#
+# The refusal that stopped a field being APPENDED where no reader may honour it
+# sits on the branch that WRITES. The three clearable flags take an early
+# `continue` above it, so they never reached it: `edit T009 --risk none` on a
+# class-less item printed "T009 updated" and left the file byte-identical, and so
+# did `--env none` and `--deferred none` — three commands exiting 0 over a file
+# none of them touched, which is the pattern the append refusal exists to close.
+
+
+class TestClearingOnAClassLessItemIsRefused(QueueTest):
+
+    def refusal(self, field):
+        return (f"T009 names no **Class:** in its field chain, so no segment of that "
+                f"chain is a real **{field}:** for any reader")
+
+    def test_every_clearable_flag_is_refused_and_says_so(self):
+        """One branch, all three flags that reach it: a rule that held for --risk
+        and not for --env would leave the same trap open one flag over.
+
+        The MESSAGE is asserted, not merely a nonzero exit — a mutant that CRASHES
+        also exits nonzero and also leaves the file alone, and would read here as
+        the guard doing its job."""
+        for flag, field in (("--risk", "Risk"), ("--env", "Env"),
+                            ("--deferred", "Deferred")):
+            with self.subTest(flag=flag):
+                self.seed(R4_BARE)
+                r = self.run_tk("edit", "T009", flag, "none")
+                self.assertEqual(self.body(), HEADER + R4_BARE)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(self.refusal(field), r.stderr)
+                self.assertIn("it is the flag that DELETES", r.stderr)
+                self.assertIn("Nothing was changed", r.stderr)
+                self.assertNotIn("T009 updated", r.stdout)
+
+    def test_the_remedy_the_refusal_PRINTS_runs_and_leaves_the_item_anchored(self):
+        """A refusal is acceptable only while its remedy is reachable, so the
+        printed one is run for real — read back off the message, not retyped."""
+        for flag, field in (("--risk", "Risk"), ("--env", "Env"),
+                            ("--deferred", "Deferred")):
+            with self.subTest(flag=flag):
+                self.seed(R4_BARE)
+                r = self.run_tk("edit", "T009", flag, "none")
+                self.assertEqual(r.returncode, 1, r.stdout)
+                printed = re.search(r"Run `tk-queue (edit .*?)` — one command",
+                                    r.stderr).group(1)
+                argv = shlex.split(printed.replace("<CLASS>", "AUTONOMOUS"))
+                again = self.run_tk(*argv)
+                self.assertEqual(again.returncode, 0, again.stderr)
+                self.assertEqual(self.body(),
+                                 HEADER + R4_BARE.rstrip("\n")
+                                 + " **Class:** AUTONOMOUS.\n")
+                self.assertNotIn(f"**{field}:**", self.body())
+
+    def test_an_anchored_item_still_CLEARS_the_field_it_carries(self):
+        """The over-refusal direction, and the one that would break the command
+        outright: the rule may only reach the item with no anchor."""
+        self.site(SITE)
+        seeded = ("- [ ] **T001** — item normal **Class:** AUTONOMOUS. **Effort:** S. "
+                  "**Risk:** apaga X. **Env:** bravo. **Criterion:** A: x.\n")
+        self.seed(seeded)
+        r = self.run_tk("edit", "T001", "--risk", "none", "--env", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T001** — item normal **Class:** AUTONOMOUS. "
+                                  "**Effort:** S. **Criterion:** A: x.\n")
+
+    def test_an_anchored_item_with_nothing_to_clear_is_untouched_and_reported(self):
+        """The neighbouring population, asserted so the refusal's edge is on the
+        record: an ANCHORED item with no Risk at all still answers "updated" and
+        is left byte-identical. The chain anchors, so `real_fields` really did
+        look and really did find none — which is the difference this rule is
+        about, and the residue the refusal deliberately does not extend to."""
+        seeded = item(1, "um")
+        self.seed(seeded)
+        r = self.run_tk("edit", "T001", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), HEADER + seeded)
 
 
 if __name__ == "__main__":
