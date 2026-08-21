@@ -1569,6 +1569,113 @@ MUTATIONS = [
      ["TestAmbiguousId.test_list_marks_every_row_under_a_duplicated_id",
       "TestAmbiguousId.test_an_ID_carried_by_ONE_item_is_not_warned_about"]),
 
+    # --- T121 `migrate` folds a chain that sits off the first line ----------
+    # The defect itself: `migrate` was the command documented as the repair for
+    # legacy shapes and folded nothing, so 31 of 155 real open items stayed
+    # invisible to every gate. NOT named here are the three tests that pass with
+    # the fold off by construction — the canonical queue, the item with no field
+    # at all, and the second-run no-op, which is a no-op either way
+    ("T121 `migrate` folds nothing again: the fields stay off the first line",
+     "            new, refusal = fold_chain_onto_first_line(text)",
+     "            new, refusal = None, None",
+     ["TestMigrateFold.test_the_legacy_shape_is_folded_and_the_prose_survives_it",
+      "TestMigrateFold.test_after_the_fold_pack_claim_and_edit_all_reach_the_item",
+      "TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too",
+      "TestMigrateFold.test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass",
+      "TestMigrateFold.test_the_two_populations_are_separated_in_ONE_run",
+      "TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
+
+    # the readback: the fold may RELOCATE a chain, never CONSTRUCT one. Off, the
+    # command joins the lines anyway and writes a field the item never carried.
+    # NOT named: the marker-whose-value-is-on-the-next-line test. That shape is
+    # refused one guard earlier (its last line opens mid-value, so it carries no
+    # field RUN), so it passes with this one off — naming it would claim a proof
+    # this run cannot make. The pair below is what decides that shape
+    ("T121 the fold stops asking the reader what the folded line gives back",
+     "    if ([m.group(0).rstrip() for m in run]\n"
+     "            != [m.group(0).rstrip() for m in field_chain(folded)]):",
+     "    if False:",
+     ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
+
+    # the two gates as the ONE decision they make together — may this block be
+    # folded? — because each is redundant for some shapes and neither alone
+    # decides the marker-and-value-on-different-lines one. The join itself still
+    # runs: what is switched off is the rule, not the step
+    ("T121 the fold trusts the join and rewrites every legacy block",
+     "    if not run:\n        return None, FOLD_REFUSAL\n"
+     "    folded = \" \".join(ln.strip() for ln in lines) + block[len(block.rstrip(\"\\n\")):]",
+     "    folded = \" \".join(ln.strip() for ln in lines) + block[len(block.rstrip(\"\\n\")):]\n"
+     "    return folded, None",
+     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
+
+    # the whitespace half of that comparison, on its own: a chain WRAPPED over two
+    # continuation lines is whole, and refusing it repairs an item the fold could lift
+    ("T121 the readback counts the blank at a line joint as a changed value",
+     "    if ([m.group(0).rstrip() for m in run]\n"
+     "            != [m.group(0).rstrip() for m in field_chain(folded)]):",
+     "    if [m.group(0) for m in run] != [m.group(0) for m in field_chain(folded)]:",
+     ["TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too"]),
+
+    # a fold that lifts nothing still rewrites the user's line and reports it as
+    # repaired — the one direction a data-rewriting command may never take
+    ("T121 an item whose lines carry no field RUN is folded anyway",
+     "    if not run:\n        return None, FOLD_REFUSAL",
+     "    if False:\n        return None, FOLD_REFUSAL",
+     ["TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
+
+    # the weaker question the guard deliberately does not ask: "does ANY chain end
+    # the first line" answers YES for a **Class:** whose value sits on the next one,
+    # and that item — the shape the repairs text calls unfoldable — is passed over
+    # in SILENCE, which is the outcome the report exists to prevent
+    ("T121 the skip asks for any chain instead of one that reaches the class",
+     "    if chain_class(block) is not None:", "    if field_chain(block):",
+     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED"]),
+
+    ("T121 an item with no field off the first line is dragged into the fold's report",
+     '    if not EMBEDDED_MARKER_RE.search("\\n".join(lines[1:])):', "    if False:",
+     ["TestMigrateFold.test_an_item_with_no_field_at_all_is_neither_folded_nor_reported"]),
+
+    # the two report lines, each on its own: silence about what was rewritten, and
+    # silence about what was left, are different failures of the same command
+    ("T121 the fold rewrites the file and says nothing about it",
+     "    if folded:\n        print(", "    if False:\n        print(",
+     ["TestMigrateFold.test_the_legacy_shape_is_folded_and_the_prose_survives_it",
+      "TestMigrateFold.test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass",
+      "TestMigrateFold.test_the_two_populations_are_separated_in_ONE_run"]),
+
+    ("T121 the items the fold could NOT lift go unreported (silent partial success)",
+     "    if left_alone:\n        print(", "    if False:\n        print(",
+     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED",
+      "TestMigrateFold.test_the_two_populations_are_separated_in_ONE_run"]),
+
+    # the ORDER inside the loop: read before the ID is assigned, the label of an
+    # item that gained both is `----`, which names no item the caller can act on
+    ("T121 the report reads the label before `migrate` assigns the ID",
+     "            if item_id(text) is None:\n"
+     "                nid += 1\n"
+     '                text = text.replace("- [ ] ", f"- [ ] **T{nid:03d}** — ", 1)\n'
+     "            if new is not None:\n"
+     "                folded.append(item_label(text))\n"
+     "            elif refusal:\n"
+     "                left_alone.append(item_label(text))",
+     "            if new is not None:\n"
+     "                folded.append(item_label(text))\n"
+     "            elif refusal:\n"
+     "                left_alone.append(item_label(text))\n"
+     "            if item_id(text) is None:\n"
+     "                nid += 1\n"
+     '                text = text.replace("- [ ] ", f"- [ ] **T{nid:03d}** — ", 1)',
+     ["TestMigrateFold.test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass"]),
+
     ("T122 a briefing is written for an item that is not open (an orphan at birth)",
      "    content, block, start = find_open_item(memdir, args.id)\n    values = {dest:",
      '    content, block, start = "", "", 0\n    values = {dest:',
@@ -1595,7 +1702,8 @@ def main():
                                   "TestEnvField", "TestClaim",
                                   "TestPack", "TestHandoffCreation",
                                   "TestHandoffLifecycle", "TestByteOrderMark",
-                                  "TestIdSpelling", "TestAmbiguousId"])
+                                  "TestIdSpelling", "TestAmbiguousId",
+                                  "TestMigrateFold"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

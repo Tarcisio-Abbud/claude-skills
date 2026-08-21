@@ -3670,5 +3670,206 @@ class TestAmbiguousId(QueueTest):
         self.assertNotIn("duplicate ID", self.run_tk("list").stdout)
 
 
+# --- T121: `migrate` folds a chain that sits off the first line -----------
+# field_chain reads the run of `**Field:** value.` segments ENDING THE FIRST
+# LINE. An item whose fields sit on a continuation line therefore has, to every
+# gate, no fields at all — 31 of the 155 open items across the real queues carry
+# exactly that shape. `migrate` is the command documented as the repair for
+# legacy shapes, and it folded nothing: measured on the real shape below, the
+# file came back byte-identical while `pack` excluded the item and `claim`
+# refused it.
+#
+# The command rewrites next-steps.md, which holds the user's own prose and has
+# no other copy, so every test here asserts the WHOLE file. `assertNotIn` on a
+# marker passes just as happily against one this command truncated — that exact
+# vacuity was measured on `--risk none` in this script, with the suite green.
+
+FOLD_LEGACY = ("- [ ] **T007** — **#9 Ingestao automatica do extrato BTG** (e-mail/OneDrive) —\n"
+               "  `ready-for-agent`.\n"
+               "  **Class:** AUTONOMOUS. **Effort:** L. **Source:** tracker "
+               "**Project:** automacao-financeira.\n")
+FOLD_CANONICAL = ("- [ ] **T007** — **#9 Ingestao automatica do extrato BTG** "
+                  "(e-mail/OneDrive) — `ready-for-agent`. **Class:** AUTONOMOUS. "
+                  "**Effort:** L. **Source:** tracker **Project:** automacao-financeira.\n")
+
+
+class TestMigrateFold(QueueTest):
+    FOLDED_LINE = ("1 item(s) with fields off the first line: folded up, where every gate "
+                   "reads them — T007\n")
+
+    def left_alone(self, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: folding would have to "
+                "GUESS which text is a field value — " + ", ".join(labels)
+                + ". Close each with `cancel` and re-add it clean.\n")
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    # --- the shape, and the gates it was invisible to ---------------------
+
+    def test_the_legacy_shape_is_folded_and_the_prose_survives_it(self):
+        """The real shape off the root queue. The join replaces a newline and the
+        indentation after it with ONE blank and moves no other character — which is
+        why the assertion is the whole file and not a marker's presence."""
+        self.seed(FOLD_LEGACY)
+        self.assertIn(self.FOLDED_LINE, self.migrate().stdout)
+        self.assertEqual(self.body(), HEADER + FOLD_CANONICAL)
+
+    def test_after_the_fold_pack_claim_and_edit_all_reach_the_item(self):
+        """The three gates that could not see the item before, run for real. Each
+        was refused on this exact fixture on `main`: excluded from the package,
+        `claim` refused naming the fold as the remedy, `edit --effort` refused by
+        the marker-outside-the-chain guard."""
+        self.seed(FOLD_LEGACY)
+        self.migrate()
+        self.assertIn("T007  L", self.run_tk("pack").stdout)
+        r = self.run_tk("claim", "T007", "--as", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("claimed by alpha", self.run_tk("list").stdout)
+        self.assertEqual(self.run_tk("release", "T007").returncode, 0)
+        r = self.run_tk("edit", "T007", "--effort", "M")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + FOLD_CANONICAL.replace("**Effort:** L.", "**Effort:** M."))
+
+    def test_a_chain_spread_over_TWO_continuation_lines_is_folded_too(self):
+        """The joint between two field lines is a newline where the line's own
+        segments carry a blank. Compared raw, that whitespace reads as a changed
+        value and this item — a chain that is whole, merely wrapped — is refused."""
+        self.seed("- [ ] **T001** — algo\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S.\n"
+                  "  **Criterion:** A: x. **Source:** 2026-08-13\n")
+        self.migrate()
+        self.assertEqual(self.body(), HEADER + LEGACY.replace("\n  ", " ") % 1)
+
+    def test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass(self):
+        """Both repairs are `migrate`'s, and the report has to name the number the
+        item leaves with — read before the ID is assigned it is reported as `----`,
+        which names no item at all."""
+        self.seed("- [ ] legado sem ID\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
+        r = self.migrate()
+        self.assertIn("IDs assigned up to T001", r.stdout)
+        self.assertIn("folded up, where every gate reads them — T001\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T001** — legado sem ID **Class:** AUTONOMOUS. "
+                         "**Effort:** S. **Source:** 2026-08-13\n")
+
+    # --- idempotency: the command runs on a queue it already rewrote ------
+
+    def test_a_second_migrate_is_a_no_op_on_the_file_and_says_nothing(self):
+        """A repair that re-applies itself is a repair nobody can run twice. The
+        second run must leave the bytes alone AND stop claiming a fold."""
+        self.seed(FOLD_LEGACY, item(9, "ja canonico"))
+        self.migrate()
+        once = self.body()
+        r = self.migrate()
+        self.assertEqual(self.body(), once)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertNotIn("left exactly as they are", r.stdout)
+
+    def test_an_already_canonical_queue_is_untouched_and_silent(self):
+        """The other direction, and the only one that can catch a fold firing on
+        every item: a command that rewrites what is already right has no way to
+        report that it changed nothing."""
+        self.seed(item(1, "um"), item(2, "dois", project="tk"), item(3, "tres", risk="x"))
+        before = self.body()
+        r = self.migrate()
+        self.assertEqual(self.body(), before)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertNotIn("left exactly as they are", r.stdout)
+
+    def test_the_frontmatter_headings_and_the_done_log_move_stay_intact(self):
+        """The fold runs inside the command that also moves [x] items out, so the
+        whole file — both files — is the assertion."""
+        self.seed("- [x] legado feito, movido verbatim\n\n",
+                  "## Bloco com cabeçalho\n\n", FOLD_LEGACY)
+        self.migrate()
+        self.assertEqual(self.body(),
+                         HEADER + "## Bloco com cabeçalho\n\n" + FOLD_CANONICAL)
+        self.assertIn("- [x] legado feito, movido verbatim", self.body("done-log.md"))
+
+    # --- what the fold REFUSES to guess, and says it refused -------------
+
+    def test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED(self):
+        """The shape the repairs text names as unfoldable. Joined blindly the
+        **Class:** takes whatever follows as its value, and what follows may be a
+        note — a class nobody wrote. Silence here is the worst outcome available:
+        the caller reads a fold report, sees no mention of this item, and believes
+        the queue is repaired."""
+        seeded = ("- [ ] **T002** — marcador e valor em linhas diferentes **Class:**\n"
+                  "  AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.left_alone("T002"), r.stdout)
+
+    def test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED(self):
+        """Folded, the note lands inside the last field's value — FIELD_SEGMENT_RE's
+        body is greedy — and `**Source:** 2026-08-13 nota solta.` is what every
+        reader would then report as the source."""
+        seeded = ("- [ ] **T003** — nota depois dos campos\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n"
+                  "  nota solta depois dos campos.\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.left_alone("T003"), r.stdout)
+
+    def test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED(self):
+        """The shape claim_unwritable_message already refuses to promise the fold
+        for. The prose marker ends in a period and would join the chain from the
+        left, so the folded chain is not the one the item carried."""
+        seeded = ("- [ ] **T004** — ver a **Deferred:** nota de contexto.\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.left_alone("T004"), r.stdout)
+
+    def test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED(self):
+        """A continuation line carrying a marker whose run does not reach the end of
+        the line — a bold word after it stops it. Folding here repairs NOTHING, and
+        a fold that repairs nothing still rewrites the user's line and reports it as
+        repaired: the one direction a data-rewriting command may never take."""
+        seeded = ("- [ ] **T008** — texto\n"
+                  "  ver a **Risk:** de **produção** antes.\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn(self.left_alone("T008"), r.stdout)
+
+    def test_an_item_with_no_field_at_all_is_neither_folded_nor_reported(self):
+        """A different defect with a different repair (`edit --class`). Named in
+        the fold's report it would send the caller to `cancel` + re-add for an item
+        one flag fixes — and a report that names items the fold is not about is one
+        its reader learns to skip."""
+        seeded = "- [ ] **T005** — item sem campo nenhum\n  so prosa de continuacao.\n"
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertNotIn("left exactly as they are", r.stdout)
+        self.assertNotIn("folded up", r.stdout)
+
+    def test_the_two_populations_are_separated_in_ONE_run(self):
+        """The report is only worth reading if it discriminates: a run over both
+        shapes must fold one, leave the other, and name each under its own line."""
+        self.seed(FOLD_LEGACY,
+                  "- [ ] **T003** — nota depois dos campos\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n"
+                  "  nota solta depois dos campos.\n")
+        r = self.migrate()
+        self.assertIn(self.FOLDED_LINE, r.stdout)
+        self.assertIn(self.left_alone("T003"), r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + FOLD_CANONICAL
+                         + "- [ ] **T003** — nota depois dos campos\n"
+                         "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n"
+                         "  nota solta depois dos campos.\n")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
