@@ -41,9 +41,13 @@ Three words fix what it is, and every rule below follows from one.
 The digest gates and the dossier informs. They are printed together, dossier first: a reader
 decides on the content and confirms on the verdicts, never the reverse.
 
-**Where a session also writes a package view, the dossier is what fills that view's per-PR
-card.** The view owns its layout and its markers; this file owns what the card says. Neither
-re-derives the other, and a card whose body was written twice is two answers to one question.
+**A view that carries a per-PR card writes that card FROM the dossier**, and the two are not
+the same size. A card's visible body is two or three sentences — the dossier's lede — its
+collapsibles carry whichever sections a reader of that page needs, and the full text stays in
+the PR the card's proof link already reaches. The view's own file owns the markers, the layout
+and the card's outcome vocabulary; this file owns what the card SAYS. Neither re-derives the
+other, and a card whose body was invented beside an existing dossier is two answers to one
+question.
 
 ## The five sections
 

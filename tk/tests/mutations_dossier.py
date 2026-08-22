@@ -116,7 +116,7 @@ MUTATIONS = [
      ["TestHarvest.test_the_noun_is_quoted_as_the_trail_spelled_it"]),
 
     ("one line citing a pointer three times is reported as three sites",
-     "            if (l, ln) == (label, line):", "            if False:",
+     "            if (seen, where) == (label, line):", "            if False:",
      ["TestHarvest.test_one_line_citing_a_pointer_twice_is_one_site_with_its_count"]),
 
     ("a four-digit number is an index, so a year is a pointer",

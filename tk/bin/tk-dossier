@@ -340,11 +340,11 @@ class Pointer:
         self.source = self.line = self.statement = self.reason = None
 
     def cite(self, label, line, text):
-        for n, (l, ln, _, times) in enumerate(self.citations):
-            if (l, ln) == (label, line):
+        for n, (seen, where, quoted, times) in enumerate(self.citations):
+            if (seen, where) == (label, line):
                 # a long table row states the same pointer three times; three
                 # identical quotes of it read as three findings
-                self.citations[n] = (l, ln, _, times + 1)
+                self.citations[n] = (seen, where, quoted, times + 1)
                 return
         self.citations.append((label, line, text, 1))
 
