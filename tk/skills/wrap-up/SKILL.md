@@ -144,7 +144,7 @@ Settle every version-control decision NOW — this gate is what makes the wrap-u
 close. From the inventory, list the pending actions per repo: uncommitted work, unpushed
 branches, PRs to open, PRs awaiting merge.
 
-**Every PR in this gate gets a merge dossier, written before the menu.** The digest says
+**Every PR in this gate gets a merge dossier, written before the menu.** The digest below says
 whether the merge MAY happen; the dossier says what is being merged and what changes if it
 does, resolved at the point of reading — every pointer the trail cites by number arrives with
 the sentence it names beside it. Its five sections, the two that `../../bin/tk-dossier`

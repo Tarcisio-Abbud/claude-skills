@@ -215,8 +215,8 @@ The clause after them overrides all five.
         citing = self.write("pr.md", "Nothing is cited here.\n\n```\nsee item 3\n```\n")
         r = self.pointers(citing)
         self.assertEqual(r.returncode, 0, r.stdout)
-        self.assertIn("0 cited", r.stdout)
-        self.assertIn("No text cites anything by number", r.stdout)
+        self.assertIn("— 0 cited ·", r.stdout)
+        self.assertIn("Nothing matched the vocabulary above", r.stdout)
 
     def test_a_byte_order_mark_does_not_hide_the_first_fence(self):
         """A BOM is not whitespace to `re`, so a file whose first line opens a
@@ -227,7 +227,7 @@ The clause after them overrides all five.
         citing = self.write("pr.md", "﻿```\nsee item 3\n```\n")
         r = self.pointers(citing)
         self.assertEqual(r.returncode, 0, r.stdout)
-        self.assertIn("0 cited", r.stdout)
+        self.assertIn("— 0 cited ·", r.stdout)
 
 
 # --- the harvest: what is cited, and how it is quoted back ------------------
@@ -255,18 +255,19 @@ class TestHarvest(DossierTest):
     def test_a_four_digit_number_is_not_an_index(self):
         citing = self.write("pr.md", "issue 2026 and item 1234 are not pointers.\n")
         r = self.pointers(citing)
-        self.assertIn("0 cited", r.stdout)
+        self.assertIn("— 0 cited ·", r.stdout)
 
     def test_a_lowercase_letter_after_a_noun_is_prose(self):
         citing = self.write("pr.md", "an item a reader would skip\n")
         r = self.pointers(citing)
-        self.assertIn("0 cited", r.stdout)
+        self.assertIn("— 0 cited ·", r.stdout)
 
     def test_a_noun_outside_the_vocabulary_is_added_with_all_its_spellings(self):
         citing = self.write("pr.md", "See requisito 2.\n")
         source = self.write("issue.md", "## Requisitos\n\n1. um\n2. dois\n")
         bare = self.pointers(citing, source)
-        self.assertIn("0 cited", bare.stdout)
+        self.assertIn("— 0 cited ·", bare.stdout)
+        self.assertEqual(bare.returncode, 1, bare.stdout)   # strong, see below
         named = self.pointers(citing, source,
                               extra=("--noun", "requisito,requisitos"))
         self.assertEqual(named.returncode, 0, named.stdout)
@@ -288,7 +289,9 @@ class TestReport(DossierTest):
         r = self.pointers(citing, source, extra=("--json",))
         self.assertEqual(r.returncode, 1, r.stderr)
         data = json.loads(r.stdout)
-        self.assertEqual(data["counts"], {"cited": 2, "resolved": 1, "unresolved": 1})
+        self.assertEqual(data["counts"]["cited"], 2)
+        self.assertEqual(data["counts"]["resolved"], 1)
+        self.assertEqual(data["counts"]["unresolved"], 1)
         bound = [p for p in data["pointers"] if p["resolved"]][0]
         self.assertEqual((bound["index"], bound["source"], bound["line"]), ("2", "s1", 7))
         self.assertIn("five lenses", bound["statement"])
@@ -309,6 +312,176 @@ class TestReport(DossierTest):
                              "--source", f"154={source}")
         self.assertIn("154:7", r.stdout)
         self.assertIn("cited  pr156:1", r.stdout)
+
+
+# --- what the vocabulary cannot see, said out loud -------------------------
+
+class TestOutsideVocabulary(DossierTest):
+    def test_a_noun_that_labels_a_source_list_is_a_finding_not_a_silence(self):
+        """The blocker this class exists for: a trail numbering its statements
+        under a noun the vocabulary lacks was reported as clean."""
+        citing = self.write("pr.md", "See requisito 2.\n")
+        source = self.write("issue.md", "## Requisitos\n\n1. um\n2. dois\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("OUTSIDE", r.stdout)
+        self.assertIn("requisito 2", r.stdout)
+        self.assertIn("--noun requisito", r.stdout)
+
+    def test_a_citation_shape_that_no_source_list_answers_is_not_reported(self):
+        """Ordinary prose precedes a number all the time. A section a reader
+        learns to skip protects nothing, so only a noun that would actually
+        bind gets one."""
+        citing = self.write("pr.md", "Landed in rodada 3, see rodada 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("OUTSIDE", r.stdout)
+
+    def test_a_noun_that_labels_a_list_without_the_cited_index_is_not_reported(self):
+        """The second condition. Matching the label alone returned six nouns on
+        a real trail, five of them junk — `sessão A` matched a list headed
+        "Recomendações (da sessão das #21/#22/#23)"."""
+        citing = self.write("pr.md", "See sessao A.\n")
+        source = self.write("issue.md",
+                            "## Recommendations, from the sessao of last week\n"
+                            "\n1. um\n2. dois\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("OUTSIDE", r.stdout)
+
+    def test_a_contraction_that_reaches_a_label_is_not_a_noun(self):
+        citing = self.write("pr.md", "Uma das 2 sessões.\n")
+        source = self.write("issue.md",
+                            "## Recomendações das sessões\n\n1. um\n2. dois\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("OUTSIDE", r.stdout)
+
+    def test_the_same_noun_in_two_numbers_is_one_report_not_two(self):
+        citing = self.write("pr.md", "Vide requisito 1 e requisitos 2.\n")
+        source = self.write("issue.md", "## Requisitos\n\n1. um\n2. dois\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.stdout.count("OUTSIDE"), 1, r.stdout)
+
+    def test_the_empty_answer_never_claims_the_text_cites_nothing(self):
+        citing = self.write("pr.md", "See passo 3 and passo 4.\n")
+        r = self.pointers(citing)
+        self.assertIn("Nothing matched the vocabulary above", r.stdout)
+        self.assertNotIn("cites nothing by number", r.stdout)
+
+    def test_an_ordinal_marker_between_noun_and_index_is_still_a_citation(self):
+        citing = self.write("pr.md", "O item nº 2 fecha isso.\n")
+        source = self.write("issue.md", "## Items\n\n1. um\n2. dois\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("dois", self.entry(r.stdout, "item 2"))
+
+
+# --- the precedence between sources, made visible --------------------------
+
+class TestCompetingSources(DossierTest):
+    def test_a_later_source_carrying_the_same_family_is_named(self):
+        """Measured on a real trail: a comment passed before the issue it
+        comments on bound every pointer to the comment's own renumbering,
+        resolved, exit 0, with no sign at all."""
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        first = self.write("first.md", RECOMMENDATIONS)
+        second = self.write("second.md", """## Recommendations, as the comment restates them
+
+1. a
+2. THE OTHER ARTEFACT
+""")
+        r = self.pointers(citing, first, second)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        block = self.entry(r.stdout, "recommendation 2")
+        self.assertIn("Keep five lenses", block)
+        self.assertIn("s2:", block)
+        self.assertIn("FIRST source given", block)
+
+    def test_a_single_source_says_nothing_about_competing_lists(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source)
+        self.assertNotIn("FIRST source given", r.stdout)
+
+
+# --- the guards the first round left uncovered -----------------------------
+
+class TestUncoveredGuards(DossierTest):
+    def test_a_statement_is_quoted_whole_never_truncated(self):
+        """A 150-character cut once dropped the exception clause that qualified
+        a real statement — the half a merge decision turns on."""
+        tail = "and it does NOT fire on the bookkeeping the gate itself writes"
+        source = self.write("issue.md",
+                            "## Items\n\n1. um\n2. " + "a" * 160 + " " + tail + "\n")
+        citing = self.write("pr.md", "See item 2.\n")
+        r = self.pointers(citing, source)
+        self.assertIn(tail, r.stdout)
+        self.assertNotIn("…", self.entry(r.stdout, "item 2").split("cited")[0])
+
+    def test_a_long_citation_line_is_shortened_with_a_mark(self):
+        citing = self.write("pr.md", "See item 2, " + "b" * 200 + "\n")
+        source = self.write("issue.md", "## Items\n\n1. um\n2. dois\n")
+        r = self.pointers(citing, source)
+        self.assertIn("…", r.stdout)
+
+    def test_a_heading_above_the_lead_in_paragraph_still_labels_the_list(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", """## Recommendations
+
+Adopted after discussion.
+
+1. Serialize.
+2. Keep five lenses.
+""")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("Keep five lenses", self.entry(r.stdout, "recommendation 2"))
+
+    def test_a_fence_that_closes_does_not_blank_the_rest_of_the_file(self):
+        citing = self.write("pr.md", "```\nsee item 3\n```\n\nBut item 2 is real.\n")
+        source = self.write("issue.md", "## Items\n\n1. um\n2. dois\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("dois", self.entry(r.stdout, "item 2"))
+        self.assertNotIn("item 3", r.stdout)
+
+    def test_a_letter_list_is_indexed_by_position_like_a_numbered_one(self):
+        citing = self.write("pr.md", "See criterion C.\n")
+        source = self.write("issue.md", "## Criteria\n\nA. first\nB. second\nC. third\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("third", self.entry(r.stdout, "criterion C"))
+
+    def test_a_one_column_table_row_carries_no_statement_so_it_is_no_entry(self):
+        citing = self.write("pr.md", "See block 2.\n")
+        source = self.write("issue.md", "## Blocks\n\n| # |\n|---|\n| 1 |\n| 2 |\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("no enumerated list labelled `bloco`",
+                      self.entry(r.stdout, "block 2"))
+
+    def test_one_blank_line_does_not_end_a_wrapped_entry(self):
+        citing = self.write("pr.md", "See recommendation 1.\n")
+        source = self.write("issue.md", """## Recommendations
+
+1. Serialize the campaigns.
+
+   The multiplier was parallelism, not depth.
+2. Keep five lenses.
+""")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("not depth", self.entry(r.stdout, "recommendation 1"))
+
+    def test_a_plural_spelling_reaches_the_same_family(self):
+        citing = self.write("pr.md", "Vide recomendações 3.\n")
+        source = self.write("issue.md",
+                            "## Recomendações\n\n1. um\n2. dois\n3. três\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("três", self.entry(r.stdout, "recomendações 3"))
 
 
 # --- collisions: the merge performed, not the forge asked -------------------
@@ -360,6 +533,20 @@ class TestCollisions(CollisionTest):
         self.assertEqual(together.returncode, 1, together.stdout)
         self.assertIn("COLLIDES  a × b", together.stdout)
         self.assertIn("f.md", together.stdout)
+
+    def test_two_branches_editing_one_file_apart_are_clean(self):
+        """The merge is PERFORMED, so two edits far apart in one file are
+        clean. Nothing else in this suite tells a real three-way merge from a
+        `did both branches touch this file` heuristic, which would call this
+        pair colliding and pass every other test here."""
+        self.commit("longer", {"f.md": "".join(f"line {n}\n" for n in range(1, 12))})
+        self.branch("a", {"f.md": "A CHANGED IT\n"
+                          + "".join(f"line {n}\n" for n in range(2, 12))})
+        self.branch("b", {"f.md": "".join(f"line {n}\n" for n in range(1, 11))
+                          + "B CHANGED IT\n"})
+        r = self.collisions("a", "b")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("clean     a × b", r.stdout)
 
     def test_branches_that_touch_different_files_are_reported_clean(self):
         self.branch("a", {"f.md": "one\nA CHANGED IT\nthree\n"})

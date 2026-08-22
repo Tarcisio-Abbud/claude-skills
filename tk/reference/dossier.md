@@ -73,32 +73,64 @@ line by line.
 
 ## The two sections that are measured
 
-Sections 1 and 5 are not written from memory. `../bin/tk-dossier` measures them, and its
-exit codes are 0 clean, 1 a finding the dossier must state, 2 the run failed.
+Sections 1 and 5 are not written from memory. `tk-dossier` measures them.
+
+**Where the script is.** Every path in this file is relative to THIS file, and a session runs
+from the user's project, where `tk/` usually means something else. So resolve
+`../bin/tk-dossier` against the directory holding `dossier.md` and use the resulting ABSOLUTE
+path in every command below. Run as written from a session's own working directory, the lines
+below fail with a shell's `No such file or directory` and exit 127 — which is not one of the
+three codes this script promises, and is the sign you skipped this paragraph.
+
+**The three exit codes** are 0 the answer is clean, 1 the answer carries something this dossier
+must state, 2 the run did not happen. On 2 the script names what it could not read or reach on
+stderr; fix that and run again, and where it cannot be fixed, section 1 or 5 says the
+measurement was not made rather than going silent.
 
 **Section 1 — the pointers.** Fetch the citing texts and the source texts first, one file each,
 with the forge CLI the session already runs. The source order is the trail's order: the
 artefact the numbers were written against comes first.
 
 ```
-gh api repos/<owner>/<repo>/pulls/<n> --jq .body            > pr.md
-gh api repos/<owner>/<repo>/issues/<n> --jq .body           > issue.md
-gh api repos/<owner>/<repo>/issues/<n>/comments --jq '.[].body' > comments.md
-../bin/tk-dossier pointers --citing pr=pr.md --source issue=issue.md --source comments=comments.md
+gh api repos/<owner>/<repo>/pulls/<n> --jq .body                 > pr.md
+gh api repos/<owner>/<repo>/issues/<n> --jq .body                > issue.md
+gh api repos/<owner>/<repo>/issues/<n>/comments --jq '.[].body'  > comments.md
+<abs>/tk/bin/tk-dossier pointers --citing pr=pr.md \
+      --source issue=issue.md --source comments=comments.md
 ```
 
 Read its answer into the section verbatim — resolved pointers with their sentences, unresolved
-ones with their reasons. **An unresolved pointer is resolved by hand or reported as
-unresolved**, and there is no third outcome: the reader is told which artefact was searched and
-what was not found there, and can then go look. Two things commonly cause one, and both are
-repairable — a source that was never passed (the rule, the spec, a sibling issue), and a noun
-outside the vocabulary the tool prints, which `--noun <word>` adds.
+ones with their reasons. **A pointer is resolved by hand or reported as unresolved**: the
+reader is told which artefact was searched and what was not found there, and can go look. Two
+things commonly cause one and both are repairable — a source that was never passed (the rule,
+the spec, a sibling issue), and a source order that is not the trail's, which the `also` line
+under a binding warns about.
+
+**The vocabulary is a third outcome, and it is not "unresolved".** A citation whose noun the
+tool does not carry is not reported as a pointer at all — it is INVISIBLE, which is the one
+outcome an unresolved line exists to prevent. So the script scans a second time, and prints
+under `OUTSIDE` every noun that would have RESOLVED had the vocabulary carried it: the word
+labels an enumerated list in one of the sources, and an index it was cited with is an entry of
+that list. Both conditions, because the first alone returned five junk nouns on a real trail.
+Each `OUTSIDE` line carries the `--noun` argument that repairs it, and the run exits 1 until it
+is either added or answered by hand — statements the trail enumerates and the harvest never
+reached are the same finding as a pointer that did not resolve.
+
+Ordinary prose precedes a number constantly, so nothing weaker is reported at all. What carries
+the honesty in the empty case instead is the answer itself: with nothing matched, the script
+says nothing matched THE VOCABULARY, never that the text cites nothing.
+
+**What the harvest does not find**, so that section 1 never reads as exhaustive when it is not:
+a noun and its index separated by anything but a space or an ordinal marker ("o item que
+disparou foi o 5"), an index that is a lowercase letter or parenthesised ("critério (b)"), an
+index written as a word ("o quinto item"), and a section-numbered heading, which is not read as
+an enumerated list. Each of those is read by a human or not at all.
 
 **Section 5 — the mechanics.** The files and the size come from the diff. The collision comes
 from merging the branches for real:
 
 ```
-../bin/tk-dossier collisions --repo <dir> origin/<branch-a> origin/<branch-b> ...
+<abs>/tk/bin/tk-dossier collisions --repo <dir> origin/<branch-a> origin/<branch-b> ...
 ```
 
 **Never from the forge's `mergeable`/`mergeStateStatus`.** That field compares one branch with
@@ -114,7 +146,7 @@ dossier, and it is never filled in from what the branch seems to be about.
 
 | Section | Degraded to |
 |---|---|
-| 1 | "no source artefact: nothing in this PR cites a numbered statement" — or, where it cites one, the unresolved pointers with `no source given` as the reason |
+| 1 | run the script with `--citing` and no `--source`, and copy what it says: every pointer unresolved, each reason ending `was found in no source at all`, or — where the PR cites no number the vocabulary carries — the line saying nothing matched that vocabulary. Never a sentence claiming the PR cites nothing |
 | 2 | one row per commit: what it changed, against what the commit message claims it is for. Where the message gives no reason, the row says the reason is unrecorded — never a reason read off the diff |
 | 3 | written from the diff, which is a real source for this section |
 | 4 | "none declared" — an author who declared no uncertainty declared none; the dossier does not go looking for it in the code |

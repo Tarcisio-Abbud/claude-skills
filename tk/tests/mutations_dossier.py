@@ -89,8 +89,12 @@ MUTATIONS = [
      ["TestSourceShapes.test_a_list_inside_a_fence_is_quoted_not_enumerated"]),
 
     ("fenced code counts as citation, so a worked example cites itself",
-     "        for n, line in enumerate(strip_fences(lines), 1):",
-     "        for n, line in enumerate(lines, 1):",
+     "        for n, line in enumerate(strip_fences(lines), 1):\n"
+     "            folded, origin = unaccent_indexed(line)\n"
+     "            for m in pattern.finditer(folded):",
+     "        for n, line in enumerate(lines, 1):\n"
+     "            folded, origin = unaccent_indexed(line)\n"
+     "            for m in pattern.finditer(folded):",
      ["TestSourceShapes.test_a_citation_inside_a_fence_is_not_a_citation"]),
 
     # both halves at once: `utf-8-sig` alone strips a LEADING mark and the
@@ -120,13 +124,13 @@ MUTATIONS = [
      ["TestHarvest.test_one_line_citing_a_pointer_twice_is_one_site_with_its_count"]),
 
     ("a four-digit number is an index, so a year is a pointer",
-     '    return re.compile(rf"(?i:\\b(?P<noun>{alt}))[ \\t]+(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
-     '    return re.compile(rf"(?i:\\b(?P<noun>{alt}))[ \\t]+(?P<idx>\\d{{1,4}}|[A-Z])\\b")',
+     '                      rf"{SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
+     '                      rf"{SEPARATOR}(?P<idx>\\d{{1,4}}|[A-Z])\\b")',
      ["TestHarvest.test_a_four_digit_number_is_not_an_index"]),
 
     ("a lowercase letter is an index, so ordinary prose becomes a citation",
-     '    return re.compile(rf"(?i:\\b(?P<noun>{alt}))[ \\t]+(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
-     '    return re.compile(rf"(?i:\\b(?P<noun>{alt}))[ \\t]+(?P<idx>\\d{{1,3}}|[A-Za-z])\\b")',
+     '                      rf"{SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
+     '                      rf"{SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Za-z])\\b")',
      ["TestHarvest.test_a_lowercase_letter_after_a_noun_is_prose"]),
 
     ("--noun takes one spelling, so the plural in a heading answers nothing",
@@ -207,6 +211,130 @@ MUTATIONS = [
     ("a merge that could not run at all is reported as a clean pair",
      "    if not paths and not messages:", "    if False:",
      ["TestCollisionFailures.test_a_merge_that_could_not_run_is_never_reported_as_clean"]),
+
+    # --- round 1: the vocabulary boundary stops being a silence ------------
+    ("a noun the vocabulary lacks is invisible again, and the run reads clean",
+     "    findings = any(not p.resolved for p in pointers) or bool(outside)",
+     "    findings = any(not p.resolved for p in pointers)",
+     ["TestOutsideVocabulary.test_a_noun_that_labels_a_source_list_is_a_finding_not_a_silence"],
+     DOSSIER),
+
+    ("a label in the plural no longer answers a citation in the singular",
+     "    return short == long_ or long_ in (short + \"s\", short + \"es\")",
+     "    return short == long_",
+     ["TestOutsideVocabulary.test_a_noun_that_labels_a_source_list_is_a_finding_not_a_silence"],
+     DOSSIER),
+
+    ("the label alone makes a noun a finding, so any heading word counts",
+     "            if same_noun(record.noun, word) and record.indexes & set(block.entries):",
+     "            if same_noun(record.noun, word):",
+     ["TestOutsideVocabulary.test_a_noun_that_labels_a_list_without_the_cited_index_is_not_reported"],
+     DOSSIER),
+
+    ("a noun no source list answers is reported anyway",
+     "        if record.labels:\n            naming.append(record)",
+     "        if record.sites:\n            naming.append(record)",
+     ["TestOutsideVocabulary.test_a_citation_shape_that_no_source_list_answers_is_not_reported"],
+     DOSSIER),
+
+    ("a three-letter contraction counts as a noun again",
+     'CANDIDATE_RE = re.compile(rf"\\b(?P<noun>[A-Za-z]{{4,}}){SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
+     'CANDIDATE_RE = re.compile(rf"\\b(?P<noun>[A-Za-z]{{3,}}){SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
+     ["TestOutsideVocabulary.test_a_contraction_that_reaches_a_label_is_not_a_noun"],
+     DOSSIER),
+
+    ("one noun in two numbers is reported as two problems",
+     "                key = next((seen for seen in found if same_noun(seen, key)), key)",
+     "                key = key",
+     ["TestOutsideVocabulary.test_the_same_noun_in_two_numbers_is_one_report_not_two"],
+     DOSSIER),
+
+    ("the empty answer goes back to claiming the text cites nothing",
+     '        print("Nothing matched the vocabulary above. That is not the same as "',
+     '        print("No text cites anything by number." "',
+     ["TestOutsideVocabulary.test_the_empty_answer_never_claims_the_text_cites_nothing"],
+     DOSSIER),
+
+    ("an ordinal marker between noun and index breaks the citation again",
+     'SEPARATOR = r"[ \\t]+(?:n[o\\u00ba\\u00b0]\\.?[ \\t]*)?"',
+     'SEPARATOR = r"[ \\t]+"',
+     ["TestOutsideVocabulary.test_an_ordinal_marker_between_noun_and_index_is_still_a_citation"],
+     DOSSIER),
+
+    # --- round 1: the precedence between sources, made visible -------------
+    ("the source order decides in silence again",
+     '        pointer.competing = [f"{other}:{b.line}" for other, rest in sources',
+     "        pointer.competing = [] or [f\"{other}:{b.line}\" for other, rest in ()",
+     ["TestCompetingSources.test_a_later_source_carrying_the_same_family_is_named"],
+     DOSSIER),
+
+    ("the source that WON is named as competing with itself",
+     "                             if other != label for b in rest",
+     "                             if True for b in rest",
+     ["TestCompetingSources.test_a_single_source_says_nothing_about_competing_lists"],
+     DOSSIER),
+
+    # --- round 1: the guards the first round left uncovered ----------------
+    ("the statement is truncated again, one clause before its exception",
+     "                  f\"{' '.join(p.statement.split())}\")",
+     "                  f\"{shorten(p.statement)}\")",
+     ["TestUncoveredGuards.test_a_statement_is_quoted_whole_never_truncated"],
+     DOSSIER),
+
+    ("a citation quote is never shortened, so one line swallows the report",
+     '    return text if len(text) <= width else text[:width - 1].rstrip() + "…"',
+     "    return text",
+     ["TestUncoveredGuards.test_a_long_citation_line_is_shortened_with_a_mark"],
+     DOSSIER),
+
+    ("the heading above a lead-in paragraph stops labelling the list",
+     "    if seen_text:                # the heading sits above the paragraph we took\n"
+     "        for i in range(start - 1 - len(lead), -1, -1):\n"
+     "            if HEADING_RE.match(lines[i]):\n"
+     "                heading = lines[i].strip()\n"
+     "                break",
+     "    if False:\n        pass",
+     ["TestUncoveredGuards.test_a_heading_above_the_lead_in_paragraph_still_labels_the_list"],
+     DOSSIER),
+
+    ("a fence never closes, so everything after the first one is blanked",
+     "        if line.strip().startswith(fence):\n            fence = None",
+     "        if False:\n            fence = None",
+     ["TestUncoveredGuards.test_a_fence_that_closes_does_not_blank_the_rest_of_the_file"],
+     DOSSIER),
+
+    ("a letter list ignores the offset, so every entry is called A",
+     "    return chr(ord(first.upper()) + offset)", "    return first.upper()",
+     ["TestUncoveredGuards.test_a_letter_list_is_indexed_by_position_like_a_numbered_one"],
+     DOSSIER),
+
+    ("a one-column table row becomes an entry whose statement is empty",
+     '            if len(cells) < 2 or not re.fullmatch(r"\\d{1,3}|[A-Z]", key):',
+     '            if not re.fullmatch(r"\\d{1,3}|[A-Z]", key):',
+     ["TestUncoveredGuards.test_a_one_column_table_row_carries_no_statement_so_it_is_no_entry"],
+     DOSSIER),
+
+    ("one blank line ends a wrapped entry, so a loose list loses its prose",
+     "            if deeper > len(indent) and held <= 1:",
+     "            if deeper > len(indent) and held <= 0:",
+     ["TestUncoveredGuards.test_one_blank_line_does_not_end_a_wrapped_entry"],
+     DOSSIER),
+
+    ("the plural spelling leaves the family, so a plural citation is invisible",
+     '    "recomendacao": ("recomendacao", "recomendacoes", "recommendation", "recommendations"),',
+     '    "recomendacao": ("recomendacao", "recommendation", "recommendations"),',
+     ["TestUncoveredGuards.test_a_plural_spelling_reaches_the_same_family"],
+     DOSSIER),
+
+    # the heuristic the real implementation is NOT: same file touched by both
+    ("the merge is replaced by `did both branches touch this file`",
+     '    run = git(repo, "merge-tree", "--write-tree", a, b)\n'
+     "    if run.returncode == 0:\n        return [], []",
+     '    run = git(repo, "diff", "--name-only", a, b)\n'
+     "    return sorted(set(run.stdout.split())), []\n"
+     "    if run.returncode == 0:\n        return [], []",
+     ["TestCollisions.test_two_branches_editing_one_file_apart_are_clean"],
+     DOSSIER),
 ]
 
 
