@@ -73,9 +73,10 @@ trail can still say what is being merged. Its five sections and the degraded for
 trail gets are in `tk/reference/dossier.md`; two of them are measured by **`tk/bin/tk-dossier`**
 rather than recalled. `pointers` binds every "recommendation 4", "item 3", "criterion A" a text
 cites by number to the sentence it names in the source artefacts, and reports as UNRESOLVED —
-never as a guess — any pointer with no single unambiguous binding. It also names the nouns it
-was blind to: a word the trail enumerates under that the vocabulary lacks would otherwise be
-INVISIBLE rather than unresolved, which is the failure an unresolved line exists to prevent. `collisions` merges each pair
+never as a guess — any pointer with no single unambiguous binding. Where two sources both carry a list of
+the family, it names the ones it did not take, since choosing the first is a choice made on the
+reader's behalf. What it never does is guess a noun it was not given: the empty answer says
+nothing matched THE VOCABULARY, never that the text cites nothing. `collisions` merges each pair
 of open branches for real with `git merge-tree --write-tree`, because the forge's
 `mergeable`/`CLEAN` compares one branch with the default branch alone and cannot see a second
 open PR: several PRs rewriting one paragraph all read green, and the second to merge breaks.

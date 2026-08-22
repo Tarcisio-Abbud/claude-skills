@@ -212,72 +212,46 @@ MUTATIONS = [
      "    if not paths and not messages:", "    if False:",
      ["TestCollisionFailures.test_a_merge_that_could_not_run_is_never_reported_as_clean"]),
 
-    # --- round 1: the vocabulary boundary stops being a silence ------------
-    ("a noun the vocabulary lacks is invisible again, and the run reads clean",
-     "    findings = any(not p.resolved for p in pointers) or bool(outside)",
-     "    findings = any(not p.resolved for p in pointers)",
-     ["TestOutsideVocabulary.test_a_noun_that_labels_a_source_list_is_a_finding_not_a_silence"],
-     DOSSIER),
-
-    ("a label in the plural no longer answers a citation in the singular",
-     "    return short == long_ or long_ in (short + \"s\", short + \"es\")",
-     "    return short == long_",
-     ["TestOutsideVocabulary.test_a_noun_that_labels_a_source_list_is_a_finding_not_a_silence"],
-     DOSSIER),
-
-    ("the label alone makes a noun a finding, so any heading word counts",
-     "            if same_noun(record.noun, word) and record.indexes & set(block.entries):",
-     "            if same_noun(record.noun, word):",
-     ["TestOutsideVocabulary.test_a_noun_that_labels_a_list_without_the_cited_index_is_not_reported"],
-     DOSSIER),
-
-    ("a noun no source list answers is reported anyway",
-     "        if record.labels:\n            naming.append(record)",
-     "        if record.sites:\n            naming.append(record)",
-     ["TestOutsideVocabulary.test_a_citation_shape_that_no_source_list_answers_is_not_reported"],
-     DOSSIER),
-
-    ("a three-letter contraction counts as a noun again",
-     'CANDIDATE_RE = re.compile(rf"\\b(?P<noun>[A-Za-z]{{4,}}){SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
-     'CANDIDATE_RE = re.compile(rf"\\b(?P<noun>[A-Za-z]{{3,}}){SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
-     ["TestOutsideVocabulary.test_a_contraction_that_reaches_a_label_is_not_a_noun"],
-     DOSSIER),
-
-    ("one noun in two numbers is reported as two problems",
-     "                key = next((seen for seen in found if same_noun(seen, key)), key)",
-     "                key = key",
-     ["TestOutsideVocabulary.test_the_same_noun_in_two_numbers_is_one_report_not_two"],
-     DOSSIER),
-
-    ("the empty answer goes back to claiming the text cites nothing",
-     '        print("Nothing matched the vocabulary above. That is not the same as "',
-     '        print("No text cites anything by number." "',
-     ["TestOutsideVocabulary.test_the_empty_answer_never_claims_the_text_cites_nothing"],
-     DOSSIER),
-
-    ("an ordinal marker between noun and index breaks the citation again",
-     'SEPARATOR = r"[ \\t]+(?:n[o\\u00ba\\u00b0]\\.?[ \\t]*)?"',
-     'SEPARATOR = r"[ \\t]+"',
-     ["TestOutsideVocabulary.test_an_ordinal_marker_between_noun_and_index_is_still_a_citation"],
-     DOSSIER),
-
     # --- round 1: the precedence between sources, made visible -------------
     ("the source order decides in silence again",
-     '        pointer.competing = [f"{other}:{b.line}" for other, rest in sources',
-     "        pointer.competing = [] or [f\"{other}:{b.line}\" for other, rest in ()",
-     ["TestCompetingSources.test_a_later_source_carrying_the_same_family_is_named"],
+     "        pointer.competing = competing",
+     "        pointer.competing = []",
+     ["TestCompetingSources.test_a_later_source_carrying_the_same_family_is_named",
+      "TestCompetingSources.test_json_carries_the_competing_sources"],
      DOSSIER),
 
     ("the source that WON is named as competing with itself",
-     "                             if other != label for b in rest",
-     "                             if True for b in rest",
+     "                     if other != label for b in rest",
+     "                     if True for b in rest",
      ["TestCompetingSources.test_a_single_source_says_nothing_about_competing_lists"],
+     DOSSIER),
+
+    ("an unresolved pointer is told a binding happened above it",
+     "        where = \", \".join(self.competing)\n        if self.resolved:",
+     "        where = \", \".join(self.competing)\n        if True:",
+     ["TestCompetingSources.test_an_unresolved_pointer_is_never_told_a_binding_happened"],
+     DOSSIER),
+
+    ("ambiguity inside one source drags a second artefact into the report",
+     "            # deliberately WITHOUT `competing`: the ambiguity is inside this\n"
+     "            # source, and naming a different artefact would point the reader\n"
+     "            # away from the two lists that actually caused it\n"
+     "            pointer.reason = (f\"{len(eligible)} enumerated lists in `{label}` are \"",
+     "            pointer.competing = competing\n"
+     "            pointer.reason = (f\"{len(eligible)} enumerated lists in `{label}` are \"",
+     ["TestCompetingSources.test_ambiguity_inside_one_source_names_no_other_artefact"],
+     DOSSIER),
+
+    ("the statement is printed as one unbroken line, however long",
+     "    return textwrap.fill(\" \".join(text.split()), width=96,",
+     "    return indent + \" \".join(text.split()) or textwrap.fill(\"\", width=96,",
+     ["TestUncoveredGuards.test_a_statement_is_wrapped_never_printed_as_one_long_line"],
      DOSSIER),
 
     # --- round 1: the guards the first round left uncovered ----------------
     ("the statement is truncated again, one clause before its exception",
-     "                  f\"{' '.join(p.statement.split())}\")",
-     "                  f\"{shorten(p.statement)}\")",
+     '            print(wrap(p.statement, f"            says   {p.source}:{p.line}  "))',
+     '            print(wrap(shorten(p.statement), f"            says   {p.source}:{p.line}  "))',
      ["TestUncoveredGuards.test_a_statement_is_quoted_whole_never_truncated"],
      DOSSIER),
 

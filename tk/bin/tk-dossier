@@ -40,6 +40,7 @@ import os
 import re
 import subprocess
 import sys
+import textwrap
 import unicodedata
 
 EXIT_OK = 0
@@ -130,13 +131,6 @@ POINTER_NOUNS = {
 # what may sit between a noun and its index: whitespace, and optionally an
 # ordinal marker (`nº`, `no.`, `n°`) — the Portuguese trails here use all three
 SEPARATOR = r"[ \t]+(?:n[o\u00ba\u00b0]\.?[ \t]*)?"
-# a citation whose noun is NOT in the vocabulary. Same shape, any word of three
-# letters or more: this is what turns "the harvest found nothing" from a claim
-# about the TEXT into a claim about the VOCABULARY, which is all it ever was
-# four letters, not three: `das 3`, `dos 2`, `nas 1` are Portuguese contractions
-# that turn up inside a heading and then match a list label, and the shortest
-# noun any of these trails enumerates under is `item`
-CANDIDATE_RE = re.compile(rf"\b(?P<noun>[A-Za-z]{{4,}}){SEPARATOR}(?P<idx>\d{{1,3}}|[A-Z])\b")
 
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 LIST_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<marker>\d{1,3}|[A-Za-z])[.)][ \t]+(?P<text>\S.*)$")
@@ -357,7 +351,11 @@ class Pointer:
     def __init__(self, noun, family, index):
         self.noun, self.family, self.index = noun, family, index
         self.citations = []      # (label, line, text, how many times on it)
-        self.competing = []      # other sources carrying a list of this family
+        # other sources carrying a list of this family, and ONLY where naming
+        # them is true of what happened. A note that reads "the binding above"
+        # over a pointer that never bound is the same defect as a wrong
+        # binding: the tool asserting something it did not do
+        self.competing = []
         self.source = self.line = self.statement = self.reason = None
 
     def cite(self, label, line, text):
@@ -372,6 +370,23 @@ class Pointer:
     @property
     def resolved(self):
         return self.statement is not None
+
+    def competing_note(self):
+        """What naming the other sources means, given how this pointer ended.
+
+        Two outcomes can honestly carry it and no other. A pointer that BOUND
+        took the first source given, so the order is what to check. A pointer
+        whose source answered with too short a list may be reading the wrong
+        artefact entirely. Ambiguity WITHIN one source is neither: a second
+        artefact says nothing about two lists in the first, and the note is
+        not attached at all."""
+        where = ", ".join(self.competing)
+        if self.resolved:
+            return (f"{where} carry a `{self.family}` list too, and this "
+                    "statement came from the FIRST source given — check that "
+                    "order is the trail's, because nothing else will")
+        return (f"{where} carry a `{self.family}` list too, and one of them may "
+                "be the artefact this number was written against")
 
 
 def harvest(citing, vocabulary):
@@ -412,26 +427,31 @@ def bind(pointer, sources):
     Within one source, TWO lists of the same family answer nothing: the report
     names both and the writer reads them.
 
-    ACROSS sources the precedence decides silently, so it is REPORTED. A caller
-    who passes a comment before the issue it comments on gets every pointer
-    bound to the comment's own renumbering, resolved, exit 0, and no sign at
-    all — measured on a real trail. Naming the sources that also carry a list
-    of the family costs one line and is the only thing that makes a wrong
-    calling order visible to the reader who has to trust the answer."""
+    ACROSS sources the precedence decides silently, so it is REPORTED — but
+    only on the two outcomes where naming another artefact is TRUE of what
+    happened, which `competing_note` spells out. A caller who passes a comment
+    before the issue it comments on gets every pointer bound to the comment's
+    own renumbering, resolved, exit 0, and no sign at all: measured on a real
+    trail, and the only thing that makes a wrong calling order visible to the
+    reader who has to trust the answer."""
     for label, blocks in sources:
         eligible = [b for b in blocks if pointer.family in b.families]
         if not eligible:
             continue
-        pointer.competing = [f"{other}:{b.line}" for other, rest in sources
-                             if other != label for b in rest
-                             if pointer.family in b.families]
+        competing = [f"{other}:{b.line}" for other, rest in sources
+                     if other != label for b in rest
+                     if pointer.family in b.families]
         if len(eligible) > 1:
             where = ", ".join(f"{label}:{b.line}" for b in eligible)
+            # deliberately WITHOUT `competing`: the ambiguity is inside this
+            # source, and naming a different artefact would point the reader
+            # away from the two lists that actually caused it
             pointer.reason = (f"{len(eligible)} enumerated lists in `{label}` are "
                               f"labelled `{pointer.family}` ({where}) — which one "
                               "the pointer means is not in the text")
             return
         block = eligible[0]
+        pointer.competing = competing
         if pointer.index in block.entries:
             pointer.line, pointer.statement = block.entries[pointer.index]
             pointer.source = label
@@ -445,105 +465,31 @@ def bind(pointer, sources):
                       f"{named}")
 
 
-def same_noun(one, other):
-    """Whether two words are one noun in two numbers.
-
-    A source heading reads `## Requisitos` and the trail cites `requisito 2`;
-    treating those as different words reported the strongest case there is —
-    the trail enumerates under this noun and the harvest is blind to it — as
-    the weakest. Plural by `s` or `es` covers Portuguese and English, which are
-    the two languages these trails are written in; anything cleverer would be a
-    stemmer, and a stemmer that is wrong is worse than a rule that is small."""
-    short, long_ = sorted((one, other), key=len)
-    return short == long_ or long_ in (short + "s", short + "es")
-
-
-class Outside:
-    """A noun the trail enumerates under and the vocabulary does not carry.
-
-    The harvest can only find the words it was given, so a trail numbering its
-    statements under another noun is INVISIBLE — not unresolved, invisible,
-    which is the one outcome an unresolved line exists to prevent."""
-
-    def __init__(self, noun):
-        self.noun = noun
-        self.spellings = []
-        self.sites = []
-        self.indexes = set()
-        self.labels = []
-        # the label spelling that matched, defaulting to the noun itself: the
-        # printed remedy has to be runnable even before a label answers
-        self.plural = noun
-
-
-def outside_vocabulary(citing, vocabulary, sources):
-    """The nouns that would resolve if the vocabulary carried them.
-
-    TWO conditions, and the second is what makes this worth printing. The noun
-    must label an enumerated list in a source, AND one of the indexes it was
-    cited with must be an entry of that list — that is, binding it would
-    actually succeed. Requiring only the first was measured on a real trail and
-    returned six nouns, five of them junk: any word anywhere in a heading
-    counted, so `sessão A` matched a list titled "Recomendações (da sessão
-    das #21/#22/#23)".
-
-    There is deliberately no weaker tier. Its candidates were `pelo 3`,
-    `corroborada 3`, `para 3` — ordinary prose that happens to precede a
-    number — and a section a reader learns to skip protects nothing. What
-    carries the honesty instead is the empty answer, which never claims the
-    text cites nothing."""
-    known = {w for spellings in vocabulary.values() for w in spellings}
-    lists = [(word, label, block)
-             for label, blocks in sources for block in blocks
-             for word in {w.lower() for w in WORD_RE.findall(unaccent(block.label))}]
-
-    found = {}
-    for label, lines in citing:
-        for n, line in enumerate(strip_fences(lines), 1):
-            folded, origin = unaccent_indexed(line)
-            for m in CANDIDATE_RE.finditer(folded):
-                key = m.group("noun").lower()
-                if key in known:
-                    continue
-                # `rodada 1` and `rodadas 2` are one noun cited twice, and two
-                # entries for it read as two problems
-                key = next((seen for seen in found if same_noun(seen, key)), key)
-                record = found.setdefault(key, Outside(key))
-                spelled = line[origin[m.start("noun")]:origin[m.end("idx") - 1] + 1]
-                if spelled not in record.spellings:
-                    record.spellings.append(spelled)
-                record.indexes.add(m.group("idx"))
-                record.sites.append(f"{label}:{n}")
-
-    naming = []
-    for record in found.values():
-        for word, label, block in lists:
-            if same_noun(record.noun, word) and record.indexes & set(block.entries):
-                record.labels.append(f"{label}:{block.line}")
-                # the plural comes from the label that MATCHED, never from a
-                # rule about how this language forms one: `sessao` + "s" is not
-                # a word, and a printed remedy that is wrong costs a run
-                record.plural = word
-        if record.labels:
-            naming.append(record)
-    return sorted(naming, key=lambda r: r.noun)
-
-
 def shorten(text, width=150):
     text = " ".join(text.split())
     return text if len(text) <= width else text[:width - 1].rstrip() + "…"
 
 
-def report_pointers(pointers, vocabulary, sources, outside, as_json):
+def wrap(text, indent):
+    """A statement, printed whole and readable.
+
+    Whole because truncating one cut a real entry a clause before the exception
+    that qualified it; wrapped because printing it whole produced 500-character
+    lines on real trails. The two are not in tension — the cap belongs on the
+    LINE, never on the text."""
+    return textwrap.fill(" ".join(text.split()), width=96,
+                         initial_indent=indent, subsequent_indent=" " * len(indent))
+
+
+def report_pointers(pointers, vocabulary, sources, as_json):
     resolved = [p for p in pointers if p.resolved]
     unresolved = [p for p in pointers if not p.resolved]
-    strong = outside
     if as_json:
         print(json.dumps({
             "vocabulary": sorted(vocabulary),
             "sources": [label for label, _ in sources],
             "counts": {"cited": len(pointers), "resolved": len(resolved),
-                       "unresolved": len(unresolved), "outside": len(outside)},
+                       "unresolved": len(unresolved)},
             "pointers": [{
                 "noun": p.noun, "family": p.family, "index": p.index,
                 "resolved": p.resolved, "source": p.source, "line": p.line,
@@ -552,16 +498,11 @@ def report_pointers(pointers, vocabulary, sources, outside, as_json):
                 "citations": [{"source": s, "line": n, "text": t, "times": k}
                               for s, n, t, k in p.citations],
             } for p in pointers],
-            "outside_vocabulary": [{
-                "noun": o.noun, "spellings": o.spellings, "sites": o.sites,
-                "labels": o.labels, "plural": o.plural,
-            } for o in outside],
         }, ensure_ascii=False, indent=2))
         return
 
     print(f"## pointers — {len(pointers)} cited · {len(resolved)} resolved · "
-          f"{len(unresolved)} unresolved · {len(strong)} noun(s) missing from "
-          f"the vocabulary\n")
+          f"{len(unresolved)} unresolved\n")
     print("vocabulary searched: " + ", ".join(sorted(vocabulary)))
     print("sources, in the order they answer: "
           + (", ".join(label for label, _ in sources) or "(none given)") + "\n")
@@ -573,33 +514,16 @@ def report_pointers(pointers, vocabulary, sources, outside, as_json):
               "under another noun is invisible to this vocabulary,\nand "
               "`--noun <word>` is what makes it visible.\n")
     for p in pointers:
-        head = f"{p.noun} {p.index}"
+        print(("RESOLVED    " if p.resolved else "UNRESOLVED  ") + f"{p.noun} {p.index}")
         if p.resolved:
-            print(f"RESOLVED    {head}")
-            # the statement prints WHOLE. Truncation once cut a real statement
-            # one clause before the exception that qualified it, which is the
-            # half a merge decision turns on
-            print(f"            says   {p.source}:{p.line}  "
-                  f"{' '.join(p.statement.split())}")
+            print(wrap(p.statement, f"            says   {p.source}:{p.line}  "))
         else:
-            print(f"UNRESOLVED  {head}")
-            print(f"            why    {p.reason}")
+            print(wrap(p.reason, "            why    "))
         for label, n, text, times in p.citations:
             seen = f" (×{times})" if times > 1 else ""
             print(f"            cited  {label}:{n}{seen}  {shorten(text, 110)}")
         if p.competing:
-            print(f"            also   {', '.join(p.competing)} carry a "
-                  f"`{p.family}` list too — the binding above\n"
-                  "                   took the FIRST source given, so check "
-                  "that order is the trail's")
-    for record in strong:
-        print(f"OUTSIDE     {', '.join(record.spellings)}")
-        print(f"            why    `{record.noun}` labels an enumerated list at "
-              f"{', '.join(record.labels)}\n                   and is not in the "
-              "vocabulary, so nothing under it was harvested")
-        print(f"            cited  {', '.join(sorted(set(record.sites)))}")
-        spellings = ",".join(dict.fromkeys([record.noun, record.plural]))
-        print(f"            fix    --noun {spellings}")
+            print(wrap(p.competing_note(), "            also   "))
     if unresolved:
         print(f"\n{len(unresolved)} pointer(s) did not resolve. Section 1 of the "
               "dossier carries them AS\nunresolved, named — dropping one leaves "
@@ -626,14 +550,8 @@ def cmd_pointers(args):
     pointers = harvest(citing, vocabulary)
     for pointer in pointers:
         bind(pointer, sources)
-    outside = outside_vocabulary(citing, vocabulary, sources)
-    report_pointers(pointers, vocabulary, sources, outside, args.json)
-    # a STRONG outside noun is a finding of the same kind as an unresolved
-    # pointer: statements the trail numbers, that the harvest never reached.
-    # The weak ones change nothing, or the code would fire on every real trail
-    # and stop meaning anything
-    findings = any(not p.resolved for p in pointers) or bool(outside)
-    return EXIT_FINDING if findings else EXIT_OK
+    report_pointers(pointers, vocabulary, sources, args.json)
+    return EXIT_FINDING if any(not p.resolved for p in pointers) else EXIT_OK
 
 
 def git(repo, *argv):

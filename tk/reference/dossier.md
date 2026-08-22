@@ -82,8 +82,10 @@ path in every command below. Run as written from a session's own working directo
 below fail with a shell's `No such file or directory` and exit 127 — which is not one of the
 three codes this script promises, and is the sign you skipped this paragraph.
 
-**The three exit codes** are 0 the answer is clean, 1 the answer carries something this dossier
-must state, 2 the run did not happen. On 2 the script names what it could not read or reach on
+**The three exit codes** are 0 nothing is outstanding that the script itself can decide, 1 the
+answer carries something this dossier must state, 2 the run did not happen. A 0 still has to be
+READ: an `also` line rides on a resolved pointer and no exit code can carry it, because a trail
+whose sources genuinely overlap would then never reach 0 at all. On 2 the script names what it could not read or reach on
 stderr; fix that and run again, and where it cannot be fixed, section 1 or 5 says the
 measurement was not made rather than going silent.
 
@@ -106,25 +108,32 @@ things commonly cause one and both are repairable — a source that was never pa
 the spec, a sibling issue), and a source order that is not the trail's, which the `also` line
 under a binding warns about.
 
-**The vocabulary is a third outcome, and it is not "unresolved".** A citation whose noun the
-tool does not carry is not reported as a pointer at all — it is INVISIBLE, which is the one
-outcome an unresolved line exists to prevent. So the script scans a second time, and prints
-under `OUTSIDE` every noun that would have RESOLVED had the vocabulary carried it: the word
-labels an enumerated list in one of the sources, and an index it was cited with is an entry of
-that list. Both conditions, because the first alone returned five junk nouns on a real trail.
-Each `OUTSIDE` line carries the `--noun` argument that repairs it, and the run exits 1 until it
-is either added or answered by hand — statements the trail enumerates and the harvest never
-reached are the same finding as a pointer that did not resolve.
+**A resolved pointer can still carry an `also` line, and it goes into the section.** Two
+sources both holding a list of the same family is a choice the script made for you — it took
+the first one given — and the `also` line is the only place that choice becomes visible. Copy
+it beside the statement, or reorder the sources and run again until no pointer carries one. A
+run that ends 0 with an `also` line standing is not a clean section 1; it is a section 1 whose
+reader must be told which artefact the sentence came out of.
 
-Ordinary prose precedes a number constantly, so nothing weaker is reported at all. What carries
-the honesty in the empty case instead is the answer itself: with nothing matched, the script
-says nothing matched THE VOCABULARY, never that the text cites nothing.
+**The vocabulary is a limit, not a promise.** A citation whose noun the script does not carry
+is not reported as unresolved — it is not reported at all, and no scan replaces reading. So the
+empty answer never claims the text cites nothing: it says nothing matched THE VOCABULARY, which
+is the only claim a word list can make. `--noun <word>,<plural>` extends it when you know the
+trail numbers under another word.
+
+An earlier design did try to guess those words, by watching for citation shapes under nouns
+that label a list in some source. It was cut, measured against real trails: `como 4` in "quero
+safe-to-merge como 4 vereditos" was offered as a pointer and, with the remedy it printed, bound
+confidently to an unrelated sentence. Refusing to guess is recoverable and a wrong binding is
+not, which is the whole premise this file opens with.
 
 **What the harvest does not find**, so that section 1 never reads as exhaustive when it is not:
-a noun and its index separated by anything but a space or an ordinal marker ("o item que
-disparou foi o 5"), an index that is a lowercase letter or parenthesised ("critério (b)"), an
-index written as a word ("o quinto item"), and a section-numbered heading, which is not read as
-an enumerated list. Each of those is read by a human or not at all.
+a noun outside the vocabulary above; a noun and its index separated by anything but a space or
+an ordinal marker ("o item que disparou foi o 5"); an index that is a lowercase letter or
+parenthesised ("critério (b)"); an index written as a word ("o quinto item"); and a
+section-numbered heading, which is not read as an enumerated list, so a trail whose steps are
+`## 3. Title` answers no pointer at all. Each of those is read by a human or not at all, and
+section 1 says which ones it met.
 
 **Section 5 — the mechanics.** The files and the size come from the diff. The collision comes
 from merging the branches for real:
