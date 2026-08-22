@@ -56,7 +56,7 @@ with nothing in it says that, and is never dropped.
 
 | # | Section | What fills it |
 |---|---|---|
-| 1 | **Pointers resolved** | every number the trail cites, with the sentence it names and the address it was read from; every pointer that did not resolve, named, with the reason |
+| 1 | **Pointers resolved** | every number the trail cites, with the sentence it names and the address it was read from; every pointer that did not resolve, named, with the reason — including one whose list you chose not to declare, which is a reason like any other and never an omission |
 | 2 | **Proposal → verdict → why** | one row per decision: what was proposed, what was decided, and — where the evidence contradicted the proposal — which of the two won |
 | 3 | **Before and after, in practice** | what the rule or the code did, and what it does from this merge on, side by side |
 | 4 | **Choices without data** | the author's own declarations of uncertainty, gathered from wherever they were scattered into one place |
@@ -82,16 +82,15 @@ path in every command below. Run as written from a session's own working directo
 below fail with a shell's `No such file or directory` and exit 127 — which is not one of the
 three codes this script promises, and is the sign you skipped this paragraph.
 
-**The three exit codes** are 0 nothing is outstanding that the script itself can decide, 1 the
-answer carries something this dossier must state, 2 the run did not happen. A 0 still has to be
-READ: an `also` line rides on a resolved pointer and no exit code can carry it, because a trail
-whose sources genuinely overlap would then never reach 0 at all. On 2 the script names what it could not read or reach on
+**The three exit codes** are 0 every pointer harvested was resolved against a list you
+declared, 1 the answer carries something this dossier must state — an unresolved pointer, a
+colliding pair —, 2 the run did not happen, which includes a `--list` naming a line that holds
+no list. The first run of section 1 ends 1 by construction: nothing is declared yet. On 2 the script names what it could not read or reach on
 stderr; fix that and run again, and where it cannot be fixed, section 1 or 5 says the
 measurement was not made rather than going silent.
 
 **Section 1 — the pointers.** Fetch the citing texts and the source texts first, one file each,
-with the forge CLI the session already runs. The source order is the trail's order: the
-artefact the numbers were written against comes first.
+with the forge CLI the session already runs.
 
 ```
 gh api repos/<owner>/<repo>/pulls/<n> --jq .body                 > pr.md
@@ -101,19 +100,31 @@ gh api repos/<owner>/<repo>/issues/<n>/comments --jq '.[].body'  > comments.md
       --source issue=issue.md --source comments=comments.md
 ```
 
-Read its answer into the section verbatim — resolved pointers with their sentences, unresolved
-ones with their reasons. **A pointer is resolved by hand or reported as unresolved**: the
-reader is told which artefact was searched and what was not found there, and can go look. Two
-things commonly cause one and both are repairable — a source that was never passed (the rule,
-the spec, a sibling issue), and a source order that is not the trail's, which the `also` line
-under a binding warns about.
+**That first run resolves nothing, and it is not meant to.** It harvests every citation the
+vocabulary can see — which is the guarantee it can make, and the failure a tired session
+actually commits — and then prints the enumerated lists each source carries, with the heading
+and lead-in above each one. Nothing is chosen for you. You pick, one list per pointer family,
+and run again:
 
-**A resolved pointer can still carry an `also` line, and it goes into the section.** Two
-sources both holding a list of the same family is a choice the script made for you — it took
-the first one given — and the `also` line is the only place that choice becomes visible. Copy
-it beside the statement, or reorder the sources and run again until no pointer carries one. A
-run that ends 0 with an `also` line standing is not a clean section 1; it is a section 1 whose
-reader must be told which artefact the sentence came out of.
+```
+<abs>/tk/bin/tk-dossier pointers --citing pr=pr.md \
+      --source issue=issue.md --source comments=comments.md \
+      --list recomendacao=issue:34 --list item=rule:66
+```
+
+Now the answer goes into the section verbatim — resolved pointers with their sentences and the
+addresses they were read from, unresolved ones with their reasons.
+
+**Why you choose and the script does not.** Markdown gives an enumerated list no name. Which
+list "recommendation 4" means is written nowhere in the file, so anything the script did to
+decide it would be a reading of the prose nearby — and a reading is a guess wearing the clothes
+of an answer. Two design rounds were spent proving that: `como 4`, from the ordinary Portuguese
+"quero safe-to-merge como 4 vereditos", was bound to a sentence about declarations of
+uncertainty; `seção 3`, cited against a comment opening "Seção reescrita na PR #156", was bound
+to a list of DECISIONS three lines below that phrase. Both at exit 0, both reading exactly like
+a right answer. Refusing to guess is recoverable and a wrong binding is not, which is the
+premise this file opens with. So the script quotes what it was pointed at, and being pointed
+somewhere wrong is a mistake you can see, because you made it.
 
 **The vocabulary is a limit, not a promise.** A citation whose noun the script does not carry
 is not reported as unresolved — it is not reported at all, and no scan replaces reading. So the
@@ -121,18 +132,12 @@ empty answer never claims the text cites nothing: it says nothing matched THE VO
 is the only claim a word list can make. `--noun <word>,<plural>` extends it when you know the
 trail numbers under another word.
 
-An earlier design did try to guess those words, by watching for citation shapes under nouns
-that label a list in some source. It was cut, measured against real trails: `como 4` in "quero
-safe-to-merge como 4 vereditos" was offered as a pointer and, with the remedy it printed, bound
-confidently to an unrelated sentence. Refusing to guess is recoverable and a wrong binding is
-not, which is the whole premise this file opens with.
-
 **What the harvest does not find**, so that section 1 never reads as exhaustive when it is not:
 a noun outside the vocabulary above; a noun and its index separated by anything but a space or
 an ordinal marker ("o item que disparou foi o 5"); an index that is a lowercase letter or
 parenthesised ("critério (b)"); an index written as a word ("o quinto item"); and a
 section-numbered heading, which is not read as an enumerated list, so a trail whose steps are
-`## 3. Title` answers no pointer at all. Each of those is read by a human or not at all, and
+`## 3. Title` offers no list to declare. Each of those is read by a human or not at all, and
 section 1 says which ones it met.
 
 **Section 5 — the mechanics.** The files and the size come from the diff. The collision comes
@@ -155,7 +160,7 @@ dossier, and it is never filled in from what the branch seems to be about.
 
 | Section | Degraded to |
 |---|---|
-| 1 | run the script with `--citing` and no `--source`, and copy what it says: every pointer unresolved, each reason ending `was found in no source at all`, or — where the PR cites no number the vocabulary carries — the line saying nothing matched that vocabulary. Never a sentence claiming the PR cites nothing |
+| 1 | run the script with `--citing` and no `--source`, and copy what it says: every pointer unresolved for want of a declared list, with no candidate offered because there is no source to offer one from — or, where the PR cites no number the vocabulary carries, the line saying nothing matched that vocabulary. Never a sentence claiming the PR cites nothing |
 | 2 | one row per commit: what it changed, against what the commit message claims it is for. Where the message gives no reason, the row says the reason is unrecorded — never a reason read off the diff |
 | 3 | written from the diff, which is a real source for this section |
 | 4 | "none declared" — an author who declared no uncertainty declared none; the dossier does not go looking for it in the code |

@@ -8,13 +8,18 @@ dossier is, and its five sections, is `../reference/dossier.md`; this script
 owns the two that a writer working from memory gets wrong.
 
 POINTERS (`pointers`) — every "recommendation N", "item N", "criterion A" a text
-cites by number, harvested from the citing texts and bound to the sentence it
-names in the source texts. Two properties are the whole point, and neither
-survives being done by hand under a closing session's fatigue: nothing is
-OMITTED, because the harvest is exhaustive over a vocabulary it prints; and
-nothing is GUESSED, because a pointer with no single unambiguous binding comes
-back UNRESOLVED carrying the reason. A dossier that invents the sentence behind
-a number is worse than the four tabs it replaced — the tabs were at least true.
+cites by number, harvested from the citing texts and quoted from the source
+text the CALLER points it at. Two properties are the whole point, and the split
+between them is the design: nothing is OMITTED, which the script guarantees by
+harvesting exhaustively over a vocabulary it prints, because omission is the
+failure a closing session actually commits; and nothing is GUESSED, which it
+guarantees by refusing to decide WHICH list a pointer means. Markdown gives a
+list no name, so that decision can only be read out of the prose nearby, and
+two review rounds proved what such a reading produces — `como 4`, from "quero
+safe-to-merge como 4 vereditos", bound to an unrelated sentence at exit 0. The
+first run offers the lists each source carries; `--list` is the caller saying
+which one. A dossier that invents the sentence behind a number is worse than
+the four tabs it replaced — the tabs were at least true.
 
 COLLISIONS (`collisions`) — whether two open branches can both land. The forge's
 own `mergeable`/`CLEAN` answers ONE branch against the default branch and knows
@@ -27,11 +32,13 @@ closes is the caller's job, with the `gh` it already runs; the texts arrive here
 as files. So this script behaves the same on a machine with no forge CLI, and
 the suite proves both subcommands without one.
 
-EXIT CODES are the same three everywhere: 0 the answer is clean, 1 the answer
-carries something the dossier must state (an unresolved pointer, a colliding
-pair), 2 the run itself could not be made. 1 is a finding, never a crash — a
-caller that treats it as one drops exactly the material this script exists to
-surface.
+EXIT CODES are the same three everywhere: 0 nothing is outstanding — every
+pointer harvested resolved against a declared list, every pair merged clean —,
+1 the answer carries something the dossier must state (an unresolved pointer,
+a colliding pair), 2 the run itself could not be made. 1 is a finding, never a
+crash — a caller that treats it as one drops exactly the material this script
+exists to surface — and the first `pointers` run of a trail ends 1 by
+construction, because nothing has been declared yet.
 """
 
 import argparse
@@ -116,9 +123,10 @@ def unaccent_indexed(s):
 # The pointer vocabulary. A family is one concept and the spellings that reach
 # it; the report prints the families it searched, because a harvest is only
 # exhaustive over words it knows and a reader must be able to see which those
-# were. `--noun` adds a family of one word for a project whose trail says
-# "requisito 4" — an unknown noun is invisible here, and invisible is the one
-# outcome the UNRESOLVED line exists to prevent.
+# were. `--noun` extends it for a trail that says "requisito 4". An unknown noun
+# is INVISIBLE here — not unresolved, invisible — and nothing in this script
+# prevents that; what it does instead is never claim otherwise, which is why the
+# empty answer speaks about the vocabulary and never about the text.
 POINTER_NOUNS = {
     "recomendacao": ("recomendacao", "recomendacoes", "recommendation", "recommendations"),
     "item": ("item", "itens", "items"),
@@ -183,22 +191,18 @@ def strip_fences(lines):
     return out
 
 
-def label_of(lines, start):
-    """The text that says what a block at `start` enumerates.
+def context_of(lines, start):
+    """The heading and lead-in above a block, SHOWN so a caller can choose it.
 
-    Two things answer it: the nearest heading above, and the WHOLE paragraph
-    immediately above — every contiguous non-blank line, not just the last one.
-    Both are taken because either can carry the word alone: a list under
-    `## Recommendations` with no lead-in, and a list whose lead-in names the
-    concept under a heading that says something else.
-
-    The whole paragraph and not its last line, because a lead-in wraps. The
-    paragraph introducing the five review triggers in the author's own
-    `shared-projects-CLAUDE.md` (another repo — this one ships no such list)
-    says "Items 1, 2, 4 and 5 are stakes triggers" three lines before the list
-    starts and ends on a line carrying no noun at all — read by its last line, that list answers to
-    nothing and every `item N` in the trail comes back unresolved against a
-    source that plainly holds the sentence."""
+    This text is never matched against anything. It used to be: a block was
+    tagged with every pointer family whose word appeared anywhere in it, and
+    that inference produced a confident, silent, wrong binding every time a
+    word was used in ordinary prose rather than as the list's name — `como 4`
+    from "safe-to-merge como 4 vereditos", and `seção 3` from "Seção reescrita
+    na PR #156" above a list of DECISIONS. Markdown carries no field saying
+    what a list is called, so any reading of the prose around one is a guess,
+    and a guess is exactly what this script may not make. The caller declares
+    the list with `--list`; this string is here to make that choice cheap."""
     heading, lead, seen_text = "", [], False
     for i in range(start - 1, -1, -1):
         stripped = lines[i].strip()
@@ -219,12 +223,6 @@ def label_of(lines, start):
     return heading + " " + " ".join(lead)
 
 
-def families_of(label, vocabulary):
-    """The pointer families a block's label answers to."""
-    words = {w.lower() for w in WORD_RE.findall(unaccent(label))}
-    return {fam for fam, spellings in vocabulary.items() if words & set(spellings)}
-
-
 def index_after(first, offset):
     """The index a renderer SHOWS for the entry `offset` places into a run.
 
@@ -241,22 +239,21 @@ def index_after(first, offset):
 class Block:
     """One enumerated run in a source: what it is called, and what it says."""
 
-    def __init__(self, kind, line, label, entries, vocabulary):
+    def __init__(self, kind, line, context, entries):
         self.kind = kind
         self.line = line
-        self.label = label
+        self.context = context
         # index -> (line the entry starts on, its statement). The ENTRY's line,
         # never the block's: a report that sends every pointer of a six-entry
         # list to the same line has not been followed back by anyone
         self.entries = entries
-        self.families = families_of(label, vocabulary)
 
     def span(self):
         keys = list(self.entries)
         return f"{keys[0]}–{keys[-1]}" if len(keys) > 1 else keys[0]
 
 
-def list_blocks(lines, vocabulary):
+def list_blocks(lines):
     """Ordered-list runs, with their continuation lines folded in.
 
     A run needs TWO entries to be a list: one `A. something` alone is a
@@ -296,8 +293,7 @@ def list_blocks(lines, vocabulary):
         entries.append((at, " ".join(texts)))
         if len(entries) >= 2:
             keyed = {index_after(first, n): e for n, e in enumerate(entries)}
-            blocks.append(Block("list", start + 1, label_of(lines, start),
-                                keyed, vocabulary))
+            blocks.append(Block("list", start + 1, context_of(lines, start), keyed))
     return blocks
 
 
@@ -305,7 +301,7 @@ def cells_of(row):
     return [c.strip() for c in TABLE_ROW_RE.match(row).group("cells").split("|")]
 
 
-def table_blocks(lines, vocabulary):
+def table_blocks(lines):
     """Markdown tables whose first column is a bare index.
 
     A contract in this repo is as often a table as a list — `| 1 | Stats line |`
@@ -337,25 +333,20 @@ def table_blocks(lines, vocabulary):
             # the header row is INSIDE the block, so label_of cannot see it —
             # and a table names its own subject there (`| # | Block | Marker |`)
             # more reliably than any prose above it does
-            label = label_of(lines, start) + " " + rows[0]
-            blocks.append(Block("table", start + 1, label, keyed, vocabulary))
+            context = context_of(lines, start) + " " + rows[0]
+            blocks.append(Block("table", start + 1, context, keyed))
     return blocks
 
 
-def blocks_of(lines, vocabulary):
+def blocks_of(lines):
     lines = strip_fences(lines)
-    return list_blocks(lines, vocabulary) + table_blocks(lines, vocabulary)
+    return list_blocks(lines) + table_blocks(lines)
 
 
 class Pointer:
     def __init__(self, noun, family, index):
         self.noun, self.family, self.index = noun, family, index
         self.citations = []      # (label, line, text, how many times on it)
-        # other sources carrying a list of this family, and ONLY where naming
-        # them is true of what happened. A note that reads "the binding above"
-        # over a pointer that never bound is the same defect as a wrong
-        # binding: the tool asserting something it did not do
-        self.competing = []
         self.source = self.line = self.statement = self.reason = None
 
     def cite(self, label, line, text):
@@ -370,23 +361,6 @@ class Pointer:
     @property
     def resolved(self):
         return self.statement is not None
-
-    def competing_note(self):
-        """What naming the other sources means, given how this pointer ended.
-
-        Two outcomes can honestly carry it and no other. A pointer that BOUND
-        took the first source given, so the order is what to check. A pointer
-        whose source answered with too short a list may be reading the wrong
-        artefact entirely. Ambiguity WITHIN one source is neither: a second
-        artefact says nothing about two lists in the first, and the note is
-        not attached at all."""
-        where = ", ".join(self.competing)
-        if self.resolved:
-            return (f"{where} carry a `{self.family}` list too, and this "
-                    "statement came from the FIRST source given — check that "
-                    "order is the trail's, because nothing else will")
-        return (f"{where} carry a `{self.family}` list too, and one of them may "
-                "be the artefact this number was written against")
 
 
 def harvest(citing, vocabulary):
@@ -413,56 +387,53 @@ def harvest(citing, vocabulary):
     return list(found.values())
 
 
-def bind(pointer, sources):
-    """Bind one pointer to the sentence it names, or say why it cannot be.
+def declared(arg, sources):
+    """`family=source:line` — the caller naming which list a family means.
 
-    THE FIRST SOURCE THAT ANSWERS IS THE ANSWER. Sources are given in the order
-    of the trail — the artefact the numbers were written against comes first —
-    and a source carrying a list of this family answers the pointer, whether or
-    not that list has the entry. Falling through to a later source when the
-    first one's list is too short would silently prefer whichever artefact
-    happens to have an entry with that number, which is the guess, dressed as a
-    hit.
+    This replaces an inference that could not be made honestly. Markdown gives
+    a list no name, so the tool asked the prose around it and was wrong in a
+    way no reader could see. Now the answer comes from whoever read the trail,
+    and the tool's job shrinks to what it can guarantee: quoting the right
+    entry of the list it was pointed at."""
+    family, sep, where = arg.partition("=")
+    source, colon, line = where.rpartition(":")
+    if not (sep and colon) or not line.isdigit() or not family:
+        fail(f"--list {arg!r}: the shape is `family=source:line`, where `source` "
+             "is a --source label and `line` is the line its list starts on. "
+             "Run without --list to see the lists each source carries.")
+    known = dict(sources)
+    if source not in known:
+        fail(f"--list {arg!r}: `{source}` is not one of the sources given "
+             f"({', '.join(known) or 'none'}).")
+    for block in known[source]:
+        if block.line == int(line):
+            return family.lower(), source, block
+    at = ", ".join(str(b.line) for b in known[source]) or "none at all"
+    fail(f"--list {arg!r}: `{source}` has no enumerated list starting on line "
+         f"{line}. It has lists on line(s): {at}.")
 
-    Within one source, TWO lists of the same family answer nothing: the report
-    names both and the writer reads them.
 
-    ACROSS sources the precedence decides silently, so it is REPORTED — but
-    only on the two outcomes where naming another artefact is TRUE of what
-    happened, which `competing_note` spells out. A caller who passes a comment
-    before the issue it comments on gets every pointer bound to the comment's
-    own renumbering, resolved, exit 0, and no sign at all: measured on a real
-    trail, and the only thing that makes a wrong calling order visible to the
-    reader who has to trust the answer."""
-    for label, blocks in sources:
-        eligible = [b for b in blocks if pointer.family in b.families]
-        if not eligible:
-            continue
-        competing = [f"{other}:{b.line}" for other, rest in sources
-                     if other != label for b in rest
-                     if pointer.family in b.families]
-        if len(eligible) > 1:
-            where = ", ".join(f"{label}:{b.line}" for b in eligible)
-            # deliberately WITHOUT `competing`: the ambiguity is inside this
-            # source, and naming a different artefact would point the reader
-            # away from the two lists that actually caused it
-            pointer.reason = (f"{len(eligible)} enumerated lists in `{label}` are "
-                              f"labelled `{pointer.family}` ({where}) — which one "
-                              "the pointer means is not in the text")
-            return
-        block = eligible[0]
-        pointer.competing = competing
-        if pointer.index in block.entries:
-            pointer.line, pointer.statement = block.entries[pointer.index]
-            pointer.source = label
-        else:
-            pointer.reason = (f"the {block.kind} at `{label}`:{block.line} labelled "
-                              f"`{pointer.family}` runs {block.span()}, so "
-                              f"{pointer.index} is not one of its entries")
+def bind(pointer, declarations):
+    """Quote the entry, or say why there is nothing to quote.
+
+    Two outcomes and no third. Either the caller declared which list this
+    family means and the entry exists, or the report says which of those two
+    is missing. Nothing here reads the prose around a list, so nothing here
+    can prefer the wrong artefact."""
+    if pointer.family not in declarations:
+        pointer.reason = (f"no list is declared for `{pointer.family}` — pick one "
+                          f"from the candidates below and pass `--list "
+                          f"{pointer.family}=<source>:<line>`")
         return
-    named = ", ".join(f"`{label}`" for label, _ in sources) or "no source at all"
-    pointer.reason = (f"no enumerated list labelled `{pointer.family}` was found in "
-                      f"{named}")
+    source, block = declarations[pointer.family]
+    if pointer.index in block.entries:
+        pointer.line, pointer.statement = block.entries[pointer.index]
+        pointer.source = source
+    else:
+        pointer.reason = (f"the declared {block.kind} at `{source}`:{block.line} "
+                          f"runs {block.span()}, so {pointer.index} is not one of "
+                          "its entries — either the trail cites a number that "
+                          "does not exist, or the declared list is the wrong one")
 
 
 def shorten(text, width=150):
@@ -477,35 +448,47 @@ def wrap(text, indent):
     that qualified it; wrapped because printing it whole produced 500-character
     lines on real trails. The two are not in tension — the cap belongs on the
     LINE, never on the text."""
+    # `break_long_words` and `break_on_hyphens` OFF: a URL, a branch name or a
+    # path is one token, and splitting it mid-word leaves the reader no way to
+    # tell a wrap from a hyphen that was really there. A line may overrun; a
+    # mangled identifier may not. The `split`/`join` is load-bearing too —
+    # `textwrap` replaces each whitespace CHARACTER and never collapses a run
     return textwrap.fill(" ".join(text.split()), width=96,
-                         initial_indent=indent, subsequent_indent=" " * len(indent))
+                         initial_indent=indent, subsequent_indent=" " * len(indent),
+                         break_long_words=False, break_on_hyphens=False)
 
 
-def report_pointers(pointers, vocabulary, sources, as_json):
+def report_pointers(pointers, vocabulary, sources, declarations, as_json):
     resolved = [p for p in pointers if p.resolved]
     unresolved = [p for p in pointers if not p.resolved]
     if as_json:
         print(json.dumps({
             "vocabulary": sorted(vocabulary),
             "sources": [label for label, _ in sources],
+            "declarations": {family: {"source": source, "line": block.line}
+                             for family, (source, block) in declarations.items()},
             "counts": {"cited": len(pointers), "resolved": len(resolved),
                        "unresolved": len(unresolved)},
             "pointers": [{
                 "noun": p.noun, "family": p.family, "index": p.index,
                 "resolved": p.resolved, "source": p.source, "line": p.line,
                 "statement": p.statement, "reason": p.reason,
-                "competing": p.competing,
                 "citations": [{"source": s, "line": n, "text": t, "times": k}
                               for s, n, t, k in p.citations],
             } for p in pointers],
+            "candidates": [{"source": label, "line": b.line, "kind": b.kind,
+                            "span": b.span(), "context": shorten(b.context, 200)}
+                           for label, blocks in sources for b in blocks],
         }, ensure_ascii=False, indent=2))
         return
 
     print(f"## pointers — {len(pointers)} cited · {len(resolved)} resolved · "
           f"{len(unresolved)} unresolved\n")
     print("vocabulary searched: " + ", ".join(sorted(vocabulary)))
-    print("sources, in the order they answer: "
-          + (", ".join(label for label, _ in sources) or "(none given)") + "\n")
+    print("sources: " + (", ".join(label for label, _ in sources) or "(none given)"))
+    print("lists declared: " + (", ".join(
+        f"{family}={source}:{block.line}"
+        for family, (source, block) in sorted(declarations.items())) or "(none)") + "\n")
     if not pointers:
         # NEVER "this text cites nothing": that is a claim about the TEXT, and
         # the only claim a harvest can make is about the words it was given
@@ -522,8 +505,22 @@ def report_pointers(pointers, vocabulary, sources, as_json):
         for label, n, text, times in p.citations:
             seen = f" (×{times})" if times > 1 else ""
             print(f"            cited  {label}:{n}{seen}  {shorten(text, 110)}")
-        if p.competing:
-            print(wrap(p.competing_note(), "            also   "))
+
+    undeclared = sorted({p.family for p in unresolved
+                         if p.family not in declarations})
+    if undeclared:
+        print(f"\n## the lists each source carries — pick one per family "
+              f"({', '.join(undeclared)})\n")
+        print("Nothing below is chosen for you. Which list a family means is not "
+              "written\nanywhere in Markdown, so reading the prose around one "
+              "would be a guess, and a\nguess that reads like an answer is the "
+              "worst thing this script could print.\n")
+        for label, blocks in sources:
+            for b in blocks:
+                print(f"{label}:{b.line}  {b.kind}, entries {b.span()}")
+                print(wrap(b.context or "(no heading or lead-in above it)",
+                           " " * 12))
+        print("\nThen re-run with `--list <family>=<source>:<line>` for each.")
     if unresolved:
         print(f"\n{len(unresolved)} pointer(s) did not resolve. Section 1 of the "
               "dossier carries them AS\nunresolved, named — dropping one leaves "
@@ -544,13 +541,17 @@ def cmd_pointers(args):
 
     citing = [(label, read_text(label, path))
               for label, path in map(labelled, args.citing)]
-    sources = [(label, blocks_of(read_text(label, path), vocabulary))
+    sources = [(label, blocks_of(read_text(label, path)))
                for label, path in map(labelled, args.source or ())]
+    declarations = {}
+    for arg in args.list or ():
+        family, source, block = declared(arg, sources)
+        declarations[family] = (source, block)
 
     pointers = harvest(citing, vocabulary)
     for pointer in pointers:
-        bind(pointer, sources)
-    report_pointers(pointers, vocabulary, sources, args.json)
+        bind(pointer, declarations)
+    report_pointers(pointers, vocabulary, sources, declarations, args.json)
     return EXIT_FINDING if any(not p.resolved for p in pointers) else EXIT_OK
 
 
@@ -665,6 +666,10 @@ def main(argv=None):
                    help="a text that CARRIES the numbered statements (the issue "
                         "body, a spec). Repeatable, and the order is the order "
                         "they answer in.")
+    p.add_argument("--list", action="append", metavar="FAMILY=SOURCE:LINE",
+                   help="which enumerated list a pointer family means — "
+                        "`--list recomendacao=154:34`. Run without it to see "
+                        "the lists each source carries. Repeatable.")
     p.add_argument("--noun", action="append", metavar="WORD[,WORD...]",
                    help="one more pointer noun, with every spelling that reaches "
                         "it — `--noun requisito,requisitos`. Repeatable.")

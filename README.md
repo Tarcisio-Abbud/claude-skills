@@ -71,12 +71,15 @@ A **merge dossier** is written for every PR the versioning gate handles, before 
 opens — the decision made readable where it is read, so a user who has already read the whole
 trail can still say what is being merged. Its five sections and the degraded form a PR with no
 trail gets are in `tk/reference/dossier.md`; two of them are measured by **`tk/bin/tk-dossier`**
-rather than recalled. `pointers` binds every "recommendation 4", "item 3", "criterion A" a text
-cites by number to the sentence it names in the source artefacts, and reports as UNRESOLVED —
-never as a guess — any pointer with no single unambiguous binding. Where two sources both carry a list of
-the family, it names the ones it did not take, since choosing the first is a choice made on the
-reader's behalf. What it never does is guess a noun it was not given: the empty answer says
-nothing matched THE VOCABULARY, never that the text cites nothing. `collisions` merges each pair
+rather than recalled. `pointers` harvests every "recommendation 4", "item 3",
+"criterion A" a text cites by number — exhaustively, over a vocabulary it prints — and quotes
+each one from the list the CALLER declared with `--list`, reporting as UNRESOLVED any pointer
+whose list was not declared or whose index that list lacks. It never decides which list a
+pointer means: Markdown gives a list no name, so deciding would mean reading the prose around
+it, and two review rounds measured what that produces (`como 4`, from "safe-to-merge como 4
+vereditos", bound to an unrelated sentence at exit 0). The first run offers the lists each
+source carries, with their headings, and chooses none. The empty answer says nothing matched
+THE VOCABULARY, never that the text cites nothing. `collisions` merges each pair
 of open branches for real with `git merge-tree --write-tree`, because the forge's
 `mergeable`/`CLEAN` compares one branch with the default branch alone and cannot see a second
 open PR: several PRs rewriting one paragraph all read green, and the second to merge breaks.

@@ -53,10 +53,12 @@ class DossierTest(unittest.TestCase):
         return subprocess.run([sys.executable, DOSSIER, *argv],
                               capture_output=True, text=True, timeout=120)
 
-    def pointers(self, citing, *sources, extra=()):
+    def pointers(self, citing, *sources, lists=(), extra=()):
         argv = ["pointers", "--citing", f"pr={citing}"]
         for n, source in enumerate(sources, 1):
             argv += ["--source", f"s{n}={source}"]
+        for one in lists:
+            argv += ["--list", one]
         return self.run_dossier(*argv, *extra)
 
     def flat(self, text):
@@ -77,14 +79,21 @@ class DossierTest(unittest.TestCase):
         return "\n".join(lines)
 
 
-# --- binding a pointer to the sentence it names -----------------------------
+# --- resolving a pointer against the list the CALLER declared ----------------
+#
+# The tool used to choose the list itself, by matching the pointer's noun
+# against the prose around each block. It was wrong in the one way that
+# matters — confidently, silently, at exit 0 — because Markdown carries no
+# field naming a list, so any reading of the prose around one is a guess.
+# Declaring is what replaced it, and these tests hold the two properties that
+# survive: nothing is omitted, and nothing is chosen for the reader.
 
 class TestBinding(DossierTest):
-    def test_a_pointer_resolves_to_the_sentence_and_to_its_own_line(self):
+    def test_a_declared_list_resolves_to_the_sentence_and_to_its_own_line(self):
         citing = self.write("pr.md", "Adopted, as recommendation 2 asks.\n")
         source = self.write("issue.md", RECOMMENDATIONS)
-        r = self.pointers(citing, source)
-        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:5",))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         block = self.entry(r.stdout, "recommendation 2")
         self.assertIn("Keep five lenses on round one.", block)
         # the ENTRY's line (7), never the line the list starts on (5)
@@ -93,63 +102,89 @@ class TestBinding(DossierTest):
     def test_a_continuation_line_is_part_of_the_statement(self):
         citing = self.write("pr.md", "recommendation 1 stands.\n")
         source = self.write("issue.md", RECOMMENDATIONS)
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:5",))
         self.assertIn("running three review campaigns in parallel",
-                      self.entry(r.stdout, "recommendation 1"))
+                      self.flat(self.entry(r.stdout, "recommendation 1")))
 
-    def test_a_pointer_with_no_list_of_its_family_is_unresolved_not_guessed(self):
+    def test_an_undeclared_family_is_unresolved_and_names_the_flag(self):
         citing = self.write("pr.md", "It fires on item 3 alone.\n")
         source = self.write("issue.md", RECOMMENDATIONS)
         r = self.pointers(citing, source)
         self.assertEqual(r.returncode, 1, r.stdout)
-        block = self.entry(r.stdout, "item 3")
-        self.assertIn("no enumerated list labelled `item`", block)
+        block = self.flat(self.entry(r.stdout, "item 3"))
+        self.assertIn("no list is declared for `item`", block)
+        self.assertIn("--list item=<source>:<line>", block)
         self.assertNotIn("Lower the ceiling", block)
 
-    def test_an_index_the_list_does_not_have_is_unresolved_with_the_span(self):
+    def test_an_index_the_declared_list_does_not_have_is_unresolved_with_the_span(self):
         citing = self.write("pr.md", "See recommendation 9.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:5",))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("runs 1–3", self.flat(self.entry(r.stdout, "recommendation 9")))
+
+    def test_a_second_list_of_the_same_shape_is_never_consulted(self):
+        """The declared list is the only one read. Two lists that would both
+        have answered is precisely the case the old inference got wrong."""
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS + """
+## Recommendations, as a comment restates them
+
+1. a
+2. THE OTHER LIST
+""")
+        r = self.pointers(citing, source, lists=("recomendacao=s1:5",))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        block = self.entry(r.stdout, "recommendation 2")
+        self.assertIn("Keep five lenses", block)
+        self.assertNotIn("THE OTHER LIST", r.stdout.split("the lists each source")[0])
+
+
+# --- declaring: the caller's instruction, and what happens when it is wrong --
+
+class TestDeclaration(DossierTest):
+    def test_the_candidates_are_shown_with_their_context_and_nothing_is_chosen(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
         source = self.write("issue.md", RECOMMENDATIONS)
         r = self.pointers(citing, source)
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("runs 1–3", self.entry(r.stdout, "recommendation 9"))
+        self.assertIn("s1:5  list, entries 1–3", r.stdout)
+        self.assertIn("## Recommendations", r.stdout)
+        self.assertIn("Nothing below is chosen for you", r.stdout)
 
-    def test_two_lists_of_one_family_in_one_source_bind_to_neither(self):
-        citing = self.write("pr.md", "See recommendation 1.\n")
-        source = self.write("issue.md", RECOMMENDATIONS + """
-## Recommendations, revised
+    def test_a_line_carrying_no_list_is_refused_with_the_lines_that_do(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:99",))
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("no enumerated list starting on line 99", r.stderr)
+        self.assertIn("line(s): 5", r.stderr)
+        self.assertEqual(r.stdout, "")
 
-1. Something else entirely.
-2. And another.
-""")
-        r = self.pointers(citing, source)
-        self.assertEqual(r.returncode, 1, r.stdout)
-        block = self.entry(r.stdout, "recommendation 1")
-        self.assertIn("2 enumerated lists", block)
-        self.assertNotIn("Serialize the campaigns", block)
-        self.assertNotIn("Something else entirely", block)
+    def test_a_source_that_was_never_given_is_refused(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, lists=("recomendacao=nope:5",))
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("`nope` is not one of the sources given", r.stderr)
 
-    def test_the_first_source_that_answers_is_the_answer(self):
-        citing = self.write("pr.md", "See recommendation 5.\n")
-        first = self.write("first.md", RECOMMENDATIONS)
-        second = self.write("second.md", """## Recommendations
+    def test_a_malformed_declaration_is_refused_with_its_shape(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, lists=("recomendacao=s1",))
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("family=source:line", r.stderr)
 
-1. a
-2. b
-3. c
-4. d
-5. THE LATER SOURCE
-""")
-        r = self.pointers(citing, first, second)
-        self.assertEqual(r.returncode, 1, r.stdout)
-        block = self.entry(r.stdout, "recommendation 5")
-        self.assertIn("runs 1–3", block)
-        self.assertNotIn("THE LATER SOURCE", block)
-
-    def test_a_pointer_with_no_source_at_all_says_so(self):
-        citing = self.write("pr.md", "See recommendation 1.\n")
-        r = self.pointers(citing)
-        self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("no source at all", self.entry(r.stdout, "recommendation 1"))
+    def test_json_carries_the_declarations_and_the_candidates(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:5",),
+                          extra=("--json",))
+        data = json.loads(r.stdout)
+        self.assertEqual(data["declarations"],
+                         {"recomendacao": {"source": "s1", "line": 5}})
+        self.assertEqual(data["candidates"][0]["span"], "1–3")
+        self.assertIn("Recommendations", data["candidates"][0]["context"])
 
 
 # --- what counts as an enumerated list in a source --------------------------
@@ -163,7 +198,7 @@ class TestSourceShapes(DossierTest):
 1. second
 1. third
 """)
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("item=s1:3",))
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn("third", self.entry(r.stdout, "item 3"))
 
@@ -172,9 +207,11 @@ class TestSourceShapes(DossierTest):
         source = self.write("issue.md", "## Criteria\n\nA. the only one\n")
         r = self.pointers(citing, source)
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("no enumerated list", self.entry(r.stdout, "criterion A"))
+        self.assertIn("no list is declared", self.flat(self.entry(r.stdout, "criterion A")))
+        self.assertNotIn("the only one", r.stdout)
+        self.assertNotIn("entries", r.stdout)      # nothing is offered to declare
 
-    def test_a_table_with_an_index_column_is_a_list_labelled_by_its_header(self):
+    def test_a_table_with_an_index_column_is_an_enumerated_list(self):
         citing = self.write("pr.md", "See block 2.\n")
         source = self.write("issue.md", """## Contract
 
@@ -183,11 +220,11 @@ class TestSourceShapes(DossierTest):
 | 1 | Stats line | data-stats |
 | 2 | One card per PR | data-cards |
 """)
-        r = self.pointers(citing, source)
-        self.assertEqual(r.returncode, 0, r.stdout)
+        r = self.pointers(citing, source, lists=("bloco=s1:3",))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         self.assertIn("One card per PR", self.entry(r.stdout, "block 2"))
 
-    def test_a_lead_in_that_wraps_still_labels_the_list(self):
+    def test_a_lead_in_that_wraps_is_shown_whole_in_the_candidate(self):
         citing = self.write("pr.md", "It fires on item 3 alone.\n")
         source = self.write("issue.md", """## The rule
 
@@ -200,8 +237,10 @@ The clause after them overrides all five.
 3. the diff has a hundred lines or more
 """)
         r = self.pointers(citing, source)
-        self.assertEqual(r.returncode, 0, r.stdout)
-        self.assertIn("a hundred lines or more", self.entry(r.stdout, "item 3"))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        shown = self.flat(r.stdout.split("carries")[1])
+        self.assertIn("The five below are the triggers", shown)
+        self.assertIn("overrides all five", shown)
 
     def test_a_list_inside_a_fence_is_quoted_not_enumerated(self):
         citing = self.write("pr.md", "See recommendation 2.\n")
@@ -215,6 +254,7 @@ The clause after them overrides all five.
         r = self.pointers(citing, source)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertNotIn("also quoted", r.stdout)
+        self.assertNotIn("entries 1–2", r.stdout)
 
     def test_a_citation_inside_a_fence_is_not_a_citation(self):
         citing = self.write("pr.md", "Nothing is cited here.\n\n```\nsee item 3\n```\n")
@@ -245,7 +285,7 @@ class TestHarvest(DossierTest):
 1. Serializar as campanhas.
 2. Manter cinco lentes.
 """)
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:3",))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("Recomendação 2", r.stdout)
         self.assertNotIn("Recomendacao 2", r.stdout)
@@ -253,7 +293,7 @@ class TestHarvest(DossierTest):
     def test_one_line_citing_a_pointer_twice_is_one_site_with_its_count(self):
         citing = self.write("pr.md", "item 2 here, and item 2 again on this line.\n")
         source = self.write("issue.md", "## Items\n\n1. a\n2. b\n")
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("item=s1:3",))
         self.assertEqual(r.stdout.count("cited  pr:1"), 1, r.stdout)
         self.assertIn("(×2)", r.stdout)
 
@@ -268,14 +308,15 @@ class TestHarvest(DossierTest):
         self.assertIn("— 0 cited ·", r.stdout)
 
     def test_a_noun_outside_the_vocabulary_is_added_with_all_its_spellings(self):
-        citing = self.write("pr.md", "See requisito 2.\n")
+        citing = self.write("pr.md", "Vide requisito 1 e requisitos 2.\n")
         source = self.write("issue.md", "## Requisitos\n\n1. um\n2. dois\n")
         bare = self.pointers(citing, source)
         self.assertIn("— 0 cited ·", bare.stdout)
-        named = self.pointers(citing, source,
+        named = self.pointers(citing, source, lists=("requisito=s1:3",),
                               extra=("--noun", "requisito,requisitos"))
-        self.assertEqual(named.returncode, 0, named.stdout)
-        self.assertIn("dois", self.entry(named.stdout, "requisito 2"))
+        self.assertEqual(named.returncode, 0, named.stderr + named.stdout)
+        self.assertIn("um", self.entry(named.stdout, "requisito 1"))
+        self.assertIn("dois", self.entry(named.stdout, "requisitos 2"))
 
     def test_the_report_names_the_vocabulary_it_searched(self):
         citing = self.write("pr.md", "nothing\n")
@@ -290,7 +331,8 @@ class TestReport(DossierTest):
     def test_json_carries_the_binding_the_reason_and_the_counts(self):
         citing = self.write("pr.md", "recommendation 2 and recommendation 9\n")
         source = self.write("issue.md", RECOMMENDATIONS)
-        r = self.pointers(citing, source, extra=("--json",))
+        r = self.pointers(citing, source, lists=("recomendacao=s1:5",),
+                          extra=("--json",))
         self.assertEqual(r.returncode, 1, r.stderr)
         data = json.loads(r.stdout)
         self.assertEqual(data["counts"]["cited"], 2)
@@ -313,77 +355,10 @@ class TestReport(DossierTest):
         citing = self.write("pr.md", "See recommendation 2.\n")
         source = self.write("issue.md", RECOMMENDATIONS)
         r = self.run_dossier("pointers", "--citing", f"pr156={citing}",
-                             "--source", f"154={source}")
+                             "--source", f"154={source}",
+                             "--list", "recomendacao=154:5")
         self.assertIn("154:7", r.stdout)
         self.assertIn("cited  pr156:1", r.stdout)
-
-
-# --- the precedence between sources, made visible --------------------------
-
-class TestCompetingSources(DossierTest):
-    SHORT = """## Recommendations
-
-1. a
-2. b
-"""
-
-    def test_a_later_source_carrying_the_same_family_is_named(self):
-        """Measured on a real trail: a comment passed before the issue it
-        comments on bound every pointer to the comment's own renumbering,
-        resolved, exit 0, with no sign at all."""
-        citing = self.write("pr.md", "See recommendation 2.\n")
-        first = self.write("first.md", RECOMMENDATIONS)
-        second = self.write("second.md", """## Recommendations, as the comment restates them
-
-1. a
-2. THE OTHER ARTEFACT
-""")
-        r = self.pointers(citing, first, second)
-        self.assertEqual(r.returncode, 0, r.stdout)
-        block = self.flat(self.entry(r.stdout, "recommendation 2"))
-        self.assertIn("Keep five lenses", block)
-        self.assertIn("s2:", block)
-        self.assertIn("FIRST source given", block)
-
-    def test_a_single_source_says_nothing_about_competing_lists(self):
-        citing = self.write("pr.md", "See recommendation 2.\n")
-        source = self.write("issue.md", RECOMMENDATIONS)
-        r = self.pointers(citing, source)
-        self.assertNotIn("also", r.stdout)
-
-    def test_an_unresolved_pointer_is_never_told_a_binding_happened(self):
-        """The note is written for the outcome it is attached to. Over a
-        pointer that never bound, "the binding above" is the tool asserting
-        something it did not do — the defect it was added to prevent."""
-        citing = self.write("pr.md", "See recommendation 5.\n")
-        first = self.write("first.md", self.SHORT)
-        second = self.write("second.md", RECOMMENDATIONS)
-        r = self.pointers(citing, first, second)
-        self.assertEqual(r.returncode, 1, r.stdout)
-        block = self.flat(self.entry(r.stdout, "recommendation 5"))
-        self.assertIn("may be the artefact this number was written against", block)
-        self.assertNotIn("FIRST source given", block)
-
-    def test_ambiguity_inside_one_source_names_no_other_artefact(self):
-        """Two lists in the FIRST source is not a precedence problem, and
-        pointing at a second artefact sends the reader away from the two lists
-        that actually caused it."""
-        citing = self.write("pr.md", "See recommendation 1.\n")
-        first = self.write("first.md", RECOMMENDATIONS + "\n## Recommendations, revised\n\n1. x\n2. y\n")
-        second = self.write("second.md", RECOMMENDATIONS)
-        r = self.pointers(citing, first, second)
-        self.assertEqual(r.returncode, 1, r.stdout)
-        block = self.entry(r.stdout, "recommendation 1")
-        self.assertIn("2 enumerated lists", block)
-        self.assertNotIn("also", block)
-
-    def test_json_carries_the_competing_sources(self):
-        citing = self.write("pr.md", "See recommendation 2.\n")
-        first = self.write("first.md", RECOMMENDATIONS)
-        second = self.write("second.md", RECOMMENDATIONS)
-        r = self.pointers(citing, first, second, extra=("--json",))
-        data = json.loads(r.stdout)
-        self.assertEqual(data["pointers"][0]["competing"], ["s2:5"])
 
 
 # --- the guards the first round left uncovered -----------------------------
@@ -395,7 +370,7 @@ class TestUncoveredGuards(DossierTest):
         source = self.write("issue.md",
                             "## Items\n\n1. um\n2. " + "palavra " * 60 + "\n")
         citing = self.write("pr.md", "See item 2.\n")
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("item=s1:3",))
         self.assertTrue(all(len(line) <= 100 for line in r.stdout.splitlines()),
                         max(r.stdout.splitlines(), key=len))
         self.assertEqual(r.stdout.count("palavra"), 60, r.stdout)
@@ -407,17 +382,38 @@ class TestUncoveredGuards(DossierTest):
         source = self.write("issue.md",
                             "## Items\n\n1. um\n2. " + "a" * 160 + " " + tail + "\n")
         citing = self.write("pr.md", "See item 2.\n")
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("item=s1:3",))
         self.assertIn(tail, self.flat(r.stdout))
         self.assertNotIn("…", self.entry(r.stdout, "item 2").split("cited")[0])
+
+    def test_a_token_too_long_to_fit_is_never_split_mid_word(self):
+        """A URL, a branch name and a path are one token each, and a split with
+        no marker leaves the reader unable to tell a wrap from a hyphen that
+        was really there. The line may overrun; the identifier may not."""
+        url = "https://example.invalid/" + "a" * 90
+        source = self.write("issue.md", f"## Items\n\n1. um\n2. Ver {url} aqui.\n")
+        citing = self.write("pr.md", "See item 2.\n")
+        r = self.pointers(citing, source, lists=("item=s1:3",))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn(url, r.stdout)
+
+    def test_a_run_of_spaces_in_the_source_does_not_survive_into_the_report(self):
+        """`textwrap` replaces each whitespace CHARACTER and never collapses a
+        run, so the normalisation before it is load-bearing."""
+        source = self.write("issue.md",
+                            "## Items\n\n1. um\n2. dois   com    espacos\n")
+        citing = self.write("pr.md", "See item 2.\n")
+        r = self.pointers(citing, source, lists=("item=s1:3",))
+        self.assertIn("dois com espacos", r.stdout)
+        self.assertNotIn("dois   com", r.stdout)
 
     def test_a_long_citation_line_is_shortened_with_a_mark(self):
         citing = self.write("pr.md", "See item 2, " + "b" * 200 + "\n")
         source = self.write("issue.md", "## Items\n\n1. um\n2. dois\n")
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("item=s1:3",))
         self.assertIn("…", r.stdout)
 
-    def test_a_heading_above_the_lead_in_paragraph_still_labels_the_list(self):
+    def test_a_heading_above_a_lead_in_paragraph_is_shown_in_the_candidate(self):
         citing = self.write("pr.md", "See recommendation 2.\n")
         source = self.write("issue.md", """## Recommendations
 
@@ -427,13 +423,14 @@ Adopted after discussion.
 2. Keep five lenses.
 """)
         r = self.pointers(citing, source)
-        self.assertEqual(r.returncode, 0, r.stdout)
-        self.assertIn("Keep five lenses", self.entry(r.stdout, "recommendation 2"))
+        shown = self.flat(r.stdout.split("carries")[1])
+        self.assertIn("## Recommendations", shown)
+        self.assertIn("Adopted after discussion", shown)
 
     def test_a_fence_that_closes_does_not_blank_the_rest_of_the_file(self):
         citing = self.write("pr.md", "```\nsee item 3\n```\n\nBut item 2 is real.\n")
         source = self.write("issue.md", "## Items\n\n1. um\n2. dois\n")
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("item=s1:3",))
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn("dois", self.entry(r.stdout, "item 2"))
         self.assertNotIn("item 3", r.stdout)
@@ -441,7 +438,7 @@ Adopted after discussion.
     def test_a_letter_list_is_indexed_by_position_like_a_numbered_one(self):
         citing = self.write("pr.md", "See criterion C.\n")
         source = self.write("issue.md", "## Criteria\n\nA. first\nB. second\nC. third\n")
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("criterio=s1:3",))
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn("third", self.entry(r.stdout, "criterion C"))
 
@@ -450,8 +447,8 @@ Adopted after discussion.
         source = self.write("issue.md", "## Blocks\n\n| # |\n|---|\n| 1 |\n| 2 |\n")
         r = self.pointers(citing, source)
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("no enumerated list labelled `bloco`",
-                      self.entry(r.stdout, "block 2"))
+        self.assertIn("no list is declared", self.flat(self.entry(r.stdout, "block 2")))
+        self.assertNotIn("entries", r.stdout)
 
     def test_one_blank_line_does_not_end_a_wrapped_entry(self):
         citing = self.write("pr.md", "See recommendation 1.\n")
@@ -462,7 +459,7 @@ Adopted after discussion.
    The multiplier was parallelism, not depth.
 2. Keep five lenses.
 """)
-        r = self.pointers(citing, source)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:3",))
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn("not depth", self.entry(r.stdout, "recommendation 1"))
 
@@ -470,8 +467,8 @@ Adopted after discussion.
         citing = self.write("pr.md", "Vide recomendações 3.\n")
         source = self.write("issue.md",
                             "## Recomendações\n\n1. um\n2. dois\n3. três\n")
-        r = self.pointers(citing, source)
-        self.assertEqual(r.returncode, 0, r.stdout)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:3",))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         self.assertIn("três", self.entry(r.stdout, "recomendações 3"))
 
 
