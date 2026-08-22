@@ -77,8 +77,8 @@ each one from the list the CALLER declared with `--list`, reporting as UNRESOLVE
 whose list was not declared or whose index that list lacks. It never decides which list a
 pointer means: Markdown gives a list no name, so deciding would mean reading the prose around
 it, and two review rounds measured what that produces (`como 4`, from "safe-to-merge como 4
-vereditos", bound to an unrelated sentence at exit 0). The first run offers the lists each
-source carries, with their headings, and chooses none. The empty answer says nothing matched
+vereditos", bound to an unrelated sentence at exit 0). The first run offers the lists holding
+the numbers cited, with their headings, ordered by how many they hold, and chooses none. The empty answer says nothing matched
 THE VOCABULARY, never that the text cites nothing. `collisions` merges each pair
 of open branches for real with `git merge-tree --write-tree`, because the forge's
 `mergeable`/`CLEAN` compares one branch with the default branch alone and cannot see a second

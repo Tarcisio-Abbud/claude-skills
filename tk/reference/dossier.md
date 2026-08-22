@@ -71,9 +71,13 @@ author wrote "choice without data" or "unmeasured" somewhere — and the dossier
 is putting all of it in one place, where a reader can weigh it at once instead of meeting it
 line by line.
 
-## The two sections that are measured
+## The two sections a script stands behind
 
-Sections 1 and 5 are not written from memory. `tk-dossier` measures them.
+Sections 1 and 5 are not written from memory. `tk-dossier` measures what can be
+measured in them, and says plainly where a judgement remains: section 5 is measured end to
+end, while in section 1 the harvest and the quoting are the script's and the choice of WHICH
+list a family means is yours. A section 1 read as fully measured is over-trusted by exactly
+that choice.
 
 **Where the script is.** Every path in this file is relative to THIS file, and a session runs
 from the user's project, where `tk/` usually means something else. So resolve
@@ -85,7 +89,9 @@ three codes this script promises, and is the sign you skipped this paragraph.
 **The three exit codes** are 0 every pointer harvested was resolved against a list you
 declared, 1 the answer carries something this dossier must state — an unresolved pointer, a
 colliding pair —, 2 the run did not happen, which includes a `--list` naming a line that holds
-no list. The first run of section 1 ends 1 by construction: nothing is declared yet. On 2 the script names what it could not read or reach on
+no list. A first run declares nothing, so every pointer it HARVESTS comes back unresolved
+and it ends 1 — but a trail citing nothing this vocabulary carries harvests none and ends
+0, with the answer saying so. Read the answer, never the code alone. On 2 the script names what it could not read or reach on
 stderr; fix that and run again, and where it cannot be fixed, section 1 or 5 says the
 measurement was not made rather than going silent.
 
@@ -102,13 +108,17 @@ gh api repos/<owner>/<repo>/issues/<n>/comments --jq '.[].body'  > comments.md
 
 **That first run resolves nothing, and it is not meant to.** It harvests every citation the
 vocabulary can see — which is the guarantee it can make, and the failure a tired session
-actually commits — and then prints the enumerated lists each source carries, with the heading
-and lead-in above each one. Nothing is chosen for you. You pick, one list per pointer family,
-and run again:
+actually commits — and then offers the enumerated lists that hold at least one of the numbers
+cited, each with the heading and lead-in above it, ordered by how many of those numbers it
+holds. Nothing is chosen for you: holding the numbers is arithmetic, meaning them is not.
+
+**A trail routinely cites a fourth artefact.** The rule a PR argues against, a sibling issue, a
+spec: whatever holds the statements, add it as another `--source`, or its pointers stay
+unresolved with no list to declare. Then pick one list per family and run again:
 
 ```
 <abs>/tk/bin/tk-dossier pointers --citing pr=pr.md \
-      --source issue=issue.md --source comments=comments.md \
+      --source issue=issue.md --source comments=comments.md --source rule=rule.md \
       --list recomendacao=issue:34 --list item=rule:66
 ```
 
@@ -118,7 +128,7 @@ addresses they were read from, unresolved ones with their reasons.
 **Why you choose and the script does not.** Markdown gives an enumerated list no name. Which
 list "recommendation 4" means is written nowhere in the file, so anything the script did to
 decide it would be a reading of the prose nearby — and a reading is a guess wearing the clothes
-of an answer. Two design rounds were spent proving that: `como 4`, from the ordinary Portuguese
+of an answer. Two review rounds were spent proving that: `como 4`, from the ordinary Portuguese
 "quero safe-to-merge como 4 vereditos", was bound to a sentence about declarations of
 uncertainty; `seção 3`, cited against a comment opening "Seção reescrita na PR #156", was bound
 to a list of DECISIONS three lines below that phrase. Both at exit 0, both reading exactly like
@@ -160,7 +170,7 @@ dossier, and it is never filled in from what the branch seems to be about.
 
 | Section | Degraded to |
 |---|---|
-| 1 | run the script with `--citing` and no `--source`, and copy what it says: every pointer unresolved for want of a declared list, with no candidate offered because there is no source to offer one from — or, where the PR cites no number the vocabulary carries, the line saying nothing matched that vocabulary. Never a sentence claiming the PR cites nothing |
+| 1 | run the script with `--citing` and no `--source`. Copy the pointer lines it prints — every one unresolved for want of a declared list — and write the absence yourself: no source artefact exists, so no list was offered to declare. Where the PR cites no number the vocabulary carries, copy the line saying nothing matched that vocabulary. Never a sentence claiming the PR cites nothing |
 | 2 | one row per commit: what it changed, against what the commit message claims it is for. Where the message gives no reason, the row says the reason is unrecorded — never a reason read off the diff |
 | 3 | written from the diff, which is a real source for this section |
 | 4 | "none declared" — an author who declared no uncertainty declared none; the dossier does not go looking for it in the code |

@@ -66,6 +66,21 @@ class DossierTest(unittest.TestCase):
         certainly carries may still straddle two lines."""
         return " ".join(text.split())
 
+    def offered(self, out):
+        """The candidates section, as its own text.
+
+        A helper and not a `split()` on a word, because a fixture whose own
+        prose carries that word cuts the region in the wrong place — a
+        false pass nobody would see."""
+        keep, lines = False, []
+        for line in out.splitlines():
+            if line.startswith("## the lists that could answer"):
+                keep = True
+                continue
+            if keep:
+                lines.append(line)
+        return "\n".join(lines)
+
     def entry(self, out, head):
         """The block of lines the report prints for one pointer."""
         lines, keeping = [], False
@@ -150,7 +165,7 @@ class TestDeclaration(DossierTest):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("s1:5  list, entries 1–3", r.stdout)
         self.assertIn("## Recommendations", r.stdout)
-        self.assertIn("Nothing below is chosen for you", r.stdout)
+        self.assertIn("Nothing is chosen for you", r.stdout)
 
     def test_a_line_carrying_no_list_is_refused_with_the_lines_that_do(self):
         citing = self.write("pr.md", "See recommendation 2.\n")
@@ -238,7 +253,7 @@ The clause after them overrides all five.
 """)
         r = self.pointers(citing, source)
         self.assertEqual(r.returncode, 1, r.stdout)
-        shown = self.flat(r.stdout.split("carries")[1])
+        shown = self.flat(self.offered(r.stdout))
         self.assertIn("The five below are the triggers", shown)
         self.assertIn("overrides all five", shown)
 
@@ -423,7 +438,7 @@ Adopted after discussion.
 2. Keep five lenses.
 """)
         r = self.pointers(citing, source)
-        shown = self.flat(r.stdout.split("carries")[1])
+        shown = self.flat(self.offered(r.stdout))
         self.assertIn("## Recommendations", shown)
         self.assertIn("Adopted after discussion", shown)
 
@@ -470,6 +485,109 @@ Adopted after discussion.
         r = self.pointers(citing, source, lists=("recomendacao=s1:3",))
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         self.assertIn("três", self.entry(r.stdout, "recomendações 3"))
+
+
+class TestOffering(DossierTest):
+    """What the caller is given to choose from, and in what order."""
+
+    # the SHORT list comes first in the file, so file order and coverage order
+    # disagree — a sort that does nothing would leave it on top
+    TWO = """## A shorter list of recommendations
+
+1. x
+2. y
+
+## Recommendations, the proposal
+
+1. a
+2. b
+3. c
+4. d
+5. e
+6. f
+"""
+
+    def test_a_lead_in_is_shown_in_the_order_it_was_written(self):
+        """The walk that collects it goes UPWARD. Shown unreversed, the
+        paragraph a caller chooses by reads backwards — harmless while the
+        string only fed a word match, fatal now that it IS the choice."""
+        citing = self.write("pr.md", "See item 2.\n")
+        source = self.write("issue.md", """## The rule
+
+FIRST line of the lead-in.
+SECOND line, in the middle.
+THIRD and last line.
+
+1. um
+2. dois
+""")
+        r = self.pointers(citing, source)
+        shown = self.flat(self.offered(r.stdout))
+        self.assertIn("FIRST line of the lead-in. SECOND line, in the middle. "
+                      "THIRD and last line.", shown)
+
+    def test_a_list_holding_none_of_the_numbers_cited_is_not_offered(self):
+        citing = self.write("pr.md", "See recommendation 6.\n")
+        source = self.write("issue.md", self.TWO)
+        r = self.pointers(citing, source)
+        shown = self.offered(r.stdout)
+        self.assertIn("s1:8", shown)                 # 1–6 holds 6
+        self.assertNotIn("s1:3", shown)              # 1–2 cannot
+        self.assertNotIn("A shorter list", shown)
+
+    def test_the_lists_are_offered_by_how_much_of_the_trail_they_hold(self):
+        citing = self.write("pr.md", "recommendation 1, recommendation 2 and "
+                                     "recommendation 6.\n")
+        source = self.write("issue.md", self.TWO)
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertLess(shown.index("s1:8"), shown.index("s1:3"))
+        self.assertIn("holds 3 of the 3 number(s) cited", shown)
+        self.assertIn("holds 2 of the 3 number(s) cited", shown)
+
+    def test_a_family_already_declared_is_not_asked_for_again(self):
+        """An index the declared list lacks is a defect in the trail or in the
+        choice — not a missing declaration, and re-asking for one sends the
+        reader to fix something that is not broken."""
+        citing = self.write("pr.md", "See recommendation 9.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:5",))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self.offered(r.stdout), "")
+
+    def test_the_header_counts_what_it_says_it_counts(self):
+        citing = self.write("pr.md", "recommendation 1, recommendation 2 and "
+                                     "recommendation 9.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:5",))
+        self.assertIn("3 cited · 2 resolved · 1 unresolved", r.stdout)
+
+
+    def test_with_nothing_to_offer_the_re_run_line_is_not_printed(self):
+        """`declared` refuses a source that was not given, so telling a caller
+        with no sources to re-run with `--list` is an instruction that cannot
+        be carried out."""
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        r = self.pointers(citing)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Then re-run", r.stdout)
+        self.assertIn("no source given holds a list", r.stdout)
+
+
+class TestDeclarationEdges(DossierTest):
+    def test_a_family_declared_in_capitals_is_the_same_family(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, lists=("RECOMENDACAO=s1:5",))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("Keep five lenses", self.entry(r.stdout, "recommendation 2"))
+
+    def test_a_line_that_is_not_a_number_is_refused_not_a_traceback(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, lists=("recomendacao=s1:abc",))
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("family=source:line", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
 
 
 # --- collisions: the merge performed, not the forge asked -------------------

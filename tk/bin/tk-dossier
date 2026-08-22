@@ -17,8 +17,8 @@ guarantees by refusing to decide WHICH list a pointer means. Markdown gives a
 list no name, so that decision can only be read out of the prose nearby, and
 two review rounds proved what such a reading produces — `como 4`, from "quero
 safe-to-merge como 4 vereditos", bound to an unrelated sentence at exit 0. The
-first run offers the lists each source carries; `--list` is the caller saying
-which one. A dossier that invents the sentence behind a number is worse than
+first run offers the lists that hold the numbers cited, ordered by how many of
+them each holds; `--list` is the caller saying which one is meant. A dossier that invents the sentence behind a number is worse than
 the four tabs it replaced — the tabs were at least true.
 
 COLLISIONS (`collisions`) — whether two open branches can both land. The forge's
@@ -37,8 +37,9 @@ pointer harvested resolved against a declared list, every pair merged clean —,
 1 the answer carries something the dossier must state (an unresolved pointer,
 a colliding pair), 2 the run itself could not be made. 1 is a finding, never a
 crash — a caller that treats it as one drops exactly the material this script
-exists to surface — and the first `pointers` run of a trail ends 1 by
-construction, because nothing has been declared yet.
+exists to surface. A first `pointers` run declares nothing, so every pointer it
+HARVESTS comes back unresolved and it ends 1; a trail citing nothing this
+vocabulary carries harvests none and ends 0, with the answer saying so.
 """
 
 import argparse
@@ -220,7 +221,11 @@ def context_of(lines, start):
             if HEADING_RE.match(lines[i]):
                 heading = lines[i].strip()
                 break
-    return heading + " " + " ".join(lead)
+    # REVERSED: the walk above goes upward, so `lead` holds the paragraph's
+    # last line first. Harmless while this string only fed a word-set match;
+    # fatal the moment it became the text a caller chooses a list BY, which is
+    # what it is now — a scrambled paragraph makes the cheap choice expensive
+    return heading + " " + " ".join(reversed(lead))
 
 
 def index_after(first, offset):
@@ -330,7 +335,7 @@ def table_blocks(lines):
             keyed.setdefault(key, (start + offset + 1,
                                    " · ".join(c for c in cells[1:] if c)))
         if len(keyed) >= 2:
-            # the header row is INSIDE the block, so label_of cannot see it —
+            # the header row is INSIDE the block, so context_of cannot see it —
             # and a table names its own subject there (`| # | Block | Marker |`)
             # more reliably than any prose above it does
             context = context_of(lines, start) + " " + rows[0]
@@ -421,9 +426,9 @@ def bind(pointer, declarations):
     is missing. Nothing here reads the prose around a list, so nothing here
     can prefer the wrong artefact."""
     if pointer.family not in declarations:
-        pointer.reason = (f"no list is declared for `{pointer.family}` — pick one "
-                          f"from the candidates below and pass `--list "
-                          f"{pointer.family}=<source>:<line>`")
+        pointer.reason = (f"no list is declared for `{pointer.family}` — pass "
+                          f"`--list {pointer.family}=<source>:<line>`, choosing "
+                          "from the lists offered below")
         return
     source, block = declarations[pointer.family]
     if pointer.index in block.entries:
@@ -477,7 +482,7 @@ def report_pointers(pointers, vocabulary, sources, declarations, as_json):
                               for s, n, t, k in p.citations],
             } for p in pointers],
             "candidates": [{"source": label, "line": b.line, "kind": b.kind,
-                            "span": b.span(), "context": shorten(b.context, 200)}
+                            "span": b.span(), "context": " ".join(b.context.split())}
                            for label, blocks in sources for b in blocks],
         }, ensure_ascii=False, indent=2))
         return
@@ -509,18 +514,40 @@ def report_pointers(pointers, vocabulary, sources, declarations, as_json):
     undeclared = sorted({p.family for p in unresolved
                          if p.family not in declarations})
     if undeclared:
-        print(f"\n## the lists each source carries — pick one per family "
+        wanted = {p.index for p in unresolved if p.family in undeclared}
+        # filtered by INDEX and by nothing else. A list that does not hold a
+        # number the trail cites cannot be the list the trail means, and that
+        # is arithmetic, not a reading of the prose around it — the reading is
+        # the caller's, and narrowing it by name is the guess this design cut
+        # ...and ORDERED by how much of the trail each one could account for.
+        # A list holding every number cited is a better candidate than one
+        # holding a third of them, and saying so costs no inference: it is the
+        # same arithmetic, reported instead of thrown away. Ties keep source
+        # order, so the answer is stable run to run
+        offered = [(label, b, wanted & set(b.entries))
+                   for label, blocks in sources for b in blocks]
+        offered = sorted((o for o in offered if o[2]),
+                         key=lambda o: -len(o[2]))
+        print(f"\n## the lists that could answer — pick one per family "
               f"({', '.join(undeclared)})\n")
-        print("Nothing below is chosen for you. Which list a family means is not "
-              "written\nanywhere in Markdown, so reading the prose around one "
-              "would be a guess, and a\nguess that reads like an answer is the "
-              "worst thing this script could print.\n")
-        for label, blocks in sources:
-            for b in blocks:
-                print(f"{label}:{b.line}  {b.kind}, entries {b.span()}")
-                print(wrap(b.context or "(no heading or lead-in above it)",
-                           " " * 12))
-        print("\nThen re-run with `--list <family>=<source>:<line>` for each.")
+        print("Below are the enumerated lists carrying at least one of the "
+              "numbers cited.\nNothing is chosen for you: which of them the "
+              "trail MEANS is not written anywhere\nin Markdown, so reading the "
+              "prose around one would be a guess, and a guess that\nreads like "
+              "an answer is the worst thing this script could print.\n")
+        for label, b, covers in offered:
+            print(f"{label}:{b.line}  {b.kind}, entries {b.span()} — holds "
+                  f"{len(covers)} of the {len(wanted)} number(s) cited")
+            print(wrap(b.context or "(no heading or lead-in above it)", " " * 12))
+        if offered:
+            print("\nThen re-run with `--list <family>=<source>:<line>` for each.")
+        else:
+            # the instruction would be unsatisfiable: `declared` refuses any
+            # source that was not given, so there is nothing to point at
+            print("(none — no source given holds a list with any of those "
+                  "numbers)\nAdd the artefact that carries them as another "
+                  "`--source`, or carry these pointers\ninto the dossier as "
+                  "unresolved.")
     if unresolved:
         print(f"\n{len(unresolved)} pointer(s) did not resolve. Section 1 of the "
               "dossier carries them AS\nunresolved, named — dropping one leaves "
@@ -664,8 +691,8 @@ def main(argv=None):
                         "comment). Repeatable.")
     p.add_argument("--source", action="append", metavar="[LABEL=]PATH",
                    help="a text that CARRIES the numbered statements (the issue "
-                        "body, a spec). Repeatable, and the order is the order "
-                        "they answer in.")
+                        "body, a spec). Repeatable; the order is the order they "
+                        "are offered in, and decides nothing else.")
     p.add_argument("--list", action="append", metavar="FAMILY=SOURCE:LINE",
                    help="which enumerated list a pointer family means — "
                         "`--list recomendacao=154:34`. Run without it to see "

@@ -104,7 +104,7 @@ MUTATIONS = [
 
     ("the machine-readable answer drops the candidates it offered",
      '            "candidates": [{"source": label, "line": b.line, "kind": b.kind,\n'
-     '                            "span": b.span(), "context": shorten(b.context, 200)}\n'
+     '                            "span": b.span(), "context": " ".join(b.context.split())}\n'
      '                           for label, blocks in sources for b in blocks],',
      '            "candidates": [],',
      ["TestDeclaration.test_json_carries_the_declarations_and_the_candidates"],
@@ -282,6 +282,66 @@ MUTATIONS = [
      '    "recomendacao": ("recomendacao", "recomendacoes", "recommendation", "recommendations"),',
      '    "recomendacao": ("recomendacao", "recommendation", "recommendations"),',
      ["TestUncoveredGuards.test_a_plural_spelling_reaches_the_same_family"],
+     DOSSIER),
+
+    # --- what the caller is given to choose from ---------------------------
+    ("the lead-in is shown in the order the walk collected it, which is backwards",
+     '    return heading + " " + " ".join(reversed(lead))',
+     '    return heading + " " + " ".join(lead)',
+     ["TestOffering.test_a_lead_in_is_shown_in_the_order_it_was_written"],
+     DOSSIER),
+
+    ("a list holding none of the numbers cited is offered anyway",
+     "        offered = sorted((o for o in offered if o[2]),",
+     "        offered = sorted((o for o in offered),",
+     ["TestOffering.test_a_list_holding_none_of_the_numbers_cited_is_not_offered"],
+     DOSSIER),
+
+    ("the lists are offered in file order, not by what they could account for",
+     "                         key=lambda o: -len(o[2]))",
+     "                         key=lambda o: 0)",
+     ["TestOffering.test_the_lists_are_offered_by_how_much_of_the_trail_they_hold"],
+     DOSSIER),
+
+    ("a candidate does not say how much of the trail it holds",
+     '            print(f"{label}:{b.line}  {b.kind}, entries {b.span()} — holds "\n'
+     '                  f"{len(covers)} of the {len(wanted)} number(s) cited")',
+     '            print(f"{label}:{b.line}  {b.kind}, entries {b.span()}")',
+     ["TestOffering.test_the_lists_are_offered_by_how_much_of_the_trail_they_hold"],
+     DOSSIER),
+
+    ("a family already declared is asked for all over again",
+     "    undeclared = sorted({p.family for p in unresolved\n"
+     "                         if p.family not in declarations})",
+     "    undeclared = sorted({p.family for p in unresolved})",
+     ["TestOffering.test_a_family_already_declared_is_not_asked_for_again"],
+     DOSSIER),
+
+    ("the header line counts the wrong things",
+     '    print(f"## pointers — {len(pointers)} cited · {len(resolved)} resolved · "\n'
+     '          f"{len(unresolved)} unresolved\\n")',
+     '    print(f"## pointers — {len(unresolved)} cited · {len(resolved)} resolved · "\n'
+     '          f"{len(pointers)} unresolved\\n")',
+     ["TestOffering.test_the_header_counts_what_it_says_it_counts"],
+     DOSSIER),
+
+    ("with nothing to offer, the caller is told to re-run with --list anyway",
+     "        if offered:\n"
+     '            print("\\nThen re-run with `--list <family>=<source>:<line>` for each.")',
+     '        if True:\n            print("\\nThen re-run with `--list <family>=<source>:<line>` for each.")',
+     ["TestOffering.test_with_nothing_to_offer_the_re_run_line_is_not_printed"],
+     DOSSIER),
+
+    ("a family declared in capitals is a different family",
+     "            return family.lower(), source, block",
+     "            return family, source, block",
+     ["TestDeclarationEdges.test_a_family_declared_in_capitals_is_the_same_family"],
+     DOSSIER),
+
+    ("a line that is not a number reaches int() and the run dies on a traceback",
+     "    if not (sep and colon) or not line.isdigit() or not family:",
+     "    if not (sep and colon) or not family:",
+     ["TestDeclarationEdges.test_a_line_that_is_not_a_number_is_refused_not_a_traceback"],
      DOSSIER),
 
     # --- collisions --------------------------------------------------------
