@@ -526,12 +526,14 @@ def offering(pointers, sources, declarations):
     ONE computation, and both renderers read it. They were two branches once,
     each free to drift, and the JSON one kept the unfiltered, unordered list
     for a whole round after the text one stopped showing it."""
+    # no `not p.resolved` test: `bind` resolves a pointer only when its family
+    # was declared, so excluding declared families already excludes every
+    # resolved one. A condition no input can falsify is one no mutant can kill
     families = sorted({p.family for p in pointers
-                       if not p.resolved and p.family not in declarations})
+                       if p.family not in declarations})
     offer = {}
     for family in families:
-        wanted = {p.index for p in pointers
-                  if not p.resolved and p.family == family}
+        wanted = {p.index for p in pointers if p.family == family}
         holding = [(label, block, wanted & set(block.entries))
                    for label, blocks in sources for block in blocks]
         offer[family] = (wanted, sorted((h for h in holding if h[2]),

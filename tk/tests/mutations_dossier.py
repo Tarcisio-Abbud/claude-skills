@@ -304,8 +304,8 @@ MUTATIONS = [
 
     ("a family already declared is asked for all over again",
      "    families = sorted({p.family for p in pointers\n"
-     "                       if not p.resolved and p.family not in declarations})",
-     "    families = sorted({p.family for p in pointers if not p.resolved})",
+     "                       if p.family not in declarations})",
+     "    families = sorted({p.family for p in pointers})",
      ["TestOffering.test_a_family_already_declared_is_not_asked_for_again"],
      DOSSIER),
 
@@ -337,9 +337,8 @@ MUTATIONS = [
      DOSSIER),
 
     ("a family is scored against every family's numbers pooled together",
-     "        wanted = {p.index for p in pointers\n"
-     "                  if not p.resolved and p.family == family}",
-     "        wanted = {p.index for p in pointers if not p.resolved}",
+     "        wanted = {p.index for p in pointers if p.family == family}",
+     "        wanted = {p.index for p in pointers}",
      ["TestOffering.test_a_family_is_scored_only_against_the_numbers_IT_cites"],
      DOSSIER),
 
@@ -439,6 +438,40 @@ MUTATIONS = [
      "                                          int(i) if i.isdigit() else 0, i))",
      "    return sorted(indexes)",
      ["TestGuardsAMutantFound.test_indexes_are_listed_as_a_reader_counts_them"],
+     DOSSIER),
+
+    ("the offered block does not say what kind of list it is",
+     '                {"source": label, "line": b.line, "kind": b.kind,',
+     '                {"source": label, "line": b.line, "kind": "list",',
+     ["TestDeclaration.test_json_offering_describes_an_offered_table_fully"],
+     DOSSIER),
+
+    ("the offered block does not say which entries it runs",
+     '                 "span": b.span(), "skipped": b.skipped,',
+     '                 "span": "", "skipped": b.skipped,',
+     ["TestDeclaration.test_json_offering_describes_an_offered_table_fully"],
+     DOSSIER),
+
+    ("the offered block does not say which source it came from",
+     '                {"source": label, "line": b.line, "kind": b.kind,\n'
+     '                 "span": b.span(), "skipped": b.skipped,',
+     '                {"source": "???", "line": b.line, "kind": b.kind,\n'
+     '                 "span": b.span(), "skipped": b.skipped,',
+     ["TestDeclaration.test_json_offering_describes_an_offered_table_fully"],
+     DOSSIER),
+
+    ("`of` counts what this list holds instead of what the family cites",
+     '                 "holds": in_order(covers), "of": len(wanted),',
+     '                 "holds": in_order(covers), "of": len(covers),',
+     ["TestDeclaration.test_json_offering_describes_an_offered_table_fully"],
+     DOSSIER),
+
+    ("a family with lists to offer is told none exists",
+     "        if offered:\n"
+     '            print(f"            then: --list {family}=<source>:<line>")',
+     "        if False:\n"
+     '            print(f"            then: --list {family}=<source>:<line>")',
+     ["TestDeclaration.test_a_family_with_something_to_offer_is_told_how_to_declare_it"],
      DOSSIER),
 
     # --- collisions --------------------------------------------------------

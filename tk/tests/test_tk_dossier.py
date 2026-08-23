@@ -207,6 +207,35 @@ class TestDeclaration(DossierTest):
         self.assertEqual(list(data["offering"]), ["item"])
         self.assertEqual(data["offering"]["item"], [])
 
+    def test_json_offering_describes_an_offered_table_fully(self):
+        """Every field of an offered block, on the one shape no other test
+        reaches through `offering()`: a table. `of` is the family's whole
+        citation count and `holds` only what this list has — a fixture where
+        they are equal cannot tell the two apart."""
+        citing = self.write("pr.md", "See block 1 and block 9.\n")
+        source = self.write("issue.md", """## Contract
+
+| # | Block |
+|---|---|
+| 1 | Stats |
+| 2 | Cards |
+""")
+        r = self.pointers(citing, source, extra=("--json",))
+        offered = json.loads(r.stdout)["offering"]["bloco"]
+        self.assertEqual(len(offered), 1)
+        self.assertEqual(offered[0]["kind"], "table")
+        self.assertEqual(offered[0]["span"], "1–2")
+        self.assertEqual(offered[0]["source"], "s1")
+        self.assertEqual(offered[0]["holds"], ["1"])
+        self.assertEqual(offered[0]["of"], 2)
+
+    def test_a_family_with_something_to_offer_is_told_how_to_declare_it(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertIn("then: --list recomendacao=<source>:<line>", shown)
+        self.assertNotIn("no source given holds a list", shown)
+
     def test_json_offering_carries_what_each_list_holds(self):
         citing = self.write("pr.md", "See recommendation 2.\n")
         source = self.write("issue.md", RECOMMENDATIONS)
@@ -579,7 +608,9 @@ THIRD and last line.
 4. Fourth
 """)
         shown = self.offered(self.pointers(citing, source).stdout)
-        item = shown.split("`item`")[1].split("`recomendacao`")[0]
+        # located by the family HEADER line, not by an ad-hoc split on a word
+        # that a fixture's own prose could carry
+        item = shown.split("`item`, cited as")[1].split("`recomendacao`, cited as")[0]
         self.assertIn("s1:8", item)
         self.assertNotIn("s1:3", item)          # 1–2 cannot hold a 4
         self.assertIn("cited as 4", shown)
