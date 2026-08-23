@@ -165,7 +165,8 @@ class TestDeclaration(DossierTest):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("s1:5  list, entries 1–3", r.stdout)
         self.assertIn("## Recommendations", r.stdout)
-        self.assertIn("Nothing is chosen for you", r.stdout)
+        self.assertIn("`recomendacao`, cited as 2", r.stdout)
+        self.assertIn("Nothing below is chosen for you", r.stdout)
 
     def test_a_line_carrying_no_list_is_refused_with_the_lines_that_do(self):
         citing = self.write("pr.md", "See recommendation 2.\n")
@@ -190,16 +191,31 @@ class TestDeclaration(DossierTest):
         self.assertEqual(r.returncode, 2, r.stdout)
         self.assertIn("family=source:line", r.stderr)
 
-    def test_json_carries_the_declarations_and_the_candidates(self):
-        citing = self.write("pr.md", "See recommendation 2.\n")
+    def test_json_carries_the_declarations_and_the_same_offering_as_the_text(self):
+        """The two renderers read ONE computation. They were two branches once,
+        and the JSON one kept an unfiltered, unordered candidate dump for a
+        whole round after the text one stopped showing it."""
+        citing = self.write("pr.md", "See recommendation 2 and item 9.\n")
         source = self.write("issue.md", RECOMMENDATIONS)
         r = self.pointers(citing, source, lists=("recomendacao=s1:5",),
                           extra=("--json",))
         data = json.loads(r.stdout)
         self.assertEqual(data["declarations"],
                          {"recomendacao": {"source": "s1", "line": 5}})
-        self.assertEqual(data["candidates"][0]["span"], "1–3")
-        self.assertIn("Recommendations", data["candidates"][0]["context"])
+        # `item 9` is undeclared and no list holds a 9, so its offering is empty
+        # and the declared family is absent entirely
+        self.assertEqual(list(data["offering"]), ["item"])
+        self.assertEqual(data["offering"]["item"], [])
+
+    def test_json_offering_carries_what_each_list_holds(self):
+        citing = self.write("pr.md", "See recommendation 2.\n")
+        source = self.write("issue.md", RECOMMENDATIONS)
+        r = self.pointers(citing, source, extra=("--json",))
+        offered = json.loads(r.stdout)["offering"]["recomendacao"]
+        self.assertEqual(len(offered), 1)
+        self.assertEqual((offered[0]["line"], offered[0]["holds"],
+                          offered[0]["of"]), (5, ["2"], 1))
+        self.assertIn("Recommendations", offered[0]["context"])
 
 
 # --- what counts as an enumerated list in a source --------------------------
@@ -541,8 +557,33 @@ THIRD and last line.
         source = self.write("issue.md", self.TWO)
         shown = self.offered(self.pointers(citing, source).stdout)
         self.assertLess(shown.index("s1:8"), shown.index("s1:3"))
-        self.assertIn("holds 3 of the 3 number(s) cited", shown)
-        self.assertIn("holds 2 of the 3 number(s) cited", shown)
+        self.assertIn("holds 3 of the 3 cited", shown)
+        self.assertIn("holds 2 of the 3 cited", shown)
+
+    def test_a_family_is_scored_only_against_the_numbers_IT_cites(self):
+        """Pooling every family's indexes credited a list for holding a number
+        another family cited: on a real trail the recommendations list scored a
+        perfect 2 of 2 for `item`, whose statements were in a file never
+        passed."""
+        citing = self.write("pr.md", "See recommendation 1 and item 4.\n")
+        source = self.write("issue.md", """## Recommendations
+
+1. Alpha
+2. Beta
+
+## Items
+
+1. First
+2. Second
+3. Third
+4. Fourth
+""")
+        shown = self.offered(self.pointers(citing, source).stdout)
+        item = shown.split("`item`")[1].split("`recomendacao`")[0]
+        self.assertIn("s1:8", item)
+        self.assertNotIn("s1:3", item)          # 1–2 cannot hold a 4
+        self.assertIn("cited as 4", shown)
+        self.assertIn("cited as 1", shown)
 
     def test_a_family_already_declared_is_not_asked_for_again(self):
         """An index the declared list lacks is a defect in the trail or in the
@@ -571,6 +612,74 @@ THIRD and last line.
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertNotIn("Then re-run", r.stdout)
         self.assertIn("no source given holds a list", r.stdout)
+
+
+class TestGuardsAMutantFound(DossierTest):
+    """Guards a mutation round proved live and unprotected. Each one was found
+    by writing the defect back and watching the whole suite stay green."""
+
+    def test_two_families_citing_the_same_number_are_two_pointers(self):
+        citing = self.write("pr.md", "item 3 and recommendation 3.\n")
+        source = self.write("issue.md", "## Items\n\n1. a\n2. b\n3. ITEM THREE\n")
+        r = self.pointers(citing, source, lists=("item=s1:3",))
+        self.assertIn("2 cited", r.stdout)
+        self.assertIn("ITEM THREE", self.entry(r.stdout, "item 3"))
+        self.assertIn("no list is declared for `recomendacao`",
+                      self.flat(self.entry(r.stdout, "recommendation 3")))
+
+    def test_one_line_number_in_two_citing_texts_is_two_sites(self):
+        one = self.write("a.md", "See item 2.\n")
+        two = self.write("b.md", "See item 2 again.\n")
+        source = self.write("issue.md", "## Items\n\n1. a\n2. b\n")
+        r = self.run_dossier("pointers", "--citing", f"one={one}",
+                             "--citing", f"two={two}",
+                             "--source", f"s1={source}", "--list", "item=s1:3")
+        self.assertIn("cited  one:1", r.stdout)
+        self.assertIn("cited  two:1", r.stdout)
+        self.assertNotIn("(×2)", r.stdout)
+
+    def test_a_blank_line_ends_the_lead_in_shown_for_a_list(self):
+        citing = self.write("pr.md", "See item 2.\n")
+        source = self.write("issue.md", """## The rule
+
+AN UNRELATED PARAGRAPH about something else.
+
+The real lead-in.
+
+1. um
+2. dois
+""")
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertIn("The real lead-in.", shown)
+        self.assertNotIn("AN UNRELATED PARAGRAPH", shown)
+
+    def test_a_tilde_fence_hides_what_it_quotes_like_a_backtick_one(self):
+        citing = self.write("pr.md", "~~~\nsee item 3\n~~~\n\nBut item 2 is real.\n")
+        source = self.write("issue.md", "## Items\n\n1. a\n2. dois\n")
+        r = self.pointers(citing, source, lists=("item=s1:3",))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("dois", self.entry(r.stdout, "item 2"))
+        self.assertNotIn("item 3", r.stdout)
+
+    def test_an_index_cell_wearing_emphasis_is_still_an_index(self):
+        citing = self.write("pr.md", "See block 2.\n")
+        source = self.write("issue.md", """## Contract
+
+| # | Block |
+|---|---|
+| **1** | Stats |
+| **2** | Cards |
+""")
+        r = self.pointers(citing, source, lists=("bloco=s1:3",))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("Cards", self.entry(r.stdout, "block 2"))
+
+    def test_lists_tied_on_coverage_keep_the_order_the_sources_came_in(self):
+        citing = self.write("pr.md", "See recommendation 1.\n")
+        first = self.write("first.md", "## Recommendations, one\n\n1. a\n2. b\n")
+        second = self.write("second.md", "## Recommendations, two\n\n1. x\n2. y\n")
+        shown = self.offered(self.pointers(citing, first, second).stdout)
+        self.assertLess(shown.index("s1:3"), shown.index("s2:3"))
 
 
 class TestDeclarationEdges(DossierTest):

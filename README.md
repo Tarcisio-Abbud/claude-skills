@@ -69,23 +69,24 @@ the dispatch palette, the `/goal` recipe and the `loop.md` contract.
 
 A **merge dossier** is written for every PR the versioning gate handles, before its menu
 opens — the decision made readable where it is read, so a user who has already read the whole
-trail can still say what is being merged. Its five sections and the degraded form a PR with no
-trail gets are in `tk/reference/dossier.md`; two of them are measured by **`tk/bin/tk-dossier`**
-rather than recalled. `pointers` harvests every "recommendation 4", "item 3",
-"criterion A" a text cites by number — exhaustively, over a vocabulary it prints — and quotes
-each one from the list the CALLER declared with `--list`, reporting as UNRESOLVED any pointer
-whose list was not declared or whose index that list lacks. It never decides which list a
-pointer means: Markdown gives a list no name, so deciding would mean reading the prose around
-it, and two review rounds measured what that produces (`como 4`, from "safe-to-merge como 4
-vereditos", bound to an unrelated sentence at exit 0). The first run offers the lists holding
-the numbers cited, with their headings, ordered by how many they hold, and chooses none. The empty answer says nothing matched
-THE VOCABULARY, never that the text cites nothing. `collisions` merges each pair
-of open branches for real with `git merge-tree --write-tree`, because the forge's
-`mergeable`/`CLEAN` compares one branch with the default branch alone and cannot see a second
-open PR: several PRs rewriting one paragraph all read green, and the second to merge breaks.
-Neither subcommand touches the network — the caller fetches the texts with the `gh` it already
-runs. It is a *dossier* and not a *briefing* because `briefing` already names the five-field
-handoff file `tk-queue handoff` writes.
+trail can still say what is being merged. Its five sections, the degraded form a PR with no
+trail gets, and what **`tk/bin/tk-dossier`** does in each are all in
+`tk/reference/dossier.md`, which OWNS that description: this paragraph names the two
+subcommands and points there, because the same claim restated in four places is the same claim
+going stale in three of them.
+
+`pointers` guarantees two things and refuses a third. It harvests every "recommendation 4",
+"item 3", "criterion A" a text cites by number, exhaustively over a vocabulary it prints. It
+quotes each one from the list the CALLER declared. And it never decides WHICH list a pointer
+means: Markdown gives a list no name, so deciding would mean reading the prose around it, and
+two review rounds measured what that produces — `como 4`, from "safe-to-merge como 4 vereditos",
+bound to an unrelated sentence at exit 0. `collisions` merges each pair of open branches for
+real with `git merge-tree --write-tree`, because the forge's `mergeable`/`CLEAN` compares one
+branch with the default branch alone and cannot see a second open PR: several PRs rewriting one
+paragraph all read green, and the second to merge breaks. Neither subcommand touches the
+network — the caller fetches the texts with the `gh` it already runs. It is a *dossier* and not
+a *briefing* because `briefing` already names the five-field handoff file `tk-queue handoff`
+writes.
 
 Every subagent an orchestrator dispatches gets its model, reasoning effort and **venue**
 (local × cloud) from `tk/reference/subagent-policy.md` — one row per role, the hybrid rule

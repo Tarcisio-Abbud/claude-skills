@@ -148,10 +148,11 @@ branches, PRs to open, PRs awaiting merge.
 whether the merge MAY happen; the dossier says what is being merged and what changes if it
 does, resolved at the point of reading — every pointer the trail cites by number arrives with
 the sentence it names beside it. Its five sections, the two `../../bin/tk-dossier` stands
-behind rather than recalls — measuring one end to end and, in the other, everything except
-which list a cited number means, which stays yours —, and the degraded form a PR with no trail
-gets are in `../../reference/dossier.md`. A PR the verdicts hold back gets one too: the user's decision
-there is whether the red is worth fixing now, and it reads the same material. It is a
+behind rather than recalls — measuring one end to end and, in the other, everything
+except which list a cited number means, which stays yours —, and the degraded form a PR
+with no trail gets are in `../../reference/dossier.md`. A PR the verdicts hold back
+gets one too: the user's decision there is whether the red is worth fixing now, and it
+reads the same material. It is a
 **dossier**, never the handoff briefing of step 6 — one word over two objects misleads quietly.
 
 **The digest is what the user reads instead of the diff.** Any PR offered as "merge" gets

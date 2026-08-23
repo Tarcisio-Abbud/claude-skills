@@ -405,7 +405,7 @@ def declared(arg, sources):
     if not (sep and colon) or not line.isdigit() or not family:
         fail(f"--list {arg!r}: the shape is `family=source:line`, where `source` "
              "is a --source label and `line` is the line its list starts on. "
-             "Run without --list to see the lists each source carries.")
+             "Run without --list to see what can be declared.")
     known = dict(sources)
     if source not in known:
         fail(f"--list {arg!r}: `{source}` is not one of the sources given "
@@ -426,9 +426,10 @@ def bind(pointer, declarations):
     is missing. Nothing here reads the prose around a list, so nothing here
     can prefer the wrong artefact."""
     if pointer.family not in declarations:
-        pointer.reason = (f"no list is declared for `{pointer.family}` — pass "
-                          f"`--list {pointer.family}=<source>:<line>`, choosing "
-                          "from the lists offered below")
+        # this text lands in the dossier a human reads, so it names what is
+        # missing and says nothing about what another part of the report shows
+        pointer.reason = (f"no list is declared for `{pointer.family}`: pass "
+                          f"`--list {pointer.family}=<source>:<line>`")
         return
     source, block = declarations[pointer.family]
     if pointer.index in block.entries:
@@ -463,9 +464,41 @@ def wrap(text, indent):
                          break_long_words=False, break_on_hyphens=False)
 
 
+def offering(pointers, sources, declarations):
+    """The lists that could answer, PER undeclared family, best first.
+
+    Per family, and that word is the whole fix. Pooling every family's indexes
+    into one set credited a list for holding a number some OTHER family cited:
+    on a real trail the recommendations list scored a perfect 2 of 2 for family
+    `item`, whose statements live in a file that was never passed. A caller
+    trusting the top score got the silent wrong binding this subcommand exists
+    to prevent.
+
+    A list is offered when it holds one of that family's cited numbers, and
+    ordered by how many it holds — arithmetic, not a reading of the prose
+    around it. Ties keep the order the sources were given in, so the answer is
+    stable run to run.
+
+    ONE computation, and both renderers read it. They were two branches once,
+    each free to drift, and the JSON one kept the unfiltered, unordered list
+    for a whole round after the text one stopped showing it."""
+    families = sorted({p.family for p in pointers
+                       if not p.resolved and p.family not in declarations})
+    offer = {}
+    for family in families:
+        wanted = {p.index for p in pointers
+                  if not p.resolved and p.family == family}
+        holding = [(label, block, wanted & set(block.entries))
+                   for label, blocks in sources for block in blocks]
+        offer[family] = (wanted, sorted((h for h in holding if h[2]),
+                                        key=lambda h: -len(h[2])))
+    return offer
+
+
 def report_pointers(pointers, vocabulary, sources, declarations, as_json):
     resolved = [p for p in pointers if p.resolved]
     unresolved = [p for p in pointers if not p.resolved]
+    offer = offering(pointers, sources, declarations)
     if as_json:
         print(json.dumps({
             "vocabulary": sorted(vocabulary),
@@ -481,9 +514,12 @@ def report_pointers(pointers, vocabulary, sources, declarations, as_json):
                 "citations": [{"source": s, "line": n, "text": t, "times": k}
                               for s, n, t, k in p.citations],
             } for p in pointers],
-            "candidates": [{"source": label, "line": b.line, "kind": b.kind,
-                            "span": b.span(), "context": " ".join(b.context.split())}
-                           for label, blocks in sources for b in blocks],
+            "offering": {family: [
+                {"source": label, "line": b.line, "kind": b.kind,
+                 "span": b.span(), "holds": sorted(covers), "of": len(wanted),
+                 "context": " ".join(b.context.split())}
+                for label, b, covers in offered]
+                for family, (wanted, offered) in offer.items()},
         }, ensure_ascii=False, indent=2))
         return
 
@@ -511,43 +547,27 @@ def report_pointers(pointers, vocabulary, sources, declarations, as_json):
             seen = f" (×{times})" if times > 1 else ""
             print(f"            cited  {label}:{n}{seen}  {shorten(text, 110)}")
 
-    undeclared = sorted({p.family for p in unresolved
-                         if p.family not in declarations})
-    if undeclared:
-        wanted = {p.index for p in unresolved if p.family in undeclared}
-        # filtered by INDEX and by nothing else. A list that does not hold a
-        # number the trail cites cannot be the list the trail means, and that
-        # is arithmetic, not a reading of the prose around it — the reading is
-        # the caller's, and narrowing it by name is the guess this design cut
-        # ...and ORDERED by how much of the trail each one could account for.
-        # A list holding every number cited is a better candidate than one
-        # holding a third of them, and saying so costs no inference: it is the
-        # same arithmetic, reported instead of thrown away. Ties keep source
-        # order, so the answer is stable run to run
-        offered = [(label, b, wanted & set(b.entries))
-                   for label, blocks in sources for b in blocks]
-        offered = sorted((o for o in offered if o[2]),
-                         key=lambda o: -len(o[2]))
-        print(f"\n## the lists that could answer — pick one per family "
-              f"({', '.join(undeclared)})\n")
-        print("Below are the enumerated lists carrying at least one of the "
-              "numbers cited.\nNothing is chosen for you: which of them the "
-              "trail MEANS is not written anywhere\nin Markdown, so reading the "
-              "prose around one would be a guess, and a guess that\nreads like "
-              "an answer is the worst thing this script could print.\n")
+    if offer:
+        print("\n## the lists that could answer\n")
+        print("Nothing below is chosen for you: which list the trail MEANS is "
+              "not written\nanywhere in Markdown, so reading the prose around "
+              "one would be a guess, and a\nguess that reads like an answer is "
+              "the worst thing this script could print.")
+    for family, (wanted, offered) in offer.items():
+        print(f"\n`{family}`, cited as {', '.join(sorted(wanted))}\n")
         for label, b, covers in offered:
             print(f"{label}:{b.line}  {b.kind}, entries {b.span()} — holds "
-                  f"{len(covers)} of the {len(wanted)} number(s) cited")
+                  f"{len(covers)} of the {len(wanted)} cited")
             print(wrap(b.context or "(no heading or lead-in above it)", " " * 12))
         if offered:
-            print("\nThen re-run with `--list <family>=<source>:<line>` for each.")
+            print(f"            then: --list {family}=<source>:<line>")
         else:
-            # the instruction would be unsatisfiable: `declared` refuses any
-            # source that was not given, so there is nothing to point at
-            print("(none — no source given holds a list with any of those "
-                  "numbers)\nAdd the artefact that carries them as another "
-                  "`--source`, or carry these pointers\ninto the dossier as "
-                  "unresolved.")
+            # `declared` refuses a source that was not given, so telling the
+            # caller to declare one here is an instruction they cannot carry out
+            print(wrap("no source given holds a list with any of those numbers. "
+                       "Add the artefact that carries them as another "
+                       "`--source`, or carry these pointers into the dossier "
+                       "as unresolved.", " " * 12))
     if unresolved:
         print(f"\n{len(unresolved)} pointer(s) did not resolve. Section 1 of the "
               "dossier carries them AS\nunresolved, named — dropping one leaves "
@@ -691,12 +711,13 @@ def main(argv=None):
                         "comment). Repeatable.")
     p.add_argument("--source", action="append", metavar="[LABEL=]PATH",
                    help="a text that CARRIES the numbered statements (the issue "
-                        "body, a spec). Repeatable; the order is the order they "
-                        "are offered in, and decides nothing else.")
+                        "body, a spec). Repeatable. What the order does, and "
+                        "everything else this prints, is described in "
+                        "../reference/dossier.md, which owns it.")
     p.add_argument("--list", action="append", metavar="FAMILY=SOURCE:LINE",
                    help="which enumerated list a pointer family means — "
                         "`--list recomendacao=154:34`. Run without it to see "
-                        "the lists each source carries. Repeatable.")
+                        "what can be declared. Repeatable.")
     p.add_argument("--noun", action="append", metavar="WORD[,WORD...]",
                    help="one more pointer noun, with every spelling that reaches "
                         "it — `--noun requisito,requisitos`. Repeatable.")

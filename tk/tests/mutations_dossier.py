@@ -66,8 +66,8 @@ MUTATIONS = [
 
     # --- declaring: the caller's instruction, and what happens when it fails
     ("the candidates are hidden, so there is nothing to declare from",
-     "    if undeclared:",
-     "    if False:",
+     "    for family, (wanted, offered) in offer.items():",
+     "    for family, (wanted, offered) in {}.items():",
      ["TestDeclaration.test_the_candidates_are_shown_with_their_context_and_nothing_is_chosen"],
      DOSSIER),
 
@@ -99,15 +99,7 @@ MUTATIONS = [
      '            "declarations": {family: {"source": source, "line": block.line}\n'
      '                             for family, (source, block) in declarations.items()},',
      '            "declarations": {},',
-     ["TestDeclaration.test_json_carries_the_declarations_and_the_candidates"],
-     DOSSIER),
-
-    ("the machine-readable answer drops the candidates it offered",
-     '            "candidates": [{"source": label, "line": b.line, "kind": b.kind,\n'
-     '                            "span": b.span(), "context": " ".join(b.context.split())}\n'
-     '                           for label, blocks in sources for b in blocks],',
-     '            "candidates": [],',
-     ["TestDeclaration.test_json_carries_the_declarations_and_the_candidates"],
+     ["TestDeclaration.test_json_carries_the_declarations_and_the_same_offering_as_the_text"],
      DOSSIER),
 
     # --- what a source's enumerated lists are ------------------------------
@@ -292,28 +284,28 @@ MUTATIONS = [
      DOSSIER),
 
     ("a list holding none of the numbers cited is offered anyway",
-     "        offered = sorted((o for o in offered if o[2]),",
-     "        offered = sorted((o for o in offered),",
+     "        offer[family] = (wanted, sorted((h for h in holding if h[2]),",
+     "        offer[family] = (wanted, sorted((h for h in holding),",
      ["TestOffering.test_a_list_holding_none_of_the_numbers_cited_is_not_offered"],
      DOSSIER),
 
     ("the lists are offered in file order, not by what they could account for",
-     "                         key=lambda o: -len(o[2]))",
-     "                         key=lambda o: 0)",
+     "                                        key=lambda h: -len(h[2])))",
+     "                                        key=lambda h: 0))",
      ["TestOffering.test_the_lists_are_offered_by_how_much_of_the_trail_they_hold"],
      DOSSIER),
 
     ("a candidate does not say how much of the trail it holds",
      '            print(f"{label}:{b.line}  {b.kind}, entries {b.span()} — holds "\n'
-     '                  f"{len(covers)} of the {len(wanted)} number(s) cited")',
+     '                  f"{len(covers)} of the {len(wanted)} cited")',
      '            print(f"{label}:{b.line}  {b.kind}, entries {b.span()}")',
      ["TestOffering.test_the_lists_are_offered_by_how_much_of_the_trail_they_hold"],
      DOSSIER),
 
     ("a family already declared is asked for all over again",
-     "    undeclared = sorted({p.family for p in unresolved\n"
-     "                         if p.family not in declarations})",
-     "    undeclared = sorted({p.family for p in unresolved})",
+     "    families = sorted({p.family for p in pointers\n"
+     "                       if not p.resolved and p.family not in declarations})",
+     "    families = sorted({p.family for p in pointers if not p.resolved})",
      ["TestOffering.test_a_family_already_declared_is_not_asked_for_again"],
      DOSSIER),
 
@@ -325,10 +317,10 @@ MUTATIONS = [
      ["TestOffering.test_the_header_counts_what_it_says_it_counts"],
      DOSSIER),
 
-    ("with nothing to offer, the caller is told to re-run with --list anyway",
+    ("with nothing to offer, the caller is told to declare one anyway",
      "        if offered:\n"
-     '            print("\\nThen re-run with `--list <family>=<source>:<line>` for each.")',
-     '        if True:\n            print("\\nThen re-run with `--list <family>=<source>:<line>` for each.")',
+     '            print(f"            then: --list {family}=<source>:<line>")',
+     '        if True:\n            print(f"            then: --list {family}=<source>:<line>")',
      ["TestOffering.test_with_nothing_to_offer_the_re_run_line_is_not_printed"],
      DOSSIER),
 
@@ -342,6 +334,71 @@ MUTATIONS = [
      "    if not (sep and colon) or not line.isdigit() or not family:",
      "    if not (sep and colon) or not family:",
      ["TestDeclarationEdges.test_a_line_that_is_not_a_number_is_refused_not_a_traceback"],
+     DOSSIER),
+
+    ("a family is scored against every family's numbers pooled together",
+     "        wanted = {p.index for p in pointers\n"
+     "                  if not p.resolved and p.family == family}",
+     "        wanted = {p.index for p in pointers if not p.resolved}",
+     ["TestOffering.test_a_family_is_scored_only_against_the_numbers_IT_cites"],
+     DOSSIER),
+
+    ("the machine-readable offering is not the one the text renderer shows",
+     '            "offering": {family: [\n'
+     '                {"source": label, "line": b.line, "kind": b.kind,\n'
+     '                 "span": b.span(), "holds": sorted(covers), "of": len(wanted),\n'
+     '                 "context": " ".join(b.context.split())}\n'
+     "                for label, b, covers in offered]\n"
+     "                for family, (wanted, offered) in offer.items()},",
+     '            "offering": {family: [] for family in offer},',
+     ["TestDeclaration.test_json_offering_carries_what_each_list_holds"],
+     DOSSIER),
+
+    ("the offering does not say which numbers each list holds",
+     '                 "span": b.span(), "holds": sorted(covers), "of": len(wanted),',
+     '                 "span": b.span(), "holds": [], "of": len(wanted),',
+     ["TestDeclaration.test_json_offering_carries_what_each_list_holds"],
+     DOSSIER),
+
+    ("two families citing one number become a single pointer",
+     '                key = (family, m.group("idx"))',
+     '                key = m.group("idx")',
+     ["TestGuardsAMutantFound.test_two_families_citing_the_same_number_are_two_pointers"],
+     DOSSIER),
+
+    ("a citation is deduplicated by line alone, losing which text it came from",
+     "            if (seen, where) == (label, line):",
+     "            if where == line:",
+     ["TestGuardsAMutantFound.test_one_line_number_in_two_citing_texts_is_two_sites"],
+     DOSSIER),
+
+    ("a blank line no longer ends the lead-in, so an unrelated paragraph joins it",
+     "        if not stripped:\n"
+     "            if seen_text:\n"
+     "                break            # the paragraph ended; only the heading is left\n"
+     "            continue",
+     "        if not stripped:\n            continue",
+     ["TestGuardsAMutantFound.test_a_blank_line_ends_the_lead_in_shown_for_a_list"],
+     DOSSIER),
+
+    ("a tilde fence is not a fence, so what it quotes is harvested",
+     'FENCE_RE = re.compile(r"^\\s*(```|~~~)")',
+     'FENCE_RE = re.compile(r"^\\s*(```)")',
+     ["TestGuardsAMutantFound.test_a_tilde_fence_hides_what_it_quotes_like_a_backtick_one"],
+     DOSSIER),
+
+    ("an index cell wearing emphasis stops being an index",
+     '            key = cells[0].strip("*_ `")',
+     "            key = cells[0].strip()",
+     ["TestGuardsAMutantFound.test_an_index_cell_wearing_emphasis_is_still_an_index"],
+     DOSSIER),
+
+    ("the offering is built in an order the sources did not come in",
+     "        holding = [(label, block, wanted & set(block.entries))\n"
+     "                   for label, blocks in sources for block in blocks]",
+     "        holding = [(label, block, wanted & set(block.entries))\n"
+     "                   for label, blocks in reversed(sources) for block in blocks]",
+     ["TestGuardsAMutantFound.test_lists_tied_on_coverage_keep_the_order_the_sources_came_in"],
      DOSSIER),
 
     # --- collisions --------------------------------------------------------

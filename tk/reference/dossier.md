@@ -89,9 +89,10 @@ three codes this script promises, and is the sign you skipped this paragraph.
 **The three exit codes** are 0 every pointer harvested was resolved against a list you
 declared, 1 the answer carries something this dossier must state — an unresolved pointer, a
 colliding pair —, 2 the run did not happen, which includes a `--list` naming a line that holds
-no list. A first run declares nothing, so every pointer it HARVESTS comes back unresolved
-and it ends 1 — but a trail citing nothing this vocabulary carries harvests none and ends
-0, with the answer saying so. Read the answer, never the code alone. On 2 the script names what it could not read or reach on
+no list. A first run declares nothing, so every pointer it HARVESTS comes back
+unresolved and it ends 1 — but a trail citing nothing this vocabulary carries
+harvests none and ends 0, with the answer saying so. Read the answer, never the
+code alone. On 2 the script names what it could not read or reach on
 stderr; fix that and run again, and where it cannot be fixed, section 1 or 5 says the
 measurement was not made rather than going silent.
 
@@ -108,9 +109,17 @@ gh api repos/<owner>/<repo>/issues/<n>/comments --jq '.[].body'  > comments.md
 
 **That first run resolves nothing, and it is not meant to.** It harvests every citation the
 vocabulary can see — which is the guarantee it can make, and the failure a tired session
-actually commits — and then offers the enumerated lists that hold at least one of the numbers
-cited, each with the heading and lead-in above it, ordered by how many of those numbers it
-holds. Nothing is chosen for you: holding the numbers is arithmetic, meaning them is not.
+actually commits — and then offers, **per pointer family**, the enumerated lists that hold at
+least one of the numbers THAT family cites, each with the heading and lead-in above it,
+ordered by how many of those numbers it holds and, on a tie, by the order the sources were
+given. Nothing is chosen for you: holding the numbers is arithmetic, meaning them is not.
+
+Per family and not pooled, because pooling credited a list for holding a number some other
+family cited — on a real trail the recommendations list scored a perfect 2 of 2 for `item`,
+whose statements sit in a file that was never passed, and a caller trusting the top score would
+have got exactly the silent wrong binding this whole design cut. This file owns that
+description; the script's `--help` and its error messages point here rather than restate it,
+which is the arrangement that stops one correction landing in three places out of four.
 
 **A trail routinely cites a fourth artefact.** The rule a PR argues against, a sibling issue, a
 spec: whatever holds the statements, add it as another `--source`, or its pointers stay
