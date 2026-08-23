@@ -166,13 +166,13 @@ MUTATIONS = [
      DOSSIER),
 
     ("a four-digit number is an index, so a year is a pointer",
-     '                      rf"{SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
+     '                      rf"{SEPARATOR}(?P<idx>{INDEX})\\b")',
      '                      rf"{SEPARATOR}(?P<idx>\\d{{1,4}}|[A-Z])\\b")',
      ["TestHarvest.test_a_four_digit_number_is_not_an_index"],
      DOSSIER),
 
     ("a lowercase letter is an index, so ordinary prose becomes a citation",
-     '                      rf"{SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Z])\\b")',
+     '                      rf"{SEPARATOR}(?P<idx>{INDEX})\\b")',
      '                      rf"{SEPARATOR}(?P<idx>\\d{{1,3}}|[A-Za-z])\\b")',
      ["TestHarvest.test_a_lowercase_letter_after_a_noun_is_prose"],
      DOSSIER),
@@ -472,6 +472,70 @@ MUTATIONS = [
      "        if False:\n"
      '            print(f"            then: --list {family}=<source>:<line>")',
      ["TestDeclaration.test_a_family_with_something_to_offer_is_told_how_to_declare_it"],
+     DOSSIER),
+
+    ("the blocks come back lists-then-tables, not in the order they appear",
+     "    return sorted(list_blocks(lines) + table_blocks(lines), key=lambda b: b.line)",
+     "    return list_blocks(lines) + table_blocks(lines)",
+     ["TestGuardsAMutantFound.test_blocks_tied_on_coverage_follow_their_order_in_the_source"],
+     DOSSIER),
+
+    ("the index in a table cell has no boundary, so 2026 reads as 202",
+     '            indexed = proved and re.match(rf"({INDEX})\\b(.*)", first)',
+     '            indexed = proved and re.match(rf"({INDEX})(.*)", first)',
+     ["TestGuardsAMutantFound.test_a_four_digit_first_cell_is_not_an_index_with_an_annotation"],
+     DOSSIER),
+
+    ("a lone table row reaches for a second one and dies on a traceback",
+     "        header = 1 if len(rows) > 1 and all(",
+     "        header = 1 if len(rows) > 0 and all(",
+     ["TestGuardsAMutantFound.test_a_lone_table_row_does_not_reach_a_second_row"],
+     DOSSIER),
+
+    ("an index cell in backticks stops being an index",
+     '        bare = [cells_of(row)[0].strip("*_ `") for row in rows]',
+     '        bare = [cells_of(row)[0].strip("*_ ") for row in rows]',
+     ["TestGuardsAMutantFound.test_an_index_cell_in_backticks_is_still_an_index"],
+     DOSSIER),
+
+    ("the annotation keeps the dash that separated it from its index",
+     '                key, rest = indexed.group(1), indexed.group(2).strip("*_ `-—– ")',
+     '                key, rest = indexed.group(1), indexed.group(2).strip("*_ ` ")',
+     ["TestGuardsAMutantFound.test_an_annotation_keeps_its_words_and_loses_its_punctuation"],
+     DOSSIER),
+
+    ("the annotation trails the statement instead of leading it",
+     '                                   " · ".join([c for c in ([rest] if rest else [])\n'
+     "                                               + list(cells[1:]) if c])))",
+     '                                   " · ".join([c for c in list(cells[1:])\n'
+     "                                               + ([rest] if rest else []) if c])))",
+     ["TestGuardsAMutantFound.test_the_annotation_leads_the_statement_it_qualifies"],
+     DOSSIER),
+
+    ("a header row that is no entry stops being counted when there is no separator",
+     "                if first and offset >= header and not re.fullmatch(r\":?-{2,}:?\", first):",
+     "                if first and offset > header and not re.fullmatch(r\":?-{2,}:?\", first):",
+     ["TestGuardsAMutantFound.test_a_table_with_no_separator_counts_its_header_as_unread"],
+     DOSSIER),
+
+    ("an empty cell in the separator row stops it being a separator",
+     "            re.fullmatch(r\":?-{2,}:?\", c) for c in cells_of(rows[1]) if c) else 0",
+     "            re.fullmatch(r\":?-{2,}:?\", c) for c in cells_of(rows[1])) else 0",
+     ["TestGuardsAMutantFound.test_a_separator_row_with_a_trailing_empty_cell_is_still_a_separator"],
+     DOSSIER),
+
+    ("the machine-readable answer does not say how many rows went unread",
+     '                 "span": b.span(), "skipped": b.skipped,',
+     '                 "span": b.span(), "skipped": 0,',
+     ["TestGuardsAMutantFound.test_json_says_how_many_rows_a_block_could_not_read"],
+     DOSSIER),
+
+    ("the index order falls back on set iteration, which varies per process",
+     "    return sorted(indexes, key=lambda i: (not i.isdigit(),\n"
+     "                                          int(i) if i.isdigit() else 0, i))",
+     "    return sorted(indexes, key=lambda i: (not i.isdigit(),\n"
+     "                                          int(i) if i.isdigit() else 0))",
+     ["TestGuardsAMutantFound.test_the_order_of_indexes_does_not_change_between_runs"],
      DOSSIER),
 
     # --- collisions --------------------------------------------------------

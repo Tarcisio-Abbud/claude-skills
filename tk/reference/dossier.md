@@ -114,6 +114,15 @@ least one of the numbers THAT family cites, each with the heading and lead-in ab
 ordered by how many of those numbers it holds and, on a tie, by the order the sources were
 given and then by where the list sits inside its source. Nothing is chosen for you: holding the numbers is arithmetic, meaning them is not.
 
+**A candidate may say it did not read every row.** A list block reads a Markdown table's
+first column as its index, and a row whose first cell is not an index — a note, a total, a row
+whose numbering the author dropped — cannot become an entry. Those rows are COUNTED, and the
+candidate line says `N row(s) not read as entries`. It matters because a span short by a
+parsing artefact reads exactly like a span short because the list really is: a table reporting
+`1–8` and a table reporting `3–8` compete on the same score, and only one of them lost points
+to the parser. Seeing the count, open those rows before you declare that list — the entry you
+were looking for may be one of them.
+
 Per family and not pooled, because pooling credited a list for holding a number some other
 family cited — on a real trail the recommendations list scored a perfect 2 of 2 for `item`,
 whose statements sit in a file that was never passed, and a caller trusting the top score would

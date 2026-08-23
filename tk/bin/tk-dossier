@@ -34,14 +34,11 @@ closes is the caller's job, with the `gh` it already runs; the texts arrive here
 as files. So this script behaves the same on a machine with no forge CLI, and
 the suite proves both subcommands without one.
 
-EXIT CODES are the same three everywhere: 0 nothing is outstanding — every
-pointer harvested resolved against a declared list, every pair merged clean —,
-1 the answer carries something the dossier must state (an unresolved pointer,
-a colliding pair), 2 the run itself could not be made. 1 is a finding, never a
-crash — a caller that treats it as one drops exactly the material this script
-exists to surface. A first `pointers` run declares nothing, so every pointer it
-HARVESTS comes back unresolved and it ends 1; a trail citing nothing this
-vocabulary carries harvests none and ends 0, with the answer saying so.
+EXIT CODES are three — `EXIT_OK`, `EXIT_FINDING`, `EXIT_FAILED` below — and 1
+is a FINDING, never a crash: a caller that treats it as one drops exactly the
+material this script exists to surface. What each code means for a caller is in
+`../reference/dossier.md`, which owns that description; restating it here is
+how the two came to disagree once already.
 """
 
 import argparse
@@ -169,7 +166,7 @@ def citation_re(vocabulary):
                    key=lambda w: (-len(w), w))
     alt = "|".join(re.escape(w) for w in words)
     return re.compile(rf"(?i:\b(?P<noun>{alt}))"
-                      rf"{SEPARATOR}(?P<idx>\d{{1,3}}|[A-Z])\b")
+                      rf"{SEPARATOR}(?P<idx>{INDEX})\b")
 
 
 def strip_fences(lines):
@@ -378,8 +375,15 @@ def table_blocks(lines):
 
 
 def blocks_of(lines):
+    """Every enumerated block of a source, IN THE ORDER IT APPEARS.
+
+    Sorted by line, not by kind. Concatenating the lists and then the tables
+    put a table on line 3 after a list on line 10, which made the offering's
+    documented tie-break — same coverage, then the order they sit in the
+    source — false for the one shape this tool exists to read: a PR body
+    carrying both a numbered list and a review table."""
     lines = strip_fences(lines)
-    return list_blocks(lines) + table_blocks(lines)
+    return sorted(list_blocks(lines) + table_blocks(lines), key=lambda b: b.line)
 
 
 class Pointer:
@@ -741,7 +745,8 @@ def cmd_collisions(args):
         print("\nMeasured pair by pair, by merging each pair for real. Merge "
               "order does not avoid a\ncollision — it only chooses which PR pays "
               "for it. Why no forge field answers this\nis in "
-              "reference/dossier.md, which owns that description.")
+              "../reference/dossier.md, relative to this script, which owns "
+              "that description.")
     return EXIT_FINDING if hit else EXIT_OK
 
 

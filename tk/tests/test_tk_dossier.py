@@ -768,6 +768,112 @@ The real lead-in.
         shown = self.offered(self.pointers(citing, source).stdout)
         self.assertIn("cited as 1, 2, 10, 11", shown)
 
+    def test_blocks_tied_on_coverage_follow_their_order_in_the_source(self):
+        """`blocks_of` returned every list before every table, so a table on
+        line 3 was offered after a list on line 10 — and the tie-break the
+        contract promises was false for the one shape this tool reads most: a
+        PR body carrying both."""
+        citing = self.write("pr.md", "item 1 and item 2.\n")
+        source = self.write("issue.md", """## A table first
+
+| # | what |
+|---|---|
+| 1 | from the table |
+| 2 | also the table |
+
+## Then a list
+
+1. from the list
+2. also the list
+""")
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertLess(shown.index("s1:3"), shown.index("s1:10"))
+
+    def test_a_four_digit_first_cell_is_not_an_index_with_an_annotation(self):
+        """Without the word boundary, `| 2026 |` reads as index 202 with `6`
+        for an annotation, and a two-row table reports `entries 1-202`."""
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", """## Notes
+
+| # | note |
+|---|---|
+| 1 | the first |
+| 2 | the second |
+| 2026 | a year, not an index |
+""")
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertIn("entries 1–2, 1 row(s) not read as entries", shown)
+        self.assertNotIn("202", shown)
+
+    def test_a_lone_table_row_does_not_reach_a_second_row(self):
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", "## Notes\n\n| 1 | alone |\n")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_an_index_cell_in_backticks_is_still_an_index(self):
+        """Every row wears the emphasis, so the column proves itself only if
+        the strip reaches it."""
+        citing = self.write("pr.md", "See item 2.\n")
+        source = self.write("issue.md", "## Notes\n\n| # | note |\n|---|---|\n"
+                                        "| `1` | the first |\n| `2` | the second |\n")
+        r = self.pointers(citing, source, lists=("item=s1:3",))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("the second", self.entry(r.stdout, "item 2"))
+
+    def test_an_annotation_keeps_its_words_and_loses_its_punctuation(self):
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", "## Notes\n\n| # | note |\n|---|---|\n"
+                                        "| 1 — GRAVE | the first |\n| 2 | the second |\n")
+        r = self.pointers(citing, source, lists=("item=s1:3",))
+        block = self.flat(self.entry(r.stdout, "item 1"))
+        self.assertIn("GRAVE · the first", block)
+        self.assertNotIn("— GRAVE", block)
+
+    def test_the_annotation_leads_the_statement_it_qualifies(self):
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", "## Notes\n\n| # | note |\n|---|---|\n"
+                                        "| 1 GRAVE | the first |\n| 2 | the second |\n")
+        r = self.pointers(citing, source, lists=("item=s1:3",))
+        self.assertIn("GRAVE · the first",
+                      self.flat(self.entry(r.stdout, "item 1")))
+
+    def test_a_table_with_no_separator_counts_its_header_as_unread(self):
+        """Without a separator row there is no way to tell a header from data,
+        so the row is counted rather than assumed away."""
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", "## Notes\n\n| # | note |\n"
+                                        "| 1 | one |\n| 2 | two |\n")
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertIn("1 row(s) not read as entries", shown)
+
+    def test_a_separator_row_with_a_trailing_empty_cell_is_still_a_separator(self):
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", "## Notes\n\n| # | note |\n|---|---||\n"
+                                        "| 1 | one |\n| 2 | two |\n")
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertNotIn("not read as entries", shown)
+
+    def test_json_says_how_many_rows_a_block_could_not_read(self):
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", "## Notes\n\n| # | note |\n|---|---|\n"
+                                        "| 1 | one |\n| 2 | two |\n| n/a | a note |\n")
+        r = self.pointers(citing, source, extra=("--json",))
+        self.assertEqual(json.loads(r.stdout)["offering"]["item"][0]["skipped"], 1)
+
+    def test_the_order_of_indexes_does_not_change_between_runs(self):
+        """Letters carry no numeric key, so without the tie-break the sort
+        falls back on set iteration order, which is randomised per process."""
+        citing = self.write("pr.md", "criterion B and criterion A.\n")
+        source = self.write("issue.md", "## Criteria\n\nA. first\nB. second\n")
+        seen = set()
+        for _ in range(6):
+            shown = self.offered(self.pointers(citing, source).stdout)
+            seen.add(next(l for l in shown.splitlines() if "cited as" in l))
+        self.assertEqual(len(seen), 1, seen)
+        self.assertIn("cited as A, B", seen.pop())
+
     def test_lists_tied_on_coverage_keep_the_order_the_sources_came_in(self):
         citing = self.write("pr.md", "See recommendation 1.\n")
         first = self.write("first.md", "## Recommendations, one\n\n1. a\n2. b\n")
