@@ -112,7 +112,7 @@ vocabulary can see — which is the guarantee it can make, and the failure a tir
 actually commits — and then offers, **per pointer family**, the enumerated lists that hold at
 least one of the numbers THAT family cites, each with the heading and lead-in above it,
 ordered by how many of those numbers it holds and, on a tie, by the order the sources were
-given. Nothing is chosen for you: holding the numbers is arithmetic, meaning them is not.
+given and then by where the list sits inside its source. Nothing is chosen for you: holding the numbers is arithmetic, meaning them is not.
 
 Per family and not pooled, because pooling credited a list for holding a number some other
 family cited — on a real trail the recommendations list scored a perfect 2 of 2 for `item`,
@@ -166,9 +166,11 @@ from merging the branches for real:
 <abs>/tk/bin/tk-dossier collisions --repo <dir> origin/<branch-a> origin/<branch-b> ...
 ```
 
-**Never from the forge's `mergeable`/`mergeStateStatus`.** That field compares one branch with
-the default branch and knows nothing of a second open PR, so several PRs rewriting one
-paragraph all read green and the second to merge breaks. Naming a colliding pair does not avoid
+**Never from the forge's `mergeable` and `mergeStateStatus` fields.** They answer for ONE
+branch against the default branch and know nothing of a second open PR, so several PRs
+rewriting one paragraph all read `MERGEABLE`/`CLEAN` and the second to merge breaks. This
+file is the one place that description lives; the script's own docstring says only that it
+asks no forge field, and points here. Naming a colliding pair does not avoid
 the conflict; it decides which PR pays for it, which is a thing the reader can choose.
 
 ## A PR with no trail

@@ -7,25 +7,27 @@ exists because a trail can be complete and still unreadable: the verdict cites
 dossier is, and its five sections, is `../reference/dossier.md`; this script
 owns the two that a writer working from memory gets wrong.
 
-POINTERS (`pointers`) — every "recommendation N", "item N", "criterion A" a text
-cites by number, harvested from the citing texts and quoted from the source
-text the CALLER points it at. Two properties are the whole point, and the split
-between them is the design: nothing is OMITTED, which the script guarantees by
-harvesting exhaustively over a vocabulary it prints, because omission is the
-failure a closing session actually commits; and nothing is GUESSED, which it
-guarantees by refusing to decide WHICH list a pointer means. Markdown gives a
-list no name, so that decision can only be read out of the prose nearby, and
-two review rounds proved what such a reading produces — `como 4`, from "quero
+POINTERS (`pointers`) — what this subcommand GUARANTEES, which is the half a
+caller may rely on without reading further: nothing is OMITTED, because the
+harvest is exhaustive over a vocabulary it prints, and omission is the failure a
+closing session actually commits; and nothing is GUESSED, because it refuses to
+decide WHICH list a cited number belongs to. Markdown gives an enumerated list
+no name, so that decision can only be read out of the prose nearby, and two
+review rounds measured what such a reading produces — `como 4`, from "quero
 safe-to-merge como 4 vereditos", bound to an unrelated sentence at exit 0. The
-first run offers the lists that hold the numbers cited, ordered by how many of
-them each holds; `--list` is the caller saying which one is meant. A dossier that invents the sentence behind a number is worse than
-the four tabs it replaced — the tabs were at least true.
+caller declares the list with `--list`; the script quotes what it was pointed
+at. A dossier that invents the sentence behind a number is worse than the four
+tabs it replaced — the tabs were at least true.
 
-COLLISIONS (`collisions`) — whether two open branches can both land. The forge's
-own `mergeable`/`CLEAN` answers ONE branch against the default branch and knows
-nothing of a second open PR, so N branches rewriting one paragraph all read
-green and the second to merge breaks. `git merge-tree --write-tree` performs the
-real merge into a throwaway tree and answers the question that was asked.
+COLLISIONS (`collisions`) — what it GUARANTEES: two branches are merged for
+real, into a tree nobody keeps, so a pair that cannot both land is named before
+either does. It asks no forge field, for the reason `../reference/dossier.md`
+gives.
+
+HOW EITHER IS DRIVEN, and what its output means, is in
+`../reference/dossier.md`, which owns that description. This docstring owns what
+the script promises; keeping the two apart is what stops one correction landing
+in three places out of four, which it did, twice.
 
 NEITHER SUBCOMMAND TOUCHES THE NETWORK. Fetching the PR body and the issue it
 closes is the caller's job, with the `gh` it already runs; the texts arrive here
@@ -144,6 +146,8 @@ SEPARATOR = r"[ \t]+(?:n[o\u00ba\u00b0]\.?[ \t]*)?"
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 LIST_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<marker>\d{1,3}|[A-Za-z])[.)][ \t]+(?P<text>\S.*)$")
 TABLE_ROW_RE = re.compile(r"^[ \t]*\|(?P<cells>.*)\|[ \t]*$")
+# what an index looks like, wherever an index is read
+INDEX = r"\d{1,3}|[A-Z]"
 HEADING_RE = re.compile(r"^[ \t]*#{1,6}[ \t]")
 WORD_RE = re.compile(r"[A-Za-z]+")
 
@@ -199,7 +203,7 @@ def context_of(lines, start):
     tagged with every pointer family whose word appeared anywhere in it, and
     that inference produced a confident, silent, wrong binding every time a
     word was used in ordinary prose rather than as the list's name — `como 4`
-    from "safe-to-merge como 4 vereditos", and `seção 3` from "Seção reescrita
+    from "quero safe-to-merge como 4 vereditos", and `seção 3` from "Seção reescrita
     na PR #156" above a list of DECISIONS. Markdown carries no field saying
     what a list is called, so any reading of the prose around one is a guess,
     and a guess is exactly what this script may not make. The caller declares
@@ -244,10 +248,14 @@ def index_after(first, offset):
 class Block:
     """One enumerated run in a source: what it is called, and what it says."""
 
-    def __init__(self, kind, line, context, entries):
+    def __init__(self, kind, line, context, entries, skipped=0):
         self.kind = kind
         self.line = line
         self.context = context
+        # rows this block could not read as entries. Reported, because a span
+        # that is short by a parsing artifact reads exactly like a span that is
+        # short because the list really is
+        self.skipped = skipped
         # index -> (line the entry starts on, its statement). The ENTRY's line,
         # never the block's: a report that sends every pointer of a six-entry
         # list to the same line has not been followed back by anyone
@@ -322,24 +330,50 @@ def table_blocks(lines):
         while i < len(lines) and TABLE_ROW_RE.match(lines[i]):
             rows.append(lines[i])
             i += 1
-        keyed = {}
+        # TWO passes, because a real review table writes `| 1 GRAVE |` in the
+        # same column as `| 3 |`, and reading only the bare cells reported that
+        # table as running 3–8 when it runs 1–8. The under-report is worse than
+        # it looks: the block then loses coverage points to a PARSING artifact,
+        # and a wrong list outranks it on a score the reader trusts.
+        #
+        # An annotated cell counts only once the column has PROVED it is an
+        # index column, by carrying at least one bare index. That proof comes
+        # from the table itself — no guess about what a first column means, and
+        # no way for a column of prose to be read as one.
+        bare = [cells_of(row)[0].strip("*_ `") for row in rows]
+        proved = any(re.fullmatch(INDEX, k) for k in bare)
+        # a header row is not a row that failed to be an entry: it is the row
+        # that names the columns, and counting it as missed would put a
+        # permanent "1 row(s) not read" on every well-formed table
+        header = 1 if len(rows) > 1 and all(
+            re.fullmatch(r":?-{2,}:?", c) for c in cells_of(rows[1]) if c) else 0
+        keyed, skipped = {}, 0
         for offset, row in enumerate(rows):
             cells = cells_of(row)
             # the separator row (`|---|---|`) needs no case of its own: `---`
-            # is not an index, so the test below already drops it. A check for
-            # it would be a branch nothing can reach, which is a branch that
-            # silently stops being right
-            key = cells[0].strip("*_ `")
-            if len(cells) < 2 or not re.fullmatch(r"\d{1,3}|[A-Z]", key):
+            # is not an index, so the tests below already drop it
+            first = cells[0].strip("*_ `")
+            if len(cells) < 2:
+                continue
+            # one branch, not two: a bare `1` is the annotated case with an
+            # empty annotation, and a second branch for it would be code no
+            # input can reach — which is code that quietly stops being right
+            indexed = proved and re.match(rf"({INDEX})\b(.*)", first)
+            if indexed:
+                key, rest = indexed.group(1), indexed.group(2).strip("*_ `-—– ")
+            else:
+                if first and offset >= header and not re.fullmatch(r":?-{2,}:?", first):
+                    skipped += 1
                 continue
             keyed.setdefault(key, (start + offset + 1,
-                                   " · ".join(c for c in cells[1:] if c)))
+                                   " · ".join([c for c in ([rest] if rest else [])
+                                               + list(cells[1:]) if c])))
         if len(keyed) >= 2:
             # the header row is INSIDE the block, so context_of cannot see it —
             # and a table names its own subject there (`| # | Block | Marker |`)
             # more reliably than any prose above it does
             context = context_of(lines, start) + " " + rows[0]
-            blocks.append(Block("table", start + 1, context, keyed))
+            blocks.append(Block("table", start + 1, context, keyed, skipped))
     return blocks
 
 
@@ -464,6 +498,16 @@ def wrap(text, indent):
                          break_long_words=False, break_on_hyphens=False)
 
 
+def in_order(indexes):
+    """Indexes as a reader counts them: 2 before 10, never after.
+
+    They are STRINGS, because that is what the harvest captured, and sorting
+    strings put `1, 10, 11, 12, 2` on the line a reader scans to see what a
+    trail cites. Digits sort as numbers, letters after them as letters."""
+    return sorted(indexes, key=lambda i: (not i.isdigit(),
+                                          int(i) if i.isdigit() else 0, i))
+
+
 def offering(pointers, sources, declarations):
     """The lists that could answer, PER undeclared family, best first.
 
@@ -516,7 +560,8 @@ def report_pointers(pointers, vocabulary, sources, declarations, as_json):
             } for p in pointers],
             "offering": {family: [
                 {"source": label, "line": b.line, "kind": b.kind,
-                 "span": b.span(), "holds": sorted(covers), "of": len(wanted),
+                 "span": b.span(), "skipped": b.skipped,
+                 "holds": in_order(covers), "of": len(wanted),
                  "context": " ".join(b.context.split())}
                 for label, b, covers in offered]
                 for family, (wanted, offered) in offer.items()},
@@ -554,10 +599,12 @@ def report_pointers(pointers, vocabulary, sources, declarations, as_json):
               "one would be a guess, and a\nguess that reads like an answer is "
               "the worst thing this script could print.")
     for family, (wanted, offered) in offer.items():
-        print(f"\n`{family}`, cited as {', '.join(sorted(wanted))}\n")
+        print(f"\n`{family}`, cited as {', '.join(in_order(wanted))}\n")
         for label, b, covers in offered:
-            print(f"{label}:{b.line}  {b.kind}, entries {b.span()} — holds "
-                  f"{len(covers)} of the {len(wanted)} cited")
+            missed = (f", {b.skipped} row(s) not read as entries"
+                      if b.skipped else "")
+            print(f"{label}:{b.line}  {b.kind}, entries {b.span()}{missed} — "
+                  f"holds {len(covers)} of the {len(wanted)} cited")
             print(wrap(b.context or "(no heading or lead-in above it)", " " * 12))
         if offered:
             print(f"            then: --list {family}=<source>:<line>")
@@ -689,11 +736,10 @@ def cmd_collisions(args):
                 print(f"          {path}")
             for message in pair["messages"]:
                 print(f"          {message}")
-        print("\nMeasured pair by pair, and it has to be: the forge's `mergeable`"
-              "/`CLEAN` compares one\nbranch with the default branch alone, so every "
-              "open PR here can read green while two\nof them cannot both land. "
-              "Merge order does not avoid a collision — it only chooses\nwhich PR "
-              "pays for it.")
+        print("\nMeasured pair by pair, by merging each pair for real. Merge "
+              "order does not avoid a\ncollision — it only chooses which PR pays "
+              "for it. Why no forge field answers this\nis in "
+              "reference/dossier.md, which owns that description.")
     return EXIT_FINDING if hit else EXIT_OK
 
 

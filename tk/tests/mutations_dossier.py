@@ -114,8 +114,8 @@ MUTATIONS = [
      DOSSIER),
 
     ("a table with an index column is not read as an enumerated list at all",
-     '            if len(cells) < 2 or not re.fullmatch(r"\\d{1,3}|[A-Z]", key):',
-     "            if True:",
+     "        proved = any(re.fullmatch(INDEX, k) for k in bare)",
+     "        proved = False",
      ["TestSourceShapes.test_a_table_with_an_index_column_is_an_enumerated_list"],
      DOSSIER),
 
@@ -259,8 +259,8 @@ MUTATIONS = [
      DOSSIER),
 
     ("a one-column table row becomes an entry whose statement is empty",
-     '            if len(cells) < 2 or not re.fullmatch(r"\\d{1,3}|[A-Z]", key):',
-     '            if not re.fullmatch(r"\\d{1,3}|[A-Z]", key):',
+     "            if len(cells) < 2:\n                continue",
+     "            if False:\n                continue",
      ["TestUncoveredGuards.test_a_one_column_table_row_carries_no_statement_so_it_is_no_entry"],
      DOSSIER),
 
@@ -296,9 +296,9 @@ MUTATIONS = [
      DOSSIER),
 
     ("a candidate does not say how much of the trail it holds",
-     '            print(f"{label}:{b.line}  {b.kind}, entries {b.span()} — holds "\n'
-     '                  f"{len(covers)} of the {len(wanted)} cited")',
-     '            print(f"{label}:{b.line}  {b.kind}, entries {b.span()}")',
+     '            print(f"{label}:{b.line}  {b.kind}, entries {b.span()}{missed} — "\n'
+     '                  f"holds {len(covers)} of the {len(wanted)} cited")',
+     '            print(f"{label}:{b.line}  {b.kind}, entries {b.span()}{missed}")',
      ["TestOffering.test_the_lists_are_offered_by_how_much_of_the_trail_they_hold"],
      DOSSIER),
 
@@ -346,7 +346,8 @@ MUTATIONS = [
     ("the machine-readable offering is not the one the text renderer shows",
      '            "offering": {family: [\n'
      '                {"source": label, "line": b.line, "kind": b.kind,\n'
-     '                 "span": b.span(), "holds": sorted(covers), "of": len(wanted),\n'
+     '                 "span": b.span(), "skipped": b.skipped,\n'
+     '                 "holds": in_order(covers), "of": len(wanted),\n'
      '                 "context": " ".join(b.context.split())}\n'
      "                for label, b, covers in offered]\n"
      "                for family, (wanted, offered) in offer.items()},",
@@ -355,8 +356,8 @@ MUTATIONS = [
      DOSSIER),
 
     ("the offering does not say which numbers each list holds",
-     '                 "span": b.span(), "holds": sorted(covers), "of": len(wanted),',
-     '                 "span": b.span(), "holds": [], "of": len(wanted),',
+     '                 "holds": in_order(covers), "of": len(wanted),',
+     '                 "holds": [], "of": len(wanted),',
      ["TestDeclaration.test_json_offering_carries_what_each_list_holds"],
      DOSSIER),
 
@@ -388,8 +389,8 @@ MUTATIONS = [
      DOSSIER),
 
     ("an index cell wearing emphasis stops being an index",
-     '            key = cells[0].strip("*_ `")',
-     "            key = cells[0].strip()",
+     '            first = cells[0].strip("*_ `")',
+     "            first = cells[0].strip()",
      ["TestGuardsAMutantFound.test_an_index_cell_wearing_emphasis_is_still_an_index"],
      DOSSIER),
 
@@ -399,6 +400,45 @@ MUTATIONS = [
      "        holding = [(label, block, wanted & set(block.entries))\n"
      "                   for label, blocks in reversed(sources) for block in blocks]",
      ["TestGuardsAMutantFound.test_lists_tied_on_coverage_keep_the_order_the_sources_came_in"],
+     DOSSIER),
+
+    ("an annotated index cell is dropped, so the table under-reports its span",
+     '            indexed = proved and re.match(rf"({INDEX})\\b(.*)", first)',
+     '            indexed = proved and re.fullmatch(rf"({INDEX})()", first)',
+     ["TestGuardsAMutantFound.test_an_index_cell_carrying_an_annotation_is_still_an_index"],
+     DOSSIER),
+
+    ("a column of prose becomes an index column without proving it is one",
+     "        bare = [cells_of(row)[0].strip(\"*_ `\") for row in rows]",
+     '        bare = ["1"]',
+     ["TestGuardsAMutantFound.test_a_column_with_no_bare_index_never_becomes_an_index_column"],
+     DOSSIER),
+
+    ("a row that could not be read as an entry is dropped in silence",
+     "                if first and offset >= header and not re.fullmatch(r\":?-{2,}:?\", first):\n"
+     "                    skipped += 1",
+     "                if False:\n                    skipped += 1",
+     ["TestGuardsAMutantFound.test_a_row_that_is_no_entry_is_counted_and_reported"],
+     DOSSIER),
+
+    ("the header row is counted as a row that failed to be an entry",
+     "        header = 1 if len(rows) > 1 and all(",
+     "        header = 0 if len(rows) > 1 and all(",
+     ["TestGuardsAMutantFound.test_the_header_row_is_not_counted_as_a_row_that_failed"],
+     DOSSIER),
+
+    ("the report does not say how many rows it could not read",
+     '            missed = (f", {b.skipped} row(s) not read as entries"\n'
+     '                      if b.skipped else "")',
+     '            missed = ""',
+     ["TestGuardsAMutantFound.test_a_row_that_is_no_entry_is_counted_and_reported"],
+     DOSSIER),
+
+    ("the indexes are sorted as text, so 10 comes before 2",
+     "    return sorted(indexes, key=lambda i: (not i.isdigit(),\n"
+     "                                          int(i) if i.isdigit() else 0, i))",
+     "    return sorted(indexes)",
+     ["TestGuardsAMutantFound.test_indexes_are_listed_as_a_reader_counts_them"],
      DOSSIER),
 
     # --- collisions --------------------------------------------------------

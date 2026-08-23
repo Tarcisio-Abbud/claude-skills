@@ -674,6 +674,69 @@ The real lead-in.
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         self.assertIn("Cards", self.entry(r.stdout, "block 2"))
 
+    def test_an_index_cell_carrying_an_annotation_is_still_an_index(self):
+        """A real review table writes `| 1 GRAVE |` in the same column as
+        `| 3 |`. Read only as bare cells, that table reported itself as running
+        3-8 when it runs 1-8 — and then lost coverage points to a PARSING
+        artifact, letting a wrong list outrank it on a score the reader
+        trusts."""
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", """## Findings
+
+| # | finding |
+|---|---|
+| 1 GRAVE | the first one |
+| 2 GRAVE | the second |
+| 3 | the third |
+""")
+        r = self.pointers(citing, source, lists=("item=s1:3",))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("the first one", self.entry(r.stdout, "item 1"))
+
+    def test_a_column_with_no_bare_index_never_becomes_an_index_column(self):
+        """The annotation rule is unlocked by the table itself, by carrying at
+        least one bare index. Without that proof a column of prose that happens
+        to start with a number would be read as an enumeration."""
+        citing = self.write("pr.md", "See item 2.\n")
+        source = self.write("issue.md", """## Sizes
+
+| what | how big |
+|---|---|
+| 2 files changed | small |
+| 3 files changed | bigger |
+""")
+        r = self.pointers(citing, source)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("entries", self.offered(r.stdout))
+
+    def test_a_row_that_is_no_entry_is_counted_and_reported(self):
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", """## Findings
+
+| # | finding |
+|---|---|
+| 1 | the first |
+| 2 | the second |
+| n/a | a note that is not an entry |
+""")
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertIn("1 row(s) not read as entries", shown)
+
+    def test_the_header_row_is_not_counted_as_a_row_that_failed(self):
+        citing = self.write("pr.md", "See item 1.\n")
+        source = self.write("issue.md", "## Findings\n\n| # | finding |\n"
+                                        "|---|---|\n| 1 | a |\n| 2 | b |\n")
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertNotIn("not read as entries", shown)
+
+    def test_indexes_are_listed_as_a_reader_counts_them(self):
+        """They are strings, so a plain sort printed `1, 10, 11, 12, 2` on the
+        very line a reader scans to see what the trail cites."""
+        citing = self.write("pr.md", "item 1, item 2, item 10 and item 11.\n")
+        source = self.write("issue.md", "## Items\n\n1. a\n2. b\n")
+        shown = self.offered(self.pointers(citing, source).stdout)
+        self.assertIn("cited as 1, 2, 10, 11", shown)
+
     def test_lists_tied_on_coverage_keep_the_order_the_sources_came_in(self):
         citing = self.write("pr.md", "See recommendation 1.\n")
         first = self.write("first.md", "## Recommendations, one\n\n1. a\n2. b\n")
