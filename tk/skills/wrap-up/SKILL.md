@@ -144,24 +144,29 @@ Settle every version-control decision NOW — this gate is what makes the wrap-u
 close. From the inventory, list the pending actions per repo: uncommitted work, unpushed
 branches, PRs to open, PRs awaiting merge.
 
-**Every PR in this gate gets a merge dossier, written before the menu.** The digest below
-says whether the merge MAY happen; the dossier says WHAT is being merged, resolved at the
-point of reading. Write it yourself, from the trail — PR body, the issue it closes, the
-verdict comments:
+**Every PR in this gate gets a merge dossier, before the menu.** The digest below says
+whether the merge MAY happen; the dossier says WHAT is being merged. Write it from the
+trail — the PR body, the issue it closes, the verdict comments — in five sections:
 
-- **Every citation by number arrives with the sentence it names.** A verdict citing
-  "recommendation 2" is undecidable while the statements live in another artefact, so open
-  that artefact and quote the statement inline. Cite the number you could not resolve rather
-  than guessing which list it meant.
-- **Proposal → verdict → why**, then **before/after in practice**, then the **choices made
-  without data**.
-- **Merge mechanics** come from `../../bin/tk-collisions <ref> <ref> ...`, which merges every
-  pair of open branches for real. The forge cannot answer this: its `mergeable` field is
-  blind between two PRs. Exit 1 is a colliding pair, not a crash.
+1. **Pointers resolved.** Every citation by number arrives with the sentence it names. A
+   verdict citing "recommendation 2" is undecidable while the statements live in another
+   artefact, so open that artefact and quote the statement inline. A number whose list stays
+   ambiguous is reported as unresolved, by its number.
+2. **Proposal → verdict → why**, one row per decision, naming where the field contradicted
+   the proposal and which side won.
+3. **Before/after in practice** — what the rule or the code did, and what it does now.
+4. **Choices without data** — the uncertainties the author left scattered, gathered here.
+5. **Merge mechanics** — `../../bin/tk-collisions <ref> <ref> ...` merges every pair of open
+   branches for real. The forge cannot answer this: its `mergeable` field is blind between
+   two PRs. Exit 1 reports a colliding pair.
 
-A PR the verdicts hold back gets a dossier too — the user's decision there is whether the red
-is worth fixing now, and it reads the same material. It is a **dossier**, never the handoff
-briefing of step 6.
+**A PR with no trail gets a DEGRADED dossier, and says so in its first line** — a commit
+straight to main, an issue nobody opened. Sections 1 and 2 have no source, so they are named
+absent; sections 3 to 5 read off the diff and the repo, which are sources of their own. An
+invented section reads exactly like a sourced one, which is why the absence is written down.
+
+A PR the verdicts hold back gets a dossier too: the decision there is whether the red is
+worth fixing now. **Dossier** is the term here; `briefing` names the step-6 handoff file.
 
 **The digest is what the user reads instead of the diff.** Any PR offered as "merge" gets
 one: a per-file summary of the change, the forge link, the evidence block from step 4 — and
@@ -211,9 +216,10 @@ worktrees of the branches in play before the merge round, since `--delete-branch
 branch that is still checked out somewhere.
 **Done when:** every pending version-control action was executed or recorded as an explicit
 DECISION — none merely implied — every PR in the gate had its dossier before the menu, with
-each citation-by-number either resolved or named as unresolved and the collision with the
-other open PRs measured rather than read off the forge, every merged PR's body describes what
-it merged, and the user has the summary: what changed, what was verified, what was deferred.
+its five sections present or named absent, each citation-by-number either resolved or named
+as unresolved, and the collision with the other open PRs measured rather than read off the
+forge; every merged PR's body describes what it merged, and the user has the summary: what
+changed, what was verified, what was deferred.
 
 ## 6. Close: the report, the handoff, and the next step
 
