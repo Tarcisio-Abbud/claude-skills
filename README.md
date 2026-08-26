@@ -68,16 +68,10 @@ project's `loop.md` — spelled out in `tk/skills/dispatch/SKILL.md`, which also
 the dispatch palette, the `/goal` recipe and the `loop.md` contract.
 
 A **merge dossier** is written for every PR the versioning gate handles, before its menu
-opens — the decision made readable where it is read, so a user who has already read the whole
-trail can still say what is being merged. **`tk/bin/tk-dossier`** measures the two sections
-that are not written from memory: `pointers` resolves what the trail cites by number, and
-`collisions` says whether two open branches can both land. Neither touches the network.
-
-What either one guarantees, how a caller drives it, and what its output means are in
-`tk/reference/dossier.md`, which owns that description — this paragraph points there instead
-of repeating it, because a claim restated in four places is a claim that goes stale in three.
-It is a *dossier* and not a *briefing* because `briefing` already names the five-field handoff
-file `tk-queue handoff` writes.
+opens — what is being merged, made readable where it is read, with every citation-by-number
+resolved to the sentence it names. The wrap-up skill says how to write it.
+**`tk/bin/tk-collisions`** supplies the one section prose cannot: it merges every pair of open
+branches for real, because the forge's `mergeable` field is blind between two PRs.
 
 Every subagent an orchestrator dispatches gets its model, reasoning effort and **venue**
 (local × cloud) from `tk/reference/subagent-policy.md` — one row per role, the hybrid rule
@@ -185,9 +179,6 @@ tk/
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   reference/subagent-policy.md    model, effort and venue per subagent role; the role
                                   table is parseable, schema declared in the file
-  reference/dossier.md            the merge dossier: its five sections, the two that
-                                  tk-dossier measures, and what a PR with no trail
-                                  degrades to
   reference/slice-rules.md        the rules earlier slices paid for — writing a command
                                   that touches a file, proving it, and prose another
                                   agent reads; reached from the contract block
@@ -200,15 +191,14 @@ tk/
                                   from memory, and carrying no copy of either
   bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
                                   where their projects are, minus the site file's lists
-  bin/tk-dossier                  the measured half of a merge dossier: `pointers` binds
-                                  every citation-by-number to the sentence it names or
-                                  reports it unresolved; `collisions` merges each pair of
-                                  open branches for real. No network on either path
+  bin/tk-collisions               merges each pair of open branches for real, so a pair
+                                  that cannot both land is named before either does. No
+                                  network: the refs must already be local
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
-  tests/test_tk_dossier.py        regression suite for both dossier subcommands, the
-                                  collisions half against a real git repository
+  tests/test_tk_collisions.py     regression suite, against a real git repository built
+                                  in a throwaway directory
   tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
@@ -216,7 +206,7 @@ tk/
                                   someone wrote
   tests/mutations_roster.py       the same, for the roster suite — folds into that
                                   runner, which already takes the suite as an argument
-  tests/mutations_dossier.py      entries only: it enters through that runner's seam,
+  tests/mutations_collisions.py   entries only: it enters through that runner's seam,
                                   which is what the seam was written for
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest

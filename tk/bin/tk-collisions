@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""tk-collisions — can these open branches all land?
+
+Merges every PAIR of refs for real, into a tree nobody keeps, and names the
+pair that cannot both land before either does.
+
+WHY NOT ASK THE FORGE: `mergeable`/`mergeStateStatus` answer only "does this PR
+merge into its base", which is blind between two PRs. Two branches can each be
+green against `main` and still conflict with each other.
+
+NO NETWORK. The refs must already be local — branches of open PRs live under
+`origin/` until fetched.
+
+EXIT CODES: 0 no pair collides · 1 a pair collides (a FINDING, not a crash) ·
+2 the run could not be made.
+"""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+
+EXIT_OK = 0
+EXIT_FINDING = 1
+EXIT_FAILED = 2
+
+
+def fail(msg):
+    """Stop with code 2. Distinct from a finding: the run did not happen."""
+    print(f"tk-collisions: {msg}", file=sys.stderr)
+    sys.exit(EXIT_FAILED)
+
+
+def git(repo, *argv):
+    try:
+        return subprocess.run(["git", "-C", repo, *argv],
+                              capture_output=True, text=True)
+    except OSError as e:
+        fail(f"git could not be run: {e}")
+
+
+def conflicts_of(out):
+    """The conflicted paths and the messages, read from `merge-tree`'s output.
+
+    TWO readings, because either alone has a way of being empty while the merge
+    really did conflict: the stage entries (`<mode> <oid> <stage>\\t<path>`,
+    stage 1/2/3), and the `CONFLICT (...)` message lines, which name kinds that
+    never reach a stage entry at all."""
+    paths, messages = [], []
+    for line in out.splitlines():
+        stage = re.match(r"^\d{6} [0-9a-f]{4,64} ([123])\t(.*)$", line)
+        if stage:
+            if stage.group(2) not in paths:
+                paths.append(stage.group(2))
+        elif line.startswith("CONFLICT ("):
+            messages.append(line)
+            named = re.search(r"Merge conflict in (.+)$", line)
+            if named and named.group(1) not in paths:
+                paths.append(named.group(1))
+    return paths, messages
+
+
+def measure(repo, a, b):
+    """One pair, merged for real into a tree nobody keeps."""
+    run = git(repo, "merge-tree", "--write-tree", a, b)
+    if run.returncode == 0:
+        return [], []
+    paths, messages = conflicts_of(run.stdout)
+    if not paths and not messages:
+        # `merge-tree` exits 1 for a conflict AND for a merge it could not even
+        # attempt — an unknown flag on a git older than 2.38, a ref that
+        # disappeared between the check and here. Reading that as "clean" is
+        # the exact lie this script was written to stop telling
+        fail(f"`git merge-tree --write-tree {a} {b}` failed without naming a "
+             f"conflict, so nothing was measured: "
+             f"{(run.stderr or run.stdout).strip() or 'no output'}")
+    return paths, messages
+
+
+def collisions(args):
+    repo = args.repo
+    if git(repo, "rev-parse", "--git-dir").returncode != 0:
+        fail(f"{repo} is not a git repository.")
+    for ref in args.refs:
+        if git(repo, "rev-parse", "--verify", "--quiet", ref + "^{commit}").returncode != 0:
+            fail(f"{ref} names no commit in {repo}. Branches of open PRs live "
+                 "under `origin/` until they are checked out — fetch first.")
+
+    if len(args.refs) < 2:
+        message = (f"one branch named ({args.refs[0]}), so there is no pair to "
+                   "measure — a lone PR collides with nobody")
+        print(json.dumps({"pairs": [], "note": message}, ensure_ascii=False, indent=2)
+              if args.json else f"## collisions — {message}")
+        return EXIT_OK
+
+    pairs = []
+    for i, a in enumerate(args.refs):
+        for b in args.refs[i + 1:]:
+            paths, messages = measure(repo, a, b)
+            pairs.append({"a": a, "b": b, "conflicts": bool(paths or messages),
+                          "paths": paths, "messages": messages})
+
+    hit = [p for p in pairs if p["conflicts"]]
+    if args.json:
+        print(json.dumps({"repo": repo, "pairs": pairs,
+                          "counts": {"measured": len(pairs), "colliding": len(hit)}},
+                         ensure_ascii=False, indent=2))
+    else:
+        print(f"## collisions — {len(pairs)} pair(s) merged by "
+              f"`git merge-tree --write-tree`, {len(hit)} colliding\n")
+        for pair in pairs:
+            if not pair["conflicts"]:
+                print(f"clean     {pair['a']} × {pair['b']}")
+                continue
+            print(f"COLLIDES  {pair['a']} × {pair['b']}")
+            for path in pair["paths"]:
+                print(f"          {path}")
+            for message in pair["messages"]:
+                print(f"          {message}")
+        print("\nMerge order does not avoid a collision — it only chooses which "
+              "PR pays for it.")
+    return EXIT_FINDING if hit else EXIT_OK
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="tk-collisions",
+        description="Merge every pair of branches for real, and name the pair "
+                    "that cannot both land. The forge cannot answer this: its "
+                    "`mergeable` field is blind between two PRs.")
+    parser.add_argument("refs", nargs="+", metavar="REF",
+                        help="the branches of the open PRs, usually `origin/<branch>`")
+    parser.add_argument("--repo", default=".", metavar="DIR",
+                        help="the repository (default: .)")
+    parser.add_argument("--json", action="store_true",
+                        help="the same answer, for a reader")
+    return collisions(parser.parse_args(argv))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
