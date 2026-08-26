@@ -144,6 +144,30 @@ Settle every version-control decision NOW — this gate is what makes the wrap-u
 close. From the inventory, list the pending actions per repo: uncommitted work, unpushed
 branches, PRs to open, PRs awaiting merge.
 
+**Every PR in this gate gets a merge dossier, before the menu.** The digest below says
+whether the merge MAY happen; the dossier says WHAT is being merged. Write it from the
+trail — the PR body, the issue it closes, the verdict comments — in five sections:
+
+1. **Pointers resolved.** Every citation by number arrives with the sentence it names. A
+   verdict citing "recommendation 2" is undecidable while the statements live in another
+   artefact, so open that artefact and quote the statement inline. A number whose list stays
+   ambiguous is reported as unresolved, by its number.
+2. **Proposal → verdict → why**, one row per decision, naming where the field contradicted
+   the proposal and which side won.
+3. **Before/after in practice** — what the rule or the code did, and what it does now.
+4. **Choices without data** — the uncertainties the author left scattered, gathered here.
+5. **Merge mechanics** — `../../bin/tk-collisions <ref> <ref> ...` merges every pair of open
+   branches for real. The forge cannot answer this: its `mergeable` field is blind between
+   two PRs. Exit 1 reports a colliding pair.
+
+**A PR with no trail gets a DEGRADED dossier, and says so in its first line** — a commit
+straight to main, an issue nobody opened. Sections 1 and 2 have no source, so they are named
+absent; sections 3 to 5 read off the diff and the repo, which are sources of their own. An
+invented section reads exactly like a sourced one, which is why the absence is written down.
+
+A PR the verdicts hold back gets a dossier too: the decision there is whether the red is
+worth fixing now. **Dossier** is the term here; `briefing` names the step-6 handoff file.
+
 **The digest is what the user reads instead of the diff.** Any PR offered as "merge" gets
 one: a per-file summary of the change, the forge link, the evidence block from step 4 — and
 the four verdicts of **safe-to-merge**, one line each:
@@ -191,8 +215,11 @@ the base branch — deleting it first CLOSES the child (measured twice) — and 
 worktrees of the branches in play before the merge round, since `--delete-branch` fails on a
 branch that is still checked out somewhere.
 **Done when:** every pending version-control action was executed or recorded as an explicit
-DECISION — none merely implied — every merged PR's body describes what it merged, and the
-user has the summary: what changed, what was verified, what was deferred.
+DECISION — none merely implied — every PR in the gate had its dossier before the menu, with
+its five sections present or named absent, each citation-by-number either resolved or named
+as unresolved, and the collision with the other open PRs measured rather than read off the
+forge; every merged PR's body describes what it merged, and the user has the summary: what
+changed, what was verified, what was deferred.
 
 ## 6. Close: the report, the handoff, and the next step
 
@@ -328,6 +355,9 @@ the next conversation's opening sentences, each in the shape that fits.
   the findings in a follow-up commit, push again, and open the PR — or rewrite the body of
   the one already open — so the body describes the branch as it now stands and carries the
   evidence block. Invoking `afk` IS that authorization.
+- **The dossier goes into the PR body**, because an unattended session has nobody at the gate
+  to read it in the terminal. A PR the strict verdicts keep from merging carries it there too,
+  and its DECISION item points at it as the digest reference.
 - **Merge runs on the strict version of the four verdicts**, with verdict 2 hardened: every
   finding FIXED, zero accepted, since accepting a finding is human judgment. Two cases keep
   the merge away from an unattended session, and each is checked by itself:
@@ -344,6 +374,6 @@ the next conversation's opening sentences, each in the shape that fits.
 
 **Done when:** the session state is externalized and one of three holds — the work is
 committed, pushed, and every item ended either merged under the strict four verdicts or at
-an open PR carrying its evidence block; or the concurrent-session guard stopped the run and
-the report says so with the tree untouched; or there was nothing to commit. Whatever was
+an open PR carrying its evidence block and its dossier; or the concurrent-session guard
+stopped the run and the report says so with the tree untouched; or there was nothing to commit. Whatever was
 not merged sits in the queue as a DECISION, and no other external effect happened.
