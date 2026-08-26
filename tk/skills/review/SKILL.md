@@ -1,6 +1,6 @@
 ---
 name: review
-description: "Lens campaign over a delivered code or data slice: five subagents attack the diff from distinct angles on top of the repo's mandatory code review, with a nit/defect ruler, a re-lens loop on a 3-round budget, a design signal and an attack inventory. Use when a diff hits a trigger item named in the site's CLAUDE.md, when the parent claims an exemption or fires it by choice, when a campaign resumes from a handoff, or when another skill needs the severity ruler or the inventory. Prose (a skill, a CLAUDE.md, a report) gets the mandatory review only."
+description: "Lens campaign over a delivered code or data slice: five subagents attack the diff from distinct angles on top of the repo's mandatory code review, with a severity ruler (nit/defect), a re-lens loop on a 3-round budget, a design signal and an attack inventory. Use when a diff hits a trigger item named in the site's CLAUDE.md, when the parent claims an exemption or fires it by choice, when a campaign resumes from a handoff, or when another skill needs the severity ruler or the inventory. Prose (a skill, a CLAUDE.md, a report) gets the mandatory review only."
 ---
 
 A **lens** is a subagent that attacks the slice from one angle. The **parent** is the session
@@ -21,8 +21,8 @@ reads (a skill, a CLAUDE.md, a runbook, a report) is reviewed by the mandatory r
 
 Measure the diff against the site's trigger items at the slice's **base**: the branch point of
 the work item, so a rewrite split across PRs measures as one rewrite. Capture the command once,
-`git diff <base>...HEAD`, and confirm `<base>` resolves before anything else. One item hit fires
-the campaign.
+`git diff <base>...HEAD`, and confirm `<base>` resolves before anything else. A hit item always
+fires the campaign; the exemptions below are the only way out.
 
 Two **exemptions** cancel every item they answer. Each is a one-line **exemption receipt** in the
 PR; the wrap-up gate shows it to the user, who is the second pair of eyes on it:
@@ -44,7 +44,7 @@ estimated cost.
 Pick five lenses from the pool below. Mandatory ones come from the slice type; rows stack, the
 rest is the parent's pick for this slice.
 
-| Slice type | Mandatory |
+| Slice type | Mandatory lenses |
 |---|---|
 | plain source | regression, vacuity/mutation |
 | rewrite of an existing file | regression |
@@ -82,9 +82,10 @@ Under 400 words.
 
 ### 3. Grade
 
-Reproduce each finding, then grade it by **impact** against the base. A **nit** changes
-nothing a reader or a run depends on. Everything else is a **defect**, a one-character boundary
-bug included. When the parent's grade differs from the lens's, the inventory records both.
+Reproduce each finding first: lens grades err in both directions. Then grade it by **impact**
+against the base; the size of the fix is not a grade. A **nit** changes nothing a reader or a run
+depends on. Everything else is a **defect**, a one-character boundary bug included. When the
+parent's grade differs from the lens's, the inventory records both.
 
 Fix nits on the spot and list them; they reopen nothing. A nit in a queue file goes through
 the queue's one writer.
@@ -94,16 +95,17 @@ the queue's one writer.
 ### 4. Correct and re-lens
 
 Defects force a **correction batch**: fix each one, or reject it with a reason specific to the
-finding, recorded in the inventory. A recorded rejection stays rejected in later rounds; a lens
+finding, recorded in the inventory. A recorded rejection stays rejected in later rounds; a finder
 re-raising it reopens the rejection with the user, not the loop.
 
 Then **re-lens the finders**: exactly the lenses that found a defect, against the batch. Add a
 lens when a correction enters ground no finder covered (a moved block, a new write path); from
 then on it is a finder. The correction commit is a round of this campaign, never a new trigger.
 
-The **budget** is 3 rounds, round 1 included; the mandatory review is round 0, outside it.
+Every round runs at the tier and effort of round 1. The **budget** is 3 rounds, round 1
+included; the mandatory review is round 0, outside it.
 
-**Done when:** the re-lens round reported, and the campaign is at one of the states in §5.
+**Done when:** the re-lens round has reported, and the campaign is at one of the states in §5.
 
 ### 5. Escalate
 
@@ -114,14 +116,17 @@ with the round-by-round findings:
   found (the same guard or invariant violated, a new instance each time). An incomplete repair is
   a correction, not a signal. Before asking, the parent writes whether the artifact should exist
   as built: code only when the answer must be identical every run or fail loudly, otherwise prose
-  in a skill. The user picks **correct and continue**, **redesign**, **cut** or **block**.
-- **Ceiling**: round 3 (or any later round) not clean. The user picks **one more round**,
-  **redesign** or **block**. Signal and ceiling together: the signal's menu.
-- **All rejected**: every defect of a round rejected. The ceiling's menu; outranks the signal.
+  in a skill.
+- **Ceiling**: round 3 (or any later round) not clean. Signal and ceiling together: the signal's
+  menu governs.
+- **All rejected**: every defect of a round rejected. Takes the ceiling's menu; outranks the signal.
+
+The user's choices at each stop are the table's exit column.
 
 A **redesign** reruns the round-1 composition on the rounds left, never fewer than one; when none
 remain the parent asks how many the user grants. It inherits the budget and the signal's history.
-A **cut** drops the artifact; the deletion is a slice of its own, and this campaign ends blocked.
+A **cut** drops the artifact; the deletion is a slice of its own, decided by §1 like any diff,
+and this campaign ends blocked.
 A **blocked** slice becomes a queue item carrying the findings; the user reopens it into the
 next round, on the rounds they grant, with the signal's history intact.
 
@@ -149,9 +154,11 @@ A clean round ships the **attack inventory**:
   its fix or its recorded rejection;
 - the ground the corrections opened, with the lens added or declined.
 
-An empty or one-line inventory is a failure, not approval. Merge stays with the user.
+An empty or one-line inventory is a failure, not approval. A slice that fired is merge-ready only
+after a clean round; merge stays with the user.
 
-**Done when:** the inventory is in the PR body, and every finding of every round appears in it.
+**Done when:** the inventory is in the PR body (unattended: there or on the item's handoff
+briefing, §7), and every finding of every round appears in it.
 
 ### 7. Window and handoff
 
@@ -167,12 +174,14 @@ slice's PR or on the item's handoff briefing.
 
 ## Why
 
+The measurements behind each line live in the site's `review.md`, one row per threshold.
+
 - **Five lenses with distinct prompts, picked per slice.** They keep finding what two fixed axes
-  approve: thirteen defects headed for main in nineteen campaigns over code and data.
-- **Re-lens the finders, not a fixed count.** The fix is new code nobody reviewed; pointing the
-  finders at it has caught a defect born in the repair six times running.
+  approve.
+- **Re-lens the finders, not a fixed count.** The fix is new code nobody reviewed, and a defect
+  born in the repair is the common case.
 - **A repeated finding is a design signal, not a coverage gap.** Another round on the same
   mechanism buys a new instance of the same defect; the question is whether the artifact should
   exist as built.
-- **Prose gets the mandatory review only.** Four campaigns over the rule's own prose found zero
-  defects that would have reached main, at 2.1–2.3M tokens; a lens over prose produces prose.
+- **Prose gets the mandatory review only.** Campaigns over the rule's own prose found nothing
+  headed for main; a lens over prose produces prose.
