@@ -38,7 +38,7 @@ one line. No site list at all: the parent decides on its own judgement, stating 
 
 ### 2. Fire round 1
 
-Check that the window fits (§6). Announce the **firing receipt**: the item hit, the base, the
+Check that the window fits (§7). Announce the **firing receipt**: the item hit, the base, the
 estimated cost.
 
 Pick five lenses from the pool below. Mandatory ones come from the slice type; rows stack, the
@@ -78,7 +78,7 @@ An empty answer is a failure: if you find nothing, list the attacks you ran.
 Under 400 words.
 ```
 
-**Done when:** five reports are in, or a dead lens is named for §6.
+**Done when:** five reports are in, or a dead lens is named for §7.
 
 ### 3. Grade
 
@@ -124,6 +124,19 @@ remain the parent asks how many the user grants. It inherits the budget and the 
 A **cut** drops the artifact; the deletion is a slice of its own, and this campaign ends blocked.
 A **blocked** slice becomes a queue item carrying the findings; the user reopens it into the
 next round, on the rounds they grant, with the signal's history intact.
+
+| State | Entry | Exit |
+|---|---|---|
+| not fired | no item hit, or an exemption receipt | mandatory review only → merge-ready; parent fires by choice → round 1 |
+| round N | trigger or parent's choice (N=1); correction batch; redesign; granted round; resumed handoff | clean → inventory; defects → correction batch, design signal (N≥2), all rejected, or ceiling (N≥3) |
+| correction batch | a round with defects, none escalated | re-lens the finders → round N+1 |
+| design signal | round N≥2: 2+ defects, or a repeated mechanism | correct and continue → correction batch; redesign → round N+1; cut or block → blocked |
+| ceiling | round N≥3 not clean | one more round → round N+1; redesign → the rounds granted; block → blocked |
+| all rejected | every defect of a round rejected | as at the ceiling |
+| waiting for window | the campaign does not fit the remaining window (§7) | next window → round N, unchanged |
+| handed off | the window ends mid-campaign | next session re-fires the named pending round |
+| blocked | the user's pick | queue item with the findings; the user reopens → round N+1 |
+| clean | a round with no defect | attack inventory → merge-ready |
 
 **Done when:** the slice is merge-ready, blocked, waiting or handed off, and the PR says which.
 
