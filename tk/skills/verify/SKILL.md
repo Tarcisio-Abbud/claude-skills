@@ -75,14 +75,14 @@ same for attempt 2. On the third failure, in this order:
 
 1. Write the handoff with the script, never by hand — `tk-queue handoff <id> --objective
    "..." --state "..." --blockers "..." [--skills "..."] [--pitfalls "..."]`. It writes
-   `handoff-<id>.md` beside the queue files, refuses a briefing whose mandatory fields are
-   empty, and is what makes the file die with the item instead of outliving it. The
-   **attempt history** goes in `--state` — per attempt: what changed, the command, the exit
-   code and the tail of the output. It lives there rather than in the item because the queue
-   item is size-capped.
+   `handoff-T00N.md` (zero-padded, `T`-prefixed) beside the queue files, refuses a briefing
+   whose mandatory fields are empty, and is what makes the file die with the item instead of
+   outliving it. The **attempt history** goes in `--state` — per attempt: what changed, the
+   command, the exit code and the tail of the output. It lives there rather than in the item
+   because the queue item is size-capped.
 2. `tk-queue edit <id> --class DECISION --deferred "<why the decision could not be asked> —
-   [[handoff-<id>]]"` — an unattended session has no one to ask, so it passes
-   `--deferred "afk — [[handoff-<id>]]"`. The pointer rides in that field either way, and an
+   [[handoff-T00N]]"` — an unattended session has no one to ask, so it passes
+   `--deferred "afk — [[handoff-T00N]]"`. The pointer rides in that field either way, and an
    item already near its size ceiling takes `--force` to accept the edit.
 3. `tk-queue release <id>` when the item was claimed, so the dead package's ownership does
    not outlive it. The next session starts from the handoff.
