@@ -26,6 +26,9 @@ prefix — stay outside `report`'s scope; read the log itself for that history).
 The same command FOLDS a legacy item's `**Field:** value.` chain up onto the
 first line, the one position every gate reads it at — and prints the items it
 left alone rather than folding a chain it would have had to guess at.
+`migrate --dry-run` prints that entire report and writes no queue, no log and
+no briefing: on a file that holds the user's own prose and has no other copy,
+the preview comes before the rewrite.
 
 Priority is the file's ORDER, global — no score, no hidden heuristic. `add` puts a
 new item at the end and `bump` moves one to the top; the package modes take the
@@ -134,7 +137,20 @@ FIELD_CLEAR = "none"
 # in one command, which is the thing `claim` exists to refuse. It is cleared by
 # `release`, which reads the same chain and splices with the same helper.
 CLEARABLE = frozenset(("Risk", "Deferred", "Env"))
-READERS = frozenset(("list", "report", "pack"))   # everything else mutates and takes the queue lock
+# everything else takes the queue lock. `migrate --dry-run` is in the second set
+# and writes no queue, no log and no briefing — only the empty lock below: it takes
+# the lock to READ a queue no other writer is mid-rewrite of, since a preview of a
+# torn snapshot previews a state that never was
+READERS = frozenset(("list", "report", "pack"))
+# The ONE statement of what a preview does and does not write. The banner an
+# operator reads and the `--help` they look it up in both read it, so the two
+# sites a machine can keep in step cannot drift: the lens campaign found this
+# same claim out of sync across five independent prose sites, a new one each
+# round. The three that remain in prose (the comment above, `queue_lock`'s
+# docstring, and the kickoff SKILL.md) cannot read a constant — they are
+# named here so the next writer knows the full list.
+DRY_RUN_WRITES = ("no queue, no done-log and no briefing — only an empty "
+                  "`.tk-queue.lock`, which never carries a byte")
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
 # read once, at import: os.umask can only be read by setting it, and doing that
 # mid-run would race any other thread writing a file (the suite writes from six)
@@ -283,8 +299,16 @@ def queue_lock(memdir):
     Holding it across the WHOLE command is what makes the read authoritative.
 
     Advisory (flock), which is enough: the contract already makes this script
-    the queue's only writer. Readers (`list`, `report`) take no lock — every
+    the queue's only writer. Readers (`list`, `report`, `pack`) take no lock — every
     write lands with os.replace, so a reader sees a coherent file regardless.
+
+    Held is not the same as written, in both directions: `migrate --dry-run`
+    takes this lock and writes no queue, no log and no briefing, because a
+    preview computed from a snapshot another writer is halfway through is a
+    preview of a state that never existed. So a command holding the lock may
+    still leave every file byte-identical — and an empty `.tk-queue.lock` is
+    then the one file it made. The timeout message below says exactly that:
+    the holder is a writer OR a preview, never assumed to be a writer.
     """
     if fcntl is None:
         # No flock (non-POSIX): the unique temp name and the honest miss report
@@ -302,8 +326,9 @@ def queue_lock(memdir):
             except OSError:
                 if time.monotonic() >= deadline:
                     fail(f"another tk-queue still holds {path} after {LOCK_TIMEOUT}s "
-                         "— a concurrent session is writing this queue. Nothing was "
-                         "changed; re-run `tk-queue list` and retry.")
+                         "— a concurrent command holds this queue: a writer, or a "
+                         "`migrate --dry-run` preview, which holds without writing. "
+                         "Nothing was changed; re-run `tk-queue list` and retry.")
                 time.sleep(0.05)
         yield
     finally:
@@ -2398,9 +2423,14 @@ def handoff_candidates(iid, block):
     return handoff_refs(block) | ({iid} if iid is not None else set())
 
 
-def handoff_collect(memdir, after, ids):
+def handoff_collect(memdir, after, ids, dry_run=False):
     """Delete every briefing among `ids` that `after` no longer reaches, and say
     what became of each.
+
+    `dry_run` suppresses the deletion and NOTHING else: the same lines are
+    printed, so a preview's report is the report of the run it previews. Saying
+    "would be removed" here would make the two reports differ in the one place a
+    caller compares them, and the preview announces itself on stderr instead.
 
     `after` is the queue as the command will LEAVE it, passed in rather than
     re-read: asked of the queue as it was FOUND, the item being closed still
@@ -2432,7 +2462,8 @@ def handoff_collect(memdir, after, ids):
         # of this directory. A directory or a stranger's file sitting at the name —
         # the case that argued for a try/except — is turned away by handoff_ours
         # above, and a guard no test can reach is the one that rots
-        os.remove(handoff_path(memdir, n))
+        if not dry_run:
+            os.remove(handoff_path(memdir, n))
         print(f"{handoff_name(n)} removed")
 
 
@@ -3289,6 +3320,25 @@ def fold_chain_onto_first_line(block):
 
 def cmd_migrate(args):
     memdir = memory_dir(args.dir)
+    # ONE gate for every write this command makes through `write_atomic` — the
+    # queue and the done-log. The flag is read HERE, once, and both call sites
+    # below say `save(...)` without asking again: a `--dry-run` that tested the
+    # flag at each write is a `--dry-run` a third write silently escapes, and the
+    # file it would escape into holds the user's own prose and has no other copy.
+    # The command's remaining disk effect is a DELETE, and it is gated inside
+    # `handoff_collect` rather than here — that function is also the collection of
+    # `done`, `cancel` and `edit`, which have no preview to offer, so the flag
+    # travels to it as an argument instead of closing over this binding.
+    # Announced on stderr, where the resolved queue dir already goes: stdout
+    # carries the report, and the report must be the real run's, byte for byte.
+    # The queue's exclusive lock is still taken, dry or not — previewing a queue
+    # another writer is mid-rewrite of would preview a state that never existed — so
+    # a queue no command has ever written gains an EMPTY `.tk-queue.lock`. It is the
+    # one name a preview can bring into existence, and it never carries a byte.
+    save = (lambda _path, _text: None) if args.dry_run else write_atomic
+    if args.dry_run:
+        print(f"tk-queue: --dry-run: writes {DRY_RUN_WRITES}. The report below is what a "
+              "real `migrate` prints, on this queue, right now", file=sys.stderr)
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:
@@ -3305,7 +3355,7 @@ def cmd_migrate(args):
             log = log.replace(header, header + "\n\n" + migrated + "\n", 1)
         else:
             log = log.rstrip("\n") + f"\n\n{header}\n\nMovidos verbatim em {datetime.date.today().isoformat()}; itens carregam as próprias datas.\n\n{migrated}\n"
-        write_atomic(log_path, log)
+        save(log_path, log)
     out, dropped_prev = [], False
     folded, left_alone = [], []
     for kind, text in blocks:
@@ -3339,7 +3389,7 @@ def cmd_migrate(args):
     new_content = "".join(out)
     if dropped_prev:  # file ended on a removed block
         new_content = new_content.rstrip("\n") + "\n"
-    write_atomic(path, new_content)
+    save(path, new_content)
     print(f"{len(done)} [x] item(s) → done-log; IDs assigned up to T{nid:03d}")
     # Both lines carry the IDs, and the second one is the whole reason this
     # command may rewrite the file at all: a run that folded most of a queue and
@@ -3365,7 +3415,7 @@ def cmd_migrate(args):
     ids = set()
     for text in done:
         ids |= handoff_candidates(item_id(text), text)
-    handoff_collect(memdir, new_content, ids)
+    handoff_collect(memdir, new_content, ids, dry_run=args.dry_run)
 
 
 def main():
@@ -3476,9 +3526,14 @@ def main():
                    epilog=PACK_FORMAT,
                    formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    sub.add_parser("migrate", parents=[common],
-                   help="move legacy [x] items to the done-log, assign IDs to open ones, "
-                        "and fold a field chain that sits off the first line onto it")
+    mg = sub.add_parser("migrate", parents=[common],
+                        help="move legacy [x] items to the done-log, assign IDs to open "
+                             "ones, and fold a field chain that sits off the first line "
+                             "onto it")
+    mg.add_argument("--dry-run", action="store_true",
+                    help=f"print the report a real run would print and write {DRY_RUN_WRITES}. "
+                         "The preview to read BEFORE letting this rewrite the text of a "
+                         "real queue")
 
     args = p.parse_args()
     handler = {

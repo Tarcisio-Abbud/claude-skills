@@ -13,6 +13,7 @@ and hand-editing them is exactly what the contract forbids.
 """
 
 import datetime
+import hashlib
 import importlib.machinery
 import importlib.util
 import os
@@ -193,6 +194,32 @@ class TestConcurrency(QueueTest):
         out, err = proc.communicate(timeout=30)
         self.assertEqual(proc.returncode, 0, err)  # and then it goes through
         self.assertIn("**T002**", self.body())
+
+    @unittest.skipIf(fcntl is None, "flock unavailable on this platform")
+    def test_the_lock_timeout_does_not_accuse_the_holder_of_writing(self):
+        """`migrate --dry-run` takes this lock and writes nothing, so a holder is
+        no longer necessarily a writer. The timeout message may not assert that it
+        is: a session blocked by a preview would be told a rewrite is in flight.
+        Slow by construction — it waits out the real LOCK_TIMEOUT, because the
+        message only exists on that path."""
+        self.seed(item(1, "um"))
+        lock_fd = os.open(os.path.join(self.mem, ".tk-queue.lock"),
+                          os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)          # a holder that writes nothing
+        try:
+            r = subprocess.run(
+                [sys.executable, TK, "add", "bloqueado", "--class", "AUTONOMOUS",
+                 "--effort", "S", "--criterion", "A: c", "--dir", self.mem],
+                capture_output=True, text=True, timeout=60)
+        finally:
+            os.close(lock_fd)
+        self.assertNotEqual(r.returncode, 0, "the blocked command reported success")
+        self.assertNotIn("is writing this queue", r.stderr,
+                         "the message asserts the holder writes; a preview holds "
+                         "without writing")
+        self.assertIn("a writer, or a `migrate --dry-run` preview", r.stderr,
+                      "the message must name both kinds of holder")
+        self.assertIn("Nothing was changed", r.stderr)
 
     def test_concurrent_close_and_add_keep_both_files_coherent(self):
         self.seed(item(1, "um"), item(2, "dois"))
@@ -5532,6 +5559,211 @@ class TestClearingOnAClassLessItemIsRefused(QueueTest):
         r = self.run_tk("edit", "T001", "--risk", "none")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.body(), HEADER + seeded)
+
+
+# --- T172: `migrate --dry-run`, the preview a file with no other copy earns ---
+#
+# `migrate` rewrites next-steps.md — the one file holding the user's own prose,
+# with no other copy — and it had no preview: the only way to see what it would
+# do to a 200-item queue was to let it do it. The guard while that was missing
+# was a sentence in a skill ("do not run `migrate` on a real queue"), which is
+# advice, not a guard.
+#
+# Two claims, each asserted the hard way. "Writes NOTHING" is proved on the
+# BYTES of every file in the memory dir, before and against after — not on the
+# queue's text, which passes just as happily against a done-log this command
+# conjured out of a template, and not on one file, because this command writes
+# two and deletes a third. "The SAME report" is proved by running the preview
+# and the real run over one queue and comparing stdout for equality — which is
+# also the second proof of the first claim: a preview that had written anything
+# would leave the real run a different queue to report on.
+
+# The enumeration the banner and `--help` both derive from one constant in the
+# script. Pinned here so the two sites cannot drift apart in silence: the lens
+# campaign found this same claim out of sync in five prose sites, and the banner
+# was the one an operator actually reads — it said "nothing is written" while a
+# preview on a queue with no `next-steps.md` left an empty lock behind.
+DRY_RUN_WRITES = ("no queue, no done-log and no briefing — only an empty "
+                  "`.tk-queue.lock`, which never carries a byte")
+DRY_RUN_BANNER = (f"tk-queue: --dry-run: writes {DRY_RUN_WRITES}. The report below is "
+                  "what a real `migrate` prints, on this queue, right now")
+
+
+class TestMigrateDryRun(HandoffTest):
+    """One fixture carrying every effect `migrate` has: an `[x]` item that moves
+    to the done-log and drags a briefing out with it, an item whose chain folds,
+    an ID-less item that gets numbered, and an item the fold refuses and names."""
+
+    REFUSED = ("- [ ] **T003** — nota depois dos campos\n"
+               "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n"
+               "  nota solta depois dos campos.\n")
+    IDLESS = ("- [ ] legado sem ID\n"
+              "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
+    IDLESS_MIGRATED = ("- [ ] **T008** — legado sem ID **Class:** AUTONOMOUS. "
+                       "**Effort:** S. **Source:** 2026-08-13\n")
+    ANCHOR = "anchor [[handoff-T005]] e [[handoff-T006]]"
+
+    def seed_everything(self):
+        """T005 is ticked after the briefings are written, so the run closes it:
+        that is what makes the [x] move, the done-log write and the collection all
+        happen in one command. TWO briefings, because the collection prints two
+        different lines — one removed, one kept for the sibling that still reaches
+        it — and both belong under the report the criterion compares."""
+        self.seed(item(5, self.ANCHOR), item(6, "irmao [[handoff-T006]]"),
+                  FOLD_LEGACY, self.IDLESS, self.REFUSED)
+        # written by the real command, not by hand: the briefing is prose with a
+        # header this collection reads back, and a hand-made one is a file the
+        # collector would leave alone for not being its own
+        for iid in (5, 6):
+            self.handoff(iid, "--objective", "o", "--state", "s", "--blockers", "b")
+        self.write("next-steps.md",
+                   self.body().replace("- [ ] **T005**", "- [x] **T005**", 1))
+
+    def migrated_body(self):
+        """The file the real run leaves, whichever way it was reached — spelled
+        once, so the two tests that assert it cannot drift apart."""
+        return (HEADER + item(6, "irmao [[handoff-T006]]") + FOLD_CANONICAL
+                + self.IDLESS_MIGRATED + self.REFUSED)
+
+    def snapshot(self):
+        """Every file in the memory dir, by NAME and by BYTES. The names matter as
+        much as the bytes: on a queue with no done-log yet, this command's write is
+        the CREATION of one, and a comparison of contents alone never sees a file
+        that existed on neither side."""
+        out = {}
+        for name in sorted(os.listdir(self.mem)):
+            with open(os.path.join(self.mem, name), "rb") as f:
+                out[name] = hashlib.sha256(f.read()).hexdigest()
+        return out
+
+    # --- claim 1: the report is the real run's report ---------------------
+
+    def test_the_report_is_the_real_runs_report_character_for_character(self):
+        """The preview and the run it previews, over ONE queue, stdout against
+        stdout. `assertIn` on a "would fold" line would pass on a report that named
+        half the items — this is the whole of it, in order, to the character."""
+        self.seed_everything()
+        dry = self.run_tk("migrate", "--dry-run")
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertNotIn("Traceback", dry.stderr)
+        real = self.run_tk("migrate")
+        self.assertEqual(real.returncode, 0, real.stderr)
+        self.assertEqual(dry.stdout, real.stdout)
+        # and not empty agreement: every population this fixture carries is named,
+        # so two silent runs could never pass this by agreeing about nothing
+        self.assertEqual(dry.stdout,
+                         "1 [x] item(s) → done-log; IDs assigned up to T008\n"
+                         "2 item(s) with fields off the first line: folded up, where "
+                         "every gate reads them — T007, T008\n"
+                         "1 item(s) left exactly as they are: folding would have to "
+                         "GUESS which text is a field value — T003. Close each with "
+                         "`cancel` and re-add it clean.\n"
+                         "handoff-T006.md kept — still reached by T006\n"
+                         "handoff-T005.md removed\n")
+
+    # --- claim 2: nothing is written -------------------------------------
+
+    def test_the_preview_leaves_every_file_in_the_dir_byte_identical(self):
+        """Both files this command writes and the one it deletes, hashed together.
+        The queue's own text is the least of it: the done-log write and the
+        briefing's removal are the two effects a next-steps assertion cannot see."""
+        self.seed_everything()
+        before = self.snapshot()
+        r = self.run_tk("migrate", "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_the_done_log_this_run_would_CREATE_is_not_created(self):
+        """The write no content comparison can see. With no done-log in the dir the
+        command builds one from a template, so a preview that wrote would leave
+        behind a log the user never asked for, listing items still in the queue."""
+        self.seed_everything()
+        log = os.path.join(self.mem, "done-log.md")
+        self.assertFalse(os.path.exists(log))
+        self.run_tk("migrate", "--dry-run")
+        self.assertFalse(os.path.exists(log))
+        # the control that says this assertion is about the FLAG and not about a
+        # command that never writes a log at all
+        self.run_tk("migrate")
+        self.assertIn(self.ANCHOR, self.body("done-log.md"))
+
+    def test_the_only_file_a_preview_brings_into_existence_is_the_empty_lock(self):
+        """The exception, pinned rather than left for a reader to trip over. The
+        preview holds the queue's exclusive lock exactly as the real run does —
+        reading a queue another writer is mid-rewrite of would preview a state that
+        never existed — and taking that lock creates `.tk-queue.lock` where a
+        never-written queue has none. It is created EMPTY and never written to, so
+        "byte for byte identical" still holds of every file that carries content;
+        this asserts that it is the ONE name that can appear, and that it is 0 bytes.
+
+        The fixture carries an `[x]` item on purpose: on a queue with nothing to
+        close, the real run writes no done-log either, and the delta would exclude
+        a name that was never in play. No briefing here, because writing one runs a
+        mutating command that would create the lock before the comparison starts."""
+        self.seed("- [x] **T005** — legado feito\n\n", FOLD_LEGACY)
+        before = set(os.listdir(self.mem))
+        self.assertNotIn(".tk-queue.lock", before)
+        self.run_tk("migrate", "--dry-run")
+        self.assertEqual(set(os.listdir(self.mem)) - before, {".tk-queue.lock"})
+        self.assertEqual(os.path.getsize(os.path.join(self.mem, ".tk-queue.lock")), 0)
+
+    def test_the_briefing_the_report_calls_removed_is_still_on_disk(self):
+        """A delete is the one effect no rerun undoes. The report still says
+        "removed" — it is the real run's report, character for character — so the
+        file on disk is the only thing that tells the preview from the run."""
+        self.seed_everything()
+        r = self.run_tk("migrate", "--dry-run")
+        self.assertIn("handoff-T005.md removed\n", r.stdout)
+        self.assertIsNotNone(self.brief(5))
+        self.run_tk("migrate")
+        self.assertIsNone(self.brief(5))
+
+    # --- how the preview says what it is, without touching the report -----
+
+    def test_the_preview_announces_itself_on_stderr_and_never_on_stdout(self):
+        """stdout has to equal the real run's byte for byte, so the one line that
+        says "this changed nothing" travels beside it — on stderr, where the
+        resolved queue dir already goes, and it goes AFTER that line, not instead."""
+        self.seed_everything()
+        r = self.run_tk("migrate", "--dry-run")
+        self.assertIn(f"tk-queue: queue: {self.mem}", r.stderr)
+        self.assertIn(DRY_RUN_BANNER, r.stderr)
+        self.assertNotIn("--dry-run", r.stdout)
+        self.assertNotIn(DRY_RUN_BANNER, self.run_tk("migrate").stderr)
+
+    def test_the_help_carries_the_same_enumeration_as_the_banner(self):
+        """Banner and `--help` are the two sites a machine can hold in step, and
+        they derive from one constant for exactly that reason. A future writer who
+        re-inlines either one drifts from the other in silence, which is the
+        mechanism the campaign kept finding: pin both to the same words."""
+        help_text = " ".join(self.run_tk("migrate", "--help").stdout.split())
+        self.assertIn(" ".join(DRY_RUN_WRITES.split()), help_text,
+                      "`--help` no longer says what the banner says")
+
+    def test_the_real_run_after_the_preview_still_does_the_whole_job(self):
+        """The mask this flag could grow: a preview that half-wrote would hand the
+        real run a job already partly done, and every assertion about the real run
+        would pass on a queue that two commands built between them. The whole file,
+        after the pair, is the only assertion that cannot be satisfied that way."""
+        self.seed_everything()
+        self.run_tk("migrate", "--dry-run")
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), self.migrated_body())
+
+    def test_without_the_flag_migrate_writes_exactly_as_it_did(self):
+        """The flag is OFF by default, and the default is the destructive one: a
+        `--dry-run` that defaulted to true would turn every documented invocation —
+        the skill's, the contract's, this suite's — into a silent no-op that reports
+        success. Same fixture, no flag, compared against the same expected file."""
+        self.seed_everything()
+        before = self.snapshot()
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotEqual(self.snapshot(), before)
+        self.assertEqual(self.body(), self.migrated_body())
+        self.assertIsNone(self.brief(5))
+        self.assertIsNotNone(self.brief(6))
 
 
 if __name__ == "__main__":
