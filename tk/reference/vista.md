@@ -83,9 +83,9 @@ The marker words are Portuguese (`bloco`, `desfecho`, `risco`, `prova`, `saldo`)
 are the decision's own glossary; the prose of a vista is written in the reader's language, and
 its markers stay as they are here.
 
-A card for a PR offered as merge carries the **four safe-to-merge verdicts** in its body —
-tests, review, criterion, reversal — one line each, marked `data-vista-veredito="tests"` and so
-on. The checker does not require them: a card is a PR here and an item in a consolidated report,
+A card for a PR offered as merge carries the **five safe-to-merge verdicts** in its body —
+tests, review, criterion, reversal, closure — one line each, marked
+`data-vista-veredito="tests"` and so on. The checker does not require them: a card is a PR here and an item in a consolidated report,
 and only the first kind has verdicts to give. A human reads them; a red one is named in the
 card.
 

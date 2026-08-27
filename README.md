@@ -18,7 +18,7 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | Skill | What it does |
 |---|---|
 | `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens with the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality, triaged and dispatched via menu. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort |
-| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a merge dossier, and merges by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict four verdicts or at an open PR carrying its evidence block |
+| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a merge dossier, and merges by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
 | `/tk:review` | Lens campaign over a delivered code or data slice — the second pair of eyes on top of the repo's mandatory review: five lenses picked per slice (mandatory ones by slice type), the severity ruler (nit/defect), the re-lens loop on a 3-round budget, the design signal that sends two defects or a repeated mechanism to the user, and the attack inventory a clean round ships — model-invoked. Prose gets the mandatory review only. The site names the trigger items and the provenance of every threshold in `~/.claude/tk/review.md` |
@@ -74,8 +74,9 @@ resolved to the sentence it names. The wrap-up skill says how to write it.
 **`tk/bin/tk-collisions`** supplies the one section prose cannot: it merges every pair of open
 branches for real, because the forge's `mergeable` field is blind between two PRs.
 
-Every subagent an orchestrator dispatches gets its model, reasoning effort and **venue**
-(local × cloud) from `tk/reference/subagent-policy.md` — one row per role, the hybrid rule
+Every subagent an orchestrator dispatches gets its model, reasoning effort, **venue**
+(local × cloud) and whether the role opens a pull request of its own from
+`tk/reference/subagent-policy.md` — one row per role, the hybrid rule
 that lets the orchestrator deviate by logging one line, and the venue eligibility test
 (cloud only where the proof fits in the pushed repo). Its role table is delimited and
 carries its own parsing schema, so a generator injecting those cells into a subagent's
@@ -178,8 +179,9 @@ tk/
   .claude-plugin/plugin.json      the plugin manifest
   skills/<name>/SKILL.md          one directory per skill
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
-  reference/subagent-policy.md    model, effort and venue per subagent role; the role
-                                  table is parseable, schema declared in the file
+  reference/subagent-policy.md    model, effort, venue and PR-authorship per subagent
+                                  role; the role table is parseable, schema declared
+                                  in the file
   reference/slice-rules.md        the rules earlier slices paid for — writing a command
                                   that touches a file, proving it, and prose another
                                   agent reads; reached from the contract block
@@ -283,7 +285,11 @@ and `git worktree add` materialises tracked files only. Left untracked, that con
 the primary tree and nowhere else, so every dispatched agent and every
 `/mattpocock-skills:code-review` ran with no tracker config at all.
 
-This repo being public, the private half stays out of it. The tracker's slug and the `gh`
+This repo being public, the private half stays out of it — out of the FILES, that is. One
+line of one surface names the tracker deliberately: the `Fixes <owner>/<repo>#<n>` closing
+line in a PR body, which is what makes a merge close its ticket. PR bodies are not committed,
+so nothing about the rule below moves; `docs/agents/issue-tracker.md` sets out which surface
+may carry what. The tracker's slug and the `gh`
 config directory live in the clone's local git config, under `tk.tracker` and
 `tk.ghConfigDir`, which git never pushes. Tracker commands run through `bin/tracker-gh`,
 which resolves those values in the same process that uses them: a shell variable does not

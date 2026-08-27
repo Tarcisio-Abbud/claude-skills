@@ -1937,9 +1937,15 @@ MUTATIONS = [
 
     # the geometry arm alone: every break becomes wide enough, so a line the
     # author chose to break reads as one a wrapper made
+    # the named test CHANGED with T168, and the harness is why: METADATA_LINE_RE
+    # began refusing the `chave: valor` fixture on its own, so the old test passed
+    # with the geometry switched off and this entry reported SURVIVED. Two guards
+    # over one incident, the second masking the first. The fixture named now is
+    # reached by no rule but geometry
     ("review#4 the geometry stops distinguishing an author's break from a wrapper's",
      "WRAP_COLUMN_FLOOR = 72", "WRAP_COLUMN_FLOOR = 0",
-     ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_that_OPENS_like_prose_is_refused_too"]),
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_the_GEOMETRY_alone_refuses_a_line_no_other_rule_reaches"]),
 
     # the opening arm alone: `!!!` opens like a sentence again
     ("review#4 any character may open a hard-wrapped line",
@@ -1949,6 +1955,33 @@ MUTATIONS = [
      "        if False:\n            return FOLD_PROSE_REFUSAL",
      ["TestFoldFailsSafeOnShapesNobodyEnumerated.test_a_shape_no_one_enumerated_is_REFUSED_and_not_flattened",
       "TestFoldFailsSafeOnShapesNobodyEnumerated.test_the_two_verdicts_land_in_ONE_run_without_touching_each_other"]),
+
+    # T168 — the metadata arm, switched off: `chave: valor` under a FULL line is
+    # licensed by geometry and by its letter opener, so with this rule gone the
+    # line is joined into the head and the item reported as folded
+    ("T168 a `chave: valor` line is hard-wrapped prose again",
+     "        if METADATA_LINE_RE.match(stripped) and len(stripped) <= WRAP_COLUMN_FLOOR:\n"
+     "            return FOLD_PROSE_REFUSAL",
+     "        if False:\n            return FOLD_PROSE_REFUSAL",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_a_metadata_line_under_a_FULL_line_is_refused_and_not_flattened"]),
+
+    # and from the over-refusal side: drop what must follow the colon, and a URL
+    # or a clock time inside a wrapped sentence reads as a metadata key
+    ("T168 the metadata rule stops reading the character after the colon",
+     r'METADATA_LINE_RE = re.compile(r"\A[^\W\d_][\w-]{0,31}:(?:[ \t]|\Z)")',
+     r'METADATA_LINE_RE = re.compile(r"\A[^\W\d_][\w-]{0,31}:")',
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_a_colon_that_prose_really_uses_does_not_trip_the_metadata_rule"]),
+
+    # T168 — the width condition dropped: the SHAPE alone decides again, and a
+    # wrapped sentence resuming `wiki: ` at 92 columns is refused as metadata.
+    # Measured on a real item before this shipped, not imagined
+    ("T168 a word and a colon are enough to call a line metadata",
+     "        if METADATA_LINE_RE.match(stripped) and len(stripped) <= WRAP_COLUMN_FLOOR:",
+     "        if METADATA_LINE_RE.match(stripped):",
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_a_wrapped_line_that_merely_resumes_with_a_word_and_a_colon_is_prose"]),
 
     # the opening arm, from the other side: an emoji and a wiki link stop reading
     # as prose, and the population the fold exists to serve is refused wholesale
