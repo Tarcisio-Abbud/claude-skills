@@ -202,7 +202,7 @@ MUTATIONS = [
 
     # --- review#5: DECORATION before the ID, and the ID's own wrapping -------
     # The slot tolerated exactly ONE decoration (`~~`), so every other one made a
-    # real allocation invisible — measured on the live m365 queue, which carries
+    # real allocation invisible — measured on a live queue, which carries
     # `- [x] ✅ **T020** — ...` today, and in isolation walked the counter
     # BACKWARDS against the pre-position-rule code (max_id 50 → 3).
 

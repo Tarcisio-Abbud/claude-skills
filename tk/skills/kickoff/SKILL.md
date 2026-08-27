@@ -328,7 +328,7 @@ re-triages; tracker tickets are referenced, not mirrored):
   still have to be editable without one being invented for them.
 - **Project** — optional short lowercase slug (letters, digits, `-`/`_`) tagging which
   project the item belongs to, for a workspace-root queue that mixes several projects'
-  items in one file. Anything outside that shape (`.ambiente`, `Casa Nostra`) is rejected
+  items in one file. Anything outside that shape (`.ambiente`, `Acme Corp`) is rejected
   outright, not warned about. Within it, `add` warns on stderr — not an error, the item
   still enters — when the tag matches no currently-open item's tag, naming the tags already
   in use, so a near-miss (`ambiente` × `anbiente`, `tk` × `tooling`) surfaces before it
