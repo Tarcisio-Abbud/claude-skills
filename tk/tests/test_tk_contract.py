@@ -44,12 +44,12 @@ row left behind by an earlier draft:
 
 | ghost | parent | high | cloud | Outside the markers, and therefore not a role. |
 
-<!-- tk:roles schema=2 -->
-| role | model | effort | venue | pr | note |
-|---|---|---|---|---|---|
-| implementer | parent | session | local | opens | Downgradable to sonnet on a mechanical ticket. |
-| explore | haiku | session | local | none | — |
-| research | sonnet | session | cloud | none | Rises to parent when the question turns on judgement. |
+<!-- tk:roles schema=3 -->
+| role | model | effort | venue | pr | checkpoint | note |
+|---|---|---|---|---|---|---|
+| implementer | parent | session | local | opens | required | Downgradable to sonnet on a mechanical ticket. |
+| explore | haiku | session | local | none | none | — |
+| research | sonnet | session | cloud | none | none | Rises to parent when the question turns on judgement. |
 <!-- /tk:roles -->
 
 Prose below it, likewise. | Even a stray pipe. |
@@ -222,6 +222,31 @@ class TestRoleTable(ContractTest):
                                  "| explore | haiku | session | local | opens |"))
         self.assertIn("Fixes <owner>/<repo>#<n>", self.block("--role", "explore"))
 
+    def test_the_checkpoint_cell_decides_the_section_not_the_role_s_name(self):
+        # same criterion as the `pr` cell above, for the same reason: a bin that
+        # hardcoded "the implementer commits" passes every other test here. Mark
+        # the implementer `none` and the section must go; mark another role
+        # `required` and it must appear under THAT role
+        self.table(TABLE.replace("| implementer | parent | session | local | opens | required |",
+                                 "| implementer | parent | session | local | opens | none |"))
+        self.assertNotIn("checkpoint invariant", self.block("--role", "implementer"))
+
+        self.table(TABLE.replace("| explore | haiku | session | local | none | none |",
+                                 "| explore | haiku | session | local | none | required |"))
+        self.assertIn("checkpoint invariant", self.block("--role", "explore"))
+
+    def test_a_checkpoint_value_outside_the_vocabulary_is_a_defect_not_a_default(self):
+        # the dangerous default is "not `required`, so no section": a typo would
+        # then silently strip the invariant from the one role that commits, and
+        # the quota wall is what collects on it
+        self.table(TABLE.replace("| implementer | parent | session | local | opens | required |",
+                                 "| implementer | parent | session | local | opens | sometimes |"))
+        r = self.run_tk("--role", "implementer")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("'sometimes'", r.stderr)
+        self.assertIn("closed vocabulary", r.stderr)
+        self.assertEqual(r.stdout, "")
+
     def test_a_pr_value_outside_the_vocabulary_is_a_defect_not_a_default(self):
         # the dangerous default is "not `opens`, so no line": a typo would then
         # silently strip the closing line from the role that needs it
@@ -241,10 +266,10 @@ class TestRoleTable(ContractTest):
         self.assertIn("NO default", r.stderr)
 
     def test_a_schema_it_cannot_read_fails_loud(self):
-        self.table(TABLE.replace("schema=2", "schema=3"))
+        self.table(TABLE.replace("schema=3", "schema=4"))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("schema=3", r.stderr)
+        self.assertIn("schema=4", r.stderr)
         self.assertNotIn("| implementer |", r.stdout)
 
     def test_a_value_outside_the_vocabulary_is_a_defect_not_a_default(self):
@@ -275,15 +300,15 @@ class TestRoleTable(ContractTest):
     def test_a_misspelt_marker_says_so_instead_of_just_not_finding_it(self):
         # "no role table" about a file whose table is right there, one character
         # off, sends the reader looking for the wrong thing
-        self.table(TABLE.replace("<!-- tk:roles schema=2 -->", "<!-- tk:roles -->"))
+        self.table(TABLE.replace("<!-- tk:roles schema=3 -->", "<!-- tk:roles -->"))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("probably misspelt", r.stderr)
 
     def test_a_table_with_no_role_in_it_is_refused(self):
-        self.table("<!-- tk:roles schema=2 -->\n"
-                   "| role | model | effort | venue | pr | note |\n"
-                   "|---|---|---|---|---|---|\n"
+        self.table("<!-- tk:roles schema=3 -->\n"
+                   "| role | model | effort | venue | pr | checkpoint | note |\n"
+                   "|---|---|---|---|---|---|---|\n"
                    "<!-- /tk:roles -->\n")
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
@@ -339,8 +364,8 @@ class TestRoleTable(ContractTest):
         self.assertIn("not valid UTF-8", r.stderr)
 
     def test_a_reordered_header_is_refused(self):
-        self.table(TABLE.replace("| role | model | effort | venue | pr | note |",
-                                 "| role | effort | model | venue | pr | note |"))
+        self.table(TABLE.replace("| role | model | effort | venue | pr | checkpoint | note |",
+                                 "| role | effort | model | venue | pr | checkpoint | note |"))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("BY POSITION", r.stderr)
@@ -348,17 +373,17 @@ class TestRoleTable(ContractTest):
     def test_a_missing_alignment_row_is_refused_not_skipped(self):
         # the row is skipped BY POSITION, so without it the FIRST role is the
         # one that disappears — silently, and only for whoever asked for it
-        self.table(TABLE.replace("|---|---|---|---|---|---|\n", ""))
+        self.table(TABLE.replace("|---|---|---|---|---|---|---|\n", ""))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("alignment row", r.stderr)
 
     def test_a_row_short_of_a_cell_is_refused(self):
-        self.table(TABLE.replace("| explore | haiku | session | local | none | — |",
-                                 "| explore | haiku | local | none | — |"))
+        self.table(TABLE.replace("| explore | haiku | session | local | none | none | — |",
+                                 "| explore | haiku | local | none | none | — |"))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("cells, not 6", r.stderr)
+        self.assertIn("cells, not 7", r.stderr)
 
     def test_a_duplicate_role_is_refused(self):
         self.table(TABLE.replace("| research | sonnet | session | cloud |",
@@ -368,8 +393,8 @@ class TestRoleTable(ContractTest):
         self.assertIn("duplicate role 'explore'", r.stderr)
 
     def test_an_empty_note_is_refused(self):
-        self.table(TABLE.replace("| explore | haiku | session | local | none | — |",
-                                 "| explore | haiku | session | local | none |  |"))
+        self.table(TABLE.replace("| explore | haiku | session | local | none | none | — |",
+                                 "| explore | haiku | session | local | none | none |  |"))
         r = self.run_tk("--role", "explore")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("empty `note`", r.stderr)
@@ -383,8 +408,8 @@ class TestRoleTable(ContractTest):
         self.assertNotIn("ghost", r.stderr.split("It carries:")[1])
 
     def test_an_empty_role_cell_is_refused(self):
-        self.table(TABLE.replace("| explore | haiku | session | local | none | — |",
-                                 "|  | haiku | session | local | none | — |"))
+        self.table(TABLE.replace("| explore | haiku | session | local | none | none | — |",
+                                 "|  | haiku | session | local | none | none | — |"))
         r = self.run_tk("--role", "explore")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("empty `role` cell", r.stderr)
@@ -462,6 +487,34 @@ class TestBlockContent(ContractTest):
                 out = self.block("--role", role)
                 self.assertNotIn("Closing the ticket", out)
                 self.assertNotIn("Fixes", out)
+
+    def test_it_states_the_checkpoint_invariant_for_a_role_that_commits(self):
+        out = self.block("--role", "implementer")
+        self.assertIn("### The checkpoint invariant", out)
+        # the instruction itself, asserted whole. `push` alone is vacuous here —
+        # the word appears three times in the section, so a block that dropped
+        # the push from the instruction still carried it
+        self.assertIn("Commit and push at every seam", out)
+        # a commit on the default branch is not a checkpoint, it is the accident
+        self.assertIn("never to the default one", out)
+        # and the measurement that makes it a rule rather than hygiene
+        self.assertIn("2026-08-18", out)
+
+    def test_the_checkpoint_invariant_says_what_uncommitted_work_costs(self):
+        # without the consequence the rule reads as tidiness and gets deferred
+        # to the end of the run — which is exactly where the wall lands
+        out = self.block("--role", "implementer")
+        self.assertIn("did not happen", out)
+        # the orchestrator verifies by artefact, so an uncommitted tree cannot
+        # be rescued by a confident return
+        self.assertIn("reads the tree", out)
+
+    def test_a_role_that_commits_nothing_is_told_nothing_about_checkpoints(self):
+        # an instruction the reader cannot act on is what teaches them to skim
+        for role in ("explore", "research"):
+            with self.subTest(role=role):
+                out = self.block("--role", role)
+                self.assertNotIn("checkpoint invariant", out)
 
     def test_it_points_at_the_rules_earlier_slices_paid_for(self):
         out = self.block("--role", "implementer")

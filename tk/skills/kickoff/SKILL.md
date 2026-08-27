@@ -1,6 +1,6 @@
 ---
 name: kickoff
-description: "Session opening — mirror of /tk:wrap-up: gathers the project's pending items, verifies each against reality, triages and dispatches what the user checks. Args: afk (auto-dispatch, zero menus), pack (same package, one confirmation)"
+description: "Session opening — mirror of /tk:wrap-up: gathers the project's pending items, verifies each against reality, triages and dispatches what the user checks. Args: afk (auto-dispatch, zero menus), pack (same package, one confirmation), --budget N (orchestrator generations the package may spend, default 1)"
 disable-model-invocation: true
 ---
 
@@ -9,7 +9,8 @@ project's pending items, checks what is still real, triages item by item and **d
 what the user checks. Execute the steps in order; each ends on a checkable criterion.
 
 **Arguments:** `afk` and `pack` replace steps 4–5 with the autonomous package flow — after
-step 3, switch to `AFK.md` in this skill's folder.
+step 3, switch to `AFK.md` in this skill's folder. `--budget N` (default 1) rides with either
+and is read in `WINDOW.md`: it is how many orchestrator generations the package may spend.
 
 **Site extensions:** read `~/.claude/tk/kickoff.md` and `.claude/tk/kickoff.md` (project
 root) if they exist — they add site-specific agenda sources and dispatch commands. (A
