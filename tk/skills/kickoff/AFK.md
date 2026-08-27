@@ -437,7 +437,7 @@ that file**: both skills carry `disable-model-invocation: true`, so an agent can
 instead of routing around it.
 
 What the close owns from there, and this file therefore does not restate: committing and
-pushing before any review is dispatched, the four verdicts of safe-to-merge in their strict
+pushing before any review is dispatched, the five verdicts of safe-to-merge in their strict
 unattended form, which items may merge unattended and which end at an open PR carrying their
 proof, and the closing template that step 6's unclosed items enter by their reason.
 

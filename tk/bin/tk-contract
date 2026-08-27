@@ -6,7 +6,8 @@ each time: a ceiling it half-remembers, a role row it approximates, a rule it
 drops because the prompt was already long. This bin produces the block from the
 two files that hold the answers — the SITE file (`~/.claude/tk/env`: this
 machine's identity and its two subagent ceilings) and the ROLE TABLE
-(`tk/reference/subagent-policy.md`: model, effort and venue per role).
+(`tk/reference/subagent-policy.md`: model, effort, venue and whether the role
+opens a pull request of its own, per role).
 
     tk-contract --role implementer
     tk-contract --role audit-finder --fleet 3
@@ -23,7 +24,7 @@ value below is read at run time, and a source this bin cannot parse is refused
 with the defect named — never filled in with a default of its own.
 
 The role table declares its own schema version in its opening marker. This bin
-reads schema=1 and REFUSES a different one rather than parsing blind: a schema
+reads schema=2 and REFUSES a different one rather than parsing blind: a schema
 bump is a column moving, and a positional parser that shrugs at it emits a
 plausible block with the wrong cells in it.
 """
@@ -409,8 +410,8 @@ def main():
             text = f.read().replace("\ufeff", "")
     except OSError as e:
         fail(f"the role table {args.policy} cannot be read: {e.strerror}. It is the source "
-             "of the model, effort and venue this block states, and there is no copy of "
-             "those values here to fall back on.")
+             "of the model, effort, venue and PR-authorship this block states, and there is "
+             "no copy of those values here to fall back on.")
     except UnicodeDecodeError as e:
         fail(f"the role table {args.policy} is not valid UTF-8 (byte "
              f"{e.object[e.start]:#04x} at position {e.start}).")

@@ -1,7 +1,8 @@
-# Subagent policy — model, effort, venue
+# Subagent policy — model, effort, venue, PR
 
 The default for every subagent an orchestrator dispatches: which model runs it, at which
-reasoning effort, and in which **venue** (local × cloud). One role, one row.
+reasoning effort, in which **venue** (local × cloud), and whether the role authors a pull
+request of its own. One role, one row.
 
 The policy is **hybrid**. The table below is the default, and the orchestrator may deviate in
 any direction — it is the one holding the case in front of it. Every deviation costs one
