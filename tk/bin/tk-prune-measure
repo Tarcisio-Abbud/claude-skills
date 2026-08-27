@@ -30,12 +30,29 @@ WHAT IT COUNTS, and where each number comes from:
   defines too — a term whose meaning is written in two places is a term the
   reader has to assemble.
 
+HOW A LINE IS READ. `scan()` walks the body once and hands every later count the
+same list of `Line` records: one line, ONE role, its prose computed once. Roles
+were seven independent regexes consulted at ten call sites before, and the two
+readings drifted — a rule that ended a sentence at one site did not strip its
+marker at another. One classification is why they cannot drift again.
+
 THE SENTENCE UNIT is the one thing here that is a judgement, and it is made
 explicit because every average below rides on it. A sentence ends at `.`, `!` or
 `?`, AND at the end of a list item, a table row or a heading — those carry an
 instruction each and almost never carry a full stop. Without that second half
 `dispatch` measures 51 words per sentence: its whole palette is one table, and
 its rows would read as one enormous sentence with no punctuation in it.
+
+FENCED BLOCKS FOLLOW COMMONMARK, and the consequence is written here rather than
+discovered by a reader wondering where half a file went. Same-character fences
+DO NOT NEST: inside a ```` ```markdown ```` block, a bare ```` ``` ```` closes it,
+and the fence the author meant as the close then OPENS a block that runs to the
+end of the file. Five of the 590 markdown files installed on this machine are
+written that way, and every renderer breaks them identically. Recovering the
+author's intent with a fence stack was rejected: it would make this bin the only
+reader in the chain that sees a file the way nobody's renderer does. What the bin does instead is SAY SO — an unclosed
+block is reported with the line that opened it, so a number that looks small can
+be traced to the fence that swallowed the rest.
 
 WHAT IT DOES NOT MEASURE, so that no report borrows authority this bin lacks:
 
@@ -59,6 +76,7 @@ Exit:   0 measured (always) · 2 no such file, or a directory
 
 import argparse
 import bisect
+import collections
 import json
 import os
 import re
@@ -98,7 +116,13 @@ METRICS = [
     ("terms_defined_in_sibling", "terms defined in a sibling too"),
 ]
 
-FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+# The indent is CAPTURED, not bounded. CommonMark allows a fence three spaces
+# from the margin at the top level and further in when a list item carries it,
+# and `\s{0,3}` read the second case as neither an opening nor a closing fence:
+# the block's own text was counted as prose, and one space of indent moved a
+# fixture from 7 body words to 15. The bound that matters is between the pair,
+# in `closes_fence`, not against the margin.
+FENCE = re.compile(r"^(\s*)(`{3,}|~{3,})")
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 TABLE_ROW = re.compile(r"^\s*\|")
@@ -111,6 +135,19 @@ LINK_DEF = re.compile(r"^\s{0,3}\[[^\]]+\]:")
 RULE = re.compile(r"^\s{0,3}(?:=+|-{3,}|\*{3,}|_{3,})\s*$")
 BLOCKQUOTE = re.compile(r"^\s*>\s?")
 WORD = re.compile(r"[^\W_]", re.UNICODE)        # "holds an alphanumeric"
+
+# What tells a YAML frontmatter block from a document that merely opens with a
+# thematic break. Without the test `---` had two readings that nothing
+# reconciled: a file whose first line is a rule lost every line up to the next
+# rule, and a `description:` written in the BODY was harvested as the
+# frontmatter's own.
+#
+# The test is EVERY line, not one of them. A `key:` somewhere in the block is
+# exactly what a prose paragraph about a description key also has; what prose
+# has and a mapping does not is a line that is neither a key, nor a continuation
+# indented under one, nor an item of a list under one.
+FM_KEY = re.compile(r"^[A-Za-z_][\w.-]*\s*:")
+FM_ITEM = re.compile(r"^-\s")
 
 # A period that ends a sentence, versus one inside `e.g.` or an initial. The
 # lookahead is whitespace-or-end; the word before it is checked in code, because
@@ -131,15 +168,19 @@ NEGATIONS = re.compile(r"(?i)(?<![\w'’])(do not|don['’]t|never|not|no)(?![\w
 ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 MEASURED = re.compile(r"(?i)\bmeasured\b")
 COUNT_EVIDENCE = re.compile(r"(?i)\b\d+\s+(?:times|before)\b")
+# A web address, which is not a pointer to a file of this repo however it ends.
+# `www.` is here beside the schemes because a scheme-less host is written that
+# way in prose, and `www.example.com/index.html` was counted as a file.
+#
 # The scheme is BOUNDED, and that bound is load-bearing rather than tidy: with
 # `*` the class holds `.`, the literal after it is `://`, and a line of dotted
 # text makes the engine consume the run and unwind it from every position —
 # 6.2 s for 20 000 dots, the same shape of defect `PATHISH` carries a note
 # about. No scheme worth resolving is 32 characters long.
-URL = re.compile(r"(?i)\b[a-z][a-z0-9+.-]{0,31}://\S+")
+WEB_ADDRESS = re.compile(r"(?i)\b(?:[a-z][a-z0-9+.-]{0,31}://|www\.)\S+")
 # A path, not a word with a slash in it. The regex matches a path-SHAPED token
-# and `pointer()` below decides whether it is one — the split is deliberate. An
-# earlier version asked for the extension inside the pattern
+# and `scan_pointers()` below decides whether it is one — the split is
+# deliberate. An earlier version asked for the extension inside the pattern
 # (`[\w][\w./@-]*\.(?:md|py|…)`), where `.` sits both in the star and in the
 # literal before the extension. On a line of dotted text ending in no extension
 # the engine then retries from every position: measured quadratic, 3.6 s for
@@ -151,6 +192,10 @@ PATHISH = re.compile(r"(?<![\w/])(?:~|\.{1,2})?/[\w./~@-]*[\w/]"
                      r"|(?<![\w/])[\w][\w./@-]*[\w]")
 POINTER_PREFIXES = ("/", "./", "../", "~/")
 POINTER_SUFFIXES = ("md", "py", "sh", "json", "html", "txt", "yml", "yaml", "toml")
+# Nobody points at a file with a 200-character name. Past this length the token
+# is a run of punctuation the shape happened to admit, and reporting it as a
+# pointer puts a screenful of noise where a path should be.
+POINTER_MAX = 200
 # `A **term** is`, with the article optional so the house form `**Pruning** is`
 # is found too, and `**term**:` opening a line. The `^` is what anchors the
 # second one, not the call site: `.match` would anchor it too, and then neither
@@ -159,20 +204,51 @@ TERM_IS = re.compile(r"(?:\b(?:an?|the)\s+)?\*\*([^*\n]+)\*\*\s+(?:is|means)\b",
                      re.IGNORECASE)
 TERM_COLON = re.compile(r"^\*\*([^*\n]+)\*\*\s*:")
 
+# One body line, read once: the number a reader scrolls to, the ONE role it
+# plays, and its prose with that role's markers taken off.
+Line = collections.namedtuple("Line", "number role text")
+
+# The roles whose END ends a sentence, full stop or not. Each carries one item
+# and almost never carries a full stop. What is NOT here is the general rule "a
+# line with no punctuation ends a sentence": that would cut every wrapped
+# paragraph at its line breaks, which is the opposite error and a commoner one.
+HARD_BREAK_ROLES = frozenset({"heading", "list", "table", "linkdef", "rule"})
+
+
+def looks_like_frontmatter(block):
+    """True when this block reads as a YAML mapping rather than as prose.
+
+    One `key:` line at least, and nothing that is not one of the three shapes a
+    mapping is written in. A block holding a sentence is a document that opened
+    with a thematic break, whatever keys the sentence happens to name.
+    """
+    keyed = False
+    for line in block:
+        if not line.strip():
+            continue
+        if FM_KEY.match(line):
+            keyed = True
+        elif not (line[:1].isspace() or FM_ITEM.match(line)):
+            return False
+    return keyed
+
 
 def strip_frontmatter(lines):
     """(body lines paired with their 1-based numbers, the frontmatter lines).
 
-    Frontmatter is the block between the `---` on line 1 and the next `---`. An
-    opening fence with no closing one is NOT frontmatter: the whole file would
-    vanish from the body, and a file that merely starts with a horizontal rule
-    would measure as empty.
+    Frontmatter is the block between the `---` on line 1 and the next `---`, AND
+    it has to hold a `key:` line. An opening fence with no closing one is not
+    frontmatter either: the whole file would vanish from the body, and a file
+    that merely starts with a horizontal rule would measure as empty.
     """
     if not lines or lines[0].rstrip() != "---":
         return list(enumerate(lines, 1)), []
     for i in range(1, len(lines)):
         if lines[i].rstrip() in ("---", "..."):
-            return list(enumerate(lines[i + 1:], i + 2)), lines[1:i]
+            block = lines[1:i]
+            if looks_like_frontmatter(block):
+                return list(enumerate(lines[i + 1:], i + 2)), block
+            break
     return list(enumerate(lines, 1)), []
 
 
@@ -209,7 +285,7 @@ def frontmatter_description(fm_lines):
 
 
 def opens_fence(line):
-    """The fence this line opens, or None.
+    """(marker, indent) of the fence this line opens, or None.
 
     CommonMark: the info string after a BACKTICK fence may not contain a
     backtick. That clause is the whole reason this is a function — without it a
@@ -219,65 +295,79 @@ def opens_fence(line):
     m = FENCE.match(line)
     if not m:
         return None
-    if m.group(1)[0] == "`" and "`" in line[m.end():]:
+    if m.group(2)[0] == "`" and "`" in line[m.end():]:
         return None
-    return m.group(1)
+    return m.group(2), len(m.group(1).expandtabs())
 
 
-def closes_fence(line, fence):
-    """True when this line closes a block opened with `fence`.
+def closes_fence(line, fence, indent):
+    """True when this line closes a block opened with `fence` at `indent`.
 
-    Same character, at least as long, and NOTHING after it — a closing fence
-    carries no info string, so a longer opener of the same character cannot be
-    mistaken for the close of the block it sits in.
+    Same character, at least as long, NOTHING after it — a closing fence carries
+    no info string, so a longer opener of the same character cannot be mistaken
+    for the close of the block it sits in — and no more than three spaces further
+    in than the fence that opened the block, which is CommonMark's allowance read
+    where it belongs: between the pair, so a fence inside a list item closes.
     """
     m = FENCE.match(line)
-    return bool(m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)
-                and not line[m.end():].strip())
+    return bool(m and m.group(2)[0] == fence[0] and len(m.group(2)) >= len(fence)
+                and not line[m.end():].strip()
+                and len(m.group(1).expandtabs()) <= indent + 3)
 
 
-def outside_code(body):
-    """`body` without its fenced blocks, fences included.
+def classify(raw):
+    """(role, prose) for one body line: exactly ONE role, the markers taken off.
 
-    Fences are matched by their own rule rather than by a fixed length: a block
-    opened with four backticks closes on four, and a three-backtick line INSIDE
-    it is content. A block left unclosed runs to the end of the file, which is
-    what a renderer does with it too.
+    The role is the FIRST construct the line matches, and the prose is what is
+    left after every marker the line carries is removed — a table row inside a
+    list item gives up both. Role and prose are two answers about one line, and
+    computing them side by side here is what keeps them one reading.
     """
-    out, fence = [], None
-    for number, line in body:
-        if fence is None:
-            fence = opens_fence(line)
-            if fence is None:
-                out.append((number, line))
-            continue
-        if closes_fence(line, fence):
-            fence = None
-    return out
-
-
-def line_text(line):
-    """The line's prose, with the markers that are not words removed."""
-    text = BLOCKQUOTE.sub("", line)
-    text = HEADING.sub("", text)
+    stripped = BLOCKQUOTE.sub("", raw)
+    role = None
+    for name, pattern in (("rule", RULE), ("heading", HEADING),
+                          ("list", LIST_ITEM), ("table", TABLE_ROW),
+                          ("linkdef", LINK_DEF)):
+        if pattern.match(stripped):
+            role = name
+            break
+    text = HEADING.sub("", stripped)
     text = LIST_ITEM.sub("", text)
     if TABLE_ROW.match(text):
         text = " ".join(cell.strip() for cell in text.strip().strip("|").split("|"))
-    return text.strip()
+    text = text.strip()
+    if role is None:
+        role = "prose" if text else "blank"
+    return role, text
 
 
-def hard_break(line):
-    """True when the END of this line ends a sentence, full stop or not.
+def scan(body):
+    """(the body's `Line` records, the line an unclosed fence opened).
 
-    Each of these carries one item and almost never a full stop. What is NOT
-    here is the general rule "a line with no punctuation ends a sentence": that
-    would cut every wrapped paragraph at its line breaks, which is the opposite
-    error and a far commoner one.
+    ONE pass. Fenced blocks are dropped here, so no later count carries a rule
+    of its own about them, and every surviving line is classified once.
+
+    Fences are matched by their own rule rather than by a fixed length: a block
+    opened with four backticks closes on four, and a three-backtick line INSIDE
+    it is content. Same-character fences do not nest — the docstring at the top
+    says what that costs and why the cost is taken. A block left unclosed runs to
+    the end of the file, which is what a renderer does with it too; the line it
+    opened on is returned so the report can say the file was cut short.
     """
-    stripped = BLOCKQUOTE.sub("", line)
-    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)
-                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)
-                or RULE.match(stripped))
+    out, fence, indent, opened_at = [], None, 0, None
+    for number, raw in body:
+        if fence is None:
+            found = opens_fence(raw)
+            if found is None:
+                role, text = classify(raw)
+                out.append(Line(number, role, text))
+            else:
+                fence, indent = found
+                opened_at = number
+            continue
+        if closes_fence(raw, fence, indent):
+            fence, opened_at = None, None
+    return out, opened_at
 
 
 def words(text):
@@ -329,32 +419,31 @@ def sentences(body):
         if not chunk:
             return
         text, offsets, starts = "", [], []
-        for number, piece in chunk:
+        for line in chunk:
             offsets.append(len(text))
-            starts.append(number)
-            text += piece + " "
+            starts.append(line.number)
+            text += line.text + " "
         for offset, sentence in split_sentences(text.rstrip()):
             i = bisect.bisect_right(offsets, offset) - 1
             found.append((starts[max(i, 0)], len(words(sentence))))
         chunk.clear()
 
     chunk = []
-    for number, line in body:
-        text = line_text(line)
-        if not text:
+    for line in body:
+        if not line.text:
             flush(chunk)
             continue
-        if hard_break(line):
+        if line.role in HARD_BREAK_ROLES:
             # BEFORE as well as after. Flushing only after it left the first
             # bullet of a list glued to the paragraph above whenever no blank
             # line separated them — which CommonMark does not require — and the
             # same document then measured two ways depending on invisible
             # whitespace, with `--targets` flipping ok to over on it.
             flush(chunk)
-            chunk.append((number, text))
+            chunk.append(line)
             flush(chunk)
         else:
-            chunk.append((number, text))
+            chunk.append(line)
     flush(chunk)
     return found
 
@@ -362,14 +451,13 @@ def sentences(body):
 def defined_terms(body):
     """(line number, term) for every term this body defines."""
     found = []
-    for number, line in body:
-        text = line_text(line)
-        m = TERM_COLON.search(text)
+    for line in body:
+        m = TERM_COLON.search(line.text)
         if m:
-            found.append((number, m.group(1).strip()))
+            found.append((line.number, m.group(1).strip()))
             continue
-        for m in TERM_IS.finditer(text):
-            found.append((number, m.group(1).strip()))
+        for m in TERM_IS.finditer(line.text):
+            found.append((line.number, m.group(1).strip()))
     return found
 
 
@@ -400,17 +488,52 @@ def sibling_terms(path):
         except OSError:
             continue
         body, _ = strip_frontmatter(lines)
-        for _, term in defined_terms(outside_code(body)):
+        scanned, _ = scan(body)
+        for _, term in defined_terms(scanned):
             out.setdefault(term.casefold(), []).append(name)
     return out
 
 
-def hits(body, pattern):
-    """Every match of `pattern` in the body, with its line number and its line."""
-    for number, line in body:
-        text = URL.sub(" ", line_text(line))
-        for m in pattern.finditer(text):
-            yield number, m, text
+def collapse(text):
+    """(the text with its whitespace runs collapsed, offset → collapsed offset).
+
+    The map is what lets a window be cut around a match without searching for it
+    again. Searching was the earlier form and it was wrong twice over: it
+    collapsed the whole line ONCE PER MATCH — 12 000 negations on one line took
+    10 s — and it found the FIRST occurrence of the token, so every later `not`
+    on the line was windowed around the first one.
+    """
+    out, mapping, i, n = [], [0] * (len(text) + 1), 0, len(text)
+    while i < n:
+        if text[i].isspace():
+            j = i
+            while j < n and text[j].isspace():
+                mapping[j] = len(out)
+                j += 1
+            if out and j < n:
+                out.append(" ")
+            i = j
+        else:
+            mapping[i] = len(out)
+            out.append(text[i])
+            i += 1
+    mapping[n] = len(out)
+    return "".join(out), mapping
+
+
+def line_matches(body, pattern):
+    """(line, its text, every match) for each body line the pattern hits.
+
+    Grouped BY LINE rather than yielded one match at a time, so a caller that
+    needs the line prepared — collapsed, mapped — prepares it once for all of
+    them. Web addresses are removed first: a URL is not a pointer to a file of
+    this repo however it ends, and the words inside one are not prose.
+    """
+    for line in body:
+        text = WEB_ADDRESS.sub(" ", line.text)
+        found = list(pattern.finditer(text))
+        if found:
+            yield line, text, found
 
 
 def scan_kind(body, pattern, kind):
@@ -419,8 +542,8 @@ def scan_kind(body, pattern, kind):
     Which rule matched is how a piece of evidence is judged: a date and a count
     are both evidence, and what to do about each is a different question.
     """
-    return [{"line": number, "kind": kind, "match": m.group(0)}
-            for number, m, _ in hits(body, pattern)]
+    return [{"line": line.number, "kind": kind, "match": m.group(0)}
+            for line, _, found in line_matches(body, pattern) for m in found]
 
 
 def scan_pointers(body):
@@ -429,13 +552,17 @@ def scan_pointers(body):
     The regex finds the token and this decides — see `PATHISH` for why the
     decision cannot go back into the pattern.
     """
-    found = []
-    for number, m, _ in hits(body, PATHISH):
-        token = m.group(0)
-        if (token.startswith(POINTER_PREFIXES)
-                or ("." in token and token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):
-            found.append({"line": number, "kind": "pointer", "match": token})
-    return found
+    out = []
+    for line, _, found in line_matches(body, PATHISH):
+        for m in found:
+            token = m.group(0)
+            if len(token) > POINTER_MAX:
+                continue
+            if (token.startswith(POINTER_PREFIXES)
+                    or ("." in token
+                        and token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):
+                out.append({"line": line.number, "kind": "pointer", "match": token})
+    return out
 
 
 def scan_context(body, pattern):
@@ -445,23 +572,26 @@ def scan_context(body, pattern):
     the agent and `never` naming an outcome look identical to it, and only the
     person reading the line can tell them apart.
     """
-    return [{"line": number, "match": m.group(0), "context": context(text, m)}
-            for number, m, text in hits(body, pattern)]
+    out = []
+    for line, text, found in line_matches(body, pattern):
+        collapsed, mapping = collapse(text)
+        for m in found:
+            out.append({"line": line.number, "match": m.group(0),
+                        "context": context(collapsed, mapping, m.start())})
+    return out
 
 
-def context(text, match):
-    """A window around the match, so a listed negation can be judged in place.
+def context(collapsed, mapping, at):
+    """A window of the collapsed line around the offset the match starts at.
 
-    The match is found again IN THE COLLAPSED text rather than sliced at its
-    original offset: collapsing runs of whitespace moves everything after them
-    left, and a window cut with the old offset drifts right — far enough, on a
-    loosely spaced line, to leave the match outside its own context.
+    The offset is TRANSLATED rather than reused: collapsing runs of whitespace
+    moves everything after them left, and a window cut with the original offset
+    drifts right — far enough, on a loosely spaced line, to leave the match
+    outside its own context.
     """
-    collapsed = " ".join(text.split())
     if len(collapsed) <= 100:
         return collapsed
-    at = collapsed.find(" ".join(match.group(0).split()))
-    start = max(0, (at if at >= 0 else 0) - 40)
+    start = max(0, mapping[at] - 40)
     end = min(len(collapsed), start + 100)
     return ("…" if start else "") + collapsed[start:end] + ("…" if end < len(collapsed) else "")
 
@@ -476,7 +606,7 @@ def measure(path):
     # alphanumeric, so it never becomes a word.
     lines = raw.decode("utf-8-sig", errors="replace").splitlines()
     body_all, fm_lines = strip_frontmatter(lines)
-    body = outside_code(body_all)
+    body, unclosed_fence = scan(body_all)
 
     description = frontmatter_description(fm_lines)
     sents = sentences(body)
@@ -512,6 +642,7 @@ def measure(path):
     return {
         "path": path,
         "metrics": metrics,
+        "unclosed_fence": unclosed_fence,
         "long_sentences": [{"line": number, "words": n}
                            for number, n in sents if n > LONG_SENTENCE],
         "inline_evidence": evidence,
@@ -555,6 +686,13 @@ def render(report, show_targets):
             row += (f"  {mark['target']:>6}  {mark['status']}" if mark
                     else f"  {'—':>6}  —")
         lines.append(row)
+
+    # Said where the numbers are, because it is the numbers it explains: a body
+    # that stops at a fence is a small file for a reason no metric can show.
+    if report["unclosed_fence"] is not None:
+        lines += ["", f"note: the fenced block opened on line "
+                      f"{report['unclosed_fence']} is never closed — "
+                      f"every line after it is counted as code"]
 
     lines += section("long sentences", report["long_sentences"],
                      lambda e: f"{e['words']} words")

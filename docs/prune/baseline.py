@@ -105,6 +105,18 @@ def main(date, cache):
     word_ratio = round(mean(tk, "body_words") / mean(matt, "body_words"), 1)
     neg_ratio = round(mean(tk, "negations") / mean(matt, "negations"), 1)
     matt_max_over = over(matt, "max_sentence_words")
+    cut = [(name, r["unclosed_fence"]) for rows in (tk, matt) for name, r in rows
+           if r["unclosed_fence"] is not None]
+    # Printed either way, and the empty case is the point: "no row here is a
+    # floor" is a claim about the table above, and a section that appears only
+    # when something is wrong leaves a reader unable to tell a clean set from a
+    # check nobody ran.
+    cut_section = ("Every row above measures a whole file: no fence in either set is left open."
+                   if not cut else
+                   "The rows below measure the file UP TO that fence, so their word counts are\n"
+                   "floors rather than totals.\n\n"
+                   "| file | fence opened on line |\n|---|---|\n"
+                   + "\n".join(f"| `{name}` | {line} |" for name, line in sorted(cut)))
 
     print(f"""# Pruning baseline — {date}
 
@@ -158,6 +170,15 @@ tk/bin/tk-prune-measure tk/skills/dispatch/SKILL.md --json --targets
 ## `mattpocock-skills` {os.path.basename(cache)} — the calibration set
 
 {table(matt)}
+
+## What an unclosed fence cut short
+
+Same-character fences do not nest, so a block opened inside another one closes the outer block,
+and the fence the author meant as the close opens one that runs to the end of the file. Every
+renderer breaks such a file the same way, and the bin reads it the same way on purpose — it
+reports the line that opened the block it never closed.
+
+{cut_section}
 
 ## The gap
 

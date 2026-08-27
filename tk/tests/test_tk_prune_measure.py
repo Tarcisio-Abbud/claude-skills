@@ -732,6 +732,185 @@ class TestUsage(MeasureTest):
         self.assertEqual(self.report(path)["path"], path)
 
 
+class TestTheFenceIndent(MeasureTest):
+    """The margin a fence is measured against is the fence that opened the block,
+    not the left edge of the file. Bounded against the edge, a fence carried by a
+    list item was neither an opener nor a closer, and its contents were counted as
+    prose — one space of indent moved this fixture from 7 body words to 15."""
+
+    BLOCK = "One two three four five six seven.\n\n{indent}```\nnever run this\n{indent}```\n"
+
+    def test_a_fence_at_the_margin_holds_its_block_out_of_the_count(self):
+        self.assertMetric(self.BLOCK.format(indent=""), "body_words", 7)
+
+    def test_a_fence_three_spaces_in_holds_its_block_out_of_the_count(self):
+        self.assertMetric(self.BLOCK.format(indent="   "), "body_words", 7)
+
+    def test_a_fence_carried_by_a_list_item_holds_its_block_out_of_the_count(self):
+        self.assertMetric(self.BLOCK.format(indent="    "), "body_words", 7)
+
+    def test_a_close_indented_far_past_its_opener_does_not_close_the_block(self):
+        # three spaces further in is CommonMark's allowance; the eighth is not,
+        # and a line that deep is content of the block rather than its end
+        text = ("One two three four five six seven.\n\n```\nnever\n"
+                "        ```\nno\n```\n")
+        self.assertMetric(text, "negations", 0)
+
+
+class TestTheUnclosedBlock(MeasureTest):
+    """A body that stops at a fence is a small number with a cause no metric can
+    show. Same-character fences do not nest, so a skill written with a ```markdown
+    block around a ```ts one loses everything after the inner block's close — six
+    installed skills are written that way, and every renderer breaks them the same.
+    The bin follows CommonMark and SAYS the file was cut short."""
+
+    UNCLOSED = QUIET + "\n```\nnever run this\n"
+
+    def test_the_line_the_unclosed_block_opened_on_is_reported(self):
+        self.assertEqual(self.report(self.write(self.UNCLOSED))["unclosed_fence"], 8)
+
+    def test_a_file_whose_blocks_all_close_reports_none(self):
+        closed = QUIET + "\n```\nnever run this\n```\n"
+        self.assertIsNone(self.report(self.write(closed))["unclosed_fence"])
+
+    def test_the_text_report_names_the_line_too(self):
+        r = self.run_on(self.write(self.UNCLOSED))
+        self.assertIn("the fenced block opened on line 8 is never closed", r.stdout)
+
+    def test_a_file_whose_blocks_all_close_carries_no_note(self):
+        r = self.run_on(self.write(QUIET + "\n```\nnever\n```\n"))
+        self.assertNotIn("never closed", r.stdout)
+
+    def test_the_bin_still_exits_zero_on_a_file_it_reports_cut_short(self):
+        # a note about the reading, not a verdict on the file
+        self.assertEqual(self.run_on(self.write(self.UNCLOSED)).returncode, 0)
+
+
+class TestTheFrontmatterBoundary(MeasureTest):
+    """`---` has two readings and the file has to choose one. A block of prose
+    between two rules is a document that opens with a thematic break, whatever
+    keys the prose happens to name: read as frontmatter it loses its body, and a
+    `description:` written in a sentence is harvested as the skill's own."""
+
+    OPENS_WITH_A_RULE = ("---\n\nA paragraph of prose here.\n\n"
+                         "description: not the frontmatter one\n\n---\n\n"
+                         "More prose after the second rule.\n")
+
+    def test_prose_between_two_rules_stays_in_the_body(self):
+        self.assertMetric(self.OPENS_WITH_A_RULE, "body_words", 16)
+
+    def test_a_description_written_in_the_body_is_not_the_frontmatter_one(self):
+        self.assertIsNone(self.metrics_of(self.OPENS_WITH_A_RULE)["description_words"])
+
+    def test_an_indented_block_carrying_no_key_is_not_frontmatter(self):
+        # every line of it could belong to a mapping and none of them names a
+        # key: a mapping with no keys in it is not one
+        self.assertMetric("---\n   indented text\n---\n\none two three\n",
+                          "body_words", 5)
+
+    def test_a_real_mapping_between_two_rules_is_still_frontmatter(self):
+        self.assertMetric("---\nname: x\ndescription: one two three\n---\n\nbody\n",
+                          "description_words", 3)
+
+    def test_a_mapping_whose_value_wraps_is_still_frontmatter(self):
+        # `>-` holds no alphanumeric, so the block marker is not one of them
+        self.assertMetric("---\ndescription: >-\n  one two three four\n---\n\nbody\n",
+                          "description_words", 4)
+
+    def test_a_mapping_carrying_a_list_is_still_frontmatter(self):
+        self.assertMetric("---\ntags:\n- one\n- two\ndescription: a b\n---\n\nbody\n",
+                          "description_words", 2)
+
+
+class TestThematicBreaks(MeasureTest):
+    def test_a_dashed_rule_ends_the_line_above_it(self):
+        # `---` is the form written by hand; the starred one is a separate
+        # alternative of the same pattern and passes with this one gone
+        self.assertMetric("Paragraph one\n---\nParagraph two\n", "sentences", 2)
+
+    def test_a_rule_three_spaces_in_ends_the_line_above_it(self):
+        self.assertMetric("Paragraph one\n   ***\nParagraph two\n", "sentences", 2)
+
+
+class TestOneRolePerLine(MeasureTest):
+    """Role and prose are two answers about one line, and `classify` gives both at
+    once. Seven regexes read independently at ten call sites is what they replaced,
+    and the readings had drifted: a construct that ended a sentence at one site did
+    not give up its marker at another."""
+
+    def test_a_definition_opening_a_table_cell_is_a_definition(self):
+        # the cells are split apart, so a term opening one opens the text
+        # `defined_terms` reads; left as one row it opens nothing
+        report = self.report(self.write(QUIET + "\n| **Lens**: a subagent | one |\n"))
+        self.assertEqual(report["metrics"]["defined_terms"], 1)
+
+    def test_a_table_row_carried_by_a_list_item_gives_up_both_markers(self):
+        # the list marker comes off FIRST and the row is read in what is left:
+        # one of the two strips alone leaves the cells joined
+        report = self.report(self.write(QUIET + "\n- | **Lens**: a subagent | one |\n"))
+        self.assertEqual(report["metrics"]["defined_terms"], 1)
+
+    def test_a_quoted_heading_ends_a_sentence_like_any_heading(self):
+        self.assertMetric("> # A quoted heading\nAnd prose under it\n", "sentences", 2)
+
+
+class TestTheContextWindow(MeasureTest):
+    def test_a_repeated_negation_is_windowed_at_its_own_occurrence(self):
+        # the window used to be cut around the FIRST occurrence of the matched
+        # token, so every later `never` on a long line showed the same context
+        line = ("alpha " * 20 + "FIRST never beta " + "gamma " * 20
+                + "SECOND never delta")
+        found = self.report(self.write(QUIET + "\n" + line + "\n"))["negations"]
+        self.assertEqual(len(found), 2)
+        self.assertIn("FIRST", found[0]["context"])
+        self.assertIn("SECOND", found[1]["context"])
+        self.assertNotIn("FIRST", found[1]["context"])
+
+    def test_a_line_carrying_thousands_of_negations_measures_promptly(self):
+        # the line was collapsed once PER MATCH: 12 000 of them took 10 s, and a
+        # report nobody waits for is a report nobody runs. The timeout IS the
+        # assertion.
+        path = self.write(QUIET + "\nx " + "not " * 12000 + "end.\n")
+        r = subprocess.run([sys.executable, BIN, path, "--json"],
+                           capture_output=True, text=True, timeout=20)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(json.loads(r.stdout)["metrics"]["negations"], 12000)
+
+
+class TestWhatIsAPointer(MeasureTest):
+    """The suffix list and the prefix list are each one branch of the same test,
+    and a branch nothing exercises is a branch nobody can tell is gone."""
+
+    def test_an_absolute_path_with_no_extension_is_a_pointer(self):
+        # the `/` prefix is the only branch that admits it: `hosts` is no suffix
+        self.assertMetric(QUIET + "\nThe file is `/etc/hosts` on this machine.\n",
+                          "pointers", 1)
+
+    def test_every_extension_the_bin_knows_makes_a_pointer(self):
+        for suffix in ("md", "py", "sh", "json", "html", "txt", "yml", "yaml", "toml"):
+            with self.subTest(suffix=suffix):
+                self.assertMetric(QUIET + f"\nRead `config.{suffix}` first.\n",
+                                  "pointers", 1)
+
+    def test_an_extension_written_in_capitals_is_a_pointer_too(self):
+        self.assertMetric(QUIET + "\nRead `README.MD` first.\n", "pointers", 1)
+
+    def test_a_bare_word_spelt_like_an_extension_is_not_a_pointer(self):
+        # without the dot test the tail of a dotless token is the token itself,
+        # and the word `md` in a sentence becomes a file
+        self.assertMetric(QUIET + "\nThe files are md and nothing else.\n",
+                          "pointers", 0)
+
+    def test_a_web_address_with_no_scheme_is_not_a_pointer(self):
+        self.assertMetric(QUIET + "\nSee www.example.com/index.html for more.\n",
+                          "pointers", 0)
+
+    def test_a_token_longer_than_any_filename_is_not_a_pointer(self):
+        # a run of punctuation the shape happens to admit, reported as a path,
+        # puts a screenful where the report shows one line
+        self.assertMetric(QUIET + "\n" + "a." * 200 + "md\n", "pointers", 0)
+
+
 class TestTheShippedSkills(MeasureTest):
     """The bin runs on this plugin's own skills — the baseline in `docs/prune/`
     is exactly this call, and a bin that cannot read a real skill has no

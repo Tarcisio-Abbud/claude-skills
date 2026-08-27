@@ -38,8 +38,8 @@ MUTATIONS = [
      ["TestTheBloatedFixture.test_lines_count_the_whole_file_frontmatter_included"]),
 
     ("T185 the frontmatter is measured as body, so a description is counted twice",
-     "            return list(enumerate(lines[i + 1:], i + 2)), lines[1:i]",
-     "            return list(enumerate(lines, 1)), lines[1:i]",
+     '            return list(enumerate(lines[i + 1:], i + 2)), block',
+     '            return list(enumerate(lines, 1)), block',
      ["TestTheBloatedFixture.test_body_words_exclude_the_frontmatter",
       "TestWhatIsNotCounted.test_the_frontmatter_is_outside_every_body_count"]),
 
@@ -55,32 +55,31 @@ MUTATIONS = [
      ["TestWhatIsNotCounted.test_a_file_that_opens_with_a_rule_and_never_closes_it_keeps_its_body"]),
 
     ("T185 only backticks open a fenced block",
-     'FENCE = re.compile(r"^\\s{0,3}(`{3,}|~{3,})")',
-     'FENCE = re.compile(r"^\\s{0,3}(`{3,})")',
+     'FENCE = re.compile(r"^(\\s*)(`{3,}|~{3,})")',
+     'FENCE = re.compile(r"^(\\s*)(`{3,})")',
      ["TestWhatIsNotCounted.test_a_tilde_fenced_block_is_outside_every_count"]),
 
     ("T185 only tildes open a fenced block",
-     'FENCE = re.compile(r"^\\s{0,3}(`{3,}|~{3,})")',
-     'FENCE = re.compile(r"^\\s{0,3}(~{3,})")',
+     'FENCE = re.compile(r"^(\\s*)(`{3,}|~{3,})")',
+     'FENCE = re.compile(r"^(\\s*)(~{3,})")',
      ["TestWhatIsNotCounted.test_a_backtick_fenced_block_is_outside_every_count"]),
 
     ("T185 a fence closes on any fence, however short, so a nested one ends the block",
-     "    return bool(m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)\n"
-     "                and not line[m.end():].strip())",
-     "    return bool(m and m.group(1)[0] == fence[0])",
+     '    return bool(m and m.group(2)[0] == fence[0] and len(m.group(2)) >= len(fence)\n                and not line[m.end():].strip()\n                and len(m.group(1).expandtabs()) <= indent + 3)',
+     '    return bool(m and m.group(2)[0] == fence[0])',
      ["TestWhatIsNotCounted.test_a_fence_closes_only_on_one_at_least_as_long_as_it_opened_with"]),
 
     ("T185 a fence with text after it closes the block it sits inside",
-     "                and not line[m.end():].strip())", "                )",
+     '                and not line[m.end():].strip()\n                and len(m.group(1).expandtabs()) <= indent + 3)', '                and len(m.group(1).expandtabs()) <= indent + 3)',
      ["TestWhatIsNotCounted.test_a_fence_with_text_after_it_does_not_close_a_block"]),
 
     ("T185 an inline code span opens a block that swallows the rest of the file",
-     '    if m.group(1)[0] == "`" and "`" in line[m.end():]:\n        return None',
+     '    if m.group(2)[0] == "`" and "`" in line[m.end():]:\n        return None',
      '    if False:\n        return None',
      ["TestWhatIsNotCounted.test_an_inline_code_span_does_not_open_a_block"]),
 
     ("T185 the backtick clause is applied to tilde fences too",
-     '    if m.group(1)[0] == "`" and "`" in line[m.end():]:',
+     '    if m.group(2)[0] == "`" and "`" in line[m.end():]:',
      '    if "`" in line[m.end():]:',
      ["TestWhatIsNotCounted.test_a_tilde_fence_may_carry_backticks_in_its_info_string"]),
 
@@ -89,28 +88,27 @@ MUTATIONS = [
      ["TestWhatIsNotCounted.test_frontmatter_closed_with_a_yaml_document_end_is_frontmatter"]),
 
     ("T185 a block of link definitions reads as one sentence again",
-     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
-     "                or RULE.match(stripped))",
-     "                or TABLE_ROW.match(stripped)\n"
-     "                or RULE.match(stripped))",
+     'HARD_BREAK_ROLES = frozenset({"heading", "list", "table", "linkdef", "rule"})',
+     'HARD_BREAK_ROLES = frozenset({"heading", "list", "table", "rule"})',
      ["TestUnpunctuatedRuns.test_a_block_of_link_definitions_is_one_sentence_each"]),
 
     ("T185 a setext underline and a thematic break stop ending the line above",
-     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
-     "                or RULE.match(stripped))",
-     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped))",
+     'HARD_BREAK_ROLES = frozenset({"heading", "list", "table", "linkdef", "rule"})',
+     'HARD_BREAK_ROLES = frozenset({"heading", "list", "table", "linkdef"})',
      ["TestUnpunctuatedRuns.test_a_setext_underline_ends_the_line_above_it",
       "TestUnpunctuatedRuns.test_a_thematic_break_ends_the_line_above_it"]),
 
     ("T185 every unpunctuated line ends a sentence, cutting wrapped prose at its breaks",
-     "        if hard_break(line):\n            # BEFORE as well as after",
-     "        if True:\n            # BEFORE as well as after",
+     '        if line.role in HARD_BREAK_ROLES:',
+     '        if True:',
      ["TestUnpunctuatedRuns.test_a_wrapped_paragraph_is_still_not_cut_at_its_line_breaks",
       "TestTheSentenceUnit.test_a_wrapped_paragraph_is_one_sentence_across_its_lines"]),
 
     ("T185 a block never opens, so everything in every fence is measured",
-     "            fence = opens_fence(line)", "            fence = None",
-     ["TestWhatIsNotCounted.test_a_block_left_unclosed_runs_to_the_end_of_the_file"]),
+     '            found = opens_fence(raw)', '            found = None',
+     ["TestWhatIsNotCounted.test_a_block_left_unclosed_runs_to_the_end_of_the_file",
+      "TestTheFenceIndent.test_a_fence_at_the_margin_holds_its_block_out_of_the_count",
+      "TestTheFenceIndent.test_a_fence_three_spaces_in_holds_its_block_out_of_the_count"]),
 
     ("T185 an empty file has no sentences and the maximum raises on the empty list",
      '        "max_sentence_words": max(counts) if counts else 0,',
@@ -147,15 +145,15 @@ MUTATIONS = [
      ["TestTheSentenceUnit.test_an_initial_ends_a_sentence_so_enumerated_steps_stay_apart"]),
 
     ("T185 the chunk is flushed only after a hard break, never before it",
-     "            flush(chunk)\n            chunk.append((number, text))\n            flush(chunk)",
-     "            chunk.append((number, text))\n            flush(chunk)",
+     '            flush(chunk)\n            chunk.append(line)\n            flush(chunk)',
+     '            chunk.append(line)\n            flush(chunk)',
      ["TestTheChunkBoundary.test_a_list_measures_the_same_with_and_without_a_blank_line_before_it",
       "TestTheChunkBoundary.test_the_first_bullet_is_its_own_sentence_though_no_blank_line_precedes_it",
       "TestTheChunkBoundary.test_a_heading_straight_after_a_paragraph_does_not_swallow_it"]),
 
     ("T185 every sentence is attributed one line below the line it sits on",
-     "            offsets.append(len(text))\n            starts.append(number)",
-     "            offsets.append(len(text))\n            starts.append(number + 1)",
+     '            offsets.append(len(text))\n            starts.append(line.number)',
+     '            offsets.append(len(text))\n            starts.append(line.number + 1)',
      ["TestSentenceLineNumbers.test_a_sentence_opening_a_chunk_keeps_its_own_line",
       "TestSentenceLineNumbers.test_a_sentence_opening_a_line_is_reported_on_that_line"]),
 
@@ -175,41 +173,30 @@ MUTATIONS = [
      ["TestSentenceLineNumbers.test_a_sentence_opening_a_line_is_reported_on_that_line"]),
 
     ("T185 the first sentence of a chunk loses the line it starts on",
-     "        for number, piece in chunk:\n            offsets.append(len(text))",
-     "        for number, piece in chunk:\n            offsets.append(len(text) + 1)",
+     '        for line in chunk:\n            offsets.append(len(text))',
+     '        for line in chunk:\n            offsets.append(len(text) + 1)',
      ["TestSentenceLineNumbers.test_a_sentence_opening_a_line_is_reported_on_that_line"]),
 
     ("T185 the end of a table row does not end a sentence, so a palette is one sentence",
-     "    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)\n"
-     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
-     "                or RULE.match(stripped))",
-     "    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)\n"
-     "                or LINK_DEF.match(stripped) or RULE.match(stripped))",
+     'HARD_BREAK_ROLES = frozenset({"heading", "list", "table", "linkdef", "rule"})',
+     'HARD_BREAK_ROLES = frozenset({"heading", "list", "linkdef", "rule"})',
      ["TestTheSentenceUnit.test_a_table_row_ends_a_sentence_at_the_end_of_its_line",
       "TestTheSentenceUnit.test_two_table_rows_are_two_sentences_though_neither_ends_in_a_full_stop",
       "TestTheShippedSkills.test_the_table_heavy_skill_does_not_measure_as_one_enormous_sentence"]),
 
     ("T185 the end of a list item does not end a sentence",
-     "    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)\n"
-     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
-     "                or RULE.match(stripped))",
-     "    return bool(HEADING.match(stripped)\n"
-     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
-     "                or RULE.match(stripped))",
+     'HARD_BREAK_ROLES = frozenset({"heading", "list", "table", "linkdef", "rule"})',
+     'HARD_BREAK_ROLES = frozenset({"heading", "table", "linkdef", "rule"})',
      ["TestTheSentenceUnit.test_a_list_item_ends_a_sentence_at_the_end_of_its_line"]),
 
     ("T185 the end of a heading does not end a sentence",
-     "    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)\n"
-     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
-     "                or RULE.match(stripped))",
-     "    return bool(LIST_ITEM.match(stripped)\n"
-     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
-     "                or RULE.match(stripped))",
+     'HARD_BREAK_ROLES = frozenset({"heading", "list", "table", "linkdef", "rule"})',
+     'HARD_BREAK_ROLES = frozenset({"list", "table", "linkdef", "rule"})',
      ["TestTheSentenceUnit.test_a_heading_ends_a_sentence_at_the_end_of_its_line"]),
 
     ("T185 a blank line does not end a sentence, so two paragraphs run together",
-     "        if not text:\n            flush(chunk)\n            continue",
-     "        if not text:\n            continue",
+     '        if not line.text:\n            flush(chunk)\n            continue',
+     '        if not line.text:\n            continue',
      ["TestTheSentenceUnit.test_a_blank_line_ends_a_sentence_that_never_got_a_full_stop"]),
 
     ("T185 anything at all counts as a word, punctuation rows and dashes included",
@@ -283,8 +270,8 @@ MUTATIONS = [
      ["TestInlineEvidence.test_a_bare_number_is_not_evidence"]),
 
     ("T185 a hit no longer says which kind of evidence it matched",
-     'return [{"line": number, "kind": kind, "match": m.group(0)}',
-     'return [{"line": number, "kind": "evidence", "match": m.group(0)}',
+     'return [{"line": line.number, "kind": kind, "match": m.group(0)}',
+     'return [{"line": line.number, "kind": "evidence", "match": m.group(0)}',
      ["TestInlineEvidence.test_each_hit_names_the_kind_it_matched"]),
 
     # -- pointers -----------------------------------------------------------
@@ -306,26 +293,22 @@ MUTATIONS = [
 
     
     ("T185 the URL scheme is unbounded again, and dotted text stops the run",
-     'URL = re.compile(r"(?i)\\b[a-z][a-z0-9+.-]{0,31}://\\S+")',
-     'URL = re.compile(r"(?i)\\b[a-z][a-z0-9+.-]*://\\S+")',
+     'WEB_ADDRESS = re.compile(r"(?i)\\b(?:[a-z][a-z0-9+.-]{0,31}://|www\\.)\\S+")',
+     'WEB_ADDRESS = re.compile(r"(?i)\\b(?:[a-z][a-z0-9+.-]*://|www\\.)\\S+")',
      ["TestPointers.test_a_long_run_of_dotted_text_measures_promptly"]),
 
     ("T185 the extension goes back into the pattern, where the dot overlaps itself",
-     "    for number, m, _ in hits(body, PATHISH):\n        token = m.group(0)",
-     "    for number, m, _ in hits(body, re.compile(\n"
-     "            r\"(?<![\\w/])(?:(?:~|\\.{1,2})?/[\\w./~@-]*[\\w/]\"\n"
-     "            r\"|[\\w][\\w./@-]*\\.(?:md|py|sh|json|html|txt|yml|yaml|toml)\\b)\")):\n"
-     "        token = m.group(0)",
+     '    for line, _, found in line_matches(body, PATHISH):',
+     '    for line, _, found in line_matches(body, re.compile(\n            r"(?<![\\w/])(?:(?:~|\\.{1,2})?/[\\w./~@-]*[\\w/]"\n            r"|[\\w][\\w./@-]*\\.(?:md|py|sh|json|html|txt|yml|yaml|toml)\\b)")):',
      ["TestPointers.test_a_long_run_of_dotted_text_measures_promptly"]),
 
     ("T185 a path-shaped token is a pointer whatever its tail",
-     "        if (token.startswith(POINTER_PREFIXES)\n"
-     "                or (\".\" in token and token.rsplit(\".\", 1)[-1].lower() in POINTER_SUFFIXES)):",
-     "        if True:",
+     '            if (token.startswith(POINTER_PREFIXES)\n                    or ("." in token\n                        and token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):',
+     '            if True:',
      ["TestPointers.test_a_slashed_word_that_is_not_a_path_is_not_a_pointer"]),
 
     ("T185 the path inside a URL is read as a file in this tree",
-     '        text = URL.sub(" ", line_text(line))', "        text = line_text(line)",
+     '        text = WEB_ADDRESS.sub(" ", line.text)', '        text = line.text',
      ["TestPointers.test_a_url_is_not_a_pointer_to_a_file_in_this_tree"]),
 
     # -- negations ----------------------------------------------------------
@@ -350,18 +333,17 @@ MUTATIONS = [
      ["TestNegations.test_no_inside_a_longer_word_is_not_a_negation"]),
 
     ("T185 the context window is cut at an offset the collapse already moved",
-     '    at = collapsed.find(" ".join(match.group(0).split()))\n'
-     "    start = max(0, (at if at >= 0 else 0) - 40)",
-     "    start = max(0, match.start() - 40)",
+     '    start = max(0, mapping[at] - 40)',
+     '    start = max(0, at - 40)',
      ["TestNegations.test_a_long_line_is_reported_as_a_window_around_the_match"]),
 
     ("T185 a negation is counted and never shown, so the reader cannot judge it",
-     '"context": context(text, m)}', '"context": ""}',
+     '"context": context(collapsed, mapping, m.start())})', '"context": ""})',
      ["TestNegations.test_every_negation_is_listed_with_the_line_it_sits_on"]),
 
     ("T185 the whole line comes back as context, however long the line is",
-     "    collapsed = \" \".join(text.split())\n    if len(collapsed) <= 100:",
-     "    collapsed = \" \".join(text.split())\n    if True:",
+     '    if len(collapsed) <= 100:',
+     '    if True:',
      ["TestNegations.test_a_long_line_is_reported_as_a_window_around_the_match"]),
 
     # -- defined terms ------------------------------------------------------
@@ -404,8 +386,8 @@ MUTATIONS = [
      ["TestDefinedTerms.test_a_sibling_that_is_not_markdown_is_not_read"]),
 
     ("T185 a definition inside a sibling's code block counts as a definition",
-     "        for _, term in defined_terms(outside_code(body)):",
-     "        for _, term in defined_terms(body):",
+     '        scanned, _ = scan(body)',
+     '        scanned = [Line(n, *classify(raw)) for n, raw in body]',
      ["TestDefinedTerms.test_a_term_defined_inside_a_siblings_code_block_does_not_count"]),
 
     ("T185 a sibling is whatever a name in the directory points at",
@@ -515,6 +497,133 @@ MUTATIONS = [
     ("T185 the report no longer names the file it measured",
      '        "path": path,', '        "path": os.path.basename(path),',
      ["TestUsage.test_the_report_names_the_file_it_measured"]),
+
+    # -- the redesigned scanner, and the branches nothing exercised -------
+    ('T185 the fence indent is bounded against the margin, so a list item carries neither end',
+     'FENCE = re.compile(r"^(\\s*)(`{3,}|~{3,})")',
+     'FENCE = re.compile(r"^(\\s{0,3})(`{3,}|~{3,})")',
+     ['TestTheFenceIndent.test_a_fence_carried_by_a_list_item_holds_its_block_out_of_the_count']),
+
+    ('T185 a close indented any distance past its opener closes the block',
+     '                and len(m.group(1).expandtabs()) <= indent + 3)',
+     '                )',
+     ['TestTheFenceIndent.test_a_close_indented_far_past_its_opener_does_not_close_the_block']),
+
+    ('T185 an unclosed block is never reported, so a body cut short looks small',
+     '                fence, indent = found\n                opened_at = number',
+     '                fence, indent = found\n                opened_at = None',
+     ['TestTheUnclosedBlock.test_the_line_the_unclosed_block_opened_on_is_reported', 'TestTheUnclosedBlock.test_the_text_report_names_the_line_too']),
+
+    ('T185 a block that closed is still reported as the one that swallowed the file',
+     '            fence, opened_at = None, None',
+     '            fence = None',
+     ['TestTheUnclosedBlock.test_a_file_whose_blocks_all_close_reports_none', 'TestTheUnclosedBlock.test_a_file_whose_blocks_all_close_carries_no_note']),
+
+    ('T185 the text report drops the note, so only the JSON says the file was cut short',
+     '    if report["unclosed_fence"] is not None:',
+     '    if False:',
+     ['TestTheUnclosedBlock.test_the_text_report_names_the_line_too']),
+
+    ('T185 a file cut short by a fence is refused instead of reported',
+     '    if args.as_json:\n        if args.targets:',
+     '    if report["unclosed_fence"] is not None:\n        return 1\n    if args.as_json:\n        if args.targets:',
+     ['TestTheUnclosedBlock.test_the_bin_still_exits_zero_on_a_file_it_reports_cut_short']),
+
+    ('T185 any block between two rules is frontmatter, prose and all',
+     '            if looks_like_frontmatter(block):',
+     '            if True:',
+     ['TestTheFrontmatterBoundary.test_prose_between_two_rules_stays_in_the_body', 'TestTheFrontmatterBoundary.test_a_description_written_in_the_body_is_not_the_frontmatter_one']),
+
+    ('T185 a line that is neither a key nor a continuation no longer disqualifies the block',
+     '        elif not (line[:1].isspace() or FM_ITEM.match(line)):\n            return False',
+     '        elif False:\n            return False',
+     ['TestTheFrontmatterBoundary.test_prose_between_two_rules_stays_in_the_body']),
+
+    ('T185 a block with no key at all is frontmatter',
+     '    return keyed',
+     '    return True',
+     ['TestTheFrontmatterBoundary.test_an_indented_block_carrying_no_key_is_not_frontmatter']),
+
+    ('T185 a list under a key disqualifies the frontmatter it belongs to',
+     '        elif not (line[:1].isspace() or FM_ITEM.match(line)):',
+     '        elif not line[:1].isspace():',
+     ['TestTheFrontmatterBoundary.test_a_mapping_carrying_a_list_is_still_frontmatter']),
+
+    ('T185 a scheme-less web address is read as a file in this tree',
+     'WEB_ADDRESS = re.compile(r"(?i)\\b(?:[a-z][a-z0-9+.-]{0,31}://|www\\.)\\S+")',
+     'WEB_ADDRESS = re.compile(r"(?i)\\b(?:[a-z][a-z0-9+.-]{0,31}://)\\S+")',
+     ['TestWhatIsAPointer.test_a_web_address_with_no_scheme_is_not_a_pointer']),
+
+    ('T185 the scheme is bounded so tightly that no real one matches',
+     'WEB_ADDRESS = re.compile(r"(?i)\\b(?:[a-z][a-z0-9+.-]{0,31}://|www\\.)\\S+")',
+     'WEB_ADDRESS = re.compile(r"(?i)\\b(?:[a-z][a-z0-9+.-]{0,1}://|www\\.)\\S+")',
+     ['TestPointers.test_a_url_is_not_a_pointer_to_a_file_in_this_tree']),
+
+    ('T185 a token of any length is reported as a path',
+     '            if len(token) > POINTER_MAX:\n                continue',
+     '            if False:\n                continue',
+     ['TestWhatIsAPointer.test_a_token_longer_than_any_filename_is_not_a_pointer']),
+
+    ('T185 the extension test is case sensitive',
+     '                        and token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):',
+     '                        and token.rsplit(".", 1)[-1] in POINTER_SUFFIXES)):',
+     ['TestWhatIsAPointer.test_an_extension_written_in_capitals_is_a_pointer_too']),
+
+    ('T185 a dotless token is tested by its whole self, so the word `md` is a file',
+     '                    or ("." in token\n                        and token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):',
+     '                    or (token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):',
+     ['TestWhatIsAPointer.test_a_bare_word_spelt_like_an_extension_is_not_a_pointer']),
+
+    ('T185 an extensionless absolute path is no longer a pointer',
+     'POINTER_PREFIXES = ("/", "./", "../", "~/")',
+     'POINTER_PREFIXES = ("./", "../", "~/")',
+     ['TestWhatIsAPointer.test_an_absolute_path_with_no_extension_is_a_pointer']),
+
+    ('T185 half the extensions the bin knows are dropped',
+     'POINTER_SUFFIXES = ("md", "py", "sh", "json", "html", "txt", "yml", "yaml", "toml")',
+     'POINTER_SUFFIXES = ("md", "py", "sh", "html")',
+     ['TestWhatIsAPointer.test_every_extension_the_bin_knows_makes_a_pointer']),
+
+    ('T185 a dashed rule stops ending the line above it',
+     'RULE = re.compile(r"^\\s{0,3}(?:=+|-{3,}|\\*{3,}|_{3,})\\s*$")',
+     'RULE = re.compile(r"^\\s{0,3}(?:=+|\\*{3,}|_{3,})\\s*$")',
+     ['TestThematicBreaks.test_a_dashed_rule_ends_the_line_above_it']),
+
+    ('T185 a rule has to sit hard against the margin',
+     'RULE = re.compile(r"^\\s{0,3}(?:=+|-{3,}|\\*{3,}|_{3,})\\s*$")',
+     'RULE = re.compile(r"^(?:=+|-{3,}|\\*{3,}|_{3,})\\s*$")',
+     ['TestThematicBreaks.test_a_rule_three_spaces_in_ends_the_line_above_it']),
+
+    ('T185 a table row is read whole, so a cell no longer opens the text',
+     '    if TABLE_ROW.match(text):\n        text = " ".join(cell.strip() for cell in text.strip().strip("|").split("|"))',
+     '    if False:\n        text = " ".join(cell.strip() for cell in text.strip().strip("|").split("|"))',
+     ['TestOneRolePerLine.test_a_definition_opening_a_table_cell_is_a_definition', 'TestOneRolePerLine.test_a_table_row_carried_by_a_list_item_gives_up_both_markers']),
+
+    ('T185 the list marker stays on, so a row it carries is never read as one',
+     '    text = LIST_ITEM.sub("", text)\n    if TABLE_ROW.match(text):',
+     '    if TABLE_ROW.match(text):',
+     ['TestOneRolePerLine.test_a_table_row_carried_by_a_list_item_gives_up_both_markers']),
+
+    ('T185 a blockquote marker hides the construct behind it',
+     '    stripped = BLOCKQUOTE.sub("", raw)\n    role = None',
+     '    stripped = raw\n    role = None',
+     ['TestOneRolePerLine.test_a_quoted_heading_ends_a_sentence_like_any_heading']),
+
+    ('T185 every window is cut at the head of the line, so a later match is never in it',
+     '    start = max(0, mapping[at] - 40)',
+     '    start = max(0, mapping[0] - 40)',
+     ['TestTheContextWindow.test_a_repeated_negation_is_windowed_at_its_own_occurrence']),
+
+    ('T185 the line is collapsed once per match again',
+     '        collapsed, mapping = collapse(text)\n        for m in found:\n            out.append(',
+     '        for m in found:\n            collapsed, mapping = collapse(text)\n            out.append(',
+     ['TestTheContextWindow.test_a_line_carrying_thousands_of_negations_measures_promptly']),
+
+    ("T185 no block between two rules is ever frontmatter",
+     "    return keyed",
+     "    return False",
+     ["TestTheFrontmatterBoundary.test_a_real_mapping_between_two_rules_is_still_frontmatter",
+      "TestTheFrontmatterBoundary.test_a_mapping_whose_value_wraps_is_still_frontmatter"]),
 ]
 
 if __name__ == "__main__":
