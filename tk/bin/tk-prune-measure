@@ -8,8 +8,10 @@ that does not exist, or a directory.
 
 WHAT IT COUNTS, and where each number comes from:
 
-- lines: the whole file, as `wc -l` counts it. Frontmatter and code blocks are in
-  this one, because a reader scrolling the file scrolls those too.
+- lines: every line of the file, frontmatter and code blocks included, because a
+  reader scrolling the file scrolls those too. It is `splitlines()`, so a last
+  line with no newline after it counts — `wc -l`, which counts newlines, says one
+  less on such a file.
 - body words: everything else EXCLUDES the frontmatter and the fenced code blocks.
   A word is a whitespace-separated token holding at least one alphanumeric, so an
   em dash alone is not a word and `**bold**` is one.
@@ -45,6 +47,11 @@ WHAT IT DOES NOT MEASURE, so that no report borrows authority this bin lacks:
 - WHETHER THE FILE IS GOOD. `--targets` marks each number against a default; a
   file that misses every one may still be the right file, and a file that hits
   every one may say nothing.
+- AN INDENTED CODE BLOCK. Only FENCED blocks are held out of the counts. A block
+  written as four spaces of indent is measured as prose, and its identifiers are
+  counted as words. Telling one from a wrapped list item needs the block
+  structure around it, which is a markdown parser; the fenced form is what a
+  skill is written in, and this is the line where that stops being true.
 
 Usage:  tk-prune-measure <file.md> [--targets] [--json]
 Exit:   0 measured (always) · 2 no such file, or a directory
@@ -95,6 +102,13 @@ FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 TABLE_ROW = re.compile(r"^\s*\|")
+# `[label]: https://…` — a link reference definition. Each is independent of the
+# one above it and none carries a full stop, so without a break of their own a
+# block of them reads as a single sentence: measured at 536 words on a real
+# CHANGELOG. It is the table problem again, in another construct.
+LINK_DEF = re.compile(r"^\s{0,3}\[[^\]]+\]:")
+# a setext underline, and a thematic break: both end the line above them
+RULE = re.compile(r"^\s{0,3}(?:=+|-{3,}|\*{3,}|_{3,})\s*$")
 BLOCKQUOTE = re.compile(r"^\s*>\s?")
 WORD = re.compile(r"[^\W_]", re.UNICODE)        # "holds an alphanumeric"
 
@@ -104,6 +118,12 @@ WORD = re.compile(r"[^\W_]", re.UNICODE)        # "holds an alphanumeric"
 SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
 # `no` is deliberately absent: "No. 5" is rare in a skill and the word "no."
 # ending a sentence is not, and swallowing a real sentence end costs more.
+#
+# A SINGLE LETTER is not here either, and that is the same trade read the other
+# way. Exempting `A.` protects an initial in a name; it also merges "Run step A.
+# Run step B. Run step C." into one 27-word sentence, and enumerated steps are
+# what a skill is made of while `J. R. R.` is not. So an initial ends a sentence
+# here, and the cost is a name split in two.
 ABBREV = {"e.g", "i.e", "etc", "vs", "cf", "mr", "mrs", "ms", "dr", "prof",
           "fig", "approx", "al", "st"}
 
@@ -111,15 +131,26 @@ NEGATIONS = re.compile(r"(?i)(?<![\w'’])(do not|don['’]t|never|not|no)(?![\w
 ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 MEASURED = re.compile(r"(?i)\bmeasured\b")
 COUNT_EVIDENCE = re.compile(r"(?i)\b\d+\s+(?:times|before)\b")
-URL = re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://\S+")
-# A path, not a word with a slash in it. One branch needs a real path prefix
-# (`/`, `./`, `../`, `~/`), the other a known extension — and `KEEP/MOVE/DROP`
-# has neither, so it cannot enter through its own slash. The shared lookbehind
-# is what refuses the tail of a word: in `KEEP/MOVE` the inner `/MOVE` follows a
-# word character and never starts a match of its own.
-POINTER = re.compile(
-    r"(?<![\w/])(?:(?:~|\.{1,2})?/[\w./~@-]*[\w/]"
-    r"|[\w][\w./@-]*\.(?:md|py|sh|json|html|txt|yml|yaml|toml)\b)")
+# The scheme is BOUNDED, and that bound is load-bearing rather than tidy: with
+# `*` the class holds `.`, the literal after it is `://`, and a line of dotted
+# text makes the engine consume the run and unwind it from every position —
+# 6.2 s for 20 000 dots, the same shape of defect `PATHISH` carries a note
+# about. No scheme worth resolving is 32 characters long.
+URL = re.compile(r"(?i)\b[a-z][a-z0-9+.-]{0,31}://\S+")
+# A path, not a word with a slash in it. The regex matches a path-SHAPED token
+# and `pointer()` below decides whether it is one — the split is deliberate. An
+# earlier version asked for the extension inside the pattern
+# (`[\w][\w./@-]*\.(?:md|py|…)`), where `.` sits both in the star and in the
+# literal before the extension. On a line of dotted text ending in no extension
+# the engine then retries from every position: measured quadratic, 3.6 s for
+# 16 000 dots, and a large enough line never returns at all. Matching the token
+# whole and asking Python about its tail is one pass.
+# The lookbehind is what refuses the tail of a word: in `KEEP/MOVE` the inner
+# `/MOVE` follows a word character and never starts a match of its own.
+PATHISH = re.compile(r"(?<![\w/])(?:~|\.{1,2})?/[\w./~@-]*[\w/]"
+                     r"|(?<![\w/])[\w][\w./@-]*[\w]")
+POINTER_PREFIXES = ("/", "./", "../", "~/")
+POINTER_SUFFIXES = ("md", "py", "sh", "json", "html", "txt", "yml", "yaml", "toml")
 # `A **term** is`, with the article optional so the house form `**Pruning** is`
 # is found too, and `**term**:` opening a line. The `^` is what anchors the
 # second one, not the call site: `.match` would anchor it too, and then neither
@@ -169,8 +200,40 @@ def frontmatter_description(fm_lines):
             if not cont[:1].isspace():
                 break
             parts.append(cont.strip())
-        return " ".join(p for p in parts if p).strip()
+        # `or None`: a `description:` with nothing after it is not a
+        # description of zero words, it is an absent one. Counted as 0 it scored
+        # the best possible mark against a ceiling of 30 — a missing context
+        # pointer reported as the tidiest one in the set.
+        return " ".join(p for p in parts if p).strip() or None
     return None
+
+
+def opens_fence(line):
+    """The fence this line opens, or None.
+
+    CommonMark: the info string after a BACKTICK fence may not contain a
+    backtick. That clause is the whole reason this is a function — without it a
+    line of inline code such as ```` ```echo hi``` ```` opens a block nothing
+    ever closes, and every count silently stops at that line.
+    """
+    m = FENCE.match(line)
+    if not m:
+        return None
+    if m.group(1)[0] == "`" and "`" in line[m.end():]:
+        return None
+    return m.group(1)
+
+
+def closes_fence(line, fence):
+    """True when this line closes a block opened with `fence`.
+
+    Same character, at least as long, and NOTHING after it — a closing fence
+    carries no info string, so a longer opener of the same character cannot be
+    mistaken for the close of the block it sits in.
+    """
+    m = FENCE.match(line)
+    return bool(m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)
+                and not line[m.end():].strip())
 
 
 def outside_code(body):
@@ -183,14 +246,12 @@ def outside_code(body):
     """
     out, fence = [], None
     for number, line in body:
-        m = FENCE.match(line)
         if fence is None:
-            if m:
-                fence = m.group(1)
-            else:
+            fence = opens_fence(line)
+            if fence is None:
                 out.append((number, line))
             continue
-        if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence):
+        if closes_fence(line, fence):
             fence = None
     return out
 
@@ -206,10 +267,17 @@ def line_text(line):
 
 
 def hard_break(line):
-    """True when the END of this line ends a sentence, full stop or not."""
+    """True when the END of this line ends a sentence, full stop or not.
+
+    Each of these carries one item and almost never a full stop. What is NOT
+    here is the general rule "a line with no punctuation ends a sentence": that
+    would cut every wrapped paragraph at its line breaks, which is the opposite
+    error and a far commoner one.
+    """
     stripped = BLOCKQUOTE.sub("", line)
     return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)
-                or TABLE_ROW.match(stripped))
+                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)
+                or RULE.match(stripped))
 
 
 def words(text):
@@ -222,16 +290,30 @@ def split_sentences(text):
     for m in SENTENCE_END.finditer(text):
         before = text[start:m.start()]
         last = re.split(r"[\s(\[\"'“‘]", before)[-1].lower().rstrip(".")
-        if last in ABBREV or (len(last) == 1 and last.isalpha()):
+        if last in ABBREV:
             continue
         piece = text[start:m.end()]
         if words(piece):
-            out.append((start, piece))
+            out.append((first_word_at(text, start), piece))
         start = m.end()
     tail = text[start:]
     if words(tail):
-        out.append((start, tail))
+        out.append((first_word_at(text, start), tail))
     return out
+
+
+def first_word_at(text, start):
+    """`start`, moved past the whitespace in front of the sentence.
+
+    The offset a split leaves behind points at the SEPARATOR after the full
+    stop, and that separator is the space the previous line contributed when the
+    chunk was joined. Attributed as it stands, every sentence that opens a line
+    after a full stop is reported on the line above — precisely the sentence a
+    reader is being sent to look at.
+    """
+    while start < len(text) and text[start].isspace():
+        start += 1
+    return start
 
 
 def sentences(body):
@@ -251,7 +333,7 @@ def sentences(body):
             offsets.append(len(text))
             starts.append(number)
             text += piece + " "
-        for offset, sentence in split_sentences(text.strip()):
+        for offset, sentence in split_sentences(text.rstrip()):
             i = bisect.bisect_right(offsets, offset) - 1
             found.append((starts[max(i, 0)], len(words(sentence))))
         chunk.clear()
@@ -262,9 +344,17 @@ def sentences(body):
         if not text:
             flush(chunk)
             continue
-        chunk.append((number, text))
         if hard_break(line):
+            # BEFORE as well as after. Flushing only after it left the first
+            # bullet of a list glued to the paragraph above whenever no blank
+            # line separated them — which CommonMark does not require — and the
+            # same document then measured two ways depending on invisible
+            # whitespace, with `--targets` flipping ok to over on it.
             flush(chunk)
+            chunk.append((number, text))
+            flush(chunk)
+        else:
+            chunk.append((number, text))
     flush(chunk)
     return found
 
@@ -287,6 +377,7 @@ def sibling_terms(path):
     """{normalised term: [sibling file names]} for the other markdown beside it."""
     directory = os.path.dirname(os.path.abspath(path))
     here = os.path.basename(os.path.abspath(path))
+    root = os.path.realpath(directory)
     out = {}
     try:
         names = sorted(os.listdir(directory))
@@ -298,10 +389,15 @@ def sibling_terms(path):
         full = os.path.join(directory, name)
         if not os.path.isfile(full):
             continue
+        # a symlink named `x.md` is followed wherever it points, so the name
+        # alone does not make a file a sibling: this bin reads the directory it
+        # was pointed at and nothing else
+        if os.path.dirname(os.path.realpath(full)) != root:
+            continue
         try:
-            with open(full, encoding="utf-8-sig") as f:
-                lines = f.read().splitlines()
-        except (OSError, UnicodeDecodeError):
+            with open(full, "rb") as f:
+                lines = f.read().decode("utf-8-sig", errors="replace").splitlines()
+        except OSError:
             continue
         body, _ = strip_frontmatter(lines)
         for _, term in defined_terms(outside_code(body)):
@@ -327,6 +423,21 @@ def scan_kind(body, pattern, kind):
             for number, m, _ in hits(body, pattern)]
 
 
+def scan_pointers(body):
+    """Path-shaped tokens that are pointers: a path prefix, or a known suffix.
+
+    The regex finds the token and this decides — see `PATHISH` for why the
+    decision cannot go back into the pattern.
+    """
+    found = []
+    for number, m, _ in hits(body, PATHISH):
+        token = m.group(0)
+        if (token.startswith(POINTER_PREFIXES)
+                or ("." in token and token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):
+            found.append({"line": number, "kind": "pointer", "match": token})
+    return found
+
+
 def scan_context(body, pattern):
     """Matches carrying the line they sit on.
 
@@ -339,20 +450,31 @@ def scan_context(body, pattern):
 
 
 def context(text, match):
-    """A window around the match, so a listed negation can be judged in place."""
+    """A window around the match, so a listed negation can be judged in place.
+
+    The match is found again IN THE COLLAPSED text rather than sliced at its
+    original offset: collapsing runs of whitespace moves everything after them
+    left, and a window cut with the old offset drifts right — far enough, on a
+    loosely spaced line, to leave the match outside its own context.
+    """
     collapsed = " ".join(text.split())
     if len(collapsed) <= 100:
         return collapsed
-    start = max(0, match.start() - 40)
+    at = collapsed.find(" ".join(match.group(0).split()))
+    start = max(0, (at if at >= 0 else 0) - 40)
     end = min(len(collapsed), start + 100)
     return ("…" if start else "") + collapsed[start:end] + ("…" if end < len(collapsed) else "")
 
 
 def measure(path):
     """Every number and every list this bin reports for one file."""
-    with open(path, encoding="utf-8-sig") as f:
+    with open(path, "rb") as f:
         raw = f.read()
-    lines = raw.splitlines()
+    # A byte that is not UTF-8 becomes U+FFFD instead of a refusal. `café` saved
+    # from a Windows editor is measurable markdown, and refusing it broke the
+    # contract this bin leads with; the replacement character holds no
+    # alphanumeric, so it never becomes a word.
+    lines = raw.decode("utf-8-sig", errors="replace").splitlines()
     body_all, fm_lines = strip_frontmatter(lines)
     body = outside_code(body_all)
 
@@ -365,7 +487,7 @@ def measure(path):
                 + scan_kind(body, MEASURED, "measured")
                 + scan_kind(body, COUNT_EVIDENCE, "count"))
     evidence.sort(key=lambda e: (e["line"], e["match"]))
-    pointers = scan_kind(body, POINTER, "pointer")
+    pointers = scan_pointers(body)
     negations = scan_context(body, NEGATIONS)
     terms = defined_terms(body)
 
@@ -481,7 +603,7 @@ def main(argv=None):
         return 2
     try:
         report = measure(args.file)
-    except (OSError, UnicodeDecodeError) as e:
+    except OSError as e:
         print(f"{args.file}: unreadable — {e}", file=sys.stderr)
         return 2
 

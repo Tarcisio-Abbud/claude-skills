@@ -210,6 +210,21 @@ class TestTheSentenceUnit(MeasureTest):
                           + "\nRead the docs, e.g. the README, before you start.\n",
                           "sentences", 1)
 
+    def test_each_abbreviation_of_the_list_is_honoured(self):
+        # named one by one: switching the WHOLE check off is one mutation, and it
+        # leaves every individual member free to vanish unnoticed
+        for abbrev in ("e.g.", "i.e.", "etc.", "vs.", "cf.", "Dr.", "Prof.",
+                       "Fig.", "approx.", "et al.", "St."):
+            with self.subTest(abbrev=abbrev):
+                self.assertMetric(f"See the note {abbrev} before you start today.\n",
+                                  "sentences", 1, name=f"{abbrev.strip('.')}.md")
+
+    def test_an_initial_ends_a_sentence_so_enumerated_steps_stay_apart(self):
+        # the other side of that trade: exempting a single letter merged
+        # "Run step A. Run step B." into one sentence, and steps are what a
+        # skill is made of while `J. R. R.` is not
+        self.assertMetric("Run step A. Run step B. Run step C.\n", "sentences", 3)
+
     def test_a_decimal_point_does_not_end_a_sentence(self):
         self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
                           + "\nThe ratio was 3.5 against the baseline.\n", "sentences", 1)
@@ -220,6 +235,51 @@ class TestTheSentenceUnit(MeasureTest):
     def test_an_em_dash_alone_is_not_a_word(self):
         self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
                           + "\none — two\n", "body_words", 2)
+
+
+class TestTheChunkBoundary(MeasureTest):
+    """A hard-break line is a chunk of its own on BOTH sides. Flushing only after
+    it glued the first bullet of a list to the paragraph above whenever no blank
+    line separated them — which CommonMark does not require."""
+
+    # no full stop on the lead line: with one, the split separates it from the
+    # bullet anyway and the merge leaves no trace in any number
+    LEAD = "The rows below are the palette\n"
+    LIST = "- one two three four five six seven eight nine ten\n- eleven twelve\n"
+
+    def test_a_list_measures_the_same_with_and_without_a_blank_line_before_it(self):
+        spaced = self.metrics_of(self.LEAD + "\n" + self.LIST, name="spaced.md")
+        tight = self.metrics_of(self.LEAD + self.LIST, name="tight.md")
+        self.assertEqual(spaced["sentences"], tight["sentences"])
+        self.assertEqual(spaced["max_sentence_words"], tight["max_sentence_words"])
+
+    def test_the_first_bullet_is_its_own_sentence_though_no_blank_line_precedes_it(self):
+        self.assertMetric("prose line\n- one two three\n- four five\n", "sentences", 3)
+
+    def test_a_heading_straight_after_a_paragraph_does_not_swallow_it(self):
+        self.assertMetric("prose line\n## A heading\nmore prose\n", "sentences", 3)
+
+
+class TestSentenceLineNumbers(MeasureTest):
+    """The line a sentence is reported on is the line its first WORD sits on —
+    pointing a reader at the wrong line is the one thing the section must not do."""
+
+    LONG = " ".join(f"w{i}" for i in range(32)) + "."
+
+    def test_a_sentence_opening_a_line_is_reported_on_that_line(self):
+        # QUIET is six lines, then a blank, then `First.` on 8 and the long one on 9
+        report = self.report(self.write(QUIET + "\nFirst.\n" + self.LONG + "\n"))
+        self.assertEqual([e["line"] for e in report["long_sentences"]], [9])
+
+    def test_a_sentence_opening_a_chunk_keeps_its_own_line(self):
+        report = self.report(self.write(QUIET + "\n" + self.LONG + "\n"))
+        self.assertEqual([e["line"] for e in report["long_sentences"]], [8])
+
+    def test_a_last_sentence_with_no_full_stop_keeps_its_line_too(self):
+        # the tail of a chunk leaves `split_sentences` by its own path, and that
+        # path needs the same whitespace walk as the punctuated one
+        report = self.report(self.write(QUIET + "\nFirst.\n" + self.LONG.rstrip(".") + "\n"))
+        self.assertEqual([e["line"] for e in report["long_sentences"]], [9])
 
 
 class TestWhatIsNotCounted(MeasureTest):
@@ -244,9 +304,27 @@ class TestWhatIsNotCounted(MeasureTest):
     def test_a_block_left_unclosed_runs_to_the_end_of_the_file(self):
         self.assertMetric(QUIET + "\n```\nnever\nno\n", "negations", 0)
 
+    def test_an_inline_code_span_does_not_open_a_block(self):
+        # ```echo hi``` is one line of inline code, not a fence: read as an
+        # opener it closes on nothing and swallows the rest of the file
+        text = QUIET + "\n```echo hi```\n\nAfter it, never skip step two.\n"
+        self.assertMetric(text, "negations", 1)
+
+    def test_a_tilde_fence_may_carry_backticks_in_its_info_string(self):
+        # the CommonMark clause is about BACKTICK fences only
+        self.assertMetric(QUIET + "\n~~~ `x`\nnever\n~~~\n", "negations", 0)
+
+    def test_a_fence_with_text_after_it_does_not_close_a_block(self):
+        self.assertMetric(QUIET + "\n```\nnever\n``` and more\nno\n```\n",
+                          "negations", 0)
+
     def test_a_file_that_opens_with_a_rule_and_never_closes_it_keeps_its_body(self):
         # not frontmatter: refusing this would measure the whole file as empty
         self.assertMetric("---\n\none two three\n", "body_words", 3)
+
+    def test_frontmatter_closed_with_a_yaml_document_end_is_frontmatter(self):
+        self.assertMetric("---\nname: x\ndescription: one two three four\n...\n\n"
+                          "body text here\n", "description_words", 4)
 
     def test_a_file_with_no_frontmatter_is_measured_all_the_same(self):
         m = self.report(self.fixture("no-frontmatter"))["metrics"]
@@ -282,6 +360,17 @@ class TestTheDescription(MeasureTest):
     def test_a_key_after_the_description_ends_it(self):
         self.assertMetric("---\ndescription: one two\nname: three four five\n---\n\nbody\n",
                           "description_words", 2)
+
+    def test_a_description_key_with_no_value_is_absent(self):
+        # not a description of zero words: counted as 0 it scored the BEST
+        # possible mark against a ceiling of 30, so a missing context pointer
+        # came back as the tidiest one in the set
+        self.assertIsNone(self.metrics_of("---\nname: x\ndescription:\n---\n\nbody\n")
+                          ["description_words"])
+        marks = {m["metric"]: m for m in
+                 self.report(self.write("---\nname: x\ndescription:\n---\n\nbody\n"),
+                             "--targets")["targets"]}
+        self.assertEqual(marks["description_words"]["status"], "n/a")
 
     def test_a_file_with_no_frontmatter_reports_the_description_as_absent(self):
         # absent, never zero: the bin measures any markdown, and a runbook has none
@@ -346,12 +435,55 @@ class TestDefinedTerms(MeasureTest):
                           subdir="skill")
         self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
 
+    def test_a_sibling_symlinked_out_of_the_directory_is_not_read(self):
+        # the name makes it look like a sibling; the bin reads the directory it
+        # was pointed at, and a symlink out of it is not that directory
+        outside = self.write("**API_KEY** is the token.\n", name="secret.md",
+                             subdir="elsewhere")
+        path = self.write(QUIET + "\n**API_KEY** is the token.\n", subdir="skill")
+        os.symlink(outside, os.path.join(self.tmp, "skill", "leak.md"))
+        self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+    def test_a_sibling_symlinked_within_the_directory_is_read(self):
+        # both names are asserted: with only the count, the real file behind the
+        # link answers for it and a containment check that refused every symlink
+        # would still pass
+        real = self.write("**Session finding**: what a session learned.\n",
+                          name="real.md", subdir="skill")
+        path = self.write(QUIET + "\n**Session finding**: what a session learned.\n",
+                          subdir="skill")
+        os.symlink(real, os.path.join(self.tmp, "skill", "REFERENCE.md"))
+        shared = self.report(path)["terms_defined_in_sibling"]
+        self.assertEqual(shared[0]["also_in"], ["REFERENCE.md", "real.md"])
+
     def test_a_sibling_that_is_not_markdown_is_not_read(self):
         self.write("**Session finding**: what a session learned.\n",
                    name="notes.txt", subdir="skill")
         path = self.write(QUIET + "\n**Session finding**: what a session learned.\n",
                           subdir="skill")
         self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+
+class TestUnpunctuatedRuns(MeasureTest):
+    """The table rule, in the other constructs that carry one item per line and
+    no full stop. A block of link definitions measured 536 words as one sentence
+    on a real CHANGELOG before these breaks existed."""
+
+    def test_a_block_of_link_definitions_is_one_sentence_each(self):
+        text = (QUIET + "\n[a]: https://example.com/a\n"
+                "[b]: https://example.com/b\n[c]: https://example.com/c\n")
+        self.assertMetric(text, "sentences", 4)
+
+    def test_a_setext_underline_ends_the_line_above_it(self):
+        self.assertMetric(QUIET + "\nA Title\n=======\nthen prose\n", "sentences", 3)
+
+    def test_a_thematic_break_ends_the_line_above_it(self):
+        self.assertMetric(QUIET + "\nsome prose\n***\nmore prose\n", "sentences", 3)
+
+    def test_a_wrapped_paragraph_is_still_not_cut_at_its_line_breaks(self):
+        # the general rule "an unpunctuated line ends a sentence" would do this,
+        # and it is the commoner error
+        self.assertMetric("one two three\nfour five six.\n", "sentences", 1)
 
 
 class TestInlineEvidence(MeasureTest):
@@ -371,6 +503,13 @@ class TestInlineEvidence(MeasureTest):
 
     def test_a_bare_number_is_not_evidence(self):
         self.assertMetric(QUIET + "\nPick 5 rows from the palette.\n", "inline_evidence", 0)
+
+    def test_the_evidence_is_listed_in_the_order_a_reader_reads_it(self):
+        # the three rules are scanned one after another, so without the sort a
+        # date on a later line is listed before a `measured` on an earlier one
+        text = QUIET + "\nThe gap was measured here.\nThe sweep ran on 2026-06-03.\n"
+        report = self.report(self.write(text))
+        self.assertEqual([e["line"] for e in report["inline_evidence"]], [8, 9])
 
     def test_each_hit_names_the_kind_it_matched(self):
         report = self.report(self.fixture("bloated"))
@@ -398,6 +537,16 @@ class TestPointers(MeasureTest):
     def test_a_slashed_word_that_is_not_a_path_is_not_a_pointer(self):
         self.assertMetric(QUIET + "\nEach row is KEEP/MOVE/DROP and nothing else.\n",
                           "pointers", 0)
+
+    def test_a_long_run_of_dotted_text_measures_promptly(self):
+        # the extension used to sit inside the pattern, where `.` was in the star
+        # AND in the literal before it: 16 000 dots took 3.6 s, and a longer line
+        # never came back. The timeout IS the assertion.
+        path = self.write(QUIET + "\n" + "a." * 40000 + "zz\n")
+        r = subprocess.run([sys.executable, BIN, path, "--json"],
+                           capture_output=True, text=True, timeout=20)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(json.loads(r.stdout)["metrics"]["pointers"], 0)
 
     def test_a_url_is_not_a_pointer_to_a_file_in_this_tree(self):
         self.assertMetric(QUIET + "\nSee https://example.com/a/b.md for the rest.\n",
@@ -428,9 +577,13 @@ class TestNegations(MeasureTest):
             self.assertGreater(entry["line"], 0)
 
     def test_a_long_line_is_reported_as_a_window_around_the_match(self):
-        long_line = "word " * 60 + "never here.\n"
+        # AROUND the match: a window cut at an offset the whitespace collapse
+        # already moved is still short, and still does not hold the negation
+        long_line = "word  " * 60 + "never here.\n"
         report = self.report(self.write(QUIET + "\n" + long_line))
-        self.assertLessEqual(len(report["negations"][0]["context"]), 102)
+        context = report["negations"][0]["context"]
+        self.assertLessEqual(len(context), 102)
+        self.assertIn("never", context)
 
 
 class TestTargets(MeasureTest):
@@ -500,6 +653,15 @@ class TestTextAndJsonAgree(MeasureTest):
                     self.assertEqual(text[key], "—" if value is None else str(value),
                                      f"{name}: {key}")
 
+    def test_the_value_column_is_aligned_to_the_longest_label(self):
+        # the metric table only: the detail sections below it open with the same
+        # labels, and they are not columns
+        body = self.run_on(self.fixture("bloated")).stdout.split("---\n", 1)[1]
+        rows = [l for l in body.split("\n\n", 1)[0].splitlines() if l.strip()]
+        self.assertEqual(len(rows), len(LABELS))
+        ends = {len(r.rstrip()) for r in rows}
+        self.assertEqual(ends, {max(ends)}, f"ragged value column:\n" + "\n".join(rows))
+
     def test_the_text_report_carries_a_row_for_every_metric_the_json_carries(self):
         data = self.report(self.fixture("bloated"))["metrics"]
         self.assertEqual(sorted(data), sorted(LABELS))
@@ -547,15 +709,22 @@ class TestUsage(MeasureTest):
             f.write(QUIET)
         self.assertEqual(self.report(path)["metrics"]["description_words"], 14)
 
-    def test_a_file_that_is_not_text_is_named_rather_than_raising(self):
-        # the third refusal, beside the absent path and the directory: a file
-        # with nothing measurable in it is named, not handed back as a traceback
-        path = os.path.join(self.tmp, "binary.md")
+    def test_a_file_that_is_not_utf8_is_measured_rather_than_refused(self):
+        # `café` from a Windows editor is measurable markdown. There are two
+        # refusals and only two: the path that is not there, and the directory.
+        path = os.path.join(self.tmp, "latin1.md")
         with open(path, "wb") as f:
-            f.write(b"---\nname: x\n---\n\n\xff\xfe not text\n")
+            f.write("---\nname: x\ndescription: d\n---\n\nUm café e um résumé.\n"
+                    .encode("latin-1"))
         r = self.run_on(path)
-        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
-        self.assertIn("unreadable", r.stderr)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.report(path)["metrics"]["body_words"], 5)
+
+    def test_a_byte_that_is_not_utf8_never_becomes_a_word(self):
+        path = os.path.join(self.tmp, "bytes.md")
+        with open(path, "wb") as f:
+            f.write(b"---\nname: x\ndescription: d\n---\n\none \xff\xfe two\n")
+        self.assertEqual(self.report(path)["metrics"]["body_words"], 2)
 
     def test_the_report_names_the_file_it_measured(self):
         path = self.fixture("lean")

@@ -65,12 +65,51 @@ MUTATIONS = [
      ["TestWhatIsNotCounted.test_a_backtick_fenced_block_is_outside_every_count"]),
 
     ("T185 a fence closes on any fence, however short, so a nested one ends the block",
-     "        if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence):",
-     "        if m and m.group(1)[0] == fence[0]:",
+     "    return bool(m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)\n"
+     "                and not line[m.end():].strip())",
+     "    return bool(m and m.group(1)[0] == fence[0])",
      ["TestWhatIsNotCounted.test_a_fence_closes_only_on_one_at_least_as_long_as_it_opened_with"]),
 
+    ("T185 a fence with text after it closes the block it sits inside",
+     "                and not line[m.end():].strip())", "                )",
+     ["TestWhatIsNotCounted.test_a_fence_with_text_after_it_does_not_close_a_block"]),
+
+    ("T185 an inline code span opens a block that swallows the rest of the file",
+     '    if m.group(1)[0] == "`" and "`" in line[m.end():]:\n        return None',
+     '    if False:\n        return None',
+     ["TestWhatIsNotCounted.test_an_inline_code_span_does_not_open_a_block"]),
+
+    ("T185 the backtick clause is applied to tilde fences too",
+     '    if m.group(1)[0] == "`" and "`" in line[m.end():]:',
+     '    if "`" in line[m.end():]:',
+     ["TestWhatIsNotCounted.test_a_tilde_fence_may_carry_backticks_in_its_info_string"]),
+
+    ("T185 a YAML document-end marker no longer closes the frontmatter",
+     '        if lines[i].rstrip() in ("---", "..."):', '        if lines[i].rstrip() == "---":',
+     ["TestWhatIsNotCounted.test_frontmatter_closed_with_a_yaml_document_end_is_frontmatter"]),
+
+    ("T185 a block of link definitions reads as one sentence again",
+     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
+     "                or RULE.match(stripped))",
+     "                or TABLE_ROW.match(stripped)\n"
+     "                or RULE.match(stripped))",
+     ["TestUnpunctuatedRuns.test_a_block_of_link_definitions_is_one_sentence_each"]),
+
+    ("T185 a setext underline and a thematic break stop ending the line above",
+     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
+     "                or RULE.match(stripped))",
+     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped))",
+     ["TestUnpunctuatedRuns.test_a_setext_underline_ends_the_line_above_it",
+      "TestUnpunctuatedRuns.test_a_thematic_break_ends_the_line_above_it"]),
+
+    ("T185 every unpunctuated line ends a sentence, cutting wrapped prose at its breaks",
+     "        if hard_break(line):\n            # BEFORE as well as after",
+     "        if True:\n            # BEFORE as well as after",
+     ["TestUnpunctuatedRuns.test_a_wrapped_paragraph_is_still_not_cut_at_its_line_breaks",
+      "TestTheSentenceUnit.test_a_wrapped_paragraph_is_one_sentence_across_its_lines"]),
+
     ("T185 a block never opens, so everything in every fence is measured",
-     "                fence = m.group(1)", "                fence = None",
+     "            fence = opens_fence(line)", "            fence = None",
      ["TestWhatIsNotCounted.test_a_block_left_unclosed_runs_to_the_end_of_the_file"]),
 
     ("T185 an empty file has no sentences and the maximum raises on the empty list",
@@ -92,33 +131,81 @@ MUTATIONS = [
      ["TestTheSentenceUnit.test_a_decimal_point_does_not_end_a_sentence"]),
 
     ("T185 an abbreviation ends a sentence",
+     "        if last in ABBREV:", "        if False:",
+     ["TestTheSentenceUnit.test_an_abbreviation_does_not_end_a_sentence",
+      "TestTheSentenceUnit.test_each_abbreviation_of_the_list_is_honoured"]),
+
+    ("T185 the list keeps only its first member, and the rest vanish unnoticed",
+     'ABBREV = {"e.g", "i.e", "etc", "vs", "cf", "mr", "mrs", "ms", "dr", "prof",\n'
+     '          "fig", "approx", "al", "st"}',
+     'ABBREV = {"e.g"}',
+     ["TestTheSentenceUnit.test_each_abbreviation_of_the_list_is_honoured"]),
+
+    ("T185 a single letter is exempt again, and enumerated steps merge into one",
+     "        if last in ABBREV:",
      "        if last in ABBREV or (len(last) == 1 and last.isalpha()):",
-     "        if False:",
-     ["TestTheSentenceUnit.test_an_abbreviation_does_not_end_a_sentence"]),
+     ["TestTheSentenceUnit.test_an_initial_ends_a_sentence_so_enumerated_steps_stay_apart"]),
+
+    ("T185 the chunk is flushed only after a hard break, never before it",
+     "            flush(chunk)\n            chunk.append((number, text))\n            flush(chunk)",
+     "            chunk.append((number, text))\n            flush(chunk)",
+     ["TestTheChunkBoundary.test_a_list_measures_the_same_with_and_without_a_blank_line_before_it",
+      "TestTheChunkBoundary.test_the_first_bullet_is_its_own_sentence_though_no_blank_line_precedes_it",
+      "TestTheChunkBoundary.test_a_heading_straight_after_a_paragraph_does_not_swallow_it"]),
+
+    ("T185 every sentence is attributed one line below the line it sits on",
+     "            offsets.append(len(text))\n            starts.append(number)",
+     "            offsets.append(len(text))\n            starts.append(number + 1)",
+     ["TestSentenceLineNumbers.test_a_sentence_opening_a_chunk_keeps_its_own_line",
+      "TestSentenceLineNumbers.test_a_sentence_opening_a_line_is_reported_on_that_line"]),
+
+    ("T185 a sentence is attributed to the separator before it, pointing one line up",
+     "            out.append((first_word_at(text, start), piece))",
+     "            out.append((start, piece))",
+     ["TestSentenceLineNumbers.test_a_sentence_opening_a_line_is_reported_on_that_line"]),
+
+    ("T185 the trailing fragment of a chunk loses the same fix",
+     "        out.append((first_word_at(text, start), tail))",
+     "        out.append((start, tail))",
+     ["TestSentenceLineNumbers.test_a_last_sentence_with_no_full_stop_keeps_its_line_too"]),
+
+    ("T185 the whitespace walk never moves, so the attribution fix is inert",
+     "    while start < len(text) and text[start].isspace():",
+     "    while False:",
+     ["TestSentenceLineNumbers.test_a_sentence_opening_a_line_is_reported_on_that_line"]),
+
+    ("T185 the first sentence of a chunk loses the line it starts on",
+     "        for number, piece in chunk:\n            offsets.append(len(text))",
+     "        for number, piece in chunk:\n            offsets.append(len(text) + 1)",
+     ["TestSentenceLineNumbers.test_a_sentence_opening_a_line_is_reported_on_that_line"]),
 
     ("T185 the end of a table row does not end a sentence, so a palette is one sentence",
      "    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)\n"
-     "                or TABLE_ROW.match(stripped))",
-     "    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped))",
+     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
+     "                or RULE.match(stripped))",
+     "    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)\n"
+     "                or LINK_DEF.match(stripped) or RULE.match(stripped))",
      ["TestTheSentenceUnit.test_a_table_row_ends_a_sentence_at_the_end_of_its_line",
       "TestTheSentenceUnit.test_two_table_rows_are_two_sentences_though_neither_ends_in_a_full_stop",
       "TestTheShippedSkills.test_the_table_heavy_skill_does_not_measure_as_one_enormous_sentence"]),
 
     ("T185 the end of a list item does not end a sentence",
      "    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)\n"
-     "                or TABLE_ROW.match(stripped))",
-     "    return bool(HEADING.match(stripped) or TABLE_ROW.match(stripped))",
+     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
+     "                or RULE.match(stripped))",
+     "    return bool(HEADING.match(stripped)\n"
+     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
+     "                or RULE.match(stripped))",
      ["TestTheSentenceUnit.test_a_list_item_ends_a_sentence_at_the_end_of_its_line"]),
 
     ("T185 the end of a heading does not end a sentence",
      "    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)\n"
-     "                or TABLE_ROW.match(stripped))",
-     "    return bool(LIST_ITEM.match(stripped) or TABLE_ROW.match(stripped))",
+     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
+     "                or RULE.match(stripped))",
+     "    return bool(LIST_ITEM.match(stripped)\n"
+     "                or TABLE_ROW.match(stripped) or LINK_DEF.match(stripped)\n"
+     "                or RULE.match(stripped))",
      ["TestTheSentenceUnit.test_a_heading_ends_a_sentence_at_the_end_of_its_line"]),
-
-    ("T185 every line ends a sentence, so a wrapped paragraph is one sentence per line",
-     "        if hard_break(line):\n            flush(chunk)", "        if True:\n            flush(chunk)",
-     ["TestTheSentenceUnit.test_a_wrapped_paragraph_is_one_sentence_across_its_lines"]),
 
     ("T185 a blank line does not end a sentence, so two paragraphs run together",
      "        if not text:\n            flush(chunk)\n            continue",
@@ -129,6 +216,7 @@ MUTATIONS = [
      'WORD = re.compile(r"[^\\W_]", re.UNICODE)', 'WORD = re.compile(r".", re.UNICODE)',
      ["TestTheSentenceUnit.test_the_table_separator_row_is_not_a_sentence",
       "TestTheSentenceUnit.test_an_em_dash_alone_is_not_a_word",
+      "TestUsage.test_a_byte_that_is_not_utf8_never_becomes_a_word",
       "TestTheDescription.test_a_block_scalar_marker_is_not_a_word_of_the_description"]),
 
     ("T185 the longest sentence is reported as the shortest one",
@@ -146,6 +234,11 @@ MUTATIONS = [
      ["TestTheBloatedFixture.test_one_sentence_runs_past_thirty_words"]),
 
     # -- the description ----------------------------------------------------
+    ("T185 a file with no description at all reports one of no words",
+     "        return \" \".join(p for p in parts if p).strip() or None\n    return None",
+     "        return \" \".join(p for p in parts if p).strip() or None\n    return \"\"",
+     ["TestTheDescription.test_a_file_with_no_frontmatter_reports_the_description_as_absent"]),
+
     ("T185 the description is read to its first word only",
      '        m = re.match(r"^description\\s*:\\s*(.*)$", line)',
      '        m = re.match(r"^description\\s*:\\s*(\\S*)", line)',
@@ -163,9 +256,9 @@ MUTATIONS = [
      ["TestTheDescription.test_a_key_after_the_description_ends_it"]),
 
     ("T185 an absent description is reported as an empty one rather than as absent",
-     "        return \" \".join(p for p in parts if p).strip()\n    return None",
-     "        return \" \".join(p for p in parts if p).strip()\n    return \"\"",
-     ["TestTheDescription.test_a_file_with_no_frontmatter_reports_the_description_as_absent"]),
+     '        return " ".join(p for p in parts if p).strip() or None',
+     '        return " ".join(p for p in parts if p).strip() or ""',
+     ["TestTheDescription.test_a_description_key_with_no_value_is_absent"]),
 
     # -- inline evidence ----------------------------------------------------
     ("T185 an ISO date is not evidence",
@@ -196,23 +289,39 @@ MUTATIONS = [
 
     # -- pointers -----------------------------------------------------------
     ("T185 only a path carrying a known extension is a pointer",
-     '    r"(?<![\\w/])(?:(?:~|\\.{1,2})?/[\\w./~@-]*[\\w/]"\n'
-     '    r"|[\\w][\\w./@-]*\\.(?:md|py|sh|json|html|txt|yml|yaml|toml)\\b)")',
-     '    r"(?<![\\w/])(?:[\\w][\\w./@-]*\\.(?:md|py|sh|json|html|txt|yml|yaml|toml)\\b)")',
+     'PATHISH = re.compile(r"(?<![\\w/])(?:~|\\.{1,2})?/[\\w./~@-]*[\\w/]"\n'
+     '                     r"|(?<![\\w/])[\\w][\\w./@-]*[\\w]")',
+     'PATHISH = re.compile(r"(?<![\\w/])[\\w][\\w./@-]*[\\w]")',
+     
      ["TestPointers.test_a_home_relative_path_is_a_pointer",
       "TestPointers.test_a_parent_relative_path_is_a_pointer"]),
 
     ("T185 only a path carrying a real prefix is a pointer, so a bare filename is missed",
-     '    r"(?<![\\w/])(?:(?:~|\\.{1,2})?/[\\w./~@-]*[\\w/]"\n'
-     '    r"|[\\w][\\w./@-]*\\.(?:md|py|sh|json|html|txt|yml|yaml|toml)\\b)")',
-     '    r"(?<![\\w/])(?:(?:~|\\.{1,2})?/[\\w./~@-]*[\\w/])")',
+     'POINTER_SUFFIXES = ("md", "py", "sh", "json", "html", "txt", "yml", "yaml", "toml")',
+     'POINTER_SUFFIXES = ()',
+     
      ["TestPointers.test_a_bare_filename_with_a_known_extension_is_a_pointer",
       "TestPointers.test_a_repo_relative_path_with_no_dot_prefix_is_a_pointer",
       "TestTheBloatedFixture.test_the_four_pointers_are_found"]),
 
-    ("T185 the tail of a word enters as a path of its own",
-     '    r"(?<![\\w/])(?:(?:~|\\.{1,2})?/[\\w./~@-]*[\\w/]"',
-     '    r"(?:(?:~|\\.{1,2})?/[\\w./~@-]*[\\w/]"',
+    
+    ("T185 the URL scheme is unbounded again, and dotted text stops the run",
+     'URL = re.compile(r"(?i)\\b[a-z][a-z0-9+.-]{0,31}://\\S+")',
+     'URL = re.compile(r"(?i)\\b[a-z][a-z0-9+.-]*://\\S+")',
+     ["TestPointers.test_a_long_run_of_dotted_text_measures_promptly"]),
+
+    ("T185 the extension goes back into the pattern, where the dot overlaps itself",
+     "    for number, m, _ in hits(body, PATHISH):\n        token = m.group(0)",
+     "    for number, m, _ in hits(body, re.compile(\n"
+     "            r\"(?<![\\w/])(?:(?:~|\\.{1,2})?/[\\w./~@-]*[\\w/]\"\n"
+     "            r\"|[\\w][\\w./@-]*\\.(?:md|py|sh|json|html|txt|yml|yaml|toml)\\b)\")):\n"
+     "        token = m.group(0)",
+     ["TestPointers.test_a_long_run_of_dotted_text_measures_promptly"]),
+
+    ("T185 a path-shaped token is a pointer whatever its tail",
+     "        if (token.startswith(POINTER_PREFIXES)\n"
+     "                or (\".\" in token and token.rsplit(\".\", 1)[-1].lower() in POINTER_SUFFIXES)):",
+     "        if True:",
      ["TestPointers.test_a_slashed_word_that_is_not_a_path_is_not_a_pointer"]),
 
     ("T185 the path inside a URL is read as a file in this tree",
@@ -239,6 +348,12 @@ MUTATIONS = [
      "NEGATIONS = re.compile(r\"(?i)(?<![\\w'’])(do not|don['’]t|never|not|no)(?![\\w'’])\")",
      "NEGATIONS = re.compile(r\"(?i)(?<![\\w'’])(do not|don['’]t|never|not|no)\")",
      ["TestNegations.test_no_inside_a_longer_word_is_not_a_negation"]),
+
+    ("T185 the context window is cut at an offset the collapse already moved",
+     '    at = collapsed.find(" ".join(match.group(0).split()))\n'
+     "    start = max(0, (at if at >= 0 else 0) - 40)",
+     "    start = max(0, match.start() - 40)",
+     ["TestNegations.test_a_long_line_is_reported_as_a_window_around_the_match"]),
 
     ("T185 a negation is counted and never shown, so the reader cannot judge it",
      '"context": context(text, m)}', '"context": ""}',
@@ -292,6 +407,16 @@ MUTATIONS = [
      "        for _, term in defined_terms(outside_code(body)):",
      "        for _, term in defined_terms(body):",
      ["TestDefinedTerms.test_a_term_defined_inside_a_siblings_code_block_does_not_count"]),
+
+    ("T185 a sibling is whatever a name in the directory points at",
+     "        if os.path.dirname(os.path.realpath(full)) != root:\n            continue",
+     "        if False:\n            continue",
+     ["TestDefinedTerms.test_a_sibling_symlinked_out_of_the_directory_is_not_read"]),
+
+    ("T185 the containment check refuses a symlink that never left the directory",
+     "        if os.path.dirname(os.path.realpath(full)) != root:",
+     "        if os.path.realpath(full) != full:",
+     ["TestDefinedTerms.test_a_sibling_symlinked_within_the_directory_is_read"]),
 
     ("T185 the sibling comparison is case sensitive",
      "            out.setdefault(term.casefold(), []).append(name)",
@@ -349,6 +474,14 @@ MUTATIONS = [
      ["TestTextAndJsonAgree.test_the_marks_agree_with_the_metrics_they_mark"]),
 
     # -- the two formats are one measurement --------------------------------
+    ("T185 the evidence is listed rule by rule rather than in file order",
+     "    evidence.sort(key=lambda e: (e[\"line\"], e[\"match\"]))", "    pass",
+     ["TestInlineEvidence.test_the_evidence_is_listed_in_the_order_a_reader_reads_it"]),
+
+    ("T185 the metric column is padded to a fixed width and goes ragged",
+     "    label_width = max(len(label) for _, label in METRICS)", "    label_width = 10",
+     ["TestTextAndJsonAgree.test_the_value_column_is_aligned_to_the_longest_label"]),
+
     ("T185 the text report rounds a number the JSON reports whole",
      '        shown = "—" if value is None else f"{value}"',
      '        shown = "—" if value is None else f"{round(value)}"',
@@ -373,10 +506,12 @@ MUTATIONS = [
      "    if not os.path.isfile(args.file):", "    if False:",
      ["TestUsage.test_a_path_that_does_not_exist_is_named_rather_than_measured"]),
 
-    ("T185 a file that is not text raises instead of being named",
-     "    except (OSError, UnicodeDecodeError) as e:", "    except OSError as e:",
-     ["TestUsage.test_a_file_that_is_not_text_is_named_rather_than_raising"]),
+    ("T185 a byte that is not UTF-8 is a refusal again",
+     '    lines = raw.decode("utf-8-sig", errors="replace").splitlines()',
+     '    lines = raw.decode("utf-8-sig").splitlines()',
+     ["TestUsage.test_a_file_that_is_not_utf8_is_measured_rather_than_refused"]),
 
+    
     ("T185 the report no longer names the file it measured",
      '        "path": path,', '        "path": os.path.basename(path),',
      ["TestUsage.test_the_report_names_the_file_it_measured"]),
