@@ -40,16 +40,39 @@ On the first quota failure, in this order:
    flight; with nothing in flight, it is the head of what the package has left. One handoff,
    not one per item: the package's remaining state has a single home, and a copy per item is a
    copy to go stale.
-3. **Say what is left, in `--state`:** the items still to dispatch, in order; the item in
-   flight and the branch its work is pushed to; the reset time the error named; and the claims
-   this package holds.
+3. **Say what is left, in `--state`.** Six contents, because each one is something the next
+   generation otherwise rediscovers by doing the work twice:
+   - the items still to dispatch, in order;
+   - the item in flight, and the branch its work is pushed to;
+   - the reset time the error named;
+   - the claims this package holds;
+   - **the review still owed** — for a campaign interrupted between rounds, the pending round
+     and its finder lenses; interrupted *inside* a round, which lenses reported and which the
+     wall killed, since a partial round does not count and is re-run whole. A slice whose
+     campaign never ran waits implemented, unreviewed and unmerged, and says so;
+   - **the large files already read, and the verdict on each.** A successor that knows a
+     source is 1,500 lines and what it holds takes it distilled from a subagent; one that
+     knows only "we were at 200k" reads it again at full price.
 4. **Keep the claims.** They are how the next generation knows which items are its own, and
    releasing them here invites a sibling session to take work that is half done. This is the
    one place the release rule of `AFK.md` step 3 does not apply.
 5. **Stop.** Report the wall, the reset time and the handoff's path.
 
-**Done when:** the tree is pushed, one handoff carries the four contents of step 3, the claims
+**Done when:** the tree is pushed, one handoff carries the six contents of step 3, the claims
 are intact, and the report names the reset time.
+
+## Review is a first-class consumer of the window
+
+Budget a campaign as its own line, beside the implementation it reviews and never as its tail.
+Measured over one full window on 2026-08-20 — three slices, three implementers, 28 lens
+agents — the lenses were **71% of the spend**, a lens:implementation ratio of 2.5:1 with
+campaigns running in parallel. Serialized, the same ratio measured **1.11:1**: near parity.
+Take parity as the planning number, and take it for prose slices too until one is measured.
+
+**Campaigns serialize** — one at a time per orchestrating session. So review time is a **sum**
+over the package's slices, not a maximum across them, and that serialized tail is the part of
+a package the wall reaches first. A package planned as though review rode along inside
+implementation is a package whose last third is unfunded.
 
 ## After the reset, the package finishes and stops
 
@@ -103,9 +126,26 @@ degrades** rather than nursed.
 The rule, at every seam — an item closed, the wall, the end of the package:
 
 - **Refresh the handoff.** Always, whatever the context reads.
-- **Above ~150–200k of context**, open the next generation and end this one. The number is
-  visible in the statusline and is calibrated by what each package reports.
+- **Read the context number on purpose**, at the close of every package item. It is in the
+  statusline, and an orchestrator that never looks does not notice: the 372k session below
+  learnt its own number from the user, because no step of the flow had asked for it.
+- **Above ~150–200k of context**, open the next generation and end this one.
 - **Below it**, carry on.
+
+**That threshold is a simple slice's ceiling, not a slice's.** One real slice — one `tk-queue`
+subcommand, 8 commits, five files — closed its session at **372k**, roughly twice the zone,
+with no overflow and no compaction. What multiplied it was the number of **correction
+cycles**: six rounds, each paying a patch to the source, a patch to the tests, a patch to the
+mutations and a verification run. The adversarial audit is on by default and is what produces
+those cycles, so a package sized by its diff underestimates by about 3×. Where the two
+disagree, size the generation by the cycles you expect, not by the diff you expect.
+
+**Estimating the implementation before it runs**, when there is no subagent to measure: inside
+a package the question does not arise, because the orchestrator implements nothing inline and
+every implementation therefore has a run of its own to be measured against. Outside one — a
+session implementing in the parent — the measure is that parent's own context delta across the
+slice, read at the same close-of-item point as above. Carry the delta into the handoff; it is
+the only number a successor can plan the next slice from.
 
 Generations are **sequential**: one orchestrator at a time, so the single-writer rule over the
 queue survives, and the claims pass to the successor inside the handoff. One package, one live

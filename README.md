@@ -184,7 +184,8 @@ tk/
   skills/kickoff/WINDOW.md        branch file: what the package does when it runs
                                   out of window rather than out of work — the
                                   checkpoint invariant, the quota wall's handoff,
-                                  and the --budget generations
+                                  what a review campaign costs the window, and
+                                  the --budget generations
   reference/subagent-policy.md    model, effort, venue, PR-authorship and the
                                   checkpoint invariant per subagent role; the role
                                   table is parseable, schema declared in the file

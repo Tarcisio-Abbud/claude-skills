@@ -11,8 +11,9 @@ one-line format a departure from that table costs.
 
 **Read `WINDOW.md` beside this file before step 3.** It holds what the package does when it
 runs out of window rather than out of work: the checkpoint invariant, the handoff the quota
-wall demands and what goes in it, the scope a resumed package is held to, why auto-continue
-covers none of this, and the `--budget N` generations that carry a package past the
+wall demands and its six contents, the scope a resumed package is held to, why auto-continue
+covers none of this, what a review campaign costs the window and why its serialized tail is
+what the wall cuts first, and the `--budget N` generations that carry a package past the
 orchestrator's own context ceiling. Those rules fire at moments the steps below do not
 choose, which is why they are read up front rather than looked up under one.
 
