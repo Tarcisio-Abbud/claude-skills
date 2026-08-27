@@ -77,6 +77,21 @@ reads exactly like "no branch". **And read the exit code, not only the output.**
 host, a wrong URL and a failed authentication all exit 128 with a `fatal:` line; a check whose
 output you capture into a variable turns all three into "free" and admits the item.
 
+**A branch already merged is not a lane.** `git ls-remote` reports a branch whether it is being
+worked or was merged months ago and never deleted, which is the forge's default — so a hit is
+asked one more question before it excludes anything: fetch that ref into the code repo's clone
+and ask whether its tip is already in the trunk.
+
+```sh
+git fetch "<code repo URL>" "refs/heads/spec/<m>-<slug>"
+git merge-base --is-ancestor FETCH_HEAD origin/main   # exit 0 = merged, the branch is leftover
+```
+
+Merged, the branch occupies nothing: the spec stays in the package, and the report says a merged
+branch was found and left standing. Deleting it belongs to whatever merges the lane's pull
+request, and that prose is still being written. Without this question a spec is evicted from
+every package for as long as its finished branch survives, which is forever.
+
 The queue carries no field for this URL — `Ticket:` and `Spec:` name the TRACKER, and `Project:`
 is a grouping tag — so the orchestrator supplies it, from the same knowledge step 3 needs to open
 the item's worktree. An item whose code repository you cannot name is an item you cannot dispatch,
