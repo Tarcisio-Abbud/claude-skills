@@ -2586,13 +2586,11 @@ LEGACY = ("- [ ] **T%03d** — algo\n"
           "**Source:** 2026-08-13\n")
 
 
-class TestPack(QueueTest):
-    """The package an unattended session runs was filtered by eye until now, from
-    `list` plus prose. Two things move when it becomes a command: the filter stops
-    being re-derived every session, and — the reason the ticket exists — every
-    exclusion becomes VISIBLE. An item dropped for its Risk or its Env leaves no
-    trace anywhere else; silently absent, it is an item the user never learns
-    about, on a queue they believe they have seen."""
+class PackOutput(QueueTest):
+    """The pack output's parser, for every class that reads it. ONE copy: two
+    tests stripping the same columns their own way is how one of them comes to
+    assert a shape the command does not print — the answer this script's own
+    FIELD_BODY_RE gives about its readers. Carries no test of its own."""
 
     # --- helpers ----------------------------------------------------------
     def pack(self):
@@ -2628,6 +2626,24 @@ class TestPack(QueueTest):
 
     def repairs(self, out):
         return "\n".join(self.blocks(out)["repairs"])
+
+    def lanes(self, out):
+        """{label: lane} for the eligible block, read from the COLUMN — a test
+        about the rule must not fall over the width of a title or an Effort."""
+        res = {}
+        for ln in self.blocks(out)["eligible"]:
+            label, _effort, lane = re.split(r"\s{2,}", ln.strip())[:3]
+            res[label] = lane
+        return res
+
+
+class TestPack(PackOutput):
+    """The package an unattended session runs was filtered by eye until now, from
+    `list` plus prose. Two things move when it becomes a command: the filter stops
+    being re-derived every session, and — the reason the ticket exists — every
+    exclusion becomes VISIBLE. An item dropped for its Risk or its Env leaves no
+    trace anywhere else; silently absent, it is an item the user never learns
+    about, on a queue they believe they have seen."""
 
     # --- the two lists ----------------------------------------------------
     def test_an_eligible_item_carries_its_id_effort_and_text(self):
@@ -3056,41 +3072,10 @@ class TestProvenanceFields(QueueTest):
         self.assertNotIn("**Spec:**", body)
 
 
-class TestPackLane(QueueTest):
+class TestPackLane(PackOutput):
     """The lane is what the afk orchestrator dispatches by, and it is read from
     the QUEUE — never from GitHub, which `pack` does not touch. Tickets of one
     spec share an accumulated branch; everything else is a PR of its own."""
-
-    def pack(self):
-        r = self.run_tk("pack")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertNotIn("Traceback", r.stderr)
-        return r.stdout
-
-    def blocks(self, out):
-        cur, res = None, {"eligible": [], "excluded": [], "repairs": []}
-        for ln in out.splitlines():
-            m = re.match(r"(eligible|excluded|repairs)[ :]", ln)
-            if m:
-                cur = m.group(1)
-            elif ln.strip() and ln != "(none)":
-                res[cur].append(ln)
-        return res
-
-    def lanes(self, out):
-        """{label: lane} for the eligible block, read from the COLUMN — a test
-        about the rule must not fall over the width of a title or an Effort."""
-        res = {}
-        for ln in self.blocks(out)["eligible"]:
-            label, _effort, lane = re.split(r"\s{2,}", ln.strip())[:3]
-            res[label] = lane
-        return res
-
-    def reason(self, out, label):
-        for ln in self.blocks(out)["excluded"]:
-            if ln.startswith(label + " "):
-                return ln.split("  — ", 1)[1]
-        self.fail(f"{label} is not in the excluded block:\n{out}")
 
     def test_an_item_with_no_spec_is_avulso(self):
         self.seed(item(1, "um"))
@@ -3182,6 +3167,18 @@ class TestPackLane(QueueTest):
         self.assertEqual(self.reason(self.pack(), "T001"),
                          "2 **Spec:** fields in the chain, so its value is ambiguous")
 
+    def test_a_hand_written_Spec_with_no_number_prints_WHOLE(self):
+        """The one value `spec_mark` cannot shorten. This script never writes it —
+        `validate_ref` refuses it on the way in — so it can only arrive by a hand
+        edit of the queue, which the contract forbids and real files carry anyway.
+        Printing `#` plus the whole value, or an empty `#`, would name a lane that
+        matches nothing the caller can search for."""
+        self.seed(ticket_item(1, "um", spec="repo#171").replace("repo#171", "lixo", 1)
+                  + ticket_item(2, "dois", spec="repo#171"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T001": "avulso"})
+        self.assertEqual(self.reason(out, "T002"), "lane de spec ocupada por lixo")
+
     def test_the_lane_exclusion_is_the_LAST_step_of_the_ladder(self):
         """A ticket of the second spec that ALSO carries a Risk is reported for the
         Risk: the ladder's earlier steps are about the item itself, and the lane is
@@ -3197,13 +3194,6 @@ class TestPackLane(QueueTest):
                   + ticket_item(2, "dois", spec="repo#180", risk="apaga dado")
                   + ticket_item(3, "tres", spec="repo#171"))
         self.assertEqual(self.reason(self.pack(), "T002"), "Risk: apaga dado")
-
-    def test_pack_writes_NOTHING_with_the_lane_too(self):
-        before = HEADER + ticket_item(1, "um", spec="repo#171", ticket="repo#1") \
-            + ticket_item(2, "dois", spec="repo#180")
-        self.write("next-steps.md", before)
-        self.pack()
-        self.assertEqual(self.body(), before)
 
 # --- handoff: the briefing that lives and dies with the item ---------------
 

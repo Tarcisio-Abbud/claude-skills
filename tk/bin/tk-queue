@@ -1674,9 +1674,18 @@ def pack_effort(block):
 
 
 # The two lanes an eligible item can be dispatched in, and the reason a ticket
-# leaves the package because the accumulated one is taken. The words are the
-# spec's own (#171) and a skill's prose reads them, so they are spelled once
-# here rather than composed at each site.
+# leaves the package because the accumulated one is taken. Spelled once here
+# rather than composed at each site: a skill's prose reads this output, and the
+# reason is asserted character for character by two tickets' criteria.
+#
+# PORTUGUESE, in an output whose every other string is English (`class is
+# DECISION`, `Env is 'desktop', ...`), and not by preference: `lane de spec
+# ocupada por #<n>` is the exact string #172 and #173 both demand, so it is not
+# this slice's to translate. The two lane words follow it because they name the
+# same three concepts — one term per concept beats one language per file, and a
+# lane called `standalone` standing beside a reason about `lane de spec` would be
+# two vocabularies for one feature. Translating all three together, in the ticket
+# that owns the string, is the repair.
 LANE_SOLO = "avulso"
 LANE_SPEC = "spec %s"
 LANE_TAKEN = "lane de spec ocupada por %s"
@@ -1690,15 +1699,25 @@ SPEC_LANE_FLOOR = 2
 def pack_spec(block):
     """The spec this item is a ticket of, or None when it is not one.
 
-    Read through the position rule like every other field the package reads, and
-    never fatal: the shapes this answers None to on a DEFECT — a marker outside
-    the chain, two Spec fields in it — are the shapes `pack_exclusion` has
-    already taken out of the package, so what reaches here carries at most one
-    readable Spec."""
-    segs, markers = qualified_fields(block, "Spec")
-    if len(segs) != 1 or markers > len(segs):
-        return None
-    return field_value(segs[0])
+    A READER, not a gate: the defective shapes — a **Spec:** marker the position
+    rule may not read, two of them in the chain — are refused one function up, in
+    `pack_exclusion`, and this is only ever asked of what survived that. Asking
+    them again here would be the same rule in two places, which is how one copy
+    comes to keep a position the other dropped (the answer `qualified_fields`
+    already gives about `real_fields`). What is left is the position rule itself,
+    read from the one function that spells it."""
+    segs = real_fields(block, "Spec")
+    return field_value(segs[0]) if segs else None
+
+
+# NEITHER FIELD IS AN `edit` FLAG, and the omission is deliberate — the same
+# answer CLEARABLE gives about **Claimed:**. Provenance is written once, by
+# whoever imports the ticket, and it is the one thing about an item that cannot
+# change without the item becoming a different item: a ticket re-pointed at
+# another spec is a ticket of another spec. The repair for a typo is the repair
+# for any unreadable chain — `cancel` and re-add, which also puts the wrong
+# `closes` on the record instead of erasing it. `edit --text` keeps both fields:
+# it preserves everything from the first field marker on.
 
 
 def spec_mark(ref):
@@ -1727,13 +1746,13 @@ def pack_lanes(candidates):
     the package's lane with it would refuse a lane nothing is using."""
     specs = [(label, pack_spec(block)) for label, block in candidates]
     taken = next((ref for _, ref in specs if ref), None)
-    n = sum(1 for _, ref in specs if ref == taken)
+    in_lane = sum(1 for _, ref in specs if ref == taken)
     lanes, pushed = {}, {}
     for label, ref in specs:
         if ref is None or ref == taken:
             # the floor decides the lone ticket's lane, not its membership
             lanes[label] = (LANE_SPEC % spec_mark(taken)
-                            if ref is not None and n >= SPEC_LANE_FLOOR else LANE_SOLO)
+                            if ref is not None and in_lane >= SPEC_LANE_FLOOR else LANE_SOLO)
         else:
             pushed[label] = LANE_TAKEN % spec_mark(taken)
     return lanes, pushed

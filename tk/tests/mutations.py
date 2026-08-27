@@ -2097,8 +2097,8 @@ MUTATIONS = [
      ["TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order"]),
 
     ("T172 the floor goes, so a lone ticket claims the accumulated lane",
-     "if ref is not None and n >= SPEC_LANE_FLOOR else LANE_SOLO)",
-     "if ref is not None and n >= 1 else LANE_SOLO)",
+     "if ref is not None and in_lane >= SPEC_LANE_FLOOR else LANE_SOLO)",
+     "if ref is not None and in_lane >= 1 else LANE_SOLO)",
      ["TestPackLane.test_a_single_ticket_of_a_spec_is_a_LANE_not_an_exclusion",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
 
@@ -2106,7 +2106,7 @@ MUTATIONS = [
     # out of a package it belongs in, which is what "lane, not exclusion" names
     ("T172 the floor excludes the lone ticket instead of relaning it",
      "        if ref is None or ref == taken:",
-     "        if ref is None or (ref == taken and n >= SPEC_LANE_FLOOR):",
+     "        if ref is None or (ref == taken and in_lane >= SPEC_LANE_FLOOR):",
      ["TestPackLane.test_a_single_ticket_of_a_spec_is_a_LANE_not_an_exclusion",
       "TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order"]),
 
@@ -2133,6 +2133,11 @@ MUTATIONS = [
      ["TestPackLane.test_a_spec_QUOTED_IN_PROSE_never_becomes_the_lane",
       "TestPackLane.test_a_Spec_marker_the_position_rule_may_not_read_excludes_the_item",
       "TestPackLane.test_two_Spec_fields_in_the_chain_are_ambiguous_not_guessed"]),
+
+    ("T172 spec_mark prints a bare '#' for a value that carries no number",
+     '    _, sep, number = ref.rpartition("#")\n    return "#" + number if sep else ref',
+     '    return "#" + ref.rpartition("#")[2]',
+     ["TestPackLane.test_a_hand_written_Spec_with_no_number_prints_WHOLE"]),
 
     ("T172 the new field names leave the grammar, so no reader knows them",
      '    "Ticket": r"Ticket",\n    "Spec": r"Spec",',
@@ -2171,6 +2176,7 @@ def main():
                                   "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
                                   "TestEnvField", "TestClaim",
                                   "TestPack", "TestProvenanceFields", "TestPackLane",
+                                  "PackOutput",
                                   "TestHandoffCreation",
                                   "TestHandoffLifecycle", "TestByteOrderMark",
                                   "TestIdSpelling", "TestAmbiguousId",
