@@ -5568,15 +5568,29 @@ class TestMigrateDryRun(HandoffTest):
               "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
     IDLESS_MIGRATED = ("- [ ] **T008** — legado sem ID **Class:** AUTONOMOUS. "
                        "**Effort:** S. **Source:** 2026-08-13\n")
+    ANCHOR = "anchor [[handoff-T005]] e [[handoff-T006]]"
 
     def seed_everything(self):
-        self.seed(item(5, "anchor [[handoff-T005]]"), FOLD_LEGACY, self.IDLESS, self.REFUSED)
+        """T005 is ticked after the briefings are written, so the run closes it:
+        that is what makes the [x] move, the done-log write and the collection all
+        happen in one command. TWO briefings, because the collection prints two
+        different lines — one removed, one kept for the sibling that still reaches
+        it — and both belong under the report the criterion compares."""
+        self.seed(item(5, self.ANCHOR), item(6, "irmao [[handoff-T006]]"),
+                  FOLD_LEGACY, self.IDLESS, self.REFUSED)
         # written by the real command, not by hand: the briefing is prose with a
         # header this collection reads back, and a hand-made one is a file the
         # collector would leave alone for not being its own
-        self.handoff(5, "--objective", "o", "--state", "s", "--blockers", "b")
+        for iid in (5, 6):
+            self.handoff(iid, "--objective", "o", "--state", "s", "--blockers", "b")
         self.write("next-steps.md",
                    self.body().replace("- [ ] **T005**", "- [x] **T005**", 1))
+
+    def migrated_body(self):
+        """The file the real run leaves, whichever way it was reached — spelled
+        once, so the two tests that assert it cannot drift apart."""
+        return (HEADER + item(6, "irmao [[handoff-T006]]") + FOLD_CANONICAL
+                + self.IDLESS_MIGRATED + self.REFUSED)
 
     def snapshot(self):
         """Every file in the memory dir, by NAME and by BYTES. The names matter as
@@ -5611,6 +5625,7 @@ class TestMigrateDryRun(HandoffTest):
                          "1 item(s) left exactly as they are: folding would have to "
                          "GUESS which text is a field value — T003. Close each with "
                          "`cancel` and re-add it clean.\n"
+                         "handoff-T006.md kept — still reached by T006\n"
                          "handoff-T005.md removed\n")
 
     # --- claim 2: nothing is written -------------------------------------
@@ -5637,7 +5652,7 @@ class TestMigrateDryRun(HandoffTest):
         # the control that says this assertion is about the FLAG and not about a
         # command that never writes a log at all
         self.run_tk("migrate")
-        self.assertIn("anchor [[handoff-T005]]", self.body("done-log.md"))
+        self.assertIn(self.ANCHOR, self.body("done-log.md"))
 
     def test_the_only_file_a_preview_brings_into_existence_is_the_empty_lock(self):
         """The exception, pinned rather than left for a reader to trip over. The
@@ -5646,8 +5661,13 @@ class TestMigrateDryRun(HandoffTest):
         never existed — and taking that lock creates `.tk-queue.lock` where a
         never-written queue has none. It is created EMPTY and never written to, so
         "byte for byte identical" still holds of every file that carries content;
-        this asserts that it is the ONE name that can appear, and that it is 0 bytes."""
-        self.seed(FOLD_LEGACY)
+        this asserts that it is the ONE name that can appear, and that it is 0 bytes.
+
+        The fixture carries an `[x]` item on purpose: on a queue with nothing to
+        close, the real run writes no done-log either, and the delta would exclude
+        a name that was never in play. No briefing here, because writing one runs a
+        mutating command that would create the lock before the comparison starts."""
+        self.seed("- [x] **T005** — legado feito\n\n", FOLD_LEGACY)
         before = set(os.listdir(self.mem))
         self.assertNotIn(".tk-queue.lock", before)
         self.run_tk("migrate", "--dry-run")
@@ -5687,8 +5707,7 @@ class TestMigrateDryRun(HandoffTest):
         self.run_tk("migrate", "--dry-run")
         r = self.run_tk("migrate")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.body(),
-                         HEADER + FOLD_CANONICAL + self.IDLESS_MIGRATED + self.REFUSED)
+        self.assertEqual(self.body(), self.migrated_body())
 
     def test_without_the_flag_migrate_writes_exactly_as_it_did(self):
         """The flag is OFF by default, and the default is the destructive one: a
@@ -5700,9 +5719,9 @@ class TestMigrateDryRun(HandoffTest):
         r = self.run_tk("migrate")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotEqual(self.snapshot(), before)
-        self.assertEqual(self.body(),
-                         HEADER + FOLD_CANONICAL + self.IDLESS_MIGRATED + self.REFUSED)
+        self.assertEqual(self.body(), self.migrated_body())
         self.assertIsNone(self.brief(5))
+        self.assertIsNotNone(self.brief(6))
 
 
 if __name__ == "__main__":

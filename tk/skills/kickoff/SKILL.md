@@ -222,8 +222,9 @@ tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by pro
 tk-queue migrate [--dry-run]                   # one-time: moves legacy [x] to the log, assigns IDs,
                                                # folds a field chain off the first line onto it, and
                                                # reports (grouped by reason) the items it left alone.
-                                               # --dry-run prints that same report and writes NOTHING
-                                               # — read it before rewriting a queue you cannot undo
+                                               # --dry-run prints that same report and writes no
+                                               # queue, no log, no briefing — read it before
+                                               # rewriting a queue you cannot undo
 ```
 
 `<id>` is accepted in the form the queue displays (`T006`) as well as bare (`6`).
@@ -263,13 +264,16 @@ Both matter to a session because they decide what `add` hands out next and what 
 "never allocated" diagnostic means. Neither is a licence to hand-edit the files.
 
 Every mutating command (`add`/`edit`/`done`/`cancel`/`migrate`) prints the memory dir it
-resolved on **stderr** before acting. That target is inferred — from `--dir`, or from the
+resolved on **stderr** before acting — `migrate --dry-run` too, which writes nothing and
+still announces where it looked. That target is inferred — from `--dir`, or from the
 cwd when it is absent — and a shell that keeps its cwd between calls has already made an
 `edit` land on a homonymous item in ANOTHER project's queue while reporting success. Read
 that line before trusting the result.
 
 Two writers at once are safe: every mutating command holds an exclusive lock on the
-memory dir for its whole read-modify-write. When an ID is not among the open items the
+memory dir for its whole read-modify-write, and `migrate --dry-run` holds it too — a
+preview computed from a queue another writer is halfway through previews a state that
+never existed. When an ID is not among the open items the
 script says WHY — already in the done-log, still ticked `[x]`, never allocated, or
 allocated and since removed by another writer. None of those mean "invent it again":
 re-read with `tk-queue list` instead of adding a replacement, which is how a queue grows

@@ -26,9 +26,9 @@ prefix — stay outside `report`'s scope; read the log itself for that history).
 The same command FOLDS a legacy item's `**Field:** value.` chain up onto the
 first line, the one position every gate reads it at — and prints the items it
 left alone rather than folding a chain it would have had to guess at.
-`migrate --dry-run` prints that entire report and writes nothing at all: on a
-file that holds the user's own prose and has no other copy, the preview comes
-before the rewrite.
+`migrate --dry-run` prints that entire report and writes no queue, no log and
+no briefing: on a file that holds the user's own prose and has no other copy,
+the preview comes before the rewrite.
 
 Priority is the file's ORDER, global — no score, no hidden heuristic. `add` puts a
 new item at the end and `bump` moves one to the top; the package modes take the
@@ -137,7 +137,10 @@ FIELD_CLEAR = "none"
 # in one command, which is the thing `claim` exists to refuse. It is cleared by
 # `release`, which reads the same chain and splices with the same helper.
 CLEARABLE = frozenset(("Risk", "Deferred", "Env"))
-READERS = frozenset(("list", "report", "pack"))   # everything else mutates and takes the queue lock
+# everything else takes the queue lock. `migrate --dry-run` is in the second set
+# and writes nothing: it takes the lock to READ a queue no other writer is
+# mid-rewrite of, since a preview of a torn snapshot previews a state that never was
+READERS = frozenset(("list", "report", "pack"))
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
 # read once, at import: os.umask can only be read by setting it, and doing that
 # mid-run would race any other thread writing a file (the suite writes from six)
@@ -288,6 +291,12 @@ def queue_lock(memdir):
     Advisory (flock), which is enough: the contract already makes this script
     the queue's only writer. Readers (`list`, `report`) take no lock — every
     write lands with os.replace, so a reader sees a coherent file regardless.
+
+    Held is not the same as written, in both directions: `migrate --dry-run`
+    takes this lock and writes nothing, because a preview computed from a
+    snapshot another writer is halfway through is a preview of a state that
+    never existed. So a command holding the lock may still leave every file
+    byte-identical — and an empty `.tk-queue.lock` is then the one file it made.
     """
     if fcntl is None:
         # No flock (non-POSIX): the unique temp name and the honest miss report
@@ -3298,12 +3307,17 @@ def fold_chain_onto_first_line(block):
 
 def cmd_migrate(args):
     memdir = memory_dir(args.dir)
-    # ONE gate for every write this command makes. The flag is read HERE, once,
-    # and the call sites below say `save(...)` without asking again — a `--dry-run`
-    # that tested the flag at each write is a `--dry-run` a third write silently
-    # escapes, and the file it would escape into holds the user's own prose and has
-    # no other copy. Announced on stderr, where the resolved queue dir already goes:
-    # stdout carries the report, and the report must be the real run's, byte for byte.
+    # ONE gate for every write this command makes through `write_atomic` — the
+    # queue and the done-log. The flag is read HERE, once, and both call sites
+    # below say `save(...)` without asking again: a `--dry-run` that tested the
+    # flag at each write is a `--dry-run` a third write silently escapes, and the
+    # file it would escape into holds the user's own prose and has no other copy.
+    # The command's remaining disk effect is a DELETE, and it is gated inside
+    # `handoff_collect` rather than here — that function is also the collection of
+    # `done`, `cancel` and `edit`, which have no preview to offer, so the flag
+    # travels to it as an argument instead of closing over this binding.
+    # Announced on stderr, where the resolved queue dir already goes: stdout
+    # carries the report, and the report must be the real run's, byte for byte.
     # The queue's exclusive lock is still taken, dry or not — previewing a queue
     # another writer is mid-rewrite of would preview a state that never existed — so
     # a queue no command has ever written gains an EMPTY `.tk-queue.lock`. It is the
