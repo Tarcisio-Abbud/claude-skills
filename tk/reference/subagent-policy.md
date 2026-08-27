@@ -1,8 +1,9 @@
-# Subagent policy — model, effort, venue, PR
+# Subagent policy — model, effort, venue, PR, checkpoint
 
 The default for every subagent an orchestrator dispatches: which model runs it, at which
-reasoning effort, in which **venue** (local × cloud), and whether the role authors a pull
-request of its own. One role, one row.
+reasoning effort, in which **venue** (local × cloud), whether the role authors a pull request
+of its own, and whether its work lands in a repository and therefore owes the **checkpoint
+invariant**. One role, one row.
 
 The policy is **hybrid**. The table below is the default, and the orchestrator may deviate in
 any direction — it is the one holding the case in front of it. Every deviation costs one
@@ -22,16 +23,17 @@ The table is the single source for these values: the agent reads the rows as the
 generator that injects them into a subagent's contract block parses these same cells verbatim.
 A consumer that copies the values into itself has forked the policy — read them from here.
 
-**Schema** (`schema=2`, declared in the opening marker):
+**Schema** (`schema=3`, declared in the opening marker):
 
-- The rows live between the literal lines `<!-- tk:roles schema=2 -->` and `<!-- /tk:roles -->`.
+- The rows live between the literal lines `<!-- tk:roles schema=3 -->` and `<!-- /tk:roles -->`.
   A parser reads only what sits between them.
 - Inside, every line beginning with `|` is a row, in fixed positions: the first is the
   **header**, the second is the Markdown alignment row (one `---` cell per column) and is
   skipped, and every row after those two is a **data row**, one per role.
 - A row is split on `|`; the leading and trailing empty fields from the outer pipes are
   dropped, and each cell is stripped of surrounding whitespace. Cells never contain `|`.
-- Columns, in this order: **role**, **model**, **effort**, **venue**, **pr**, **note**.
+- Columns, in this order: **role**, **model**, **effort**, **venue**, **pr**, **checkpoint**,
+  **note**.
   - `role` — the lookup key. Lowercase kebab, stable: renaming one is a breaking change.
   - `model` — `sonnet`, `haiku`, or `parent` (the orchestrator's own model).
   - `effort` — `session` (inherits the session's effort) or `high` (pinned, overrides it).
@@ -39,22 +41,27 @@ A consumer that copies the values into itself has forked the policy — read the
   - `pr` — `opens` when the role's own work lands as a pull request it authors, `none` when
     it does not. It is what decides whether a generated contract block carries the closing
     line below; a role that opens no PR must not be told to write one.
+  - `checkpoint` — `required` when the role's work lands in a repository, `none` when it does
+    not. It is what decides whether a generated contract block carries the checkpoint
+    invariant below. It is deliberately NOT the same question as `pr`: a role can commit into
+    a branch another role opens the pull request on, and reading `pr` for this would drop the
+    invariant from exactly that role, silently.
   - `note` — prose for the human and the agent; a consumer emits it verbatim, never parses it.
     A role with nothing to add carries `—`.
 - A role absent from the table has no default. Choose deliberately and log the choice as a
   deviation.
 
-<!-- tk:roles schema=2 -->
-| role | model | effort | venue | pr | note |
-|---|---|---|---|---|---|
-| audit-finder | sonnet | session | local | none | Adversarial lens over the work; dispatch one agent per lens. |
-| verifier-1 | sonnet | session | local | none | Refutes a finding. A finding that would edit a spec or a ticket goes on to verifier-2. |
-| verifier-2 | parent | high | local | none | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
-| tiebreak | parent | high | local | none | Settles a split verdict. Effort is pinned. |
-| implementer | parent | session | local | opens | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
-| research | sonnet | session | cloud | none | Rises to parent when the question turns on fine judgement. Log the rise. |
-| review | sonnet | session | cloud | none | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
-| explore | haiku | session | local | none | Pure search and file location, no verdict. |
+<!-- tk:roles schema=3 -->
+| role | model | effort | venue | pr | checkpoint | note |
+|---|---|---|---|---|---|---|
+| audit-finder | sonnet | session | local | none | none | Adversarial lens over the work; dispatch one agent per lens. |
+| verifier-1 | sonnet | session | local | none | none | Refutes a finding. A finding that would edit a spec or a ticket goes on to verifier-2. |
+| verifier-2 | parent | high | local | none | none | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
+| tiebreak | parent | high | local | none | none | Settles a split verdict. Effort is pinned. |
+| implementer | parent | session | local | opens | required | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
+| research | sonnet | session | cloud | none | none | Rises to parent when the question turns on fine judgement. Log the rise. |
+| review | sonnet | session | cloud | none | none | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
+| explore | haiku | session | local | none | none | Pure search and file location, no verdict. |
 <!-- /tk:roles -->
 
 ## The closing line
@@ -86,6 +93,28 @@ than the presence of a line.
 the keyword — the repository's name and the ticket's number become public in the PR body.
 Nothing else follows it across: company names, account names and internal content stay out, as
 they always were.
+
+## The checkpoint invariant
+
+A role marked `checkpoint = required` commits and pushes at every **seam** of its work — a
+north star reached, a suite green, a file finished — and hands nothing back with a dirty tree.
+Its orchestrator owes the other half of the same rule: **no review wave is dispatched over
+uncommitted work**, so what a lens or a verifier reads is what a later reader can also reach.
+
+**The invariant is about rescue, not tidiness.** An orchestrator verifies by artefact — it
+reads the tree and the diff, never the run's account of them — and a later generation of it
+starts from git, the queue and a handoff, with the previous generation's context gone. Work
+that was never pushed is therefore unreachable by everyone who could act on it, however
+complete the return that described it.
+
+**What collects on it is the quota wall.** On 2026-08-18 it landed mid-dispatch and killed
+every run then in flight; what survived was exactly what had already been committed and
+pushed. The wall arrives without warning, which is why the rule fires at each seam rather than
+at the end of the work.
+
+It is **not** enforced by a hook. A hook matches a tool call's arguments and reaches neither a
+subagent nor a worktree, and the condition here is an intention about when to stop — so it
+lives in the contract block this table generates and in the orchestrator's own normative text.
 
 ## Effort inherits the session
 

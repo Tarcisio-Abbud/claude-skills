@@ -6,8 +6,9 @@ each time: a ceiling it half-remembers, a role row it approximates, a rule it
 drops because the prompt was already long. This bin produces the block from the
 two files that hold the answers — the SITE file (`~/.claude/tk/env`: this
 machine's identity and its two subagent ceilings) and the ROLE TABLE
-(`tk/reference/subagent-policy.md`: model, effort, venue and whether the role
-opens a pull request of its own, per role).
+(`tk/reference/subagent-policy.md`: model, effort, venue, whether the role opens
+a pull request of its own and whether it owes the checkpoint invariant, per
+role).
 
     tk-contract --role implementer
     tk-contract --role audit-finder --fleet 3
@@ -24,7 +25,7 @@ value below is read at run time, and a source this bin cannot parse is refused
 with the defect named — never filled in with a default of its own.
 
 The role table declares its own schema version in its opening marker. This bin
-reads schema=2 and REFUSES a different one rather than parsing blind: a schema
+reads schema=3 and REFUSES a different one rather than parsing blind: a schema
 bump is a column moving, and a positional parser that shrugs at it emits a
 plausible block with the wrong cells in it.
 """
@@ -50,11 +51,11 @@ POLICY_FILE = os.path.normpath(
 RULES_FILE = os.path.normpath(
     os.path.join(BIN_DIR, os.pardir, "reference", "slice-rules.md"))
 
-SCHEMA = "2"
+SCHEMA = "3"
 OPEN_RE = re.compile(r"<!--\s*tk:roles\s+schema=(\S+)\s*-->\Z")
 OPEN_LOOSE = "tk:roles"
 CLOSE_MARKER = "<!-- /tk:roles -->"
-COLUMNS = ("role", "model", "effort", "venue", "pr", "note")
+COLUMNS = ("role", "model", "effort", "venue", "pr", "checkpoint", "note")
 ALIGN_RE = re.compile(r":?-{3,}:?\Z")
 # the closed vocabularies, as the schema declares them. They are not defaults:
 # nothing here is ever substituted for a cell, they only say which cells are
@@ -64,6 +65,7 @@ VOCABULARY = (
     ("effort", ("session", "high")),
     ("venue", ("local", "cloud")),
     ("pr", ("opens", "none")),
+    ("checkpoint", ("required", "none")),
 )
 
 LOCAL_KEY = "max-local-subagents"
@@ -76,12 +78,16 @@ class PolicyError(Exception):
 
 
 class Role:
-    def __init__(self, role, model, effort, venue, pr, note):
+    def __init__(self, role, model, effort, venue, pr, checkpoint, note):
         self.role = role
         self.model = model
         self.effort = effort
         self.venue = venue
         self.pr = pr          # whether this role authors a pull request of its own
+        # whether this role's work lands in a repository and therefore owes the
+        # checkpoint invariant. Deliberately NOT the same question as `pr`: a
+        # role can commit into a branch someone else opens the PR on
+        self.checkpoint = checkpoint
         self.note = note      # prose: emitted verbatim, never parsed
 
 
@@ -283,6 +289,40 @@ def closing_lines(row):
     ]
 
 
+def checkpoint_lines(row):
+    """The checkpoint invariant, for the roles the table marks `checkpoint =
+    required`.
+
+    WHICH roles owe it is the table's answer, not this bin's — and it is a
+    different question from `pr`. A role that opens no pull request can still
+    commit into a branch another role opens one on, and gating the invariant on
+    `pr` would drop it from exactly that role, silently, at the moment a wall
+    lands on it."""
+    if row.checkpoint != "required":
+        return []
+    return [
+        "",
+        "### The checkpoint invariant",
+        "",
+        "Commit and push at every seam of your work — a north star reached, a suite green, a",
+        "file finished — and hand nothing back with a dirty tree. Not at the end: at each",
+        "seam, as you go.",
+        "",
+        "**Work you did not push did not happen.** The orchestrator verifies by artefact: it",
+        "reads the tree and the diff, never your account of them, so a confident return over",
+        "an uncommitted change reports work that nobody downstream can find. A later",
+        "generation of the orchestrator has it worse — it starts from git, the queue and a",
+        "handoff, and your context is gone by then.",
+        "",
+        "The quota wall is what collects on this. On 2026-08-18 it landed mid-dispatch and",
+        "killed every run then in flight; what survived was exactly what had already been",
+        "committed and pushed, and nothing else. The wall arrives without warning, so there",
+        "is no moment at which pushing can be deferred to.",
+        "",
+        "Push to your own branch, never to the default one.",
+    ]
+
+
 def render(row, site, fleet, policy_path):
     out = [
         f"<!-- tk:contract schema=1 role={row.role} -->",
@@ -336,6 +376,7 @@ def render(row, site, fleet, policy_path):
         "   literal `no deviations`.",
     ]
     out += closing_lines(row)
+    out += checkpoint_lines(row)
     out += [
         "",
         "### What reading costs",

@@ -227,8 +227,8 @@ MUTATIONS = [
      ["TestRoleTable.test_the_pr_cell_decides_the_closing_line_not_the_role_s_name"]),
 
     ("an unreadable `pr` value falls back to `no line` instead of failing",
-     '    ("pr", ("opens", "none")),\n)',
-     ')',
+     '    ("pr", ("opens", "none")),\n',
+     '',
      ["TestRoleTable.test_a_pr_value_outside_the_vocabulary_is_a_defect_not_a_default"]),
 
     ("the closing line names no repo, so it aims at the PR's own",
@@ -240,6 +240,49 @@ MUTATIONS = [
      '    if row.pr != "opens":\n        return []',
      '    if False:\n        return []',
      ["TestBlockContent.test_a_role_that_opens_no_pr_is_told_nothing_about_one"]),
+
+    # --- the `checkpoint` cell, and the invariant it decides ---------------
+    ("the invariant is decided by the role's NAME instead of its `checkpoint` cell",
+     '    if row.checkpoint != "required":',
+     '    if row.role != "implementer":',
+     ["TestRoleTable.test_the_checkpoint_cell_decides_the_section_not_the_role_s_name"]),
+
+    ("an unreadable `checkpoint` value falls back to `no section` instead of failing",
+     '    ("checkpoint", ("required", "none")),\n',
+     '',
+     ["TestRoleTable."
+      "test_a_checkpoint_value_outside_the_vocabulary_is_a_defect_not_a_default"]),
+
+    ("every role is handed the invariant, committing or not",
+     '    if row.checkpoint != "required":\n        return []',
+     '    if False:\n        return []',
+     ["TestBlockContent.test_a_role_that_commits_nothing_is_told_nothing_about_checkpoints"]),
+
+    ("the invariant asks for a commit and forgets the push",
+     '        "Commit and push at every seam of your work — a north star reached, a suite '
+     'green, a",',
+     '        "Commit at every seam of your work — a north star reached, a suite green, a",',
+     ["TestBlockContent.test_it_states_the_checkpoint_invariant_for_a_role_that_commits"]),
+
+    ("the invariant lets the checkpoint land on the default branch",
+     '        "Push to your own branch, never to the default one.",',
+     '        "Push often.",',
+     ["TestBlockContent.test_it_states_the_checkpoint_invariant_for_a_role_that_commits"]),
+
+    ("the invariant arrives as hygiene, with the measurement behind it dropped",
+     '        "The quota wall is what collects on this. On 2026-08-18 it landed mid-dispatch '
+     'and",',
+     '        "The quota wall is what collects on this. It has landed mid-dispatch before and",',
+     ["TestBlockContent.test_it_states_the_checkpoint_invariant_for_a_role_that_commits"]),
+
+    ("the invariant states the rule and not what breaking it costs",
+     '        "**Work you did not push did not happen.** The orchestrator verifies by '
+     'artefact: it",\n'
+     '        "reads the tree and the diff, never your account of them, so a confident return '
+     'over",',
+     '        "**Push when you can.** The orchestrator is downstream of you:",\n'
+     '        "so a confident return over",',
+     ["TestBlockContent.test_the_checkpoint_invariant_says_what_uncommitted_work_costs"]),
 
     ("the owner-less reference is left to the reader's judgement",
      '        "**A reference with no owner half closes nothing across repositories.** The queue",',

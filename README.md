@@ -75,7 +75,9 @@ resolved to the sentence it names. The wrap-up skill says how to write it.
 branches for real, because the forge's `mergeable` field is blind between two PRs.
 
 Every subagent an orchestrator dispatches gets its model, reasoning effort, **venue**
-(local × cloud) and whether the role opens a pull request of its own from
+(local × cloud), whether the role opens a pull request of its own and whether it owes the
+**checkpoint invariant** — commit and push at every seam, so the quota wall costs at most the
+work since the last one — from
 `tk/reference/subagent-policy.md` — one row per role, the hybrid rule
 that lets the orchestrator deviate by logging one line, and the venue eligibility test
 (cloud only where the proof fits in the pushed repo). Its role table is delimited and
@@ -179,9 +181,13 @@ tk/
   .claude-plugin/plugin.json      the plugin manifest
   skills/<name>/SKILL.md          one directory per skill
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
-  reference/subagent-policy.md    model, effort, venue and PR-authorship per subagent
-                                  role; the role table is parseable, schema declared
-                                  in the file
+  skills/kickoff/WINDOW.md        branch file: what the package does when it runs
+                                  out of window rather than out of work — the
+                                  checkpoint invariant, the quota wall's handoff,
+                                  and the --budget generations
+  reference/subagent-policy.md    model, effort, venue, PR-authorship and the
+                                  checkpoint invariant per subagent role; the role
+                                  table is parseable, schema declared in the file
   reference/slice-rules.md        the rules earlier slices paid for — writing a command
                                   that touches a file, proving it, and prose another
                                   agent reads; reached from the contract block
