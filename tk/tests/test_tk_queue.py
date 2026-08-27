@@ -5578,8 +5578,15 @@ class TestClearingOnAClassLessItemIsRefused(QueueTest):
 # also the second proof of the first claim: a preview that had written anything
 # would leave the real run a different queue to report on.
 
-DRY_RUN_BANNER = ("tk-queue: --dry-run: nothing is written — the report below is what a "
-                  "real `migrate` prints, on this queue, right now")
+# The enumeration the banner and `--help` both derive from one constant in the
+# script. Pinned here so the two sites cannot drift apart in silence: the lens
+# campaign found this same claim out of sync in five prose sites, and the banner
+# was the one an operator actually reads — it said "nothing is written" while a
+# preview on a queue with no `next-steps.md` left an empty lock behind.
+DRY_RUN_WRITES = ("no queue, no done-log and no briefing — only an empty "
+                  "`.tk-queue.lock`, which never carries a byte")
+DRY_RUN_BANNER = (f"tk-queue: --dry-run: writes {DRY_RUN_WRITES}. The report below is "
+                  "what a real `migrate` prints, on this queue, right now")
 
 
 class TestMigrateDryRun(HandoffTest):
@@ -5723,6 +5730,15 @@ class TestMigrateDryRun(HandoffTest):
         self.assertIn(DRY_RUN_BANNER, r.stderr)
         self.assertNotIn("--dry-run", r.stdout)
         self.assertNotIn(DRY_RUN_BANNER, self.run_tk("migrate").stderr)
+
+    def test_the_help_carries_the_same_enumeration_as_the_banner(self):
+        """Banner and `--help` are the two sites a machine can hold in step, and
+        they derive from one constant for exactly that reason. A future writer who
+        re-inlines either one drifts from the other in silence, which is the
+        mechanism the campaign kept finding: pin both to the same words."""
+        help_text = " ".join(self.run_tk("migrate", "--help").stdout.split())
+        self.assertIn(" ".join(DRY_RUN_WRITES.split()), help_text,
+                      "`--help` no longer says what the banner says")
 
     def test_the_real_run_after_the_preview_still_does_the_whole_job(self):
         """The mask this flag could grow: a preview that half-wrote would hand the

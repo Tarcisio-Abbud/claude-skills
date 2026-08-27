@@ -270,8 +270,9 @@ Both matter to a session because they decide what `add` hands out next and what 
 
 Every mutating command (`add`/`edit`/`done`/`cancel`/`migrate`) prints the memory dir it
 resolved on **stderr** before acting — `migrate --dry-run` too, which writes no queue, no
-log and no briefing, and still announces where it looked. That target is inferred — from `--dir`, or from the
-cwd when it is absent — and a shell that keeps its cwd between calls has already made an
+log and no briefing, and still announces where it looked. That target is inferred — from
+`--dir`, or from the cwd when it is absent — and a shell that keeps its cwd between calls
+has already made an
 `edit` land on a homonymous item in ANOTHER project's queue while reporting success. Read
 that line before trusting the result.
 

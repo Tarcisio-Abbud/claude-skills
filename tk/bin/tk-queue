@@ -142,6 +142,15 @@ CLEARABLE = frozenset(("Risk", "Deferred", "Env"))
 # the lock to READ a queue no other writer is mid-rewrite of, since a preview of a
 # torn snapshot previews a state that never was
 READERS = frozenset(("list", "report", "pack"))
+# The ONE statement of what a preview does and does not write. The banner an
+# operator reads and the `--help` they look it up in both read it, so the two
+# sites a machine can keep in step cannot drift: the lens campaign found this
+# same claim out of sync across five independent prose sites, a new one each
+# round. The three that remain in prose (the comment above, `queue_lock`'s
+# docstring, and the kickoff SKILL.md) cannot read a constant — they are
+# named here so the next writer knows the full list.
+DRY_RUN_WRITES = ("no queue, no done-log and no briefing — only an empty "
+                  "`.tk-queue.lock`, which never carries a byte")
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
 # read once, at import: os.umask can only be read by setting it, and doing that
 # mid-run would race any other thread writing a file (the suite writes from six)
@@ -290,7 +299,7 @@ def queue_lock(memdir):
     Holding it across the WHOLE command is what makes the read authoritative.
 
     Advisory (flock), which is enough: the contract already makes this script
-    the queue's only writer. Readers (`list`, `report`) take no lock — every
+    the queue's only writer. Readers (`list`, `report`, `pack`) take no lock — every
     write lands with os.replace, so a reader sees a coherent file regardless.
 
     Held is not the same as written, in both directions: `migrate --dry-run`
@@ -3328,7 +3337,7 @@ def cmd_migrate(args):
     # one name a preview can bring into existence, and it never carries a byte.
     save = (lambda _path, _text: None) if args.dry_run else write_atomic
     if args.dry_run:
-        print("tk-queue: --dry-run: nothing is written — the report below is what a "
+        print(f"tk-queue: --dry-run: writes {DRY_RUN_WRITES}. The report below is what a "
               "real `migrate` prints, on this queue, right now", file=sys.stderr)
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
@@ -3522,9 +3531,9 @@ def main():
                              "ones, and fold a field chain that sits off the first line "
                              "onto it")
     mg.add_argument("--dry-run", action="store_true",
-                    help="print the report a real run would print and write NOTHING: no "
-                         "queue, no done-log, no briefing collected. The preview to read "
-                         "BEFORE letting this rewrite the text of a real queue")
+                    help=f"print the report a real run would print and write {DRY_RUN_WRITES}. "
+                         "The preview to read BEFORE letting this rewrite the text of a "
+                         "real queue")
 
     args = p.parse_args()
     handler = {

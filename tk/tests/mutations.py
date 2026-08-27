@@ -2356,6 +2356,18 @@ MUTATIONS = [
      '                         "\u2014 a concurrent session is writing this queue. Nothing was "\n'
      '                         "changed; re-run `tk-queue list` and retry.")',
      ["TestConcurrency.test_the_lock_timeout_does_not_accuse_the_holder_of_writing"]),
+
+    # the banner is the one statement of this claim an operator reads, and round 2
+    # of the campaign caught it denying the very file the preview leaves behind
+    ("T172 the banner goes back to claiming nothing at all is written",
+     '        print(f"tk-queue: --dry-run: writes {DRY_RUN_WRITES}. The report below is what a "',
+     '        print(f"tk-queue: --dry-run: nothing is written — the report below is what a "',
+     ["TestMigrateDryRun.test_the_preview_announces_itself_on_stderr_and_never_on_stdout"]),
+
+    ("T172 `--help` stops deriving the enumeration, so the two sites can drift",
+     '                    help=f"print the report a real run would print and write {DRY_RUN_WRITES}. "',
+     '                    help=f"print the report a real run would print and write NOTHING. "',
+     ["TestMigrateDryRun.test_the_help_carries_the_same_enumeration_as_the_banner"]),
 ]
 
 
