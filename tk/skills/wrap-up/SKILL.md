@@ -188,8 +188,7 @@ bare "merge" that would read a verdict out of a checkbox. Verdict 3 stays amber 
 option is checked, so it is never the recommended-first one. The unattended path has nobody
 to check it, which is why it defers.
 A small diff (guidance: ≲150 lines) is still shown whole in the terminal and a large one
-gets the link, but the diff is a courtesy: what authorizes the merge is the four verdicts,
-which is the point of a user who does not read code.
+gets the link, but the diff is a courtesy: what authorizes the merge is the four verdicts.
 
 **Review fixes rewrite the PR body.** A PR whose body still describes the version before the
 fixes tells the reviewer something the branch no longer does, so the body is rewritten in the
@@ -224,6 +223,14 @@ changed, what was verified, what was deferred.
 ## 6. Close: the report, the handoff, and the next step
 
 ### The closing template
+
+**The report is written for a cold reader** — someone who was not in this session. An
+unattended run gives them no other window, so this report is where they learn what
+happened. Resolve every identifier on first mention: `T41` arrives with what it is, never
+as a bare ID. Name every artefact by what it does before what it is called, and let every
+reference resolve from the report alone. The bar is the outcome groups: the report passes
+when every ID there says what it is. An unattended run walks its PRs one at a time, each
+from zero knowledge of what the session did.
 
 The report follows this structure, and it is the structure that travels — a response-style
 preference that disagrees with it loses:
