@@ -224,13 +224,17 @@ changed, what was verified, what was deferred.
 
 ### The closing template
 
-**The report is written for a cold reader** — someone who was not in this session. An
-unattended run gives them no other window, so this report is where they learn what
-happened. Resolve every identifier on first mention: `T41` arrives with what it is, never
-as a bare ID. Name every artefact by what it does before what it is called, and let every
-reference resolve from the report alone. The bar is the outcome groups: the report passes
-when every ID there says what it is. An unattended run walks its PRs one at a time, each
-from zero knowledge of what the session did.
+**Write the report for a cold reader** — someone who was not in this session. An unattended
+run gives them no other window, so this report is where they learn what happened. What they
+lack is context, not vocabulary.
+
+Resolve every identifier on first mention: `T41` arrives with what it is, never as a bare
+ID. An item that never reached What changed — carried, blocked, discarded — resolves its
+identity on its own group line. Name every artefact by what it does before what it is
+called. Let every reference resolve from the report alone. The bar is a read from outside:
+every identifier resolved, every artefact named by what it does, and no reference needing
+the session. An unattended run walks its items one at a time, each from zero knowledge of
+what the session did.
 
 The report follows this structure, and it is the structure that travels — a response-style
 preference that disagrees with it loses:
