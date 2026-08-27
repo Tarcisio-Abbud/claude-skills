@@ -13,3 +13,7 @@
 # Python bytecode from the tk-queue test suite
 __pycache__/
 *.pyc
+
+# pytest's own cache dir (tk/tests/) — named explicitly so this .gitignore,
+# not the .gitignore pytest writes inside the dir, is the one that ignores it
+.pytest_cache/

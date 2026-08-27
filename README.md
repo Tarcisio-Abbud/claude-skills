@@ -18,9 +18,10 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | Skill | What it does |
 |---|---|
 | `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens with the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality, triaged and dispatched via menu. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort |
-| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (merges preceded by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict four verdicts or at an open PR carrying its evidence block, and the package close writes a **vista** — the digest's self-contained HTML companion — to the outbox |
+| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a merge dossier, and merges by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict four verdicts or at an open PR carrying its evidence block, and the package close writes a **vista** — the digest's self-contained HTML companion — to the outbox |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
+| `/tk:review` | Lens campaign over a delivered code or data slice — the second pair of eyes on top of the repo's mandatory review: five lenses picked per slice (mandatory ones by slice type), the severity ruler (nit/defect), the re-lens loop on a 3-round budget, the design signal that sends two defects or a repeated mechanism to the user, and the attack inventory a clean round ships — model-invoked. Prose gets the mandatory review only. The site names the trigger items and the provenance of every threshold in `~/.claude/tk/review.md` |
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
 
 The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (defined in
@@ -66,6 +67,12 @@ kickoff verifies and dispatches it at open. The queue has three
 dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, and `/loop` over the
 project's `loop.md` — spelled out in `tk/skills/dispatch/SKILL.md`, which also single-sources
 the dispatch palette, the `/goal` recipe and the `loop.md` contract.
+
+A **merge dossier** is written for every PR the versioning gate handles, before its menu
+opens — what is being merged, made readable where it is read, with every citation-by-number
+resolved to the sentence it names. The wrap-up skill says how to write it.
+**`tk/bin/tk-collisions`** supplies the one section prose cannot: it merges every pair of open
+branches for real, because the forge's `mergeable` field is blind between two PRs.
 
 Every subagent an orchestrator dispatches gets its model, reasoning effort and **venue**
 (local × cloud) from `tk/reference/subagent-policy.md` — one row per role, the hybrid rule
@@ -190,11 +197,16 @@ tk/
                                   from memory, and carrying no copy of either
   bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
                                   where their projects are, minus the site file's lists
+  bin/tk-collisions               merges each pair of open branches for real, so a pair
+                                  that cannot both land is named before either does. No
+                                  network: the refs must already be local
   bin/tk-vista-check              the gate on a vista: refuses a page that fetches anything,
                                   and one missing a block, a risk tag or a proof link
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
+  tests/test_tk_collisions.py     regression suite, against a real git repository built
+                                  in a throwaway directory
   tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
@@ -202,6 +214,8 @@ tk/
                                   someone wrote
   tests/mutations_roster.py       the same, for the roster suite — folds into that
                                   runner, which already takes the suite as an argument
+  tests/mutations_collisions.py   entries only: it enters through that runner's seam,
+                                  which is what the seam was written for
   tests/test_tk_vista_check.py    regression suite for the vista gate
   tests/mutations_vista.py        its mutations — entries only: the runner is the one above,
                                   reached through its module/entries arguments

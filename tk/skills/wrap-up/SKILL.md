@@ -144,6 +144,30 @@ Settle every version-control decision NOW — this gate is what makes the wrap-u
 close. From the inventory, list the pending actions per repo: uncommitted work, unpushed
 branches, PRs to open, PRs awaiting merge.
 
+**Every PR in this gate gets a merge dossier, before the menu.** The digest below says
+whether the merge MAY happen; the dossier says WHAT is being merged. Write it from the
+trail — the PR body, the issue it closes, the verdict comments — in five sections:
+
+1. **Pointers resolved.** Every citation by number arrives with the sentence it names. A
+   verdict citing "recommendation 2" is undecidable while the statements live in another
+   artefact, so open that artefact and quote the statement inline. A number whose list stays
+   ambiguous is reported as unresolved, by its number.
+2. **Proposal → verdict → why**, one row per decision, naming where the field contradicted
+   the proposal and which side won.
+3. **Before/after in practice** — what the rule or the code did, and what it does now.
+4. **Choices without data** — the uncertainties the author left scattered, gathered here.
+5. **Merge mechanics** — `../../bin/tk-collisions <ref> <ref> ...` merges every pair of open
+   branches for real. The forge cannot answer this: its `mergeable` field is blind between
+   two PRs. Exit 1 reports a colliding pair.
+
+**A PR with no trail gets a DEGRADED dossier, and says so in its first line** — a commit
+straight to main, an issue nobody opened. Sections 1 and 2 have no source, so they are named
+absent; sections 3 to 5 read off the diff and the repo, which are sources of their own. An
+invented section reads exactly like a sourced one, which is why the absence is written down.
+
+A PR the verdicts hold back gets a dossier too: the decision there is whether the red is
+worth fixing now. **Dossier** is the term here; `briefing` names the step-6 handoff file.
+
 **The digest is what the user reads instead of the diff.** Any PR offered as "merge" gets
 one: a per-file summary of the change, the forge link, the evidence block from step 4 — and
 the four verdicts of **safe-to-merge**, one line each:
@@ -198,8 +222,11 @@ the base branch — deleting it first CLOSES the child (measured twice) — and 
 worktrees of the branches in play before the merge round, since `--delete-branch` fails on a
 branch that is still checked out somewhere.
 **Done when:** every pending version-control action was executed or recorded as an explicit
-DECISION — none merely implied — every merged PR's body describes what it merged, and the
-user has the summary: what changed, what was verified, what was deferred.
+DECISION — none merely implied — every PR in the gate had its dossier before the menu, with
+its five sections present or named absent, each citation-by-number either resolved or named
+as unresolved, and the collision with the other open PRs measured rather than read off the
+forge; every merged PR's body describes what it merged, and the user has the summary: what
+changed, what was verified, what was deferred.
 
 ## 6. Close: the report, the handoff, and the next step
 
@@ -209,11 +236,17 @@ The report follows this structure, and it is the structure that travels — a re
 preference that disagrees with it loses:
 
 ```
+**What changed**
+- <item> — <what it is, in a few words>
+  - was: <what the rule or the code did>
+  - now: <what it does now>
+  - gain: <the concrete gain it bought>  ·  risk: <what could still bite, in one clause>
+
 **<N> closed · <M> carried · <K> blocked · <D> discarded**
 
 **Closed** — everything that left the queue, FEITO or DESCARTADO alike
-- <item> — <the one or two concrete gains it bought>
-- <item> — <gains>  ·  risk: <what could still bite, in one clause>
+- <item> — FEITO
+- <item> — DESCARTADO, <why>
 
 **Carried**
 - <item> — <the survival gate that kept it in the queue>
@@ -229,18 +262,29 @@ preference that disagrees with it loses:
 **Suggestions:** <what you would do next, if you have one — last, never mixed in above>
 ```
 
-The stats line opens the report, and its first three counts are the queue's balance: what
-left it against what is still in it. The fourth counts a different object — session findings
-dropped in step 1, which never entered the queue — so the group is labelled and the two are
-never summed. Discarding needs a user to do it, so an unattended run reports no discards and
-carries its findings to the gates instead. Items group by outcome, never by chronology, and
-a group of three or more becomes a table with those same columns. The gains are concrete —
-"the queue can no longer lose a resolved item" beats "improved the queue" — and a case that
-closed with no gain worth a line closed with nothing worth reporting, which is itself worth
-one. The blockers line
-is unskippable: "none" written out is an answer, an absent line is a rediscovery the next
-session pays for. It is also the one line of the report that must survive the terminal —
-it lands in the affected item's text, and a blocker too big for the item's size ceiling is
+**What changed opens the report, and it retransmits.** One entry per DELIVERED item, three
+lines under it — the risk clause rides the gain line where there is one — read off the merge
+dossier step 5 already wrote (its section 3, *Before/after in practice*, is literally these
+lines), or off the work itself where the item closed without a PR. This block is how that
+dossier reaches the person who returns to the terminal. The gain is concrete — "the queue can
+no longer lose a resolved item" beats "improved the queue" — and an item that closed with no
+gain worth a line says exactly that on its gain line, which is itself worth the line. A
+DESCARTADO item has no before and no after, so it appears in Closed alone, and a session that
+delivered nothing writes the header with "nothing delivered" under it: an absent block reads
+as a block nobody wrote.
+
+The stats line follows, and its first three counts are the queue's balance: what left it
+against what is still in it. The fourth counts a different object — session findings dropped
+in step 1, which never entered the queue — so the group is labelled and the two are never
+summed. Discarding needs a user to do it, so an unattended run reports no discards and
+carries its findings to the gates instead. The outcome groups below it are the balance and
+nothing more: each item with its outcome, and the reason wherever the outcome does not carry
+it, since the substance was already spent above. Items group by outcome, never by chronology,
+and a group of three or more becomes a table with those same columns — the What changed
+entries stay in lines, a cell being no place for a before and an after. The blockers line is
+unskippable: "none" written out is an answer, an absent line is a rediscovery the next
+session pays for. It is also the one line of the report that must survive the terminal — it
+lands in the affected item's text, and a blocker too big for the item's size ceiling is
 itself the signal that the briefing below is due.
 
 ### The handoff
@@ -335,6 +379,9 @@ the next conversation's opening sentences, each in the shape that fits.
   the findings in a follow-up commit, push again, and open the PR — or rewrite the body of
   the one already open — so the body describes the branch as it now stands and carries the
   evidence block. Invoking `afk` IS that authorization.
+- **The dossier goes into the PR body**, because an unattended session has nobody at the gate
+  to read it in the terminal. A PR the strict verdicts keep from merging carries it there too,
+  and its DECISION item points at it as the digest reference.
 - **Merge runs on the strict version of the four verdicts**, with verdict 2 hardened: every
   finding FIXED, zero accepted, since accepting a finding is human judgment. Two cases keep
   the merge away from an unattended session, and each is checked by itself:
@@ -357,9 +404,9 @@ the next conversation's opening sentences, each in the shape that fits.
 
 **Done when:** the session state is externalized and one of three holds — the work is
 committed, pushed, and every item ended either merged under the strict four verdicts or at
-an open PR carrying its evidence block; or the concurrent-session guard stopped the run and
-the report says so with the tree untouched; or there was nothing to commit. Whatever was
-not merged sits in the queue as a DECISION, and the vista ended in exactly one of the four
-states of `../../reference/vista.md` with the report saying which: delivered, refused (findings
-quoted), not checkable (path named), or skipped (the missing address line named). No other
-external effect happened.
+an open PR carrying its evidence block and its dossier; or the concurrent-session guard
+stopped the run and the report says so with the tree untouched; or there was nothing to
+commit. Whatever was not merged sits in the queue as a DECISION, and the vista ended in
+exactly one of the four states of `../../reference/vista.md` with the report saying which:
+delivered, refused (findings quoted), not checkable (path named), or skipped (the missing
+address line named). No other external effect happened.
