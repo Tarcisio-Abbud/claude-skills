@@ -268,8 +268,10 @@ named for it to fail, one at a time. A test that passes with the defect back pro
 nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answers to the same
 rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard through
 `python3 githooks/tests/mutations_private_values.py`, the tracker wrapper through
-`python3 bin/tests/mutations_tracker_gh.py`, and `tk-vista-check` through
-`python3 tk/tests/mutations_vista.py`. The harnesses are separate files sharing one
+`python3 bin/tests/mutations_tracker_gh.py`, `tk-vista-check` through
+`python3 tk/tests/mutations_vista.py`, the roster through
+`python3 tk/tests/mutations_roster.py`, and `tk-hygiene` through
+`python3 tk/tests/mutations_hygiene.py`. The harnesses are separate files sharing one
 shape; the oldest differs only in naming its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —

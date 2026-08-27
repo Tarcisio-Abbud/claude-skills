@@ -16,6 +16,11 @@ record would be empty and the test would fall rather than quietly go to GitHub.
 REPOSITORY NAMES ARE FICTIONAL. This repo is public and the bin carries no repo
 name of its own, so the fixtures must not smuggle one back in through the tests.
 
+THE REPORT NAMES A REPO BY ITS PATH, never by its `owner/repo` slug — one of the
+repos the roster reaches is the private tracker's own clone. So the tests below
+assert the slug where it is legitimately visible (the argv the fake `gh` records)
+and assert the PATH where the report is concerned.
+
 The path encoding is written out LITERALLY in `encode`, for the reason the roster
 suite gives beside its own copy: a test computing the expected name with the
 function under test would agree with any mutation of it.
@@ -228,7 +233,8 @@ class TestForgeAudit(HygieneTest):
         r = self.run_hygiene()
         self.assertIn("delete_branch_on_merge=true", r.stdout)
         self.assertNotIn("delete_branch_on_merge=false", r.stdout)
-        self.assertIn("example-owner/green-repo", r.stdout)
+        self.assertIn(os.path.join(self.tmp, "green"), r.stdout)
+        self.assertNotIn("example-owner/green-repo", r.stdout)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_a_repo_with_the_box_off_is_red_in_the_literal_and_exits_1(self):
@@ -239,19 +245,19 @@ class TestForgeAudit(HygieneTest):
         self.assertNotIn("delete_branch_on_merge=true", r.stdout)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
 
-    def test_a_forge_that_answers_an_error_is_unknown_and_exits_2(self):
+    def test_a_forge_that_answers_an_error_is_unknown_and_exits_3(self):
         # no table entry for the slug: the fake gh fails the way gh does
         self.repo("gone", origin="https://github.com/example-owner/absent-repo.git")
         r = self.run_hygiene()
         self.assertIn("delete_branch_on_merge=unknown", r.stdout)
-        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
 
     def test_a_forge_answering_neither_true_nor_false_is_unknown(self):
         self.repo("odd", origin="https://github.com/example-owner/odd-repo.git")
         self.forge("example-owner/odd-repo", "null")
         r = self.run_hygiene()
         self.assertIn("delete_branch_on_merge=unknown", r.stdout)
-        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
 
     def test_a_red_repo_outranks_an_unknown_one_in_the_exit_code(self):
         self.repo("red", origin="https://github.com/example-owner/red-repo.git")
@@ -272,10 +278,13 @@ class TestForgeAudit(HygieneTest):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_the_slug_is_read_from_an_ssh_remote_too(self):
+        # the slug is asserted where it is legitimately visible — the argv the
+        # forge was called with — because the report names the repo by its path
         self.repo("ssh", origin="git@github.com:example-owner/ssh-repo.git")
         self.forge("example-owner/ssh-repo", "true")
         r = self.run_hygiene()
-        self.assertIn("example-owner/ssh-repo", r.stdout)
+        self.assertTrue(any("repos/example-owner/ssh-repo" in c for c in self.calls()),
+                        self.calls())
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_a_repo_hosted_elsewhere_is_not_reported_as_a_github_repo(self):
@@ -286,6 +295,20 @@ class TestForgeAudit(HygieneTest):
 
 
 # --- never touching the network --------------------------------------------
+
+class TestTheReportNamesRepositoriesByPath(HygieneTest):
+    def test_the_slug_never_reaches_the_report(self):
+        # one of the repos the roster reaches is the private tracker's own clone,
+        # and the kickoff is told to quote this report into its own
+        path = self.repo("clone",
+                         origin="https://github.com/secret-owner/secret-repo.git")
+        self.forge("secret-owner/secret-repo", "true")
+        r = self.run_hygiene()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("secret-owner", r.stdout)
+        self.assertNotIn("secret-repo", r.stdout)
+        self.assertIn(path, r.stdout)
+
 
 class TestNoNetwork(HygieneTest):
     def test_the_forge_cli_is_resolved_through_path_so_the_fake_is_reached(self):
@@ -319,9 +342,12 @@ class TestOneRepoPerBranchSet(HygieneTest):
         self.worktree(repo, "side")
         r = self.run_hygiene()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        named = [l for l in self.forge_lines(r.stdout)
-                 if "example-owner/green-repo" in l]
-        self.assertEqual(len(named), 1, self.forge_lines(r.stdout))
+        # ONE line in the forge block: the worktree must not appear as a repo of
+        # its own, and counting lines is what says so — matching the clone's path
+        # would still find exactly one hit with the worktree listed beside it
+        lines = self.forge_lines(r.stdout)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn(repo, lines[0])
 
 
 # --- the prune: which of the three branches goes ---------------------------

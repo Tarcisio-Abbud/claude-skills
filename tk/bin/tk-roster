@@ -176,6 +176,15 @@ def load_site():
     return site
 
 
+def lists(site):
+    """(allow, deny) — empty when there is no site file, which is not an empty
+    allowlist but the absence of one. Read in one place because `sweep` and the
+    unmatched-entry report below both need the pair, and two spellings of "what
+    the lists are" is one spelling too many."""
+    return (site.fleet_allow if site else (),
+            site.fleet_deny if site else ())
+
+
 def sweep(site):
     """The sweep itself: which queues enter, which a list holds back, which no
     single directory resolves — and the root all three were read from.
@@ -185,8 +194,7 @@ def sweep(site):
     same code. Parsing this bin's stdout would have been a second answer to
     "which projects are there", drifting the day the report's shape changes.
     """
-    allow = site.fleet_allow if site else ()
-    deny = site.fleet_deny if site else ()
+    allow, deny = lists(site)
 
     root = projects_root()
     swept, held, blind, listed = [], [], [], set()
@@ -213,8 +221,7 @@ def main(argv=None):
     ).parse_args(argv)
 
     site = load_site()
-    allow = site.fleet_allow if site else ()
-    deny = site.fleet_deny if site else ()
+    allow, deny = lists(site)
     root, swept, held, blind, listed = sweep(site)
 
     if swept:

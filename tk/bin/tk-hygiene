@@ -40,14 +40,25 @@ an ancestor of the default — and it is proved by mutation in the suite. Where 
 default branch cannot be resolved at all, NOTHING in that repo is pruned: an
 un-anchored comparison is not a safer one.
 
-EXIT CODES, so a caller can act on the result without reading the prose:
+EXIT CODES, so a caller can act on the result without reading the prose. The
+first three are `tk-collisions`' convention, kept deliberately: a finding and a
+run that did not happen are different answers, and a caller that cannot tell
+them apart reports a broken site file as a checkbox left off.
 
   0  every repo audited answered true
   1  at least one repo answered false — the checkbox is off somewhere
-  2  no repo answered false, but at least one could not be audited
+  2  the run did not happen (a rotten site file, say): NOT a finding
+  3  no repo answered false, but at least one could not be audited
 
-`false` outranks `unknown`: a setting known to be wrong is a fact to act on,
-while an unreachable forge is a fact about the network.
+`false` outranks `could not audit`: a setting known to be wrong is a fact to act
+on, while an unreachable forge is a fact about the network.
+
+WHAT THE REPORT NAMES A REPO BY: its path on this machine, never its `owner/repo`
+slug. One of the repos the roster reaches is the private tracker's own clone, and
+`docs/agents/issue-tracker.md` asks that its slug stay out of shell history and
+session transcripts — a report the kickoff is told to quote lands in exactly
+those. The slug is still what `gh` is asked about, in an argv that is never
+printed and never reaches a shell.
 """
 
 import argparse
@@ -76,6 +87,11 @@ def _load_roster():
 
 tk_roster = _load_roster()
 
+EXIT_OK = 0
+EXIT_FINDING = 1
+EXIT_FAILED = 2
+EXIT_UNAUDITED = 3
+
 GREEN, RED, UNKNOWN = "true", "false", "unknown"
 # a FOURTH state, and deliberately not one of the three above: a repository with
 # no GitHub remote is not a repository this audit failed to reach, it is one the
@@ -99,13 +115,29 @@ REMOTE_RE = re.compile(
 
 
 def fail(msg):
-    sys.exit(f"tk-hygiene: {msg}")
+    """Stop with code 2. Distinct from a finding: the run did not happen."""
+    print(f"tk-hygiene: {msg}", file=sys.stderr)
+    sys.exit(EXIT_FAILED)
+
+
+def first_line(err, code, what):
+    """The one line worth printing when a subprocess failed.
+
+    git and gh both write multi-line advice to stderr, and a report that pastes
+    all of it buries the branch it was talking about."""
+    return (err or f"{what} exited {code}").splitlines()[0]
 
 
 def git(repo, *args):
-    """`git -C repo ...` → (returncode, stdout stripped, stderr stripped)."""
-    p = subprocess.run(("git", "-C", repo, *args),
-                       capture_output=True, text=True)
+    """`git -C repo ...` → (returncode, stdout stripped, stderr stripped).
+
+    A git that cannot be run at all is not a repository answering no: it is the
+    run not happening, so it stops here rather than being read as a clean tree."""
+    try:
+        p = subprocess.run(("git", "-C", repo, *args),
+                           capture_output=True, text=True)
+    except OSError as e:
+        fail(f"git could not be run: {e}")
     return p.returncode, p.stdout.strip(), p.stderr.strip()
 
 
@@ -158,8 +190,7 @@ def forge_setting(slug):
         return UNKNOWN, f"gh could not be run: {e.strerror}"
     answer = p.stdout.strip()
     if p.returncode != 0:
-        detail = (p.stderr.strip() or p.stdout.strip() or
-                  f"gh exited {p.returncode}").splitlines()[0]
+        detail = first_line(p.stderr.strip() or p.stdout.strip(), p.returncode, "gh")
         return UNKNOWN, detail
     if answer in (GREEN, RED):
         return answer, ""
@@ -206,10 +237,15 @@ def prunable(repo, name, upstream, track, default):
     reader checking whether their branch is safe reads one function — and so a
     mutation of any single guard has one line to be put back in.
     """
-    if not upstream:
-        return "no upstream: nothing ever said it was merged"
+    # ONE guard for both "never had an upstream" and "its upstream is alive",
+    # deliberately. Written as two, the second covered the first — a branch with
+    # no upstream has an empty `track`, which is not "[gone]" either — so no
+    # single mutation could delete a no-upstream branch, and the rule the spec
+    # cares about ("a branch without an upstream is NEVER pruned") could not be
+    # falsified by the harness. A guard that cannot fail is not a proved guard.
     if track != "[gone]":
-        return f"upstream {upstream} is still there"
+        return ("no upstream: nothing ever said it was merged" if not upstream
+                else f"upstream {upstream} is still there")
     code, count, err = git(repo, "rev-list", "--count", f"{default}..{name}")
     if code != 0:
         return f"cannot be counted against {default}: {err}"
@@ -236,10 +272,10 @@ def candidate(name, upstream, track, default):
     return track == "[gone]" or not upstream
 
 
-def audit(slugs):
+def audit(named):
     """[(path, slug, value, detail)] for every repo, GitHub-remote or not."""
     answers, cache = [], {}
-    for path, slug in slugs:
+    for path, slug in named:
         if slug is None:
             answers.append((path, None, NO_FORGE, "no GitHub remote named `origin`"))
             continue
@@ -269,7 +305,7 @@ def prune(repo):
             continue
         code, _, err = git(repo, "branch", "-D", name)
         if code != 0:
-            out.append(("kept", name, (err or f"git branch -D exited {code}").splitlines()[0]))
+            out.append(("kept", name, first_line(err, code, "git branch -D")))
         else:
             out.append(("pruned", name, f"merged into {default}, remote gone"))
     return out
@@ -284,8 +320,9 @@ def report_forge(answers):
         return value if value == NO_FORGE else f"delete_branch_on_merge={value}"
 
     width = max(len(label(v)) for _, _, v, _ in answers)
-    for path, slug, value, detail in answers:
-        line = label(value).ljust(width) + f"  {slug or path}"
+    for path, _slug, value, detail in answers:
+        # the PATH, never the slug — see "what the report names a repo by" above
+        line = label(value).ljust(width) + f"  {path}"
         if detail:
             line += f"  ({detail})"
         print(line)
@@ -328,16 +365,20 @@ def main(argv=None):
     answers = audit([(repo, slug_of(repo)) for repo in repos])
     report_forge(answers)
 
-    pruned = [(repo, rows) for repo in repos for rows in (prune(repo),) if rows]
+    pruned = []
+    for repo in repos:
+        rows = prune(repo)
+        if rows:
+            pruned.append((repo, rows))
     report_branches(pruned)
 
     # `false` outranks `unknown`, per the exit codes at the top of this file
     values = [value for _, _, value, _ in answers]
     if RED in values:
-        return 1
+        return EXIT_FINDING
     if UNKNOWN in values:
-        return 2
-    return 0
+        return EXIT_UNAUDITED
+    return EXIT_OK
 
 
 if __name__ == "__main__":

@@ -23,9 +23,11 @@ prunes each local branch whose remote is gone and which carries no commit of its
 never asks anything and it is safe to run twice.
 
 Report its result in the kickoff's own report, in one or two lines: the branches it pruned,
-and every repository whose line reads `delete_branch_on_merge=false`. Exit 1 means a
-repository still has the box off — that is an item for the queue, never a question for the
-user. Exit 2 means a repository could not be reached; say which, and carry on.
+and every repository whose line reads `delete_branch_on_merge=false`. When the exit is 1, a
+repository still reads `delete_branch_on_merge=false`. Add that repository to the queue as an
+item, never as a question for the user. When the exit is 3, a repository could not be
+audited. Name it and carry on. When the exit is 2, the run itself did not happen: say so, and
+treat the audit as unread rather than clean.
 
 Sources, in this order:
 

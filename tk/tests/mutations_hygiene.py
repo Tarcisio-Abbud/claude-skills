@@ -32,9 +32,17 @@ HYGIENE = os.path.join("bin", "tk-hygiene")
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
     # --- the prune guards, one entry each ---------------------------------
+    # THE guard for the spec's "a branch without an upstream is NEVER pruned":
+    # with it gone, a no-upstream branch reaches the commit count, comes back 0
+    # and is deleted. That is the mutation the rule was unfalsifiable without
+    ("T128 hygiene the upstream guard is dropped, so a local-only branch is deleted",
+     '    if track != "[gone]":', "    if False:",
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned",
+      "TestIdempotence.test_a_second_run_prunes_nothing_and_answers_the_same"], HYGIENE),
+
     ("T128 hygiene a branch with no upstream is described as one whose upstream lives",
-     '    if not upstream:\n        return "no upstream: nothing ever said it was merged"',
-     '    if False:\n        return "no upstream: nothing ever said it was merged"',
+     '        return ("no upstream: nothing ever said it was merged" if not upstream',
+     '        return ("no upstream: nothing ever said it was merged" if upstream',
      ["TestPrune.test_only_the_merged_gone_branch_is_pruned"], HYGIENE),
 
     ("T128 hygiene the gone check is inverted, so a live upstream is the prunable one",
@@ -83,14 +91,15 @@ MUTATIONS = [
 
     # --- the audit and its exit codes --------------------------------------
     ("T128 hygiene a repo whose box is off still exits 0",
-     "    if RED in values:\n        return 1", "    if RED in values:\n        return 0",
+     "    if RED in values:\n        return EXIT_FINDING",
+     "    if RED in values:\n        return EXIT_OK",
      ["TestForgeAudit.test_a_repo_with_the_box_off_is_red_in_the_literal_and_exits_1",
       "TestForgeAudit.test_a_red_repo_outranks_an_unknown_one_in_the_exit_code"], HYGIENE),
 
     ("T128 hygiene a repo that could not be audited still exits 0",
-     "    if UNKNOWN in values:\n        return 2",
-     "    if UNKNOWN in values:\n        return 0",
-     ["TestForgeAudit.test_a_forge_that_answers_an_error_is_unknown_and_exits_2",
+     "    if UNKNOWN in values:\n        return EXIT_UNAUDITED",
+     "    if UNKNOWN in values:\n        return EXIT_OK",
+     ["TestForgeAudit.test_a_forge_that_answers_an_error_is_unknown_and_exits_3",
       "TestForgeAudit.test_a_forge_answering_neither_true_nor_false_is_unknown"], HYGIENE),
 
     ("T128 hygiene a repo with no GitHub remote counts as one the audit failed to reach",
@@ -99,12 +108,18 @@ MUTATIONS = [
 
     ("T128 hygiene a forge that answered an error is read as green",
      "        return UNKNOWN, detail", "        return GREEN, detail",
-     ["TestForgeAudit.test_a_forge_that_answers_an_error_is_unknown_and_exits_2"], HYGIENE),
+     ["TestForgeAudit.test_a_forge_that_answers_an_error_is_unknown_and_exits_3"], HYGIENE),
 
     ("T128 hygiene whatever the forge answered is passed through as the setting",
      '    return UNKNOWN, f"gh answered {answer!r}, which is neither true nor false"',
      '    return answer, ""',
      ["TestForgeAudit.test_a_forge_answering_neither_true_nor_false_is_unknown"], HYGIENE),
+
+    ("T128 hygiene the report names a repo by its slug, tracker clone included",
+     '        line = label(value).ljust(width) + f"  {path}"',
+     '        line = label(value).ljust(width) + f"  {_slug or path}"',
+     ["TestTheReportNamesRepositoriesByPath.test_the_slug_never_reaches_the_report"],
+     HYGIENE),
 
     # --- reading the remote ------------------------------------------------
     ("T128 hygiene the scp-like ssh remote no longer names a repo",
