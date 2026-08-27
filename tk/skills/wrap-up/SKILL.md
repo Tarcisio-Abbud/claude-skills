@@ -255,27 +255,29 @@ preference that disagrees with it loses:
 **Suggestions:** <what you would do next, if you have one — last, never mixed in above>
 ```
 
-**What changed opens the report, and it retransmits — it does not measure anything anew.**
-One entry per DELIVERED item, three lines under it, read off the merge dossier step 5 already
-wrote (its section 3, *Before/after in practice*, is literally these lines), or off the work
-itself where the item closed without a PR. The unattended path writes that dossier into the PR
-body, where nobody at the terminal sees it, and this block is how it reaches the person who
-returns. The gain is concrete — "the queue can no longer lose a resolved item" beats "improved
-the queue" — and an item that closed with no gain worth a line says exactly that on its gain
-line, which is itself the report. A DESCARTADO item has no before and no after, so it appears
-in Closed alone.
+**What changed opens the report, and it retransmits.** One entry per DELIVERED item, three
+lines under it — the risk clause rides the gain line where there is one — read off the merge
+dossier step 5 already wrote (its section 3, *Before/after in practice*, is literally these
+lines), or off the work itself where the item closed without a PR. This block is how that
+dossier reaches the person who returns to the terminal. The gain is concrete — "the queue can
+no longer lose a resolved item" beats "improved the queue" — and an item that closed with no
+gain worth a line says exactly that on its gain line, which is itself worth the line. A
+DESCARTADO item has no before and no after, so it appears in Closed alone, and a session that
+delivered nothing writes the header with "nothing delivered" under it: an absent block reads
+as a block nobody wrote.
 
 The stats line follows, and its first three counts are the queue's balance: what left it
 against what is still in it. The fourth counts a different object — session findings dropped
 in step 1, which never entered the queue — so the group is labelled and the two are never
 summed. Discarding needs a user to do it, so an unattended run reports no discards and
 carries its findings to the gates instead. The outcome groups below it are the balance and
-nothing more: they name each item and the reason it landed there, since the substance was
-already spent above. Items group by outcome, never by chronology, and a group of three or
-more becomes a table with those same columns — the What changed entries stay in lines, a
-cell being no place for a before and an after. The blockers line is unskippable: "none"
-written out is an answer, an absent line is a rediscovery the next session pays for. It is also the one line of the report that must survive the terminal —
-it lands in the affected item's text, and a blocker too big for the item's size ceiling is
+nothing more: each item with its outcome, and the reason wherever the outcome does not carry
+it, since the substance was already spent above. Items group by outcome, never by chronology,
+and a group of three or more becomes a table with those same columns — the What changed
+entries stay in lines, a cell being no place for a before and an after. The blockers line is
+unskippable: "none" written out is an answer, an absent line is a rediscovery the next
+session pays for. It is also the one line of the report that must survive the terminal — it
+lands in the affected item's text, and a blocker too big for the item's size ceiling is
 itself the signal that the briefing below is due.
 
 ### The handoff
