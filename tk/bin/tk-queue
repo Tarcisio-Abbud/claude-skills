@@ -321,8 +321,8 @@ MARKER = r"- \[( |x)\] "                        # group 1: the box
 # characters that are neither alphanumeric nor a line break, at most DECOR_MAX of
 # them, so "✅ " and "~~" get through and "feito junto com o " cannot — one word
 # character and the match is over. Emoji before the ID is the real house style,
-# not a hypothetical: the m365 queue carries
-# `- [x] ✅ **T020** — Defaults de compartilhamento ...` today, and a slot that
+# not a hypothetical: a real queue carries
+# `- [x] ✅ **T042** — item text ...` today, and a slot that
 # tolerated only `~~` made that allocation invisible — the direction that hands
 # the number out twice. The ceiling is what keeps DECOR a decoration rather than
 # a wildcard; it fits an emoji plus a space plus a strikethrough (4 chars), with

@@ -484,8 +484,8 @@ class TestIdAllocationScope(QueueTest):
 
     # --- review#5: DECORATION is not prose ----------------------------------
     # The slot tolerated exactly one decoration, `~~`, so every other one made
-    # the ID vanish from the count. Measured on the LIVE m365 queue, which
-    # carries `- [x] \u2705 **T020** \u2014 Defaults de compartilhamento ...` today:
+    # the ID vanish from the count. Measured on a LIVE queue, which
+    # carries `- [x] \u2705 **T020** \u2014 item text ...` today:
     # done_log_ids() dropped 20. And in isolation the counter walks BACKWARDS
     # against the pre-position-rule code \u2014 max_id 50 -> 3, and the next `add`
     # handed out T004 with T050 already spent.
@@ -4196,7 +4196,7 @@ class TestResolvedItemKeepsItsOwnSpelling(QueueTest):
         """`edit`'s deferral gate reasons about the item's resulting CLASS and
         says which item it is talking about."""
         self.seed(self.wide())
-        r = self.run_tk("edit", "T0001", "--deferred", "esperando o Guilherme.")
+        r = self.run_tk("edit", "T0001", "--deferred", "esperando o revisor.")
         self.assertEqual(r.returncode, 1)
         self.assertIn("T0001 is AUTONOMOUS.", r.stderr)
         self.assertNotIn("T001 is AUTONOMOUS.", r.stderr)
@@ -4274,8 +4274,8 @@ class TestResolvedItemKeepsItsOwnSpelling(QueueTest):
 # structure that made it readable was gone. Measured on the real queues before
 # the repair — 8 of the 11 items the command folded carried prose in between:
 #
-#   automacao-financeira T037   a five-item bulleted list → one run-on line
-#   the m365 queue T018         an eleven-line note → one run-on line
+#   one real item's T037        a five-item bulleted list → one run-on line
+#   another real item's T018    an eleven-line note → one run-on line
 #
 # and `migrate` printed "folded up" for both, on a file with no other copy.
 #
