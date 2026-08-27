@@ -25,22 +25,21 @@ user asks for by name, never what a package close produces.
 
 | Occasion | Who writes it |
 |---|---|
-| Unattended package close (`/tk:wrap-up afk` closing an afk package) | the wrap-up — **not wired yet** |
-| A consolidated report across projects | its own skill, by default |
+| Unattended package close (`/tk:wrap-up afk` closing an afk package) | nobody yet — **held back**, below |
+| A consolidated report across projects | the consolidated reporter, by default |
 | Any session where the user asks for one ("give me the view of this") | that session |
 
 The second row is why this contract sits in `reference/` instead of inside the wrap-up's
-`SKILL.md`: **a later consolidated reporter reads this same file**, and the five blocks are one
+`SKILL.md`: **the consolidated reporter reads this same file**, and the five blocks are one
 contract, not two copies drifting apart.
 
-**Nothing writes a vista on its own today.** The first row is the intended default, and the
-wrap-up's side of it is held back deliberately: a small package is read faster in the digest
-than in a page, so the caller that decides and tests the occasion is the consolidated reporter,
-not the wrap-up. Until that caller lands, a vista is written only when a session is asked for
-one, and `tk-vista-check` is the gate on whatever gets written.
+**Nothing writes a vista on its own today.** The first row was the intended default, and it is
+held back deliberately. A package small enough to read in the digest does not earn a page, and
+judging that belongs to the consolidated reporter, not to the wrap-up. Until that reporter
+lands, a session writes a vista only when it is asked for one.
 
-An ordinary wrap-up closes on the textual report alone: the vista answers the case where a
-human judges several PRs at once, and one PR is read faster in the digest than in a page.
+A wrap-up closes on the textual report alone. The vista answers the case where a human judges
+several PRs at once; for a single PR the digest is faster.
 
 ## Where it lands
 

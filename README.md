@@ -183,10 +183,10 @@ tk/
   reference/slice-rules.md        the rules earlier slices paid for — writing a command
                                   that touches a file, proving it, and prose another
                                   agent reads; reached from the contract block
-  reference/vista.md              the vista: the digest's visual companion — what it is, when
-                                  it is written, where it lands, and the five blocks it fixes;
-                                  the contract a later consolidated reporter reads. Nothing
-                                  writes one on its own yet
+  reference/vista.md              the vista: the digest's visual companion — what it is,
+                                  when it is written, where it lands, and the five blocks
+                                  it fixes; the contract the consolidated reporter reads.
+                                  Nothing writes one on its own yet
   reference/vista-template.html   that page in its smallest form: the five markers, both
                                   themes, and nothing the browser fetches
   bin/tk-queue                    deterministic CLI: only writer of the queue files
@@ -218,8 +218,8 @@ tk/
                                   runner, which already takes the suite as an argument
   tests/mutations_collisions.py   entries only: it enters through that runner's seam,
                                   which is what the seam was written for
-  tests/mutations_vista.py        entries only, through that same seam: the runner is the
-                                  one above, reached by its module/entries arguments
+  tests/mutations_vista.py        entries only: it folds into the same runner, through the
+                                  seam that runner exposes for a module and its entries
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
