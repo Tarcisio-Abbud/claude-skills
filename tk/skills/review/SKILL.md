@@ -19,6 +19,12 @@ provenance of every threshold below. The **trigger items** live in the site's CL
 The campaign covers code and the data that code writes. Prose an agent follows or a human
 reads (a skill, a CLAUDE.md, a runbook, a report) is reviewed by the mandatory review alone.
 
+Inside a code slice the same line holds, and it is a test, not a list: prose is what the
+artifact says ABOUT ITSELF and no program reads — a comment, a docstring, a contract doc.
+Everything else the slice carries is the campaign's, its identifiers and the strings a run
+emits alike. A docstring some program consumes (generated help, a parser) is read by a
+program, so it is the campaign's too.
+
 Measure the diff against the site's trigger items at the slice's **base**: the branch point of
 the work item, so a rewrite split across PRs measures as one rewrite. Capture the command once,
 `git diff <base>...HEAD`, and confirm `<base>` resolves before anything else. A hit item always
@@ -109,12 +115,23 @@ included; the mandatory review is round 0, outside it.
 
 ### 5. Escalate
 
-A round is **clean** when it produced no defect. Three stops block the merge and go to the user
-with the round-by-round findings:
+A round is **clean** when it produced no defect the campaign covers (§1) — so a round whose
+defects are all prose is clean, and the campaign closes on the inventory.
+
+Before setting a finding aside as prose, reproduce it (§3). A mismatch between what the
+program does and what its words say is graded by the **wrong side**: when the run is the
+wrong side it is a code defect and the campaign covers it; only when the code is right and
+the words are stale is it prose. A prose finding is then fixed on the spot and listed, the
+way §3 already disposes of a nit, and it reopens nothing. It is not handed back to the
+mandatory review: that review is round 0 and has already closed.
+
+Three stops block the merge and go to the user with the round-by-round findings:
 
 - **Design signal**, from round 2: two or more defects, or a mechanism an earlier round already
   found (the same guard or invariant violated, a new instance each time). An incomplete repair is
-  a correction, not a signal. Before asking, the parent writes whether the artifact should exist
+  a correction, not a signal. A repeated mechanism that is one statement hand-copied across
+  places is answered by consolidating it into a single source, never by patching the next
+  instance — patching writes the statement in one more place, which is the next instance. Before asking, the parent writes whether the artifact should exist
   as built: code only when the answer must be identical every run or fail loudly, otherwise prose
   in a skill.
 - **Ceiling**: round 3 (or any later round) not clean. Signal and ceiling together: the signal's
@@ -133,7 +150,7 @@ next round, on the rounds they grant, with the signal's history intact.
 | State | Entry | Exit |
 |---|---|---|
 | not fired | no item hit, or an exemption receipt | mandatory review only → merge-ready; parent fires by choice → round 1 |
-| round N | trigger or parent's choice (N=1); correction batch; redesign; granted round; resumed handoff | clean → inventory; defects → correction batch, design signal (N≥2), all rejected, or ceiling (N≥3) |
+| round N | trigger or parent's choice (N=1); correction batch; redesign; granted round; resumed handoff | clean → inventory; covered defects (§1) → correction batch, design signal (N≥2), all rejected, or ceiling (N≥3) |
 | correction batch | a round with defects, none escalated | re-lens the finders → round N+1 |
 | design signal | round N≥2: 2+ defects, or a repeated mechanism | correct and continue → correction batch; redesign → round N+1; cut or block → blocked |
 | ceiling | round N≥3 not clean | one more round → round N+1; redesign → the rounds granted; block → blocked |
@@ -185,3 +202,8 @@ The measurements behind each line live in the site's `review.md`, one row per th
   exist as built.
 - **Prose gets the mandatory review only.** Campaigns over the rule's own prose found nothing
   headed for main; a lens over prose produces prose.
+- **A round that only finds prose is done, not undertreated.** Measured 2026-08-27 on the
+  `migrate --dry-run` slice: three rounds, six findings, one of code. Each prose repair wrote
+  the claim in one more place and the next round found that place stale — by round 3 the
+  finding was the repair's own list of the places. §1 gives prose one round; a campaign still
+  lensing it is running a review this site never ordered.
