@@ -134,11 +134,11 @@ The rule, at every seam — an item closed, the wall, the end of the package:
 
 **That threshold is a simple slice's ceiling, not a slice's.** One real slice — one `tk-queue`
 subcommand, 8 commits, five files — closed its session at **372k**, roughly twice the zone,
-with no overflow and no compaction. What multiplied it was the number of **correction
-cycles**: six rounds, each paying a patch to the source, a patch to the tests, a patch to the
-mutations and a verification run. The adversarial audit is on by default and is what produces
-those cycles, so a package sized by its diff underestimates by about 3×. Where the two
-disagree, size the generation by the cycles you expect, not by the diff you expect.
+with no overflow and no compaction, on six correction cycles. Why a slice costs what it does
+is the cut's question and has one home, in `AFK.md` step 1: correction cycles are the
+multiplier there, and the same rule sizes a generation here. So read the zone as the ceiling
+of a slice the audit sends round once, and expect an item it sends round more to reach the
+zone early.
 
 **Estimating the implementation before it runs**, when there is no subagent to measure: inside
 a package the question does not arise, because the orchestrator implements nothing inline and
