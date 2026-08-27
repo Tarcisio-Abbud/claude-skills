@@ -219,9 +219,11 @@ tk-queue pack                                  # candidates for an unattended pa
                                                # eligible items in queue order with their LANE,
                                                # plus every exclusion with the value that caused it
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
-tk-queue migrate                               # one-time: moves legacy [x] to the log, assigns IDs,
+tk-queue migrate [--dry-run]                   # one-time: moves legacy [x] to the log, assigns IDs,
                                                # folds a field chain off the first line onto it, and
-                                               # reports (grouped by reason) the items it left alone
+                                               # reports (grouped by reason) the items it left alone.
+                                               # --dry-run prints that same report and writes NOTHING
+                                               # — read it before rewriting a queue you cannot undo
 ```
 
 `<id>` is accepted in the form the queue displays (`T006`) as well as bare (`6`).

@@ -2315,6 +2315,37 @@ MUTATIONS = [
      '    if spec_segs and pack_ref(block, "Spec") is None:', "    if False:",
      ["TestPackLane.test_a_Spec_that_is_not_a_forge_reference_never_forms_a_LANE",
       "TestPackLane.test_the_read_side_shape_gate_refuses_a_PREFIX"]),
+
+    # --- T172: `migrate --dry-run` writes nothing and reports everything ------
+    ("T172 --dry-run writes the queue and the done-log anyway",
+     "    save = (lambda _path, _text: None) if args.dry_run else write_atomic",
+     "    save = write_atomic",
+     # NOT test_the_real_run_after_the_preview_still_does_the_whole_job: with the
+     # write restored the preview migrates the queue and the real run is a no-op on
+     # an already-correct file, so that test passes. Naming it would claim a proof
+     # this run cannot make. NOT the briefing test either — the collection has its
+     # own guard, mutated below
+     ["TestMigrateDryRun.test_the_preview_leaves_every_file_in_the_dir_byte_identical",
+      "TestMigrateDryRun.test_the_done_log_this_run_would_CREATE_is_not_created",
+      "TestMigrateDryRun.test_the_report_is_the_real_runs_report_character_for_character"]),
+
+    ("T172 --dry-run collects (deletes) the briefing anyway",
+     "        if not dry_run:\n            os.remove(handoff_path(memdir, n))",
+     "        if True:\n            os.remove(handoff_path(memdir, n))",
+     ["TestMigrateDryRun.test_the_briefing_the_report_calls_removed_is_still_on_disk",
+      "TestMigrateDryRun.test_the_preview_leaves_every_file_in_the_dir_byte_identical"]),
+
+    ("T172 the preview's banner lands on the stdout the caller compares",
+     '"real `migrate` prints, on this queue, right now", file=sys.stderr)',
+     '"real `migrate` prints, on this queue, right now")',
+     ["TestMigrateDryRun.test_the_preview_announces_itself_on_stderr_and_never_on_stdout",
+      "TestMigrateDryRun.test_the_report_is_the_real_runs_report_character_for_character"]),
+
+    ("T172 --dry-run defaults ON, making every real `migrate` a silent no-op",
+     'mg.add_argument("--dry-run", action="store_true",',
+     'mg.add_argument("--dry-run", action="store_true", default=True,',
+     ["TestMigrateDryRun.test_without_the_flag_migrate_writes_exactly_as_it_did",
+      "TestMigrateFold.test_the_legacy_shape_is_folded_and_the_prose_survives_it"]),
 ]
 
 
@@ -2340,7 +2371,7 @@ def main():
                                   "TestHandoffCreation",
                                   "TestHandoffLifecycle", "TestByteOrderMark",
                                   "TestIdSpelling", "TestAmbiguousId",
-                                  "TestMigrateFold",
+                                  "TestMigrateFold", "TestMigrateDryRun",
                                   "TestProseWearingAFieldName",
                                   "TestListReadsTheClassFromTheChain",
                                   "TestResolvedItemKeepsItsOwnSpelling",
