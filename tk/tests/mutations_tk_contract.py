@@ -241,6 +241,18 @@ MUTATIONS = [
      '    if False:\n        return []',
      ["TestBlockContent.test_a_role_that_opens_no_pr_is_told_nothing_about_one"]),
 
+    ("the owner-less reference is left to the reader's judgement",
+     '        "**A reference with no owner half closes nothing across repositories.** The queue",',
+     '        "**A reference with no owner half is usually fine.** The queue",',
+     ["TestBlockContent.test_it_refuses_the_owner_less_reference_instead_of_guessing"]),
+
+    ("the block promises a presence check, so a present line reads as a passing one",
+     '        "before it offers the merge — that the line is there, that its number is the ticket",\n'
+     '        "the item names, and that the PR targets its own repository\'s default branch, which",',
+     '        "before it offers the merge, and a PR that arrives without it stops there.",\n'
+     '        "",',
+     ["TestBlockContent.test_it_names_the_three_things_the_gate_will_check"]),
+
     # --- determinism, and the four rules the block exists to carry ---------
     ("the block stops being byte-stable between two identical runs",
      'lines.append("- Quota is ONE window across both venues. A cloud run buys RAM, '

@@ -75,6 +75,13 @@ by construction, so a ticket closed this way was never closed ahead of its proof
 asymmetry settles the rest: a ticket closed too early reopens with one click, while a ticket
 left open too long gets its work done twice.
 
+**The keyword has no undo, and two shapes make it fire at nothing.** A merge later reverted
+leaves its ticket closed — reopening is by hand. A reference missing its owner half resolves
+against the repository the PR sits on rather than the tracker, and a PR targeting anything
+other than its own repository's default branch fires the keyword at nothing at all. Both fail
+silently, which is why the wrap-up gate checks the number, the owner half and the base rather
+than the presence of a line.
+
 **The tracker may be private, and the line names it anyway.** That is the deliberate cost of
 the keyword — the repository's name and the ticket's number become public in the PR body.
 Nothing else follows it across: company names, account names and internal content stay out, as

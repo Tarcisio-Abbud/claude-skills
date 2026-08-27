@@ -125,6 +125,14 @@ Two parts, both produced here and neither delegated back:
   memory file behind its `[[slug]]` at ONE hop and its handoff; context in none of the three is a
   **missing handoff**, and the prompt says exactly that in its own line, because a gap named
   is cheap and a gap papered over with plausible synthesis sends the run onto invented ground.
+- **The item's ticket reference, owner half included**, when the item names a ticket: the
+  literal `<owner>/<repo>#<n>` the run is to write into its PR body's closing line. You compose
+  it here — the item's `Ticket:` field carries `<repo>#<n>` with **no owner prefix**, by the
+  queue's own rule, and the owner is the site's tracker (`git config tk.tracker`, whose value
+  is `<owner>/<repo>`). The run cannot compose it: it reaches no tracker, which is the point of
+  the line above. Handed a reference with no owner half, the keyword closes an unrelated issue
+  of the repo the PR sits on, or nothing at all — so an item whose ticket you cannot resolve is
+  dispatched saying so, and its run opens the PR with no closing line rather than a guessed one.
 
 **Count each run by the venue signature it returns, never by the flag you passed** — a
 signature that came back local counts against the local ceiling. The measurement behind that
@@ -136,7 +144,8 @@ reached only once step 4 has returned and the runs it allowed have gone out.
 
 **Done when:** every package item was claimed — all of them, before the first dispatch — or
 reported as held elsewhere, and every dispatched run carries a contract block generated for
-that dispatch and a prompt self-sufficient without the tracker.
+that dispatch and a prompt self-sufficient without the tracker — the ticket reference it must
+write, owner half resolved here, included among what the prompt carries.
 
 ## 4. Audit the spec and the tickets
 

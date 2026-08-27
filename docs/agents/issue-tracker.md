@@ -117,9 +117,19 @@ Fixes <owner>/<repo>#<n>
 
 `Fixes` is the forge's native keyword and it works across repositories, so this line is what
 makes the merge close the ticket — closure as a mechanism rather than as prose somebody has to
-read and then act on. Buying that costs exactly what the line says: the private repository's
-**name** and the ticket's **number** become public in the body of a public PR. That cost was
-weighed and accepted; it does not extend one word further.
+read and then act on. Buying that costs the private repository's **name** and the ticket's
+**number**, made public. That cost was weighed and accepted; it does not extend one word
+further.
+
+**Where it ends up is wider than the PR body, so count on that.** A squash or merge commit
+composed from the PR body carries the line into this repo's own history, where it is permanent
+and public like any other commit — and the commit guard never saw it, because the forge wrote
+that commit server-side, not git on this machine. Treat the line as landing in `main`'s log,
+not merely on a page.
+
+The keyword's precondition is easy to miss: it fires only when the PR targets **its own
+repository's default branch**. A stacked PR merged into its parent branch closes nothing, in
+silence.
 
 Everything else keeps the old rule, and the old rule was not softened:
 

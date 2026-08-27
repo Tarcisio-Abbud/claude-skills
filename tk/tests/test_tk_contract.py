@@ -437,6 +437,24 @@ class TestBlockContent(ContractTest):
         # and the reason, so the line survives a reader who thinks it decorative
         self.assertIn("the MERGE closes the ticket", out)
 
+    def test_it_refuses_the_owner_less_reference_instead_of_guessing(self):
+        # the queue writes a ticket as `<repo>#<n>`, no owner. Pasted in that
+        # shape the keyword closes an unrelated issue of the PR's own repo, or
+        # nothing — and reconstructing the owner is the guess that closes the
+        # wrong ticket mechanically. The block has to say BOTH halves: what goes
+        # wrong, and that the answer is to omit the line rather than invent one
+        out = self.block("--role", "implementer")
+        self.assertIn("closes nothing across repositories", out)
+        self.assertIn("open the PR without", out)
+        self.assertIn("Do NOT reconstruct the owner", out)
+
+    def test_it_names_the_three_things_the_gate_will_check(self):
+        # a block promising only "the gate checks for it" leaves the run
+        # believing a present line is a passing one
+        out = self.block("--role", "implementer")
+        self.assertIn("that its number is the ticket", out)
+        self.assertIn("default branch", out)
+
     def test_a_role_that_opens_no_pr_is_told_nothing_about_one(self):
         # an instruction the reader cannot act on is what teaches them to skim
         for role in ("explore", "research"):
