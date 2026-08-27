@@ -1,0 +1,385 @@
+#!/usr/bin/env python3
+"""tk-hygiene — the versioning residue a session leaves behind, cleaned without a menu.
+
+Two jobs, both automatic and both idempotent, run at the top of a kickoff so the
+session opens on a clean tree instead of ending on a tired questionnaire:
+
+  1. AUDIT the forge. A merged branch should die in its own merge, and that is a
+     REPOSITORY setting (`delete_branch_on_merge`), not something a session can
+     remember to do — whoever presses the merge button is rarely whoever opened
+     the branch. This reports the setting for every repo the roster reaches, so
+     the fifth project cannot quietly rot what was switched on by hand in the
+     first two.
+  2. PRUNE the local side. The forge deleting the remote branch leaves the local
+     one behind with its upstream marked `[gone]`. That branch is deleted here
+     ONLY when it carries no commit outside the default branch — see `prunable`.
+
+WHICH REPOS. The list comes from `tk-roster` beside this script, imported rather
+than parsed: the roster already answers "which projects exist on this machine",
+and a second answer to that question is a second thing to keep in step. No repo
+name is written down here — this repo is PUBLIC, and the machine's repos are
+whatever is on its disk.
+
+WHAT IS NEVER PRUNED, and why each guard exists:
+
+  - a branch with commits of its own — that is unmerged work, and the whole point
+    of the `[gone]` signal is that the REMOTE is gone, which says nothing about
+    what the local branch still carries;
+  - a branch with no upstream — nothing ever said it was merged, so there is no
+    evidence to act on. A local-only branch is work in progress by definition;
+  - a branch whose upstream is alive — the ordinary case, and silent here;
+  - a branch checked out in any worktree — git refuses, and the refusal is
+    reported rather than forced.
+
+The prunable check compares against the DEFAULT branch, not against HEAD, which
+is why the delete is `-D` rather than `-d`: `git branch -d` measures merged-ness
+against whatever HEAD happens to be, and in a repo whose live tree sits on a
+feature branch that is a different, weaker question. The guard here is the
+narrower one — `rev-list --count <default>..<branch>` is zero, i.e. the branch is
+an ancestor of the default — and it is proved by mutation in the suite. Where the
+default branch cannot be resolved at all, NOTHING in that repo is pruned: an
+un-anchored comparison is not a safer one.
+
+EXIT CODES, so a caller can act on the result without reading the prose. The
+first three are `tk-collisions`' convention, kept deliberately: a finding and a
+run that did not happen are different answers, and a caller that cannot tell
+them apart reports a broken site file as a checkbox left off.
+
+  0  every repo audited answered true
+  1  at least one repo answered false — the checkbox is off somewhere
+  2  the run did not happen (a rotten site file, say): NOT a finding
+  3  no repo answered false, but at least one could not be audited
+
+`false` outranks `could not audit`: a setting known to be wrong is a fact to act
+on, while an unreachable forge is a fact about the network.
+
+WHAT THE REPORT NAMES A REPO BY: its path on this machine, never its `owner/repo`
+slug. One of the repos the roster reaches is the private tracker's own clone, and
+`docs/agents/issue-tracker.md` asks that its slug stay out of shell history and
+session transcripts — a report the kickoff is told to quote lands in exactly
+those. The slug is still what `gh` is asked about, in an argv that is never
+printed and never reaches a shell.
+"""
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tk_site      # noqa: E402  (the path above is what makes it importable)
+
+# `tk-roster` carries no `.py` suffix, so it is loaded by path — the same way the
+# suite loads the bins it drives
+import importlib.machinery  # noqa: E402
+import importlib.util       # noqa: E402
+
+
+def _load_roster():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tk-roster")
+    loader = importlib.machinery.SourceFileLoader("tk_roster", path)
+    spec = importlib.util.spec_from_loader("tk_roster", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+tk_roster = _load_roster()
+
+EXIT_OK = 0
+EXIT_FINDING = 1
+EXIT_FAILED = 2
+EXIT_UNAUDITED = 3
+
+GREEN, RED, UNKNOWN = "true", "false", "unknown"
+# a FOURTH state, and deliberately not one of the three above: a repository with
+# no GitHub remote is not a repository this audit failed to reach, it is one the
+# audit has nothing to say about. Folding it into UNKNOWN would put a permanent
+# exit 2 on any machine holding one local-only repo, and an exit code that is
+# always the same is an exit code nobody reads
+NO_FORGE = "no-github-remote"
+
+# every spelling of a GitHub remote that `git remote add` accepts: the https URL,
+# the scp-like ssh form (`git@host:owner/repo`), and the ssh:// URL
+REMOTE_RE = re.compile(
+    r"""^(?:https?://|ssh://)?           # scheme, optional for the scp-like form
+         (?:[^@/]+@)?                    # user@, as in git@github.com
+         github\.com                     # this bin audits GitHub and says so
+         [:/]                            # ':' in the scp-like form, '/' in a URL
+         (?P<owner>[^/]+)/               # owner
+         (?P<repo>[^/]+?)                # repo, non-greedy so '.git' is not eaten
+         (?:\.git)?/?$""",
+    re.VERBOSE,
+)
+
+
+def fail(msg):
+    """Stop with code 2. Distinct from a finding: the run did not happen."""
+    print(f"tk-hygiene: {msg}", file=sys.stderr)
+    sys.exit(EXIT_FAILED)
+
+
+def first_line(err, code, what):
+    """The one line worth printing when a subprocess failed.
+
+    git and gh both write multi-line advice to stderr, and a report that pastes
+    all of it buries the branch it was talking about."""
+    return (err or f"{what} exited {code}").splitlines()[0]
+
+
+def git(repo, *args):
+    """`git -C repo ...` → (returncode, stdout stripped, stderr stripped).
+
+    A git that cannot be run at all is not a repository answering no: it is the
+    run not happening, so it stops here rather than being read as a clean tree."""
+    try:
+        p = subprocess.run(("git", "-C", repo, *args),
+                           capture_output=True, text=True)
+    except OSError as e:
+        fail(f"git could not be run: {e}")
+    return p.returncode, p.stdout.strip(), p.stderr.strip()
+
+
+def repos_of(paths):
+    """The git repositories the roster's project paths land in, de-duplicated.
+
+    The key is the COMMON git directory, not the working tree: a worktree is a
+    second working tree over ONE set of branches, so keying on the tree would
+    walk the same branch list twice and report the second pass as a repo of its
+    own. The path kept is the first the roster named, so the report reads in the
+    roster's order.
+    """
+    seen, found = set(), []
+    for path in paths:
+        code, key, _ = git(path, "rev-parse", "--path-format=absolute",
+                           "--git-common-dir")
+        if code != 0 or not key:
+            continue                      # not a repository: nothing to do here
+        if key in seen:
+            continue
+        seen.add(key)
+        code, top, _ = git(path, "rev-parse", "--show-toplevel")
+        found.append(top if code == 0 and top else path)
+    return found
+
+
+def slug_of(repo):
+    """`owner/repo` for the `origin` remote, or None when there is no GitHub one."""
+    code, url, _ = git(repo, "config", "--get", "remote.origin.url")
+    if code != 0 or not url:
+        return None
+    m = REMOTE_RE.match(url)
+    return f"{m.group('owner')}/{m.group('repo')}" if m else None
+
+
+def forge_setting(slug):
+    """(value, detail) for `delete_branch_on_merge` — value is one of the three
+    literals, and `detail` says why when it is UNKNOWN.
+
+    `gh` is resolved through PATH on purpose: the suite puts its own on the front
+    of PATH, which is what keeps the whole suite off the network.
+    """
+    try:
+        p = subprocess.run(("gh", "api", f"repos/{slug}",
+                            "--jq", ".delete_branch_on_merge"),
+                           capture_output=True, text=True)
+    except FileNotFoundError:
+        return UNKNOWN, "no `gh` on PATH"
+    except OSError as e:
+        return UNKNOWN, f"gh could not be run: {e.strerror}"
+    answer = p.stdout.strip()
+    if p.returncode != 0:
+        detail = first_line(p.stderr.strip() or p.stdout.strip(), p.returncode, "gh")
+        return UNKNOWN, detail
+    if answer in (GREEN, RED):
+        return answer, ""
+    return UNKNOWN, f"gh answered {answer!r}, which is neither true nor false"
+
+
+def default_branch(repo):
+    """The ref every prune candidate is measured against, or None.
+
+    Preferred is the remote's own answer (`refs/remotes/origin/HEAD`), because
+    that is what the forge merges into. The local branch is the fallback and a
+    WEAKER one — a local default sitting behind the remote makes a merged branch
+    look unmerged, which keeps a branch that could have gone. That is the safe
+    direction, so it is taken silently.
+    """
+    code, ref, _ = git(repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    if code == 0 and ref:
+        return ref
+    for candidate in ("refs/remotes/origin/main", "refs/remotes/origin/master",
+                      "refs/heads/main", "refs/heads/master"):
+        if git(repo, "rev-parse", "--verify", "--quiet", candidate)[0] == 0:
+            return candidate
+    return None
+
+
+def branches(repo):
+    """(name, upstream, track) for every local branch, in git's own order."""
+    code, out, err = git(repo, "for-each-ref", "refs/heads",
+                         "--format=%(refname:short)%09%(upstream:short)%09%(upstream:track)")
+    if code != 0:
+        return None, err or f"git for-each-ref exited {code}"
+    rows = []
+    for line in out.splitlines():
+        name, _, rest = line.partition("\t")
+        upstream, _, track = rest.partition("\t")
+        rows.append((name, upstream, track))
+    return rows, None
+
+
+def prunable(repo, name, upstream, track, default):
+    """None when the branch may go, otherwise the reason it stays.
+
+    Every guard the module docstring promises is HERE, in one place, so that a
+    reader checking whether their branch is safe reads one function — and so a
+    mutation of any single guard has one line to be put back in.
+    """
+    # ONE guard for both "never had an upstream" and "its upstream is alive",
+    # deliberately. Written as two, the second covered the first — a branch with
+    # no upstream has an empty `track`, which is not "[gone]" either — so no
+    # single mutation could delete a no-upstream branch, and the rule the spec
+    # cares about ("a branch without an upstream is NEVER pruned") could not be
+    # falsified by the harness. A guard that cannot fail is not a proved guard.
+    if track != "[gone]":
+        return ("no upstream: nothing ever said it was merged" if not upstream
+                else f"upstream {upstream} is still there")
+    code, count, err = git(repo, "rev-list", "--count", f"{default}..{name}")
+    if code != 0:
+        return f"cannot be counted against {default}: {err}"
+    if count != "0":
+        return f"{count} commit(s) outside {default}"
+    return None
+
+
+def candidate(name, upstream, track, default):
+    """Whether a branch is worth a line in the report at all.
+
+    A branch whose upstream is alive is the ordinary case and stays silent; an
+    upstream that is `[gone]`, or a branch that never had one, is the residue
+    this bin exists to name.
+
+    The DEFAULT branch is never residue, however it looks. A repo that was never
+    pushed anywhere has a `main` with no upstream, and reporting that as a branch
+    held back by a guard describes an ordinary repository as a mess — the report
+    is read every kickoff, so a line that is always there teaches the reader to
+    skip the block.
+    """
+    if default is not None and default.rsplit("/", 1)[-1] == name:
+        return False
+    return track == "[gone]" or not upstream
+
+
+def audit(named):
+    """[(path, slug, value, detail)] for every repo, GitHub-remote or not."""
+    answers, cache = [], {}
+    for path, slug in named:
+        if slug is None:
+            answers.append((path, None, NO_FORGE, "no GitHub remote named `origin`"))
+            continue
+        if slug not in cache:
+            cache[slug] = forge_setting(slug)
+        value, detail = cache[slug]
+        answers.append((path, slug, value, detail))
+    return answers
+
+
+def prune(repo):
+    """[(action, branch, detail)] — what this repo's branches did, and why."""
+    rows, err = branches(repo)
+    if rows is None:
+        return [("kept", "-", f"branches could not be listed: {err}")]
+    default = default_branch(repo)
+    if default is None:
+        return [("kept", name, "no default branch to measure against")
+                for name, u, t in rows if candidate(name, u, t, default)]
+    out = []
+    for name, upstream, track in rows:
+        if not candidate(name, upstream, track, default):
+            continue
+        reason = prunable(repo, name, upstream, track, default)
+        if reason is not None:
+            out.append(("kept", name, reason))
+            continue
+        code, _, err = git(repo, "branch", "-D", name)
+        if code != 0:
+            out.append(("kept", name, first_line(err, code, "git branch -D")))
+        else:
+            out.append(("pruned", name, f"merged into {default}, remote gone"))
+    return out
+
+
+def report_forge(answers):
+    print("## forge — delete_branch_on_merge\n")
+    if not answers:
+        print("no repository on this machine's roster")
+        return
+    def label(value):
+        return value if value == NO_FORGE else f"delete_branch_on_merge={value}"
+
+    width = max(len(label(v)) for _, _, v, _ in answers)
+    for path, _slug, value, detail in answers:
+        # the PATH, never the slug — see "what the report names a repo by" above
+        line = label(value).ljust(width) + f"  {path}"
+        if detail:
+            line += f"  ({detail})"
+        print(line)
+
+
+def report_branches(pruned):
+    print("\n## local branches")
+    if not pruned:
+        print("\nno branch with a gone upstream and none without one — nothing to do")
+        return
+    for repo, rows in pruned:
+        print(f"\n{repo}")
+        for action, name, detail in rows:
+            print(f"  {action.ljust(6)}  {name}  ({detail})")
+
+
+def load_site():
+    """The site file's allow/denylist, or None — never fatal on absence."""
+    try:
+        return tk_site.load()
+    except tk_site.SiteError as e:
+        fail(str(e))
+
+
+def main(argv=None):
+    argparse.ArgumentParser(
+        prog="tk-hygiene",
+        description="Audit the forge's delete-branch-on-merge setting across "
+                    "this machine's repositories, and prune local branches whose "
+                    "remote is gone and which carry no commit of their own.",
+    ).parse_args(argv)
+
+    site = load_site()
+    if site is None:
+        print(f"tk-hygiene: no site file at {tk_site.site_path()}, so no allow/denylist "
+              "— every repository on this machine's roster is audited.", file=sys.stderr)
+    _, swept, _, _, _ = tk_roster.sweep(site)
+    repos = repos_of(path for _, path in swept)
+
+    answers = audit([(repo, slug_of(repo)) for repo in repos])
+    report_forge(answers)
+
+    pruned = []
+    for repo in repos:
+        rows = prune(repo)
+        if rows:
+            pruned.append((repo, rows))
+    report_branches(pruned)
+
+    # `false` outranks `unknown`, per the exit codes at the top of this file
+    values = [value for _, _, value, _ in answers]
+    if RED in values:
+        return EXIT_FINDING
+    if UNKNOWN in values:
+        return EXIT_UNAUDITED
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())
