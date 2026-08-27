@@ -77,20 +77,14 @@ reads exactly like "no branch". **And read the exit code, not only the output.**
 host, a wrong URL and a failed authentication all exit 128 with a `fatal:` line; a check whose
 output you capture into a variable turns all three into "free" and admits the item.
 
-**A branch already merged is not a lane.** `git ls-remote` reports a branch whether it is being
-worked or was merged months ago and never deleted, which is the forge's default — so a hit is
-asked one more question before it excludes anything: fetch that ref into the code repo's clone
-and ask whether its tip is already in the trunk.
-
-```sh
-git fetch "<code repo URL>" "refs/heads/spec/<m>-<slug>"
-git merge-base --is-ancestor FETCH_HEAD origin/main   # exit 0 = merged, the branch is leftover
-```
-
-Merged, the branch occupies nothing: the spec stays in the package, and the report says a merged
-branch was found and left standing. Deleting it belongs to whatever merges the lane's pull
-request, and that prose is still being written. Without this question a spec is evicted from
-every package for as long as its finished branch survives, which is forever.
+**A branch that survived its merge still holds the lane**, because the remote cannot tell a
+package being worked from one finished months ago and never deleted — the forge's default. The
+answer belongs at the source: whatever merges a lane's pull request deletes its branch, and that
+prose is still being written. Until it arrives, a spec whose finished branch is still on the
+remote sits out every package, and the report names the branch it found rather than letting the
+exclusion read as a live lane. Asking the question here instead was measured costing more than it
+bought — it needs a clone whose trunk is current, a ref name step 1 does not yet know, and an exit
+code of its own, and each of the three was a way to answer "free" over live work.
 
 The queue carries no field for this URL — `Ticket:` and `Spec:` name the TRACKER, and `Project:`
 is a grouping tag — so the orchestrator supplies it, from the same knowledge step 3 needs to open
@@ -151,7 +145,8 @@ the rung that excluded them.
 over the accumulated diff, and pays a tail after its last ticket merges. Reserve both beside the
 lanes rather than inside them: the review line at parity with the summed lanes — the 1.11:1
 serialized ratio `WINDOW.md` measures, taken there as the planning number — and the tail line as
-one suite, the N criteria of the package's items, and the merge of `origin/main`. Where a lane
+one suite, the N criteria of the LANE's items — not the package's, since a solo item pays its
+own — and the merge of `origin/main`. Where a lane
 item's Effort printed `?`, the sum is a floor and says so; a parity line over an unreadable Effort
 is a number nobody can check. A cut that
 funds only the lanes has hidden about half of what the package will spend.
@@ -201,10 +196,29 @@ The package can lose an item after step 1's recount — the user unchecks one on
 a claim comes back refused — so the floor is asked one last time here, against the items this
 package actually holds: count the tickets per Spec reference among the CLAIMED, and a spec that
 fell below two drops to the solo lane. It demotes and never promotes, for the reason step 1
-gives. This recount is the LAST one, so the step-1 report is amended to the lanes it leaves —
+gives. This recount is the LAST one, so the lanes it leaves are the ones step 6 hands over —
 and a lane that collapsed here takes its two cost lines with it, since a package with no
-accumulated lane pays neither the one campaign nor the tail. Only then create the accumulated
-branch, and push it before anything is dispatched from it:
+accumulated lane pays neither the one campaign nor the tail.
+
+**Then ask the remote once more, before creating anything.** Step 1 asked before the cut and the
+claims, and a sibling package can push a spec's branch in the window between — so run step 1's
+`git ls-remote` again, on the same terms, for every spec still in the package: the lane's and
+every `avulso (<ref>)` one alike, since a solo ticket dispatched over a spec already under way
+opens the second pull request the check exists to prevent. Asking BEFORE the branch is created is
+what keeps the question answerable: asked after, the check reads the branch this step just pushed
+and evicts the package's own lane, every run.
+
+**A branch already there is a package still running, or one that died.** Either way this package
+does not create it and does not push over it: force-pushing would destroy the merges a sibling
+package is building on. Recovering a dead package's branch is a resumed generation's work, and
+the prose for that is still being written; until it arrives, take that spec's tickets out of the
+package on step 1's rung, with the branch as their value, and say in the report that the branch
+was found and left untouched. **Release each one** — `tk-queue release "<id>"`, which prints whose
+claim it dropped. They were claimed at the top of this step, and a claim outlives the package that
+took it: an item that leaves still claimed is an item every later package is refused, with no
+session alive to explain why.
+
+**Only then create the accumulated branch**, and push it before anything is dispatched from it:
 
 ```sh
 git worktree add "<path>/spec-<m>" -b "spec/<m>-<slug>" origin/main
@@ -218,24 +232,6 @@ pushed tip exist from the first dispatch onward — the rule below and every lat
 that ref, and a branch that lives only in this worktree is reachable by neither. Where the recount
 left no spec at the floor, this section does not run: the package has no spec branch and every
 item takes the solo lane.
-
-**Ask the remote once more, for every spec still in the package.** Step 1 asked before the cut
-and the claims, and a sibling package can push a spec's branch in the window between — for the
-lane's spec and for every `avulso (<ref>)` one alike, since a solo ticket dispatched over a spec
-already under way opens the second pull request the check exists to prevent. Run step 1's
-`git ls-remote` again, on the same terms.
-
-**A branch already there is a package still running, or one that died.** Either way this package
-does not create it and does not push over it: force-pushing would destroy the merges a sibling
-package is building on. Recovering a dead package's branch is a resumed generation's work, and
-the prose for that is still being written; until it arrives, take that spec's tickets out of the
-package on step 1's rung, with the branch as their value, and say in the report that the branch
-was found and left untouched.
-
-**Release what you take out here.** Those tickets were claimed at the top of this step, and a
-claim outlives the package that took it: `tk-queue release "<id>"` on each, which prints whose
-claim it dropped. An item that leaves the package still claimed is an item every later package is
-refused, with no session alive to explain why.
 
 **Each ticket of the lane starts from the branch's pushed tip.** Dispatch them one at a time, in
 the queue's order, each into a worktree of its own on `spec/<m>/T<id>`, cut from
