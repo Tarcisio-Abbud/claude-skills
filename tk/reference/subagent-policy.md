@@ -21,37 +21,63 @@ The table is the single source for these values: the agent reads the rows as the
 generator that injects them into a subagent's contract block parses these same cells verbatim.
 A consumer that copies the values into itself has forked the policy — read them from here.
 
-**Schema** (`schema=1`, declared in the opening marker):
+**Schema** (`schema=2`, declared in the opening marker):
 
-- The rows live between the literal lines `<!-- tk:roles schema=1 -->` and `<!-- /tk:roles -->`.
+- The rows live between the literal lines `<!-- tk:roles schema=2 -->` and `<!-- /tk:roles -->`.
   A parser reads only what sits between them.
 - Inside, every line beginning with `|` is a row, in fixed positions: the first is the
   **header**, the second is the Markdown alignment row (one `---` cell per column) and is
   skipped, and every row after those two is a **data row**, one per role.
 - A row is split on `|`; the leading and trailing empty fields from the outer pipes are
   dropped, and each cell is stripped of surrounding whitespace. Cells never contain `|`.
-- Columns, in this order: **role**, **model**, **effort**, **venue**, **note**.
+- Columns, in this order: **role**, **model**, **effort**, **venue**, **pr**, **note**.
   - `role` — the lookup key. Lowercase kebab, stable: renaming one is a breaking change.
   - `model` — `sonnet`, `haiku`, or `parent` (the orchestrator's own model).
   - `effort` — `session` (inherits the session's effort) or `high` (pinned, overrides it).
   - `venue` — `local` or `cloud`.
+  - `pr` — `opens` when the role's own work lands as a pull request it authors, `none` when
+    it does not. It is what decides whether a generated contract block carries the closing
+    line below; a role that opens no PR must not be told to write one.
   - `note` — prose for the human and the agent; a consumer emits it verbatim, never parses it.
     A role with nothing to add carries `—`.
 - A role absent from the table has no default. Choose deliberately and log the choice as a
   deviation.
 
-<!-- tk:roles schema=1 -->
-| role | model | effort | venue | note |
-|---|---|---|---|---|
-| audit-finder | sonnet | session | local | Adversarial lens over the work; dispatch one agent per lens. |
-| verifier-1 | sonnet | session | local | Refutes a finding. A finding that would edit a spec or a ticket goes on to verifier-2. |
-| verifier-2 | parent | high | local | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
-| tiebreak | parent | high | local | Settles a split verdict. Effort is pinned. |
-| implementer | parent | session | local | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
-| research | sonnet | session | cloud | Rises to parent when the question turns on fine judgement. Log the rise. |
-| review | sonnet | session | cloud | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
-| explore | haiku | session | local | Pure search and file location, no verdict. |
+<!-- tk:roles schema=2 -->
+| role | model | effort | venue | pr | note |
+|---|---|---|---|---|---|
+| audit-finder | sonnet | session | local | none | Adversarial lens over the work; dispatch one agent per lens. |
+| verifier-1 | sonnet | session | local | none | Refutes a finding. A finding that would edit a spec or a ticket goes on to verifier-2. |
+| verifier-2 | parent | high | local | none | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
+| tiebreak | parent | high | local | none | Settles a split verdict. Effort is pinned. |
+| implementer | parent | session | local | opens | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
+| research | sonnet | session | cloud | none | Rises to parent when the question turns on fine judgement. Log the rise. |
+| review | sonnet | session | cloud | none | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
+| explore | haiku | session | local | none | Pure search and file location, no verdict. |
 <!-- /tk:roles -->
+
+## The closing line
+
+A role marked `pr = opens` writes, in the body of the pull request it opens, the literal line
+
+```
+Fixes <owner>/<repo>#<n>
+```
+
+naming the tracker the ticket lives in and the ticket's own number. `Fixes` is the forge's
+native keyword, so the merge itself closes the ticket: the closure becomes a mechanism instead
+of prose somebody has to read and act on. It works across repositories when the PR targets its
+own repository's default branch and the author can write to the tracker.
+
+**Why the merge is allowed to be the acceptance.** The verification gate runs BEFORE the merge
+by construction, so a ticket closed this way was never closed ahead of its proof. The
+asymmetry settles the rest: a ticket closed too early reopens with one click, while a ticket
+left open too long gets its work done twice.
+
+**The tracker may be private, and the line names it anyway.** That is the deliberate cost of
+the keyword — the repository's name and the ticket's number become public in the PR body.
+Nothing else follows it across: company names, account names and internal content stay out, as
+they always were.
 
 ## Effort inherits the session
 

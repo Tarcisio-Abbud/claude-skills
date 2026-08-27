@@ -49,11 +49,11 @@ POLICY_FILE = os.path.normpath(
 RULES_FILE = os.path.normpath(
     os.path.join(BIN_DIR, os.pardir, "reference", "slice-rules.md"))
 
-SCHEMA = "1"
+SCHEMA = "2"
 OPEN_RE = re.compile(r"<!--\s*tk:roles\s+schema=(\S+)\s*-->\Z")
 OPEN_LOOSE = "tk:roles"
 CLOSE_MARKER = "<!-- /tk:roles -->"
-COLUMNS = ("role", "model", "effort", "venue", "note")
+COLUMNS = ("role", "model", "effort", "venue", "pr", "note")
 ALIGN_RE = re.compile(r":?-{3,}:?\Z")
 # the closed vocabularies, as the schema declares them. They are not defaults:
 # nothing here is ever substituted for a cell, they only say which cells are
@@ -62,6 +62,7 @@ VOCABULARY = (
     ("model", ("sonnet", "haiku", "parent")),
     ("effort", ("session", "high")),
     ("venue", ("local", "cloud")),
+    ("pr", ("opens", "none")),
 )
 
 LOCAL_KEY = "max-local-subagents"
@@ -74,11 +75,12 @@ class PolicyError(Exception):
 
 
 class Role:
-    def __init__(self, role, model, effort, venue, note):
+    def __init__(self, role, model, effort, venue, pr, note):
         self.role = role
         self.model = model
         self.effort = effort
         self.venue = venue
+        self.pr = pr          # whether this role authors a pull request of its own
         self.note = note      # prose: emitted verbatim, never parsed
 
 
@@ -233,6 +235,39 @@ def ceiling_lines(site, fleet):
     return lines
 
 
+def closing_lines(row):
+    """The closing line, for the roles the table marks `pr = opens`.
+
+    A role that authors no pull request is told nothing about one: an
+    instruction it cannot carry out is noise it has to decide to ignore, and a
+    block full of inapplicable rules is one a reader learns to skim. WHICH roles
+    open a PR is the table's answer, never this bin's — the `pr` cell is read
+    here exactly like model, effort and venue are."""
+    if row.pr != "opens":
+        return []
+    return [
+        "",
+        "### Closing the ticket",
+        "",
+        "The body of the pull request you open carries this line, on its own:",
+        "",
+        "    Fixes <owner>/<repo>#<n>",
+        "",
+        "`<owner>/<repo>` is the tracker the ticket lives in — spelt out even when it is not",
+        "the repository you are opening the PR on — and `<n>` is the ticket's number. Both",
+        "come from the dispatch that sent you; this block cannot know them, and a guess is",
+        "worse here than an omission.",
+        "",
+        "`Fixes` is the forge's own keyword, so the MERGE closes the ticket. That is the",
+        "point: without the line, closing the ticket is prose that someone has to read and",
+        "then act on, and the ticket stays open behind a merged PR until somebody notices.",
+        "Measured at 80 minutes, during which the item was nearly dispatched a second time.",
+        "",
+        "Write the line when you open the PR, not afterwards. The wrap-up gate checks for it",
+        "before it offers the merge, and a PR that arrives without it stops there.",
+    ]
+
+
 def render(row, site, fleet, policy_path):
     out = [
         f"<!-- tk:contract schema=1 role={row.role} -->",
@@ -284,6 +319,9 @@ def render(row, site, fleet, policy_path):
         "   anywhere else, that ceiling leaks through remotes that never left the machine.",
         "3. **Your deviation log.** One line per deviation, in the format above, or the",
         "   literal `no deviations`.",
+    ]
+    out += closing_lines(row)
+    out += [
         "",
         "### What reading costs",
         "",

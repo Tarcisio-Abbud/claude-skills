@@ -74,8 +74,9 @@ resolved to the sentence it names. The wrap-up skill says how to write it.
 **`tk/bin/tk-collisions`** supplies the one section prose cannot: it merges every pair of open
 branches for real, because the forge's `mergeable` field is blind between two PRs.
 
-Every subagent an orchestrator dispatches gets its model, reasoning effort and **venue**
-(local × cloud) from `tk/reference/subagent-policy.md` — one row per role, the hybrid rule
+Every subagent an orchestrator dispatches gets its model, reasoning effort, **venue**
+(local × cloud) and whether the role opens a pull request of its own from
+`tk/reference/subagent-policy.md` — one row per role, the hybrid rule
 that lets the orchestrator deviate by logging one line, and the venue eligibility test
 (cloud only where the proof fits in the pushed repo). Its role table is delimited and
 carries its own parsing schema, so a generator injecting those cells into a subagent's
@@ -178,8 +179,9 @@ tk/
   .claude-plugin/plugin.json      the plugin manifest
   skills/<name>/SKILL.md          one directory per skill
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
-  reference/subagent-policy.md    model, effort and venue per subagent role; the role
-                                  table is parseable, schema declared in the file
+  reference/subagent-policy.md    model, effort, venue and PR-authorship per subagent
+                                  role; the role table is parseable, schema declared
+                                  in the file
   reference/slice-rules.md        the rules earlier slices paid for — writing a command
                                   that touches a file, proving it, and prose another
                                   agent reads; reached from the contract block
@@ -273,7 +275,11 @@ and `git worktree add` materialises tracked files only. Left untracked, that con
 the primary tree and nowhere else, so every dispatched agent and every
 `/mattpocock-skills:code-review` ran with no tracker config at all.
 
-This repo being public, the private half stays out of it. The tracker's slug and the `gh`
+This repo being public, the private half stays out of it — out of the FILES, that is. One
+line of one surface names the tracker deliberately: the `Fixes <owner>/<repo>#<n>` closing
+line in a PR body, which is what makes a merge close its ticket. PR bodies are not committed,
+so nothing about the rule below moves; `docs/agents/issue-tracker.md` sets out which surface
+may carry what. The tracker's slug and the `gh`
 config directory live in the clone's local git config, under `tk.tracker` and
 `tk.ghConfigDir`, which git never pushes. Tracker commands run through `bin/tracker-gh`,
 which resolves those values in the same process that uses them: a shell variable does not

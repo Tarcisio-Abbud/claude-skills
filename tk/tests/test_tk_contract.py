@@ -44,12 +44,12 @@ row left behind by an earlier draft:
 
 | ghost | parent | high | cloud | Outside the markers, and therefore not a role. |
 
-<!-- tk:roles schema=1 -->
-| role | model | effort | venue | note |
-|---|---|---|---|---|
-| implementer | parent | session | local | Downgradable to sonnet on a mechanical ticket. |
-| explore | haiku | session | local | — |
-| research | sonnet | session | cloud | Rises to parent when the question turns on judgement. |
+<!-- tk:roles schema=2 -->
+| role | model | effort | venue | pr | note |
+|---|---|---|---|---|---|
+| implementer | parent | session | local | opens | Downgradable to sonnet on a mechanical ticket. |
+| explore | haiku | session | local | none | — |
+| research | sonnet | session | cloud | none | Rises to parent when the question turns on judgement. |
 <!-- /tk:roles -->
 
 Prose below it, likewise. | Even a stray pipe. |
@@ -209,6 +209,30 @@ class TestRoleTable(ContractTest):
         self.table(TABLE.replace("| — |", f"| {note} |"))
         self.assertIn(f"Note: {note}", self.block("--role", "explore"))
 
+    def test_the_pr_cell_decides_the_closing_line_not_the_role_s_name(self):
+        # the whole point of the cell. A bin that hardcoded "implementer opens a
+        # PR" passes every other test in this file and fails only this one: mark
+        # the implementer `none` and the section must go, mark another role
+        # `opens` and it must appear under THAT role
+        self.table(TABLE.replace("| implementer | parent | session | local | opens |",
+                                 "| implementer | parent | session | local | none |"))
+        self.assertNotIn("Fixes <owner>/<repo>#<n>", self.block("--role", "implementer"))
+
+        self.table(TABLE.replace("| explore | haiku | session | local | none |",
+                                 "| explore | haiku | session | local | opens |"))
+        self.assertIn("Fixes <owner>/<repo>#<n>", self.block("--role", "explore"))
+
+    def test_a_pr_value_outside_the_vocabulary_is_a_defect_not_a_default(self):
+        # the dangerous default is "not `opens`, so no line": a typo would then
+        # silently strip the closing line from the role that needs it
+        self.table(TABLE.replace("| implementer | parent | session | local | opens |",
+                                 "| implementer | parent | session | local | maybe |"))
+        r = self.run_tk("--role", "implementer")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("'maybe'", r.stderr)
+        self.assertIn("closed vocabulary", r.stderr)
+        self.assertEqual(r.stdout, "")
+
     def test_an_unknown_role_is_refused_with_the_roles_that_exist(self):
         r = self.run_tk("--role", "implementor")
         self.assertNotEqual(r.returncode, 0)
@@ -217,10 +241,10 @@ class TestRoleTable(ContractTest):
         self.assertIn("NO default", r.stderr)
 
     def test_a_schema_it_cannot_read_fails_loud(self):
-        self.table(TABLE.replace("schema=1", "schema=2"))
+        self.table(TABLE.replace("schema=2", "schema=3"))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("schema=2", r.stderr)
+        self.assertIn("schema=3", r.stderr)
         self.assertNotIn("| implementer |", r.stdout)
 
     def test_a_value_outside_the_vocabulary_is_a_defect_not_a_default(self):
@@ -251,15 +275,15 @@ class TestRoleTable(ContractTest):
     def test_a_misspelt_marker_says_so_instead_of_just_not_finding_it(self):
         # "no role table" about a file whose table is right there, one character
         # off, sends the reader looking for the wrong thing
-        self.table(TABLE.replace("<!-- tk:roles schema=1 -->", "<!-- tk:roles -->"))
+        self.table(TABLE.replace("<!-- tk:roles schema=2 -->", "<!-- tk:roles -->"))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("probably misspelt", r.stderr)
 
     def test_a_table_with_no_role_in_it_is_refused(self):
-        self.table("<!-- tk:roles schema=1 -->\n"
-                   "| role | model | effort | venue | note |\n"
-                   "|---|---|---|---|---|\n"
+        self.table("<!-- tk:roles schema=2 -->\n"
+                   "| role | model | effort | venue | pr | note |\n"
+                   "|---|---|---|---|---|---|\n"
                    "<!-- /tk:roles -->\n")
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
@@ -315,8 +339,8 @@ class TestRoleTable(ContractTest):
         self.assertIn("not valid UTF-8", r.stderr)
 
     def test_a_reordered_header_is_refused(self):
-        self.table(TABLE.replace("| role | model | effort | venue | note |",
-                                 "| role | effort | model | venue | note |"))
+        self.table(TABLE.replace("| role | model | effort | venue | pr | note |",
+                                 "| role | effort | model | venue | pr | note |"))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("BY POSITION", r.stderr)
@@ -324,17 +348,17 @@ class TestRoleTable(ContractTest):
     def test_a_missing_alignment_row_is_refused_not_skipped(self):
         # the row is skipped BY POSITION, so without it the FIRST role is the
         # one that disappears — silently, and only for whoever asked for it
-        self.table(TABLE.replace("|---|---|---|---|---|\n", ""))
+        self.table(TABLE.replace("|---|---|---|---|---|---|\n", ""))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("alignment row", r.stderr)
 
     def test_a_row_short_of_a_cell_is_refused(self):
-        self.table(TABLE.replace("| explore | haiku | session | local | — |",
-                                 "| explore | haiku | local | — |"))
+        self.table(TABLE.replace("| explore | haiku | session | local | none | — |",
+                                 "| explore | haiku | local | none | — |"))
         r = self.run_tk("--role", "implementer")
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("cells, not 5", r.stderr)
+        self.assertIn("cells, not 6", r.stderr)
 
     def test_a_duplicate_role_is_refused(self):
         self.table(TABLE.replace("| research | sonnet | session | cloud |",
@@ -344,8 +368,8 @@ class TestRoleTable(ContractTest):
         self.assertIn("duplicate role 'explore'", r.stderr)
 
     def test_an_empty_note_is_refused(self):
-        self.table(TABLE.replace("| explore | haiku | session | local | — |",
-                                 "| explore | haiku | session | local |  |"))
+        self.table(TABLE.replace("| explore | haiku | session | local | none | — |",
+                                 "| explore | haiku | session | local | none |  |"))
         r = self.run_tk("--role", "explore")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("empty `note`", r.stderr)
@@ -359,8 +383,8 @@ class TestRoleTable(ContractTest):
         self.assertNotIn("ghost", r.stderr.split("It carries:")[1])
 
     def test_an_empty_role_cell_is_refused(self):
-        self.table(TABLE.replace("| explore | haiku | session | local | — |",
-                                 "|  | haiku | session | local | — |"))
+        self.table(TABLE.replace("| explore | haiku | session | local | none | — |",
+                                 "|  | haiku | session | local | none | — |"))
         r = self.run_tk("--role", "explore")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("empty `role` cell", r.stderr)
@@ -402,6 +426,24 @@ class TestBlockContent(ContractTest):
         self.assertIn("~500 lines", out)
         # the counterweight: without it the rule reads as "do not open files"
         self.assertIn("Neither rule touches the file you are actually EDITING", out)
+
+    def test_it_demands_the_closing_line_of_a_role_that_opens_a_pr(self):
+        out = self.block("--role", "implementer")
+        self.assertIn("### Closing the ticket", out)
+        self.assertIn("Fixes <owner>/<repo>#<n>", out)
+        # the keyword is worth nothing without the repo: a bare `Fixes #<n>`
+        # aims at the PR's OWN repo, which is not where the ticket lives
+        self.assertIn("spelt out even when it is not", out)
+        # and the reason, so the line survives a reader who thinks it decorative
+        self.assertIn("the MERGE closes the ticket", out)
+
+    def test_a_role_that_opens_no_pr_is_told_nothing_about_one(self):
+        # an instruction the reader cannot act on is what teaches them to skim
+        for role in ("explore", "research"):
+            with self.subTest(role=role):
+                out = self.block("--role", role)
+                self.assertNotIn("Closing the ticket", out)
+                self.assertNotIn("Fixes", out)
 
     def test_it_points_at_the_rules_earlier_slices_paid_for(self):
         out = self.block("--role", "implementer")

@@ -170,7 +170,7 @@ worth fixing now. **Dossier** is the term here; `briefing` names the step-6 hand
 
 **The digest is what the user reads instead of the diff.** Any PR offered as "merge" gets
 one: a per-file summary of the change, the forge link, the evidence block from step 4 — and
-the four verdicts of **safe-to-merge**, one line each:
+the five verdicts of **safe-to-merge**, one line each:
 
 | # | Verdict | Green when |
 |---|---|---|
@@ -178,8 +178,9 @@ the four verdicts of **safe-to-merge**, one line each:
 | 2 | **Review** | the review flow ran, and every finding is fixed, or accepted with its justification written down |
 | 3 | **Criterion** | the item's criterion was re-run here and passed |
 | 4 | **Reversal** | the way back is named in one line (revert, flag, restore) |
+| 5 | **Closure** | the PR body carries the literal line `Fixes <owner>/<repo>#<n>`, naming the tracker and the ticket this PR closes — or the change answers to no ticket, and the digest says so in those words |
 
-Four green → merge is the recommended action. Any red → the digest says which one, and the
+Five green → merge is the recommended action. Any red → the digest says which one, and the
 merge is not offered. Verdict 3 has a second shape: a **type-B criterion** ends at proof
 ready, because the verdict is the user's, and it is GIVEN rather than inferred. The digest
 displays the proof and the one-line claim it carries; the menu below then offers the verdict
@@ -187,8 +188,17 @@ as an option worded to say what checking it means — "the proof settles it; mer
 bare "merge" that would read a verdict out of a checkbox. Verdict 3 stays amber until that
 option is checked, so it is never the recommended-first one. The unattended path has nobody
 to check it, which is why it defers.
+
+**Verdict 5 is read off the PR body, never off the branch or the ticket.** `Fixes` is what
+makes the merge close the ticket, and it lives in the body alone — a ticket linked any other
+way stays open behind a merged PR. So the check is literal: fetch the body, and look for the
+line. It is also the one red whose remedy costs less than reporting it — rewrite the body and
+the verdict is green in the same breath — which is why catching it HERE is worth a verdict of
+its own. Found after the merge instead, it costs a manual close on a ticket nobody is looking
+at any more.
+
 A small diff (guidance: ≲150 lines) is still shown whole in the terminal and a large one
-gets the link, but the diff is a courtesy: what authorizes the merge is the four verdicts.
+gets the link, but the diff is a courtesy: what authorizes the merge is the five verdicts.
 
 **Review fixes rewrite the PR body.** A PR whose body still describes the version before the
 fixes tells the reviewer something the branch no longer does, so the body is rewritten in the
@@ -386,7 +396,7 @@ the next conversation's opening sentences, each in the shape that fits.
 - **The dossier goes into the PR body**, because an unattended session has nobody at the gate
   to read it in the terminal. A PR the strict verdicts keep from merging carries it there too,
   and its DECISION item points at it as the digest reference.
-- **Merge runs on the strict version of the four verdicts**, with verdict 2 hardened: every
+- **Merge runs on the strict version of the five verdicts**, with verdict 2 hardened: every
   finding FIXED, zero accepted, since accepting a finding is human judgment. Two cases keep
   the merge away from an unattended session, and each is checked by itself:
   - **A type-B criterion** — verdict 3 cannot turn green without the user, so the item ends
@@ -401,7 +411,7 @@ the next conversation's opening sentences, each in the shape that fits.
   `/tk:kickoff afk`.
 
 **Done when:** the session state is externalized and one of three holds — the work is
-committed, pushed, and every item ended either merged under the strict four verdicts or at
+committed, pushed, and every item ended either merged under the strict five verdicts or at
 an open PR carrying its evidence block and its dossier; or the concurrent-session guard
 stopped the run and the report says so with the tree untouched; or there was nothing to commit. Whatever was
 not merged sits in the queue as a DECISION, and no other external effect happened.
