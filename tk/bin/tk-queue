@@ -3051,6 +3051,41 @@ WRAP_COLUMN_FLOOR = 72
 # marker, a quote or an emoji — and nothing else. `!!! nota`, `: definicao`, `$$`,
 # `%%`, `+++`, `===` and `--- | ---` are none of those.
 PROSE_OPENERS = "`([*\"'“”‘’«»"
+# the one residue shape the whitelist above cannot refuse, because it opens the
+# way a sentence opens: a `chave: valor` metadata line — loose YAML, a pandoc or
+# PHP-Extra definition, a `Fonte:` / `Status:` note the author gave its own line.
+# The whitelist refuses `!!! nota`, `:::`, `$$`, `%%`, `+++`, `===` and `--- | ---`
+# by their first character; this one is letters, so only the SHAPE of the line
+# betrays it. Measured flattened, and reported as folded, under a head long enough
+# for the geometry licence to pass — which is the whole residue T168 decided.
+#
+# Enumerated here, and not in `opens_a_block`, on purpose: it is not a claim about
+# what Markdown DOES with the line. CommonMark reads it as paragraph text, so a
+# real parser would absorb it exactly as the audit did — the reason a parser was
+# weighed for this and did not win. It is the audit refusing a break the AUTHOR
+# made rather than a wrapper.
+#
+# The key is ONE token and the colon must end the line or be followed by
+# whitespace, which is what keeps `https://exemplo.com` and `14:30` out — in
+# neither does a space follow the colon.
+#
+# The shape alone is NOT enough, and the corpus said so before this shipped: the
+# rule as first written fired on a real item (T004 of the estudo-remuneracao-CN
+# queue), whose wrapped sentence happens to resume `wiki: `_wiki/...`` at 92
+# columns. No fold was lost there — that item is refused for another reason
+# anyway — but the REASON printed was wrong, and a reader repairing an item by a
+# report that calls its prose a structure repairs the wrong thing. So the caller
+# also requires the line to be one the AUTHOR ended — its own width stopping
+# short of WRAP_COLUMN_FLOOR. A metadata line is short by
+# construction; a wrapped line that merely starts with a word and a colon runs to
+# the wrap column, and is prose. Both readings are geometry, and neither can be
+# influenced by what anybody did or did not enumerate.
+#
+# What survives as over-refusal is a SHORT wrapped line that resumes with
+# `palavra: ` — the last line of a paragraph, say. That is one item repaired by
+# hand, the recoverable direction, and the same default the rest of this audit
+# inverted: a refusal costs one command, a flattened queue file has no other copy.
+METADATA_LINE_RE = re.compile(r"\A[^\W\d_][\w-]{0,31}:(?:[ \t]|\Z)")
 
 
 def absorption_audit(lines, j):
@@ -3063,8 +3098,8 @@ def absorption_audit(lines, j):
     both sides and agreed. A readback that re-asks the question that made the
     decision protects the decisions it was written for and nothing else.
 
-    So this asks two questions `opens_a_block` cannot answer for itself, and a NO
-    from either refuses the whole item rather than flattening it:
+    So this asks three questions `opens_a_block` cannot answer for itself, and a NO
+    from any of them refuses the whole item rather than flattening it:
 
       geometry  the break above the line is one a WRAPPER would make — the line
                 above plus this line's first word overruns WRAP_COLUMN_FLOOR.
@@ -3076,14 +3111,22 @@ def absorption_audit(lines, j):
                 underlines, fences and delimiters at once — `===`, `$$`, `:::`,
                 `+++`, `%%`, `--- | ---`, `!!! nota` — enumerated or not, because
                 none of them opens with a character a sentence opens with.
+      metadata  the line is not a SHORT `chave: valor` (METADATA_LINE_RE, plus a
+                width the author and not a wrapper chose). The one structural shape
+                the whitelist cannot reach, because it opens with a letter; it
+                needed its own question and gets one.
 
     What it does NOT catch, said plainly rather than left for the next reader to
-    measure: a shape that is unenumerated AND opens with a letter AND happens to
-    sit exactly at a wrap column — a `chave: valor` metadata line under a full
-    line is the realistic one. That residue is the reason the DEFAULT changed
-    direction: an item the audit cannot license is left exactly as it is and named
-    in the report, because a refusal costs one command and a flattened queue file
-    has no other copy.
+    measure: a shape that is unenumerated AND opens like a sentence AND is not a
+    `chave: valor` AND sits past the wrap column. `chave: valor` under a full line
+    was the realistic member of that set and is now refused; what is left is a
+    shape nobody in this corpus has written, and the reason it is TOLERATED rather
+    than chased is the decision recorded in T168 — enumerating Markdown shapes
+    without a parser did not converge (three review rounds, a new shape each), and
+    a parser reads the metadata line as paragraph text too, so it would not have
+    closed this one. The DEFAULT is what carries the rest: an item the audit
+    cannot license is left exactly as it is and named in the report, because a
+    refusal costs one command and a flattened queue file has no other copy.
     """
     for k in range(1, j):
         prev, line = lines[k - 1], lines[k]
@@ -3097,6 +3140,8 @@ def absorption_audit(lines, j):
         opener = stripped[0]
         if not (opener.isalnum() or opener in PROSE_OPENERS
                 or unicodedata.category(opener) == "So"):
+            return FOLD_PROSE_REFUSAL
+        if METADATA_LINE_RE.match(stripped) and len(stripped) <= WRAP_COLUMN_FLOOR:
             return FOLD_PROSE_REFUSAL
     return None
 
