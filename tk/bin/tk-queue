@@ -1546,9 +1546,13 @@ in the chain that ends the first line — never by searching the block:
   class      the chain must name AUTONOMOUS
   risk       no **Risk:** field
   env        no **Env:** field, or one naming THIS machine (the site file's identity)
-  spec       a **Spec:** whose value is a forge reference (`<repo>#<n>`) — the shape
-             `--spec` refuses on the way in, asked again here because a hand edit
-             is not the writer
+  spec       one **Spec:** in the chain, whose value is a forge reference
+             (`<repo>#<n>`) — the shape `--spec` refuses on the way in, asked again
+             here because a hand edit is not the writer. Read at the writer's
+             POSITION only: unlike Risk and Env above, a provenance marker sitting
+             where no gate reads it does not exclude the item, because "no answer"
+             here has a safe default (a PR of its own) where for Risk and Env it
+             means unknown danger
   claimed    not held by a sibling session
   id         an item `migrate` never gave an ID to cannot be closed by ID
   lane       not a ticket of a SECOND spec — see below
@@ -1582,10 +1586,12 @@ queue. Those
 tickets are the next package's, not lost. A spec under the floor is never excluded,
 whoever holds the lane: the floor is a lane, never a filter.
 
-A marker the position rule may not read excludes the item too, and is reported
-BEFORE any value, whichever field carries it: "there is a **Risk:** marker I am
-not allowed to read" is not "there is no risk", unattended execution is the wrong
-place to guess, and a defect outranks an ordinary state as the thing to say.
+A **Risk:** or **Env:** marker the position rule may not read excludes the item
+too, and is reported BEFORE any value: "there is a **Risk:** marker I am not
+allowed to read" is not "there is no risk", unattended execution is the wrong
+place to guess, and a defect outranks an ordinary state as the thing to say. The
+two PROVENANCE fields answer a different question and so take the other rule —
+see LANE and the `spec` rung.
 
 **Deferred:** is deliberately NOT read here. `--deferred` is refused on every
 class but DECISION and leaving that class drops it, so no path through this CLI
@@ -1673,13 +1679,21 @@ def pack_exclusion(iid, block, identity):
     # value: a field the position rule cannot read is a defect, and a defect outranks
     # an ordinary state as the thing to say about the item
     field = {}
-    # Spec is in this loop and Ticket is not, and the split is what each field
-    # DECIDES here: the lane is built from Spec, so a Spec the position rule may
-    # not read is a lane this filter would get wrong — and getting it wrong sends
-    # a ticket of an open spec branch out as a PR of its own, silently. Ticket
-    # decides nothing in `pack`; it is read by the orchestrator writing the PR
-    # body, which is where a defect in it belongs.
-    for name in ("Risk", "Env", "Spec"):
+    # Risk and Env are here and the two PROVENANCE fields are not, and the split is
+    # what each field ANSWERS. Risk and Env answer "is this safe to run unattended,
+    # and here?" — so a marker the position rule may not read leaves that unknown,
+    # and unknown-danger is refused: the item leaves the package rather than being
+    # dispatched on a guess. Spec and Ticket answer "where does this go?" — and
+    # there the absence of an answer HAS a safe default, the conservative topology
+    # the queue had before this field existed: a PR of its own, no `closes` line.
+    #
+    # So provenance is read purely at the writer's position (`pack_ref`), never by
+    # counting markers in the block, and the cost of the other choice was measured:
+    # with Spec in this loop, ONE sibling item whose note merely CITED `**Spec:**`
+    # in prose was excluded with a false reason — its chain named Spec once,
+    # unambiguously — and, having left the candidate set, took the whole spec below
+    # the floor, demoting its clean siblings' accumulated lane to `avulso`.
+    for name in ("Risk", "Env"):
         segs, markers = qualified_fields(block, name)
         if markers > len(segs):
             return (f"a **{name}:** marker sits where no gate reads it, so what the item "
@@ -1714,8 +1728,12 @@ def pack_exclusion(iid, block, identity):
     # `**Spec:** homeserver ambiente#999.` formed a REAL accumulated lane and pushed
     # two tickets of a genuine spec out of the package, naming an issue that existed
     # only in the typo.
-    if field["Spec"] is not None and pack_ref(block, "Spec") is None:
-        return (f"Spec is {field_value(field['Spec'])!r}, which is not a forge reference "
+    spec_segs = real_fields(block, "Spec")
+    if len(spec_segs) > 1:
+        return (f"{len(spec_segs)} **Spec:** fields in the chain, so its value is "
+                "ambiguous", REPAIR_CANCEL)
+    if spec_segs and pack_ref(block, "Spec") is None:
+        return (f"Spec is {field_value(spec_segs[0])!r}, which is not a forge reference "
                 "(`<repo>#<n>`), so the lane it names cannot be told from a typo",
                 REPAIR_CANCEL)
 
@@ -1878,15 +1896,23 @@ def pack_closes(block):
     field it could not read where the answer is not exclusion: `pack_effort`
     prints `?`, and so does this.
 
-      no marker at all   nothing is appended. The overwhelming majority of items.
+      no FIELD at all    nothing is appended. The overwhelming majority of items.
       readable           `  [<ref>]`, canonical.
-      marker, no ref     `  [?]` — two in the chain, one the position rule may not
-                         read, or a value that is not a forge reference.
-    """
+      field, no ref      `  [?]` — two in the chain, or a value that is not a
+                         forge reference.
+
+    Which of the three an item gets is decided at the WRITER's position, like
+    everything else here, and the first measured attempt at it was not: asking
+    `FIELD_MARKER_RE["Ticket"].search(block)` is the same whole-block question the
+    pre-gate was condemned for, turned around. It printed `[?]` for an item whose
+    only `**Ticket:**` was a continuation-line note CITING the marker — an item
+    that never had a ticket at all, sent to whoever writes the PR as one whose
+    ticket could not be read. `real_fields` is the question that separates them:
+    it answers [] for prose, whatever the block says."""
+    if not real_fields(block, "Ticket"):
+        return ""
     ref = pack_ref(block, "Ticket")
-    if ref:
-        return f"  [{ref}]"
-    return "  [?]" if FIELD_MARKER_RE["Ticket"].search(block) else ""
+    return f"  [{ref}]" if ref else "  [?]"
 
 
 def pack_lanes(candidates):

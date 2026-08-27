@@ -2139,13 +2139,6 @@ MUTATIONS = [
      "        if verdict is None:",
      ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason"]),
 
-    ("T172 the Spec field is read by searching the block, not at the writer's position",
-     '    for name in ("Risk", "Env", "Spec"):',
-     '    for name in ("Risk", "Env"):',
-     ["TestPackLane.test_a_spec_QUOTED_IN_PROSE_never_becomes_the_lane",
-      "TestPackLane.test_a_Spec_marker_the_position_rule_may_not_read_excludes_the_item",
-      "TestPackLane.test_two_Spec_fields_in_the_chain_are_ambiguous_not_guessed"]),
-
     ("T172 the new field names leave the grammar, so no reader knows them",
      '    "Ticket": r"Ticket",\n    "Spec": r"Spec",',
      "",
@@ -2168,12 +2161,6 @@ MUTATIONS = [
      "            candidates.append((label, text))",
      ["TestPackLane.test_a_duplicate_ID_never_costs_the_LANE_HOLDER_its_place"]),
 
-    ("T172 the READ side stops asking the Spec's shape",
-     '    if field["Spec"] is not None and pack_ref(block, "Spec") is None:',
-     "    if False:",
-     ["TestPackLane.test_a_Spec_that_is_not_a_forge_reference_never_forms_a_LANE",
-      "TestPackLane.test_the_read_side_shape_gate_refuses_a_PREFIX"]),
-
     ("T172 the lane names only the issue number, so two repos collapse into one",
      "            lanes[n] = LANE_SPEC % taken",
      '            lanes[n] = LANE_SPEC % ("#" + taken.rpartition("#")[2])',
@@ -2195,8 +2182,8 @@ MUTATIONS = [
     # the other direction: a Ticket the position rule may not read must stay
     # SILENT — it decides no lane, so it may not cost the item its place
     ("T172 an unreadable Ticket is printed anyway",
-     '    return "  [?]" if FIELD_MARKER_RE["Ticket"].search(block) else ""',
-     '    return ""',
+     '    return f"  [{ref}]" if ref else "  [?]"',
+     '    return f"  [{ref}]" if ref else ""',
      ["TestPackLane.test_a_TICKET_the_position_rule_cannot_read_is_MARKED_not_silent",
       "TestPackLane.test_a_TICKET_that_is_not_a_forge_reference_is_never_printed"]),
 
@@ -2213,10 +2200,14 @@ MUTATIONS = [
      "    segs = real_fields(block, field)\n    if not segs:",
      ["TestPackLane.test_a_TICKET_the_position_rule_cannot_read_is_MARKED_not_silent"]),
 
+    ("T172 the [?] is decided by a whole-block search again",
+     '    if not real_fields(block, "Ticket"):\n        return ""',
+     '    if not FIELD_MARKER_RE["Ticket"].search(block):\n        return ""',
+     ["TestPackLane.test_a_marker_QUOTED_IN_PROSE_earns_no_mark_at_all"]),
+
     ("T172 pack_closes asks the ambiguity itself, of the whole block",
-     "    ref = pack_ref(block, \"Ticket\")\n    if ref:",
-     '    if qualified_fields(block, "Ticket")[1] != 1:\n        return ""\n'
-     "    ref = pack_ref(block, \"Ticket\")\n    if ref:",
+     '    if not real_fields(block, "Ticket"):\n        return ""',
+     '    if qualified_fields(block, "Ticket")[1] != 1:\n        return ""',
      ["TestPackLane.test_a_marker_QUOTED_IN_PROSE_does_not_hide_the_real_ticket"]),
 
     ("T172 the leading character of a repo name goes unbounded",
@@ -2277,6 +2268,20 @@ MUTATIONS = [
      "            lanes[n] = LANE_SOLO",
      ["TestPackLane.test_a_below_floor_ticket_still_NAMES_its_spec",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+    # --- T172, round 4: provenance is read at the writer's position ONLY -----
+    ("T172 a provenance marker in prose excludes the item, demoting its spec's lane",
+     '    for name in ("Risk", "Env"):', '    for name in ("Risk", "Env", "Spec"):',
+     ["TestPackLane.test_one_siblings_PROSE_never_demotes_a_whole_specs_lane",
+      "TestPackLane.test_a_spec_QUOTED_IN_PROSE_leaves_the_item_AVULSO"]),
+
+    ("T172 two Spec fields in the chain stop being reported as ambiguous",
+     "    if len(spec_segs) > 1:", "    if False:",
+     ["TestPackLane.test_two_Spec_fields_in_the_chain_are_ambiguous_not_guessed"]),
+
+    ("T172 the Spec shape gate stops firing",
+     '    if spec_segs and pack_ref(block, "Spec") is None:', "    if False:",
+     ["TestPackLane.test_a_Spec_that_is_not_a_forge_reference_never_forms_a_LANE",
+      "TestPackLane.test_the_read_side_shape_gate_refuses_a_PREFIX"]),
 ]
 
 

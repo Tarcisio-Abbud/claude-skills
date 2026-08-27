@@ -3180,30 +3180,43 @@ class TestPackLane(PackOutput):
         self.assertEqual([ln for ln in self.blocks(out)["excluded"]
                           if "ocupada" in ln], [])
 
-    def test_a_spec_QUOTED_IN_PROSE_never_becomes_the_lane(self):
+    def test_a_spec_QUOTED_IN_PROSE_leaves_the_item_AVULSO(self):
         """A marker before the **Class:** the chain anchors at is the item's own
-        prose, and it must not name a lane. It does not make the item avulso
-        either: the item leaves the package as a DEFECT, the way a prose **Risk:**
-        or **Env:** already does. That asymmetry with **Class:** — which is read
-        leniently and repaired — is the direction of the damage. A misread class
-        keeps an item out of the package, where the user sees the reason; a misread
-        Spec dispatches a ticket of an open spec branch as a PR of its own, with
-        nobody watching and nothing anywhere saying why."""
+        prose: it names no lane, and it does not cost the item its place either.
+
+        That is where the two provenance fields part company with **Risk:** and
+        **Env:**, and the split is what each field ANSWERS. Risk and Env answer
+        "is this safe to run unattended, and here?", so a marker no gate may read
+        leaves that unknown and the item is refused. Spec answers "where does this
+        go?", and there the absence of an answer HAS a safe default — the topology
+        the queue had before the field existed, a PR of its own.
+
+        Excluding instead was measured costing more than it bought: one sibling
+        whose note merely CITED the marker left the candidate set, and took its
+        whole spec below the floor, demoting the clean siblings' lane to avulso."""
         self.seed("- [ ] **T001** — nota sobre **Spec:** repo#999 em prosa — um "
                   "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
                   "**Source:** 2026-08-13\n")
         out = self.pack()
-        self.assertEqual(self.blocks(out)["eligible"], [])
-        self.assertIn("**Spec:** marker", self.reason(out, "T001"))
+        self.assertEqual(self.lanes(out), {"T001": "avulso"})
+        self.assertEqual(self.blocks(out)["excluded"], [])
 
-    def test_a_Spec_marker_the_position_rule_may_not_read_excludes_the_item(self):
-        """Passing it is the expensive direction: the item would be dispatched as
-        an avulso PR while it is really a ticket of a spec whose branch is open —
-        and the exclusion, unlike the misdispatch, is visible."""
-        self.seed(item(1, "um").rstrip("\n") + "\n  nota: **Spec:** repo#171\n")
+    def test_one_siblings_PROSE_never_demotes_a_whole_specs_lane(self):
+        """The cascade the block-wide marker count caused, and the reason the
+        provenance fields are read at the writer's position and nowhere else. T002's
+        note merely CITES `**Spec:**`; its chain names Spec once, unambiguously. With
+        the count in the ladder, T002 was excluded on a false reason — and, gone from
+        the candidate set, took the spec to one ticket, so T001 and T003 lost the
+        accumulated lane they had every right to."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#171").rstrip("\n")
+                  + "\n  nota: cita o **Spec:** de outro item, só em prosa.\n"
+                  + ticket_item(3, "tres", spec="repo#171"))
         out = self.pack()
-        self.assertEqual(self.blocks(out)["eligible"], [])
-        self.assertIn("**Spec:** marker", self.reason(out, "T001"))
+        self.assertEqual(self.blocks(out)["excluded"], [])
+        self.assertEqual(self.lanes(out), {"T001": "spec repo#171",
+                                           "T002": "spec repo#171",
+                                           "T003": "spec repo#171"})
 
     def test_two_Spec_fields_in_the_chain_are_ambiguous_not_guessed(self):
         self.seed(ticket_item(1, "um", spec="repo#171").replace(
@@ -3283,6 +3296,17 @@ class TestPackLane(PackOutput):
         self.assertEqual(len(lines), 2, lines)
         for ln in lines:
             self.assertTrue(ln.endswith("  [?]"), ln)
+
+    def test_a_marker_QUOTED_IN_PROSE_earns_no_mark_at_all(self):
+        """The other side of the same question, and the one the first `[?]` got
+        wrong: an item whose only **Ticket:** is a note citing the marker never had
+        a ticket, so it must read like an item that never had one. `[?]` there sends
+        whoever writes the PR hunting for a ticket that does not exist."""
+        self.seed(item(1, "só cita o marcador").rstrip("\n")
+                  + "\n  nota: cita o **Ticket:** de outro item, só em prosa.\n"
+                  + item(2, "sem marcador nenhum"))
+        for ln in self.blocks(self.pack())["eligible"]:
+            self.assertNotIn("[", ln, ln)
 
     def test_a_marker_QUOTED_IN_PROSE_does_not_hide_the_real_ticket(self):
         """The block-wide count `pack_closes` used to ask before the reader: an
