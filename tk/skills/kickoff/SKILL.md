@@ -345,14 +345,18 @@ re-triages; tracker tickets are referenced, not mirrored):
   conversation has neither. **Ticket** names the issue the item implements and is what the
   afk package's PR body closes. **Spec** names the spec that issue belongs to, and it
   decides the item's **lane**: tickets of one spec are implemented on a single accumulated
-  branch under one PR, everything else gets a PR of its own. `tk-queue pack` prints the lane
-  of every eligible item and is the only reader of the field — it reads the queue, never the
-  forge. One spec per package: the lane goes to the FIRST spec in queue order that reaches the
-  FLOOR of two tickets among the candidates — one ticket does not pay for a draft PR and a
-  three-step tail, so a spec under the floor is dispatched as `avulso`. A ticket leaves the
-  package for its lane in exactly one case, its spec would be a SECOND accumulated lane, with
-  the reason `lane de spec ocupada por #<n>`; it returns in the next package. A spec under the
-  floor is never excluded, whoever holds the lane — the floor is a lane, never a filter. The shape is validated
+  branch under one PR, everything else gets a PR of its own. `tk-queue pack` returns both —
+  the lane of every eligible item, and the Ticket appended in brackets — and it reads the
+  queue, never the forge. Both are printed WHOLE, repo half included: two repos can carry one
+  issue number, and the repo half is what names the branch `spec/<m>-<slug>`. One spec per
+  package: the lane goes to the FIRST spec in queue order that reaches the FLOOR of two
+  tickets among the candidates — one ticket does not pay for a draft PR and a three-step
+  tail, so a spec under the floor is dispatched as `avulso`. A ticket leaves the package for
+  its lane in exactly one case, its spec would be a SECOND accumulated lane, with a reason
+  naming both references; it returns in the next package. A spec under the floor is never
+  excluded, whoever holds the lane — the floor is a lane, never a filter. The shape is asked
+  again on the way OUT: a **Spec:** that is not a forge reference forms no lane, because a
+  hand edit is not the writer. The shape is validated
   exactly, like `--env` against the roster: a malformed `--ticket` feeds a `closes` line that
   closes nothing, and a malformed `--spec` opens a second branch for a spec that already has
   one. Neither failure reports itself.

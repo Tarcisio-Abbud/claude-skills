@@ -2056,7 +2056,8 @@ MUTATIONS = [
       "TestClearingKeepsTheFileIntact.test_clearing_a_risk_rewrites_only_that_field"]),
     # --- T172: provenance fields, and the lane the package reads from them ---
     ("T172 the ref shape loosens to a prefix match (\"repo#1x\" is accepted)",
-     "if not REF_RE.fullmatch(value):", "if not REF_RE.match(value):",
+     '    if not REF_RE.fullmatch(value):\n        fail(f"--{flag} {value!r} is not a forge',
+     '    if not REF_RE.match(value):\n        fail(f"--{flag} {value!r} is not a forge',
      ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
 
     ("T172 the ref shape is not checked at all",
@@ -2084,8 +2085,8 @@ MUTATIONS = [
 
     ("T172 the lane column leaves the package listing",
      '            eligible.append(f"{label}  {pack_effort(text):<12}  "\n'
-     '                            f"{lanes[label]:<12}  {item_title(text)}")',
-     '            eligible.append(f"{label}  {pack_effort(text):<12}  {item_title(text)}")',
+     '                            f"{lanes[n]:<20}  {item_title(text)}"',
+     '            eligible.append(f"{label}  {pack_effort(text):<12}  {item_title(text)}"',
      ["TestPackLane.test_an_item_with_no_spec_is_avulso",
       "TestPackLane.test_two_tickets_of_one_spec_share_the_accumulated_lane",
       "TestPack.test_an_eligible_item_carries_its_id_effort_and_text",
@@ -2108,15 +2109,15 @@ MUTATIONS = [
     # out of a package it belongs in, which is what "lane, not exclusion" names
     ("T172 no ticket ever reaches the accumulated lane",
      "        if ref is not None and ref == taken:\n"
-     "            lanes[label] = LANE_SPEC % spec_mark(taken)",
+     "            lanes[n] = LANE_SPEC % taken",
      "        if False:\n"
-     "            lanes[label] = LANE_SPEC % spec_mark(taken)",
+     "            lanes[n] = LANE_SPEC % taken",
      ["TestPackLane.test_two_tickets_of_one_spec_share_the_accumulated_lane",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
 
     ("T172 a second spec keeps a lane of its own instead of leaving the package",
-     "            pushed[label] = LANE_TAKEN % spec_mark(taken)",
-     "            lanes[label] = LANE_SPEC % spec_mark(ref)",
+     "            pushed[n] = LANE_TAKEN % (taken, ref)",
+     "            lanes[n] = LANE_SPEC % ref",
      ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason",
       "TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
@@ -2133,7 +2134,7 @@ MUTATIONS = [
      ["TestPackLane.test_the_lane_is_decided_among_ELIGIBLE_items_only"]),
 
     ("T172 a ticket the taken lane pushed out is listed as eligible TOO",
-     "        if verdict is None and label not in pushed:",
+     "        if verdict is None and n not in pushed:",
      "        if verdict is None:",
      ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason"]),
 
@@ -2143,11 +2144,6 @@ MUTATIONS = [
      ["TestPackLane.test_a_spec_QUOTED_IN_PROSE_never_becomes_the_lane",
       "TestPackLane.test_a_Spec_marker_the_position_rule_may_not_read_excludes_the_item",
       "TestPackLane.test_two_Spec_fields_in_the_chain_are_ambiguous_not_guessed"]),
-
-    ("T172 spec_mark prints a bare '#' for a value that carries no number",
-     '    _, sep, number = ref.rpartition("#")\n    return "#" + number if sep else ref',
-     '    return "#" + ref.rpartition("#")[2]',
-     ["TestPackLane.test_a_hand_written_Spec_with_no_number_prints_WHOLE"]),
 
     ("T172 the new field names leave the grammar, so no reader knows them",
      '    "Ticket": r"Ticket",\n    "Spec": r"Spec",',
@@ -2165,6 +2161,60 @@ MUTATIONS = [
      '        if flag:\n'
      '            fields.insert(0, f"**{field}:** {flag}.")',
      ["TestProvenanceFields.test_both_fields_are_written_at_the_writers_position"]),
+    # --- T172, round 1 of the lens campaign ----------------------------------
+    ("T172 the lane is keyed by the LABEL again, which two items can share",
+     "            candidates.append((len(rows) - 1, text))",
+     "            candidates.append((label, text))",
+     ["TestPackLane.test_a_duplicate_ID_never_costs_the_LANE_HOLDER_its_place"]),
+
+    ("T172 the READ side stops asking the Spec's shape",
+     "        if not REF_RE.fullmatch(value):",
+     "        if False:",
+     ["TestPackLane.test_a_Spec_that_is_not_a_forge_reference_never_forms_a_LANE"]),
+
+    ("T172 the lane names only the issue number, so two repos collapse into one",
+     "            lanes[n] = LANE_SPEC % taken",
+     '            lanes[n] = LANE_SPEC % ("#" + taken.rpartition("#")[2])',
+     ["TestPackLane.test_two_specs_sharing_an_issue_number_are_told_APART",
+      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    ("T172 the exclusion reason drops this item's own spec",
+     "            pushed[n] = LANE_TAKEN % (taken, ref)",
+     '            pushed[n] = LANE_TAKEN % (taken.rpartition("#")[2], ref)',
+     ["TestPackLane.test_two_specs_sharing_an_issue_number_are_told_APART",
+      "TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason"]),
+
+    ("T172 the ticket the PR closes stops coming back from the command",
+     "                            + pack_closes(text))",
+     '                            + "")',
+     ["TestPackLane.test_the_TICKET_the_PR_closes_comes_back_from_the_command",
+      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    # the other direction: a Ticket the position rule may not read must stay
+    # SILENT — it decides no lane, so it may not cost the item its place
+    ("T172 an unreadable Ticket is printed anyway",
+     "    segs, markers = qualified_fields(block, \"Ticket\")\n"
+     "    if len(segs) != 1 or markers > len(segs):\n"
+     '        return ""',
+     "    segs, markers = qualified_fields(block, \"Ticket\")\n"
+     "    if not segs:\n"
+     '        return ""',
+     ["TestPackLane.test_a_TICKET_the_position_rule_cannot_read_is_SILENT"]),
+
+    ("T172 the leading character of a repo name goes unbounded",
+     'REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}#[0-9]{1,9}")',
+     'REF_RE = re.compile(r"[A-Za-z0-9._-]{1,100}#[0-9]{1,9}")',
+     ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
+
+    ("T172 the issue number goes unbounded",
+     'REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}#[0-9]{1,9}")',
+     'REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}#[0-9]+")',
+     ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
+
+    ("T172 the repo-name length cap goes",
+     'REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}#[0-9]{1,9}")',
+     'REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*#[0-9]{1,9}")',
+     ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
 ]
 
 
