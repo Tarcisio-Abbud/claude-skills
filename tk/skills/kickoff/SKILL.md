@@ -380,9 +380,11 @@ re-triages; tracker tickets are referenced, not mirrored):
   package: the lane goes to the FIRST spec in queue order that reaches the FLOOR of two
   tickets among the candidates — one ticket does not pay for a draft PR and a three-step
   tail, so a spec under the floor is dispatched in the solo lane — printed `avulso (<ref>)`,
-  the spec named because the open-PR check has to know which spec to ask about. A ticket
-  leaves the package for its lane in exactly one case, its spec would be a SECOND accumulated
-  lane, with a reason naming both references; it returns in the next package. A spec under the
+  the spec named because the orchestrator's open-branch check has to know which spec to ask
+  about. A ticket leaves the package for its lane in exactly one case the SCRIPT decides, its
+  spec would be a SECOND accumulated lane, with a reason naming both references; it returns in
+  the next package. The orchestrator adds a second case on the same rung, from what only it can
+  see — the spec's branch already on the remote — and `AFK.md` step 1 owns that one. A spec under the
   floor is never excluded, whoever holds the lane — the floor is a lane, never a filter.
   Every reference is stored and printed in ONE canonical spelling — repo lower-cased, issue
   number without leading zeros — decided when the value is written and re-decided when it is
