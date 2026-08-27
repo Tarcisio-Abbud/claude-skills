@@ -227,6 +227,11 @@ tk-queue migrate [--dry-run]                   # one-time: moves legacy [x] to t
                                                # rewriting a queue you cannot undo
 ```
 
+**The preview's report is not evidence that the migration happened.** It is byte-identical
+to the report a real run prints — past tense and all — so stdout alone cannot tell a preview
+from a completed rewrite. The discriminator is the `--dry-run` banner, and it is on
+**stderr**: a caller that captures only stdout has no way to know which of the two it got.
+
 `<id>` is accepted in the form the queue displays (`T006`) as well as bare (`6`).
 
 **Priority is the ORDER of the file, global** — no score, no hidden heuristic. `add` puts a
@@ -264,8 +269,8 @@ Both matter to a session because they decide what `add` hands out next and what 
 "never allocated" diagnostic means. Neither is a licence to hand-edit the files.
 
 Every mutating command (`add`/`edit`/`done`/`cancel`/`migrate`) prints the memory dir it
-resolved on **stderr** before acting — `migrate --dry-run` too, which writes nothing and
-still announces where it looked. That target is inferred — from `--dir`, or from the
+resolved on **stderr** before acting — `migrate --dry-run` too, which writes no queue, no
+log and no briefing, and still announces where it looked. That target is inferred — from `--dir`, or from the
 cwd when it is absent — and a shell that keeps its cwd between calls has already made an
 `edit` land on a homonymous item in ANOTHER project's queue while reporting success. Read
 that line before trusting the result.

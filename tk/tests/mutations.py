@@ -2346,6 +2346,16 @@ MUTATIONS = [
      'mg.add_argument("--dry-run", action="store_true", default=True,',
      ["TestMigrateDryRun.test_without_the_flag_migrate_writes_exactly_as_it_did",
       "TestMigrateFold.test_the_legacy_shape_is_folded_and_the_prose_survives_it"]),
+
+    # the slice made an existing TRUE sentence false: before `--dry-run`, every
+    # holder of the lock was a writer, so the timeout message could name one
+    ("T172 the lock timeout goes back to accusing every holder of writing",
+     '                         "\u2014 a concurrent command holds this queue: a writer, or a "\n'
+     '                         "`migrate --dry-run` preview, which holds without writing. "\n'
+     '                         "Nothing was changed; re-run `tk-queue list` and retry.")',
+     '                         "\u2014 a concurrent session is writing this queue. Nothing was "\n'
+     '                         "changed; re-run `tk-queue list` and retry.")',
+     ["TestConcurrency.test_the_lock_timeout_does_not_accuse_the_holder_of_writing"]),
 ]
 
 

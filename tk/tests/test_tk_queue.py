@@ -195,6 +195,32 @@ class TestConcurrency(QueueTest):
         self.assertEqual(proc.returncode, 0, err)  # and then it goes through
         self.assertIn("**T002**", self.body())
 
+    @unittest.skipIf(fcntl is None, "flock unavailable on this platform")
+    def test_the_lock_timeout_does_not_accuse_the_holder_of_writing(self):
+        """`migrate --dry-run` takes this lock and writes nothing, so a holder is
+        no longer necessarily a writer. The timeout message may not assert that it
+        is: a session blocked by a preview would be told a rewrite is in flight.
+        Slow by construction — it waits out the real LOCK_TIMEOUT, because the
+        message only exists on that path."""
+        self.seed(item(1, "um"))
+        lock_fd = os.open(os.path.join(self.mem, ".tk-queue.lock"),
+                          os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)          # a holder that writes nothing
+        try:
+            r = subprocess.run(
+                [sys.executable, TK, "add", "bloqueado", "--class", "AUTONOMOUS",
+                 "--effort", "S", "--criterion", "A: c", "--dir", self.mem],
+                capture_output=True, text=True, timeout=60)
+        finally:
+            os.close(lock_fd)
+        self.assertNotEqual(r.returncode, 0, "the blocked command reported success")
+        self.assertNotIn("is writing this queue", r.stderr,
+                         "the message asserts the holder writes; a preview holds "
+                         "without writing")
+        self.assertIn("a writer, or a `migrate --dry-run` preview", r.stderr,
+                      "the message must name both kinds of holder")
+        self.assertIn("Nothing was changed", r.stderr)
+
     def test_concurrent_close_and_add_keep_both_files_coherent(self):
         self.seed(item(1, "um"), item(2, "dois"))
         with ThreadPoolExecutor(2) as ex:
