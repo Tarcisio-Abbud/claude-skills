@@ -229,11 +229,17 @@ The report follows this structure, and it is the structure that travels — a re
 preference that disagrees with it loses:
 
 ```
+**What changed**
+- <item> — <what it is, in a few words>
+  - was: <what the rule or the code did>
+  - now: <what it does now>
+  - gain: <the concrete gain it bought>  ·  risk: <what could still bite, in one clause>
+
 **<N> closed · <M> carried · <K> blocked · <D> discarded**
 
 **Closed** — everything that left the queue, FEITO or DESCARTADO alike
-- <item> — <the one or two concrete gains it bought>
-- <item> — <gains>  ·  risk: <what could still bite, in one clause>
+- <item> — FEITO
+- <item> — DESCARTADO, <why>
 
 **Carried**
 - <item> — <the survival gate that kept it in the queue>
@@ -249,17 +255,26 @@ preference that disagrees with it loses:
 **Suggestions:** <what you would do next, if you have one — last, never mixed in above>
 ```
 
-The stats line opens the report, and its first three counts are the queue's balance: what
-left it against what is still in it. The fourth counts a different object — session findings
-dropped in step 1, which never entered the queue — so the group is labelled and the two are
-never summed. Discarding needs a user to do it, so an unattended run reports no discards and
-carries its findings to the gates instead. Items group by outcome, never by chronology, and
-a group of three or more becomes a table with those same columns. The gains are concrete —
-"the queue can no longer lose a resolved item" beats "improved the queue" — and a case that
-closed with no gain worth a line closed with nothing worth reporting, which is itself worth
-one. The blockers line
-is unskippable: "none" written out is an answer, an absent line is a rediscovery the next
-session pays for. It is also the one line of the report that must survive the terminal —
+**What changed opens the report, and it retransmits — it does not measure anything anew.**
+One entry per DELIVERED item, three lines under it, read off the merge dossier step 5 already
+wrote (its section 3, *Before/after in practice*, is literally these lines), or off the work
+itself where the item closed without a PR. The unattended path writes that dossier into the PR
+body, where nobody at the terminal sees it, and this block is how it reaches the person who
+returns. The gain is concrete — "the queue can no longer lose a resolved item" beats "improved
+the queue" — and an item that closed with no gain worth a line says exactly that on its gain
+line, which is itself the report. A DESCARTADO item has no before and no after, so it appears
+in Closed alone.
+
+The stats line follows, and its first three counts are the queue's balance: what left it
+against what is still in it. The fourth counts a different object — session findings dropped
+in step 1, which never entered the queue — so the group is labelled and the two are never
+summed. Discarding needs a user to do it, so an unattended run reports no discards and
+carries its findings to the gates instead. The outcome groups below it are the balance and
+nothing more: they name each item and the reason it landed there, since the substance was
+already spent above. Items group by outcome, never by chronology, and a group of three or
+more becomes a table with those same columns — the What changed entries stay in lines, a
+cell being no place for a before and an after. The blockers line is unskippable: "none"
+written out is an answer, an absent line is a rediscovery the next session pays for. It is also the one line of the report that must survive the terminal —
 it lands in the affected item's text, and a blocker too big for the item's size ceiling is
 itself the signal that the briefing below is due.
 
