@@ -183,6 +183,12 @@ tk/
   reference/slice-rules.md        the rules earlier slices paid for — writing a command
                                   that touches a file, proving it, and prose another
                                   agent reads; reached from the contract block
+  reference/vista.md              the vista: the digest's visual companion — what it is, when
+                                  it is written, where it lands, and the five blocks it fixes;
+                                  the contract a later consolidated reporter reads. Nothing
+                                  writes one on its own yet
+  reference/vista-template.html   that page in its smallest form: the five markers, both
+                                  themes, and nothing the browser fetches
   bin/tk-queue                    deterministic CLI: only writer of the queue files
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
                                   identity, the roster of environments, the two ceilings,
@@ -195,11 +201,14 @@ tk/
   bin/tk-collisions               merges each pair of open branches for real, so a pair
                                   that cannot both land is named before either does. No
                                   network: the refs must already be local
+  bin/tk-vista-check              the gate on a vista: refuses a page that fetches anything,
+                                  and one missing a block, a risk tag or a proof link
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
   tests/test_tk_collisions.py     regression suite, against a real git repository built
                                   in a throwaway directory
+  tests/test_tk_vista_check.py    regression suite for the vista gate
   tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
@@ -209,6 +218,8 @@ tk/
                                   runner, which already takes the suite as an argument
   tests/mutations_collisions.py   entries only: it enters through that runner's seam,
                                   which is what the seam was written for
+  tests/mutations_vista.py        entries only, through that same seam: the runner is the
+                                  one above, reached by its module/entries arguments
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
@@ -248,8 +259,9 @@ proved by `python3 tk/tests/mutations.py`, which restores each defect and requir
 named for it to fail, one at a time. A test that passes with the defect back protects
 nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answers to the same
 rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard through
-`python3 githooks/tests/mutations_private_values.py`, and the tracker wrapper through
-`python3 bin/tests/mutations_tracker_gh.py`. The harnesses are separate files sharing one
+`python3 githooks/tests/mutations_private_values.py`, the tracker wrapper through
+`python3 bin/tests/mutations_tracker_gh.py`, and `tk-vista-check` through
+`python3 tk/tests/mutations_vista.py`. The harnesses are separate files sharing one
 shape; the oldest differs only in naming its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
