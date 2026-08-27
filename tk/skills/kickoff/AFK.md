@@ -67,8 +67,20 @@ cannot dispatch it either, so this is not a new unknown. The Spec reference name
 spec is filed in, and the two are routinely different repositories:
 
 ```sh
-git ls-remote --heads "<code repo remote>" "refs/heads/spec/<m>-*"
+git ls-remote --heads "<code repo URL>" "refs/heads/spec/<m>-*"   # exit 0 and no line = free
 ```
+
+**A URL or a path, never a remote NAME.** A bare `origin` resolves against the cwd, and the
+orchestrator's cwd is the queue's directory, which is routinely a clone of something else: run
+from there, `origin` was measured returning exit 0 and no output — a clean false negative that
+reads exactly like "no branch". **And read the exit code, not only the output.** An unreachable
+host, a wrong URL and a failed authentication all exit 128 with a `fatal:` line; a check whose
+output you capture into a variable turns all three into "free" and admits the item.
+
+The queue carries no field for this URL — `Ticket:` and `Spec:` name the TRACKER, and `Project:`
+is a grouping tag — so the orchestrator supplies it, from the same knowledge step 3 needs to open
+the item's worktree. An item whose code repository you cannot name is an item you cannot dispatch,
+and it leaves the package saying so rather than being checked against a guess.
 
 `<m>` is the **issue half** of the Spec reference — `171` out of `ambiente#171` — and it is what
 identifies the branch, which is why the match is on the prefix rather than on the whole name.
@@ -109,24 +121,24 @@ over the whole eligible list; the cut is yours and happens afterwards, so an ite
 ambiente#171` can reach a package holding the only ticket of that spec. Dispatched on the label it
 was handed, that item opens a branch, a draft pull request and a three-step tail for itself —
 the waste the floor of two tickets exists to prevent. Count the tickets per Spec reference among
-the items that SURVIVED the cut, then hand the lane to the FIRST spec in queue order still
-reaching two — `tk-queue pack`'s own rule, re-applied over a shorter list. Every other spec's
-tickets take the solo lane, and where no spec reaches two the package has no accumulated lane at
-all. The reference is printed whole, so the recount is arithmetic over the lines already in front
-of you — no second read of the queue, no call to the forge.
+the items that SURVIVED the cut. A spec that fell below two takes the solo lane, and where the
+lane's spec fell below two the package has no accumulated lane at all. The reference is printed
+whole, so the recount is arithmetic over the lines already in front of you — no second read of the
+queue, no call to the forge.
 
-The recount only ever DEMOTES, and that is by construction: `tk-queue pack` already excluded every
-ticket of a second spec, so no spec but the lane's is in the list to be promoted into it. A
-package whose lane collapses — cut down, or taken out by the check above — runs with no
-accumulated lane, and the second spec's tickets return in the next package on the rung that
-excluded them. Capacity is left on the table there deliberately: one spec per package is what buys
-one branch, one campaign and one tail.
+**The recount only ever DEMOTES**, and no reader should go looking for a promotion: `tk-queue
+pack` already excluded every ticket of a second spec, so the lane's spec is the only one in the
+list that could hold it. A package whose lane collapses — cut down, or taken out by the check
+above — runs with no accumulated lane, and the second spec's tickets return in a later package on
+the rung that excluded them.
 
 **Two lines of the cut are not items.** A package with an accumulated lane pays its review once,
 over the accumulated diff, and pays a tail after its last ticket merges. Reserve both beside the
 lanes rather than inside them: the review line at parity with the summed lanes — the 1.11:1
 serialized ratio `WINDOW.md` measures, taken there as the planning number — and the tail line as
-one suite, the N criteria of the package's items, and the merge of `origin/main`. A cut that
+one suite, the N criteria of the package's items, and the merge of `origin/main`. Where a lane
+item's Effort printed `?`, the sum is a floor and says so; a parity line over an unreadable Effort
+is a number nobody can check. A cut that
 funds only the lanes has hidden about half of what the package will spend.
 
 The tail's three steps are not yet written into this file, and step 7's close does not yet know
@@ -138,7 +150,7 @@ free is a package whose last third is unfunded whichever step ends up running it
 the lane each one carries after the recount, the review line and the tail line stand beside them,
 every exclusion carries either the command that cleared it or the one-line verdict that it
 still holds, and every item left out is noted with the reason — the eligible ones dropped for
-size, the ones an open spec pull request took out, AND the ones `tk-queue pack` excluded, which
+size, the ones a spec's branch on the remote took out, AND the ones `tk-queue pack` excluded, which
 are not eligible at all and would otherwise leave no trace anywhere.
 
 ## 2. `pack` only: confirm
@@ -173,10 +185,11 @@ back without closing it, and prints whose claim it dropped.
 The package can lose an item after step 1's recount — the user unchecks one on the `pack` path,
 a claim comes back refused — so the floor is asked one last time here, against the items this
 package actually holds: count the tickets per Spec reference among the CLAIMED, and a spec that
-fell below two drops to the solo lane. The recount that decides the lane is the LAST one, so
-the step-1 report is amended to the lanes this one leaves rather than left standing on the
-lanes the cut printed. Only then create the accumulated branch, and push it before anything is
-dispatched from it:
+fell below two drops to the solo lane. It demotes and never promotes, for the reason step 1
+gives. This recount is the LAST one, so the step-1 report is amended to the lanes it leaves —
+and a lane that collapsed here takes its two cost lines with it, since a package with no
+accumulated lane pays neither the one campaign nor the tail. Only then create the accumulated
+branch, and push it before anything is dispatched from it:
 
 ```sh
 git worktree add "<path>/spec-<m>" -b "spec/<m>-<slug>" origin/main
@@ -191,13 +204,23 @@ that ref, and a branch that lives only in this worktree is reachable by neither.
 left no spec at the floor, this section does not run: the package has no spec branch and every
 item takes the solo lane.
 
-**A branch already on the remote is a package still running, or one that died.** The check in
-step 1 read that same ref, so reaching here with `spec/<m>-<slug>` already pushed means it
-appeared in between — and either way this package does not create it and does not push over it.
-Recovering a dead package's branch is a resumed generation's work, and the prose for that is
-still being written; until it arrives, take the spec out of the package on step 1's rung, with
-the branch as its value, and say in the report that the branch was found and left untouched.
-Force-pushing it would destroy the merges a sibling package is building on.
+**Ask the remote once more, for every spec still in the package.** Step 1 asked before the cut
+and the claims, and a sibling package can push a spec's branch in the window between — for the
+lane's spec and for every `avulso (<ref>)` one alike, since a solo ticket dispatched over a spec
+already under way opens the second pull request the check exists to prevent. Run step 1's
+`git ls-remote` again, on the same terms.
+
+**A branch already there is a package still running, or one that died.** Either way this package
+does not create it and does not push over it: force-pushing would destroy the merges a sibling
+package is building on. Recovering a dead package's branch is a resumed generation's work, and
+the prose for that is still being written; until it arrives, take that spec's tickets out of the
+package on step 1's rung, with the branch as their value, and say in the report that the branch
+was found and left untouched.
+
+**Release what you take out here.** Those tickets were claimed at the top of this step, and a
+claim outlives the package that took it: `tk-queue release "<id>"` on each, which prints whose
+claim it dropped. An item that leaves the package still claimed is an item every later package is
+refused, with no session alive to explain why.
 
 **Each ticket of the lane starts from the branch's pushed tip.** Dispatch them one at a time, in
 the queue's order, each into a worktree of its own on `spec/<m>/T<id>`, cut from
@@ -240,7 +263,8 @@ Two parts, both produced here and neither delegated back:
 
 - **The contract block**, pasted verbatim from `../../bin/tk-contract --role <row>`: the
   ceilings, that role's model/effort/venue, and the return contract it owes. The row for a run
-  executing a package item is `implementer`; any other run takes the row of the role it is
+  executing a package item is `implementer`, or `implementer-spec` where the item is on a spec's
+  accumulated lane; any other run takes the row of the role it is
   dispatched as, and a role the table has no row for is a deliberate choice, logged like any
   other deviation. Generate it per dispatch rather than typing it from memory — a hand-written
   block is a fork of the policy. Pass `--fleet N` only when something else shares this
@@ -264,26 +288,19 @@ Two parts, both produced here and neither delegated back:
   On the spec lane the resolved reference stays HERE: the run opens no pull request, and the
   orchestrator is what writes the closing lines into the body of the lane's pull request.
 
-**On the spec lane, one line of the generated block is overridden here, and the override costs
-its line in step 6.** The `implementer` row carries `pr = opens`, so the block hands the run a
-"Closing the ticket" section telling it to open a pull request and write the closing line into
-the body. On this lane the orchestrator owns the branch, the pull request and its body, so the
-dispatch says the run opens none and hands back its pushed branch instead:
+**A spec-lane run takes the row `implementer-spec`, not `implementer`.** The two differ in one
+cell — `pr = none` against `pr = opens` — and that cell is what decides whether the generated
+block carries the "Closing the ticket" section at all. On this lane the orchestrator owns the
+branch, the pull request and its body, so the run must not be told to write one; generating the
+block from the right row is how it is not told, and it costs no deviation line, because the row
+is the default rather than a departure from it. Overriding `implementer` in the prompt instead
+was measured failing: the block states that where it and the surrounding prose disagree the block
+wins, and the run opens the per-ticket pull request the lane exists to prevent.
 
-    implementer: pr opens→none — on the spec lane the PR is the orchestrator's
-
-Say it as an instruction, not as a preference, because the block claims precedence over the prose
-around it. That claim governs the VALUES it parsed from the role table — model, effort, venue,
-the ceilings — and its "Closing the ticket" section is conditional on a pull request the run
-opens; told to open none, the run has no pull request for that section to describe. A dispatch
-that leaves the reader to arbitrate between the two gets the per-ticket pull request this lane
-exists to prevent, so the dispatch says which of them is answering the question.
-
-The block's checkpoint invariant is the half that stands unchanged, and it is load-bearing here:
-commit and push at every north star, onto `spec/<m>/T<id>`. That pushed WIP is what a re-dispatch
-resumes from and what the orchestrator reads when it verifies by artefact — work left in the
-implementer's worktree is reachable by nobody, and a re-dispatch cut from the tip would start the
-ticket over.
+The checkpoint invariant is on both rows, and it is load-bearing here: commit and push at every
+north star, onto `spec/<m>/T<id>`. That pushed WIP is what a re-dispatch resumes from and what the
+orchestrator reads when it verifies by artefact — work left in the implementer's worktree is
+reachable by nobody, and a re-dispatch cut from the tip would start the ticket over.
 
 **Count each run by the venue signature it returns, never by the flag you passed** — a
 signature that came back local counts against the local ceiling. The measurement behind that

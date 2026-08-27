@@ -59,6 +59,7 @@ A consumer that copies the values into itself has forked the policy — read the
 | verifier-2 | parent | high | local | none | none | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
 | tiebreak | parent | high | local | none | none | Settles a split verdict. Effort is pinned. |
 | implementer | parent | session | local | opens | required | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
+| implementer-spec | parent | session | local | none | required | A package item on a spec's accumulated lane. The orchestrator owns that branch's pull request and writes its body, so this role opens none and hands back its pushed branch. Same downgrade as implementer. |
 | research | sonnet | session | cloud | none | none | Rises to parent when the question turns on fine judgement. Log the rise. |
 | review | sonnet | session | cloud | none | none | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
 | explore | haiku | session | local | none | none | Pure search and file location, no verdict. |
