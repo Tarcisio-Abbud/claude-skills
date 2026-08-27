@@ -822,6 +822,93 @@ class TestTheFrontmatterBoundary(MeasureTest):
                           "description_words", 2)
 
 
+class TestTheFrontmatterShapes(MeasureTest):
+    """Every shape a real mapping is written in has to pass the gate, and the
+    campaign found the gate rejecting two of them. A rejected block is read as
+    body prose, delimiters and all — the file's counts move and nothing says why."""
+
+    def test_a_quoted_key_is_a_key(self):
+        # the changesets format: 17 of the 165 files on this machine that open
+        # with `---` were read as prose while this was bare-word only
+        self.assertMetric('---\n"pkg-name": patch\ndescription: one two three\n---\n\nbody\n',
+                          "description_words", 3)
+
+    def test_a_single_quoted_key_is_a_key_too(self):
+        self.assertMetric("---\n'pkg-name': patch\ndescription: one two\n---\n\nbody\n",
+                          "description_words", 2)
+
+    def test_a_yaml_comment_does_not_disqualify_the_block(self):
+        self.assertMetric("---\n# a normal YAML comment\ndescription: one two three\n"
+                          "---\n\nbody\n", "description_words", 3)
+
+    def test_a_blank_line_inside_the_block_does_not_disqualify_it(self):
+        # an empty string is not `isspace()`, so without the skip the blank line
+        # fails the shape test and the whole frontmatter is read as body
+        self.assertMetric("---\nname: x\n\ndescription: one two three four\n---\n\n"
+                          "Body prose here now.\n", "description_words", 4)
+
+    def test_a_line_opening_with_a_digit_is_not_a_key(self):
+        # `2026-08-27: the day` is prose with a colon in it, and a block holding
+        # one is a document that opened with a thematic break
+        self.assertMetric("---\n2026-08-27: the day it was measured\n---\n\n"
+                          "one two three\n", "body_words", 9)
+
+    def test_the_last_description_wins_when_the_key_is_repeated(self):
+        # malformed YAML either way; reporting the shadowed value is reporting a
+        # number about a line no loader reads
+        self.assertMetric("---\ndescription: first value here\n"
+                          "description: the second value that wins\n---\n\nbody\n",
+                          "description_words", 5)
+
+
+class TestWhatIsNotAPointer(MeasureTest):
+    """A pointer is a file of this tree. The prefix and suffix tests each admitted
+    a whole class that is not one, and this repo's own README carried 21 of them."""
+
+    def test_a_slash_command_is_not_a_pointer(self):
+        # `/tk` appears eleven times in this repo's README; a command is a slash
+        # and a word, exactly like a one-segment path
+        self.assertMetric(QUIET + "\nRun /tk and then /clear before /compact.\n",
+                          "pointers", 0)
+
+    def test_a_closing_html_tag_is_not_a_pointer(self):
+        self.assertMetric(QUIET + "\nWrite <div>alpha</div> and <b>beta</b> here.\n",
+                          "pointers", 0)
+
+    def test_an_absolute_path_of_two_segments_is_still_a_pointer(self):
+        self.assertMetric(QUIET + "\nThe file is `/etc/hosts` on this machine.\n",
+                          "pointers", 1)
+
+    def test_a_scheme_less_repository_host_is_not_a_pointer(self):
+        # it ends in `.md` and it is not a file of this tree; the dot in the
+        # segment before the first slash is what says so
+        self.assertMetric(QUIET + "\nSee github.com/anthropics/claude-code/README.md now.\n",
+                          "pointers", 0)
+
+    def test_a_relative_path_prefix_is_not_a_hostname(self):
+        # `./` and `../` put a dot in the segment before the first slash, which
+        # is the very thing that marks a host; the leading dot is the exception
+        self.assertMetric(QUIET + "\nRead `./foo.md` and `../bar/baz.md` next.\n",
+                          "pointers", 2)
+
+    def test_a_web_address_written_with_www_is_not_prose_either(self):
+        # the `www.` branch of WEB_ADDRESS earns its place here rather than in
+        # the pointer count: `never` inside a hostname is not a negation
+        self.assertMetric(QUIET + "\nSee www.never-mind.com for it.\n", "negations", 0)
+
+    def test_a_repo_relative_path_of_two_segments_is_still_a_pointer(self):
+        self.assertMetric(QUIET + "\nThe script is `docs/prune/baseline.py` here.\n",
+                          "pointers", 1)
+
+
+class TestTheBlankRole(MeasureTest):
+    def test_a_blank_line_ends_a_chunk_by_its_role(self):
+        # `classify` decides once what a line is; the chunker reads that decision
+        # rather than making the same judgement a second time
+        self.assertMetric("First paragraph with no full stop\n\n"
+                          "second paragraph with no full stop\n", "sentences", 2)
+
+
 class TestThematicBreaks(MeasureTest):
     def test_a_dashed_rule_ends_the_line_above_it(self):
         # `---` is the form written by hand; the starred one is a separate
@@ -877,6 +964,33 @@ class TestTheContextWindow(MeasureTest):
         self.assertEqual(json.loads(r.stdout)["metrics"]["negations"], 12000)
 
 
+class TestTheWindowItself(MeasureTest):
+    """The width and the two ellipsis marks are what make a window a window. Each
+    survived mutation until it was named here."""
+
+    def negation_on_a_long_line(self, before, after):
+        line = "alpha " * before + "never " + "omega " * after
+        return self.report(self.write(QUIET + "\n" + line + "\n"))["negations"][0]
+
+    def test_a_window_cut_from_a_long_line_is_a_hundred_characters(self):
+        found = self.negation_on_a_long_line(30, 30)
+        body = found["context"].strip("…")
+        self.assertEqual(len(body), 100)
+
+    def test_a_window_that_starts_inside_the_line_opens_with_an_ellipsis(self):
+        self.assertTrue(self.negation_on_a_long_line(30, 30)["context"].startswith("…"))
+
+    def test_a_window_that_reaches_the_head_of_the_line_carries_no_opening_ellipsis(self):
+        # the match sits at the front, so there is nothing to the left to elide
+        self.assertFalse(self.negation_on_a_long_line(0, 40)["context"].startswith("…"))
+
+    def test_a_window_that_stops_short_of_the_end_closes_with_an_ellipsis(self):
+        self.assertTrue(self.negation_on_a_long_line(30, 30)["context"].endswith("…"))
+
+    def test_a_window_that_reaches_the_end_of_the_line_carries_no_closing_ellipsis(self):
+        self.assertFalse(self.negation_on_a_long_line(40, 0)["context"].endswith("…"))
+
+
 class TestWhatIsAPointer(MeasureTest):
     """The suffix list and the prefix list are each one branch of the same test,
     and a branch nothing exercises is a branch nobody can tell is gone."""
@@ -899,10 +1013,6 @@ class TestWhatIsAPointer(MeasureTest):
         # without the dot test the tail of a dotless token is the token itself,
         # and the word `md` in a sentence becomes a file
         self.assertMetric(QUIET + "\nThe files are md and nothing else.\n",
-                          "pointers", 0)
-
-    def test_a_web_address_with_no_scheme_is_not_a_pointer(self):
-        self.assertMetric(QUIET + "\nSee www.example.com/index.html for more.\n",
                           "pointers", 0)
 
     def test_a_token_longer_than_any_filename_is_not_a_pointer(self):

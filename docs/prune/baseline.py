@@ -24,6 +24,17 @@ BIN = os.path.join("tk", "bin", "tk-prune-measure")
 # A hand-kept list is a list someone forgets, and a metric added to the bin would
 # then drop out of every later baseline in silence.
 def columns(report):
+    """The bin's metrics in the bin's order, each with the heading it prints under.
+
+    A metric the bin grew and this file has no heading for stops the run and
+    says which one. It fails LOUD on purpose: the alternative is a baseline
+    quietly missing a column, and the whole point of this document is that a
+    later slice measures against it.
+    """
+    missing = [key for key in report["metrics"] if key not in HEADINGS]
+    if missing:
+        sys.exit(f"baseline.py: no heading for {', '.join(missing)} — the bin reports "
+                 f"a metric this script has no column for. Add it to HEADINGS.")
     return [(key, HEADINGS[key]) for key in report["metrics"]]
 
 # The short heading each metric gets. The narrow headings are the point: forty-two
@@ -78,13 +89,26 @@ def over(rows, key=None):
 
 
 def read_ceilings(*sets):
-    """The ceilings the bin carries, taken from a file that HAS a value for each.
+    """The ceilings the bin carries, read off any measured file.
 
-    Reading them off whichever file sorted first would take them from a file that
-    may report a metric as absent; a ceiling is the bin's, not the file's, so the
-    file with the most marks is the one that shows all of them.
+    A ceiling belongs to the bin and not to the file, and `marks()` emits a row
+    for every metric that has one whatever the file said — a `description` the
+    file lacks is marked `n/a`, not dropped. So every report carries the same
+    rows and the first one answers.
     """
-    return max((r["targets"] for rows in sets for _, r in rows), key=len)
+    for rows in sets:
+        for _, report in rows:
+            return report["targets"]
+    return []
+
+
+def ratio(a, b):
+    """`a / b`, or None when there is no ratio to state.
+
+    A calibration set with no negations in it at all is a set this document has
+    nothing to say about, and saying it as a crash is saying it badly.
+    """
+    return round(a / b, 1) if b else None
 
 
 def main(date, cache):
@@ -102,8 +126,8 @@ def main(date, cache):
     per_ceiling = "\n".join(
         f"| `{key}` | {value} | {over(tk, key)}/{len(tk)} | {over(matt, key)}/{len(matt)} |"
         for key, value in ceilings)
-    word_ratio = round(mean(tk, "body_words") / mean(matt, "body_words"), 1)
-    neg_ratio = round(mean(tk, "negations") / mean(matt, "negations"), 1)
+    word_ratio = ratio(mean(tk, "body_words"), mean(matt, "body_words"))
+    neg_ratio = ratio(mean(tk, "negations"), mean(matt, "negations"))
     matt_max_over = over(matt, "max_sentence_words")
     cut = [(name, r["unclosed_fence"]) for rows in (tk, matt) for name, r in rows
            if r["unclosed_fence"] is not None]

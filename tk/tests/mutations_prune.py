@@ -195,8 +195,8 @@ MUTATIONS = [
      ["TestTheSentenceUnit.test_a_heading_ends_a_sentence_at_the_end_of_its_line"]),
 
     ("T185 a blank line does not end a sentence, so two paragraphs run together",
-     '        if not line.text:\n            flush(chunk)\n            continue',
-     '        if not line.text:\n            continue',
+     '        if line.role == "blank":\n            flush(chunk)\n            continue',
+     '        if line.role == "blank":\n            continue',
      ["TestTheSentenceUnit.test_a_blank_line_ends_a_sentence_that_never_got_a_full_stop"]),
 
     ("T185 anything at all counts as a word, punctuation rows and dashes included",
@@ -222,8 +222,8 @@ MUTATIONS = [
 
     # -- the description ----------------------------------------------------
     ("T185 a file with no description at all reports one of no words",
-     "        return \" \".join(p for p in parts if p).strip() or None\n    return None",
-     "        return \" \".join(p for p in parts if p).strip() or None\n    return \"\"",
+     "        found = \" \".join(p for p in parts if p).strip() or None\n    return found",
+     "        found = \" \".join(p for p in parts if p).strip() or None\n    return \"\"",
      ["TestTheDescription.test_a_file_with_no_frontmatter_reports_the_description_as_absent"]),
 
     ("T185 the description is read to its first word only",
@@ -243,8 +243,8 @@ MUTATIONS = [
      ["TestTheDescription.test_a_key_after_the_description_ends_it"]),
 
     ("T185 an absent description is reported as an empty one rather than as absent",
-     '        return " ".join(p for p in parts if p).strip() or None',
-     '        return " ".join(p for p in parts if p).strip() or ""',
+     '        found = " ".join(p for p in parts if p).strip() or None',
+     '        found = " ".join(p for p in parts if p).strip() or ""',
      ["TestTheDescription.test_a_description_key_with_no_value_is_absent"]),
 
     # -- inline evidence ----------------------------------------------------
@@ -303,7 +303,7 @@ MUTATIONS = [
      ["TestPointers.test_a_long_run_of_dotted_text_measures_promptly"]),
 
     ("T185 a path-shaped token is a pointer whatever its tail",
-     '            if (token.startswith(POINTER_PREFIXES)\n                    or ("." in token\n                        and token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):',
+     '            if (token.startswith(POINTER_PREFIXES) or rooted_path(token)\n                    or ("." in token\n                        and token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):',
      '            if True:',
      ["TestPointers.test_a_slashed_word_that_is_not_a_path_is_not_a_pointer"]),
 
@@ -552,7 +552,7 @@ MUTATIONS = [
     ('T185 a scheme-less web address is read as a file in this tree',
      'WEB_ADDRESS = re.compile(r"(?i)\\b(?:[a-z][a-z0-9+.-]{0,31}://|www\\.)\\S+")',
      'WEB_ADDRESS = re.compile(r"(?i)\\b(?:[a-z][a-z0-9+.-]{0,31}://)\\S+")',
-     ['TestWhatIsAPointer.test_a_web_address_with_no_scheme_is_not_a_pointer']),
+     ['TestWhatIsNotAPointer.test_a_web_address_written_with_www_is_not_prose_either']),
 
     ('T185 the scheme is bounded so tightly that no real one matches',
      'WEB_ADDRESS = re.compile(r"(?i)\\b(?:[a-z][a-z0-9+.-]{0,31}://|www\\.)\\S+")',
@@ -560,7 +560,7 @@ MUTATIONS = [
      ['TestPointers.test_a_url_is_not_a_pointer_to_a_file_in_this_tree']),
 
     ('T185 a token of any length is reported as a path',
-     '            if len(token) > POINTER_MAX:\n                continue',
+     '            if len(token) > POINTER_MAX or web_host(token):\n                continue',
      '            if False:\n                continue',
      ['TestWhatIsAPointer.test_a_token_longer_than_any_filename_is_not_a_pointer']),
 
@@ -574,10 +574,10 @@ MUTATIONS = [
      '                    or (token.rsplit(".", 1)[-1].lower() in POINTER_SUFFIXES)):',
      ['TestWhatIsAPointer.test_a_bare_word_spelt_like_an_extension_is_not_a_pointer']),
 
-    ('T185 an extensionless absolute path is no longer a pointer',
-     'POINTER_PREFIXES = ("/", "./", "../", "~/")',
+    ('T185 the home-relative prefix is dropped, so `~/…` is no longer a pointer',
      'POINTER_PREFIXES = ("./", "../", "~/")',
-     ['TestWhatIsAPointer.test_an_absolute_path_with_no_extension_is_a_pointer']),
+     'POINTER_PREFIXES = ("./", "../")',
+     ['TestPointers.test_a_home_relative_path_is_a_pointer']),
 
     ('T185 half the extensions the bin knows are dropped',
      'POINTER_SUFFIXES = ("md", "py", "sh", "json", "html", "txt", "yml", "yaml", "toml")',
@@ -624,6 +624,93 @@ MUTATIONS = [
      "    return False",
      ["TestTheFrontmatterBoundary.test_a_real_mapping_between_two_rules_is_still_frontmatter",
       "TestTheFrontmatterBoundary.test_a_mapping_whose_value_wraps_is_still_frontmatter"]),
+
+    # -- the round-3 correction batch ------------------------------------
+    ('T185 a quoted key is not a key, so the changesets format reads as prose',
+     'FM_KEY = re.compile(r"""^(?:[A-Za-z_][\\w.-]*|"[^"]+"|\'[^\']+\')\\s*:""")',
+     'FM_KEY = re.compile(r"""^(?:[A-Za-z_][\\w.-]*)\\s*:""")',
+     ['TestTheFrontmatterShapes.test_a_quoted_key_is_a_key', 'TestTheFrontmatterShapes.test_a_single_quoted_key_is_a_key_too']),
+
+    ('T185 a key may open with a digit, so a dated line of prose is a mapping',
+     'FM_KEY = re.compile(r"""^(?:[A-Za-z_][\\w.-]*|"[^"]+"|\'[^\']+\')\\s*:""")',
+     'FM_KEY = re.compile(r"""^(?:[\\w.-]*|"[^"]+"|\'[^\']+\')\\s*:""")',
+     ['TestTheFrontmatterShapes.test_a_line_opening_with_a_digit_is_not_a_key']),
+
+    ('T185 a YAML comment disqualifies the block it sits in',
+     '        if FM_COMMENT.match(line):\n            continue\n',
+     '',
+     ['TestTheFrontmatterShapes.test_a_yaml_comment_does_not_disqualify_the_block']),
+
+    ('T185 a blank line disqualifies the frontmatter it sits in',
+     '        if not line.strip():\n            continue\n        if FM_COMMENT.match(line):',
+     '        if FM_COMMENT.match(line):',
+     ['TestTheFrontmatterShapes.test_a_blank_line_inside_the_block_does_not_disqualify_it']),
+
+    ('T185 a repeated description key reports the value a loader would shadow',
+     '        found = " ".join(p for p in parts if p).strip() or None\n    return found',
+     '        return " ".join(p for p in parts if p).strip() or None\n    return found',
+     ['TestTheFrontmatterShapes.test_the_last_description_wins_when_the_key_is_repeated']),
+
+    ('T185 a bare slash opens a pointer again, so every slash command is a file',
+     'POINTER_PREFIXES = ("./", "../", "~/")',
+     'POINTER_PREFIXES = ("/", "./", "../", "~/")',
+     ['TestWhatIsNotAPointer.test_a_slash_command_is_not_a_pointer', 'TestWhatIsNotAPointer.test_a_closing_html_tag_is_not_a_pointer']),
+
+    ('T185 one segment is enough to make an absolute path',
+     '    return token.startswith("/") and token.count("/") > 1',
+     '    return token.startswith("/") and token.count("/") > 0',
+     ['TestWhatIsNotAPointer.test_a_slash_command_is_not_a_pointer']),
+
+    ('T185 an absolute path stops being a pointer at all',
+     '            if (token.startswith(POINTER_PREFIXES) or rooted_path(token)',
+     '            if (token.startswith(POINTER_PREFIXES)',
+     ['TestWhatIsNotAPointer.test_an_absolute_path_of_two_segments_is_still_a_pointer',
+      'TestWhatIsAPointer.test_an_absolute_path_with_no_extension_is_a_pointer']),
+
+    ('T185 a repository host is read as a file of this tree',
+     '            if len(token) > POINTER_MAX or web_host(token):',
+     '            if len(token) > POINTER_MAX:',
+     ['TestWhatIsNotAPointer.test_a_scheme_less_repository_host_is_not_a_pointer']),
+
+    ('T185 a dot directory is read as a hostname',
+     '    return "/" in token and not head.startswith(".") and "." in head',
+     '    return "/" in token and "." in head',
+     ['TestWhatIsNotAPointer.test_a_relative_path_prefix_is_not_a_hostname']),
+
+    ('T185 a path is a host whenever any segment of it carries a dot',
+     '    head = token.split("/", 1)[0]\n    return "/" in token and not head.startswith(".") and "." in head',
+     '    head = token\n    return "/" in token and not head.startswith(".") and "." in head',
+     ['TestWhatIsNotAPointer.test_a_repo_relative_path_of_two_segments_is_still_a_pointer']),
+
+    ('T185 every line is prose, so a blank one no longer ends a chunk',
+     '        role = "prose" if text else "blank"',
+     '        role = "prose"',
+     ['TestTheBlankRole.test_a_blank_line_ends_a_chunk_by_its_role']),
+
+    ('T185 the context window is cut to a width no reader asked for',
+     '    end = min(len(collapsed), start + 100)',
+     '    end = min(len(collapsed), start + 60)',
+     ['TestTheWindowItself.test_a_window_cut_from_a_long_line_is_a_hundred_characters']),
+
+    ('T185 a window always opens with an ellipsis, whatever it starts at',
+     'return ("…" if start else "") + collapsed[start:end]',
+     'return "…" + collapsed[start:end]',
+     ['TestTheWindowItself.test_a_window_that_reaches_the_head_of_the_line_carries_no_opening_ellipsis']),
+
+    ('T185 a window never says it opened inside the line',
+     'return ("…" if start else "") + collapsed[start:end]',
+     'return collapsed[start:end]',
+     ['TestTheWindowItself.test_a_window_that_starts_inside_the_line_opens_with_an_ellipsis']),
+
+    ('T185 a window always closes with an ellipsis, whatever it ends at',
+     '+ ("…" if end < len(collapsed) else "")',
+     '+ "…"',
+     ['TestTheWindowItself.test_a_window_that_reaches_the_end_of_the_line_carries_no_closing_ellipsis']),
+
+    ('T185 a window never says it stopped short of the end',
+     '+ ("…" if end < len(collapsed) else "")',
+     '+ ""',
+     ['TestTheWindowItself.test_a_window_that_stops_short_of_the_end_closes_with_an_ellipsis']),
 ]
 
 if __name__ == "__main__":
