@@ -158,3 +158,8 @@ orchestrator assigns. One exception, and it holds only with all three locks clos
    or a spec decision reserved to the human stays with the human.
 2. The consult is **one-shot**: one question, one answer, no tool loop.
 3. It is **logged as a deviation**, in the same one-line format as any other.
+
+A second exception is the human's own: `/tk:second-opinion` dispatches a Fable subagent because
+the user typed the command — the session choice, made by the person who owns it. Its `consensus`
+mode loops, so lock 2 does not hold there; the turn budget is the lock instead. The role has no
+row, and the skill writes the deviation line, so the report reads the same either way.
