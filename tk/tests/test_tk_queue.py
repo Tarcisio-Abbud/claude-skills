@@ -2586,13 +2586,11 @@ LEGACY = ("- [ ] **T%03d** — algo\n"
           "**Source:** 2026-08-13\n")
 
 
-class TestPack(QueueTest):
-    """The package an unattended session runs was filtered by eye until now, from
-    `list` plus prose. Two things move when it becomes a command: the filter stops
-    being re-derived every session, and — the reason the ticket exists — every
-    exclusion becomes VISIBLE. An item dropped for its Risk or its Env leaves no
-    trace anywhere else; silently absent, it is an item the user never learns
-    about, on a queue they believe they have seen."""
+class PackOutput(QueueTest):
+    """The pack output's parser, for every class that reads it. ONE copy: two
+    tests stripping the same columns their own way is how one of them comes to
+    assert a shape the command does not print — the answer this script's own
+    FIELD_BODY_RE gives about its readers. Carries no test of its own."""
 
     # --- helpers ----------------------------------------------------------
     def pack(self):
@@ -2629,13 +2627,32 @@ class TestPack(QueueTest):
     def repairs(self, out):
         return "\n".join(self.blocks(out)["repairs"])
 
+    def lanes(self, out):
+        """{label: lane} for the eligible block, read from the COLUMN — a test
+        about the rule must not fall over the width of a title or an Effort."""
+        res = {}
+        for ln in self.blocks(out)["eligible"]:
+            label, _effort, lane = re.split(r"\s{2,}", ln.strip())[:3]
+            res[label] = lane
+        return res
+
+
+class TestPack(PackOutput):
+    """The package an unattended session runs was filtered by eye until now, from
+    `list` plus prose. Two things move when it becomes a command: the filter stops
+    being re-derived every session, and — the reason the ticket exists — every
+    exclusion becomes VISIBLE. An item dropped for its Risk or its Env leaves no
+    trace anywhere else; silently absent, it is an item the user never learns
+    about, on a queue they believe they have seen."""
+
     # --- the two lists ----------------------------------------------------
     def test_an_eligible_item_carries_its_id_effort_and_text(self):
         """Effort is in the package line because the caller sizes the package by it
         (3-6 items, ~2h) — raw, never summed: summing free text would put a hidden
         heuristic in a queue whose whole contract is that it has none."""
         self.seed(item(1, "um"))
-        self.assertEqual(self.blocks(self.pack())["eligible"], ["T001  S             um"])
+        self.assertEqual(self.blocks(self.pack())["eligible"],
+                         ["T001  S             avulso                um"])
 
     def test_the_eligible_follow_the_queues_own_order(self):
         """Priority IS the order of the file, global. Anything that sorted or
@@ -2691,8 +2708,15 @@ class TestPack(QueueTest):
         output whose consumer is a skill's prose rather than a person who would
         notice. Both halves of the AC are here: the shape is documented, and the
         documentation is executed."""
-        self.seed(item(7, "the item's text", effort="S (~20min)")
+        self.seed(ticket_item(7, "the first ticket of the spec", spec="ambiente#171",
+                              ticket="ambiente#172", effort="S (~20min)")
+                  + ticket_item(8, "the second one", spec="ambiente#171",
+                                ticket="ambiente#173", effort="M (~1h)")
+                  + item(9, "the item's text")
+                  + ticket_item(10, "a lone ticket, under the floor", spec="ambiente#159")
                   + decision_item(12, "another item")
+                  + ticket_item(21, "a ticket of a second spec", spec="ambiente#144")
+                  + ticket_item(22, "and its sibling", spec="ambiente#144")
                   + "- [ ] **T031** — a legacy item **Effort:** S. **Criterion:** A: x. "
                     "**Source:** 2026-08-13\n")
         r = self.run_tk("pack")
@@ -2945,7 +2969,8 @@ class TestPack(QueueTest):
         candidate whose cost the caller estimates — not an item dropped over a field
         this filter was never about."""
         self.seed(item(1, "um").replace(" **Effort:** S.", "", 1))
-        self.assertEqual(self.blocks(self.pack())["eligible"], ["T001  ?             um"])
+        self.assertEqual(self.blocks(self.pack())["eligible"],
+                         ["T001  ?             avulso                um"])
 
     def test_a_repair_is_printed_ONCE_however_many_items_need_it(self):
         """Six consecutive items carrying one defect is the real queue's shape, and
@@ -2956,6 +2981,447 @@ class TestPack(QueueTest):
         self.assertEqual(len(self.blocks(out)["excluded"]), 3)
         self.assertEqual(len(self.blocks(out)["repairs"]), 1)
 
+
+# --- T172: provenance fields, and the lane the package reads from them -----
+
+def ticket_item(iid, text, spec=None, ticket=None, **kw):
+    """An item as `add --ticket/--spec` writes one: the two fields sit between
+    the Project tag and Source, which is where compose_item puts them."""
+    fields = ""
+    if ticket:
+        fields += f" **Ticket:** {ticket}."
+    if spec:
+        fields += f" **Spec:** {spec}."
+    return item(iid, text, **kw).replace(" **Source:**", fields + " **Source:**", 1)
+
+
+class TestProvenanceFields(QueueTest):
+    """Who imports a ticket into the queue records where it came from, so the
+    package reads the lane as a FIELD instead of guessing it from prose. Both
+    values are refs (`<repo>#<n>`), and a ref is validated by SHAPE — a typo'd
+    one feeds a `closes` line that closes nothing, or a lane named after an
+    issue that does not exist."""
+
+    def add(self, *extra, text="importado"):
+        return self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                           "--criterion", "A: x", *extra)
+
+    def test_both_fields_are_written_at_the_writers_position(self):
+        """In the chain, after **Class:** — the only position the gates read a
+        field at. Written anywhere else the value is there and no reader may use
+        it, which is worse than absent: absent is visible."""
+        self.seed()
+        r = self.add("--ticket", "homeserver-ambiente#172", "--spec", "homeserver-ambiente#171")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Ticket:** homeserver-ambiente#172. "
+                      "**Spec:** homeserver-ambiente#171. **Source:**", self.body())
+
+    def test_the_values_round_trip_byte_for_byte(self):
+        """The ticket's criterion, through the readers that exist: `pack` prints
+        the lane built from the Spec and writes nothing, `list` shows the item and
+        writes nothing, and the file still carries both values character for
+        character. A reader that rewrote what it read is the defect no assertion on
+        its OUTPUT would show."""
+        self.seed()
+        self.assertEqual(self.add("--ticket", "claude-skills#26",
+                                  "--spec", "homeserver-ambiente#171").returncode, 0)
+        before = self.body()
+        self.assertEqual(self.run_tk("list").returncode, 0)
+        self.assertEqual(self.run_tk("pack").returncode, 0)
+        self.assertEqual(self.body(), before)
+        self.assertIn("**Ticket:** claude-skills#26.", before)
+        self.assertIn("**Spec:** homeserver-ambiente#171.", before)
+
+    def test_an_add_without_the_flags_writes_the_item_of_today(self):
+        """The whole file, byte for byte, against the same add on the version
+        before the flags existed. Two new optional fields are the cheapest place
+        to change the shape of EVERY item by accident."""
+        self.seed()
+        self.assertEqual(self.add(text="sem procedência").returncode, 0)
+        today = datetime.date.today().isoformat()
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T001** — sem procedência **Class:** AUTONOMOUS. "
+                         "**Effort:** S. **Criterion:** A: x. "
+                         f"**Source:** {today}\n")
+
+    def test_a_value_outside_the_ref_shape_is_refused(self):
+        for flag in ("--ticket", "--spec"):
+            # `-repo#1` is NOT in this list and may not be: argparse takes any
+            # value starting with `-` as an unknown option and refuses it before
+            # `validate_ref` runs, so it would prove the flag exists and nothing
+            # about the guard. `_repo#1` and `.repo#1` are the same shape that
+            # DOES reach it — the leading-character class had no test without them
+            for junk in ("172", "#172", "repo#", "repo#abc", "repo #172", "",
+                         "owner/repo#172", "repo#172x", "_repo#1", ".repo#1",
+                         "repo#1234567890", "r" * 101 + "#1", "repo#1.2",
+                         "none", "**Spec:** repo#1"):
+                with self.subTest(flag=flag, junk=junk):
+                    self.seed()
+                    r = self.add(flag, junk)
+                    self.assertNotEqual(r.returncode, 0, f"{flag} {junk!r} was accepted")
+                    self.assertNotIn("- [ ] ", self.body(), "the item was written anyway")
+
+    def test_a_well_formed_ref_is_accepted_in_the_shapes_that_occur(self):
+        for ref in ("repo#1", "homeserver-ambiente#172", "claude-skills#26",
+                    "a.b_c-d#999999", "repo#123456789", "r" * 100 + "#1"):
+            with self.subTest(ref=ref):
+                self.seed()
+                r = self.add("--spec", ref)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn(f"**Spec:** {ref}.", self.body())
+
+    def test_the_flags_are_independent(self):
+        """`--ticket` feeds the `closes` line and `--spec` decides the lane: an
+        imported ticket may legitimately have one and not the other, so coupling
+        them would refuse a real case to enforce a rule nothing needs."""
+        self.seed()
+        self.assertEqual(self.add("--ticket", "repo#1").returncode, 0)
+        body = self.body()
+        self.assertIn("**Ticket:** repo#1.", body)
+        self.assertNotIn("**Spec:**", body)
+
+
+class TestPackLane(PackOutput):
+    """The lane is what the afk orchestrator dispatches by, and it is read from
+    the QUEUE — never from GitHub, which `pack` does not touch. Tickets of one
+    spec share an accumulated branch; everything else is a PR of its own."""
+
+    def test_an_item_with_no_spec_is_avulso(self):
+        self.seed(item(1, "um"))
+        self.assertEqual(self.lanes(self.pack()), {"T001": "avulso"})
+
+    def test_two_tickets_of_one_spec_share_the_accumulated_lane(self):
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#171"))
+        self.assertEqual(self.lanes(self.pack()), {"T001": "spec repo#171", "T002": "spec repo#171"})
+
+    def test_the_two_lanes_coexist_in_one_package(self):
+        """Not deferring the avulsos is the point: leaving them out would leave
+        capacity on the table whenever the spec has few tickets."""
+        self.seed(ticket_item(1, "um", spec="repo#171") + item(2, "dois")
+                  + ticket_item(3, "tres", spec="repo#171"))
+        self.assertEqual(self.lanes(self.pack()),
+                         {"T001": "spec repo#171", "T002": "avulso", "T003": "spec repo#171"})
+
+    def test_a_single_ticket_of_a_spec_is_a_LANE_not_an_exclusion(self):
+        """The floor: a draft PR and a tail cost more than one item is worth, so a
+        lone ticket goes out as an ordinary PR. It is still IN the package — the
+        failure to avoid is turning a floor into a filter."""
+        self.seed(ticket_item(1, "um", spec="repo#171") + item(2, "dois"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T001": "avulso (repo#171)", "T002": "avulso"})
+        self.assertEqual(self.blocks(out)["excluded"], [])
+
+    def test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason(self):
+        """One spec per package: one branch, one campaign, one tail. The excluded
+        ones come back next package, and the reason names the spec that took the
+        lane so the caller does not have to work out which."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#180")
+                  + ticket_item(3, "tres", spec="repo#171")
+                  + ticket_item(4, "quatro", spec="repo#180"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T001": "spec repo#171", "T003": "spec repo#171"})
+        for label in ("T002", "T004"):
+            self.assertEqual(self.reason(out, label), "lane de spec ocupada por repo#171; esta é repo#180")
+
+    def test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order(self):
+        """Both specs reach the floor, so ORDER is the only thing that can decide.
+        Picking the spec with the most tickets — or the last one seen — would
+        re-prioritise the queue silently, from a heuristic nothing here has."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#171")
+                  + ticket_item(3, "tres", spec="repo#180")
+                  + ticket_item(4, "quatro", spec="repo#180"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T001": "spec repo#171", "T002": "spec repo#171"})
+        for label in ("T003", "T004"):
+            self.assertEqual(self.reason(out, label), "lane de spec ocupada por repo#171; esta é repo#180")
+
+    def test_a_spec_under_the_floor_does_not_take_the_lane_it_cannot_use(self):
+        """The interaction #171 left open, decided by its own US 27. The lone
+        ticket of #171 gets no accumulated lane — it is under the floor — so it has
+        none to occupy either, and #180 takes it. The literal reading, first ticket
+        wins whatever its count, ran this package with ZERO accumulated lanes while
+        excluding two tickets in the name of a lane nobody was using."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#180")
+                  + ticket_item(3, "tres", spec="repo#180"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out),
+                         {"T001": "avulso (repo#171)", "T002": "spec repo#180", "T003": "spec repo#180"})
+        self.assertEqual(self.blocks(out)["excluded"], [])
+
+    def test_no_spec_reaching_the_floor_leaves_every_ticket_avulso(self):
+        """Three specs, one ticket each: no lane exists, so nothing can occupy one
+        and nothing is excluded. The direction that would turn the floor into a
+        filter takes the whole package with it."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#180")
+                  + ticket_item(3, "tres", spec="repo#190"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out),
+                         {"T001": "avulso (repo#171)", "T002": "avulso (repo#180)",
+                          "T003": "avulso (repo#190)"})
+        self.assertEqual(self.blocks(out)["excluded"], [])
+
+    def test_the_lane_is_decided_among_ELIGIBLE_items_only(self):
+        """An item excluded for its class or its Risk is not in the package, so it
+        cannot take the package's lane with it — the second spec would then be
+        refused a lane that nothing is using."""
+        self.seed(ticket_item(1, "um", spec="repo#171", klass="DECISION")
+                  + ticket_item(2, "dois", spec="repo#171", klass="DECISION")
+                  + ticket_item(3, "tres", spec="repo#180")
+                  + ticket_item(4, "quatro", spec="repo#180"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T003": "spec repo#180", "T004": "spec repo#180"})
+        # #171 reaches the floor over the WHOLE queue and holds no lane all the same:
+        # neither of its tickets is in the package
+        self.assertEqual([ln for ln in self.blocks(out)["excluded"]
+                          if "ocupada" in ln], [])
+
+    def test_a_spec_QUOTED_IN_PROSE_leaves_the_item_AVULSO(self):
+        """A marker before the **Class:** the chain anchors at is the item's own
+        prose: it names no lane, and it does not cost the item its place either.
+
+        That is where the two provenance fields part company with **Risk:** and
+        **Env:**, and the split is what each field ANSWERS. Risk and Env answer
+        "is this safe to run unattended, and here?", so a marker no gate may read
+        leaves that unknown and the item is refused. Spec answers "where does this
+        go?", and there the absence of an answer HAS a safe default — the topology
+        the queue had before the field existed, a PR of its own.
+
+        Excluding instead was measured costing more than it bought: one sibling
+        whose note merely CITED the marker left the candidate set, and took its
+        whole spec below the floor, demoting the clean siblings' lane to avulso."""
+        self.seed("- [ ] **T001** — nota sobre **Spec:** repo#999 em prosa — um "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T001": "avulso"})
+        self.assertEqual(self.blocks(out)["excluded"], [])
+
+    def test_one_siblings_PROSE_never_demotes_a_whole_specs_lane(self):
+        """The cascade the block-wide marker count caused, and the reason the
+        provenance fields are read at the writer's position and nowhere else. T002's
+        note merely CITES `**Spec:**`; its chain names Spec once, unambiguously. With
+        the count in the ladder, T002 was excluded on a false reason — and, gone from
+        the candidate set, took the spec to one ticket, so T001 and T003 lost the
+        accumulated lane they had every right to."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#171").rstrip("\n")
+                  + "\n  nota: cita o **Spec:** de outro item, só em prosa.\n"
+                  + ticket_item(3, "tres", spec="repo#171"))
+        out = self.pack()
+        self.assertEqual(self.blocks(out)["excluded"], [])
+        self.assertEqual(self.lanes(out), {"T001": "spec repo#171",
+                                           "T002": "spec repo#171",
+                                           "T003": "spec repo#171"})
+
+    def test_two_Spec_fields_in_the_chain_are_ambiguous_not_guessed(self):
+        self.seed(ticket_item(1, "um", spec="repo#171").replace(
+            "**Spec:** repo#171.", "**Spec:** repo#171. **Spec:** repo#180.", 1))
+        self.assertEqual(self.reason(self.pack(), "T001"),
+                         "2 **Spec:** fields in the chain, so its value is ambiguous")
+
+    def test_a_Spec_that_is_not_a_forge_reference_never_forms_a_LANE(self):
+        """`validate_ref` guards the writer, and the writer is not the only way the
+        field arrives — a hand edit, a foreign tool, a merge. Measured before this
+        existed: two items carrying `**Spec:** homeserver ambiente#999.` (a blank,
+        a value `add` refuses) formed a REAL accumulated lane and pushed two tickets
+        of a genuine spec out of the package, naming an issue that existed only in
+        the typo."""
+        self.seed(ticket_item(1, "um", spec="homeserver ambiente#999")
+                  + ticket_item(2, "dois", spec="homeserver ambiente#999")
+                  + ticket_item(3, "tres", spec="repo#171")
+                  + ticket_item(4, "quatro", spec="repo#171"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T003": "spec repo#171", "T004": "spec repo#171"})
+        for label in ("T001", "T002"):
+            self.assertIn("not a forge reference", self.reason(out, label))
+        self.assertIn("cancel", self.repairs(out))
+
+    def test_two_specs_sharing_an_issue_number_are_told_APART(self):
+        """The repo half is not decoration: this account's tickets already span two
+        repos, so `a#171` and `b#171` are both write-legal and both real. Printing
+        only `#171` gave two different specs one label, and told the excluded ticket
+        its lane was occupied by its OWN number."""
+        self.seed(ticket_item(1, "um", spec="a#171") + ticket_item(2, "dois", spec="a#171")
+                  + ticket_item(3, "tres", spec="b#171") + ticket_item(4, "quatro", spec="b#171"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T001": "spec a#171", "T002": "spec a#171"})
+        self.assertEqual(self.reason(out, "T003"),
+                         "lane de spec ocupada por a#171; esta é b#171")
+
+    def test_a_duplicate_ID_never_costs_the_LANE_HOLDER_its_place(self):
+        """A label is not unique — `----` is every ID-less item's, and a duplicate ID
+        is a shape `list` warns about rather than refuses. Keyed by it, the lane was
+        measured EXCLUDING the genuine holder: the second **T001** overwrote the
+        first's entry, and the real lane holder came back with a reason naming its
+        own spec as the one occupying the lane."""
+        self.seed(ticket_item(1, "lane holder um", spec="repo#171")
+                  + ticket_item(2, "lane holder dois", spec="repo#171")
+                  + ticket_item(1, "id duplicado", spec="repo#180")
+                  + ticket_item(4, "segundo da outra", spec="repo#180"))
+        out = self.pack()
+        eligible = self.blocks(out)["eligible"]
+        self.assertEqual([ln.split()[0] for ln in eligible], ["T001", "T002"])
+        self.assertEqual([re.split(r"\s{2,}", ln.strip())[2] for ln in eligible],
+                         ["spec repo#171", "spec repo#171"])
+
+    def test_the_TICKET_the_PR_closes_comes_back_from_the_command(self):
+        """`--ticket` feeds the `closes` line, the package is dispatched from THIS
+        output, and before this the field had no reader at all: `list` prints it
+        nowhere and there is no `show` subcommand. Appended in brackets, and only
+        for the items that carry one."""
+        self.seed(ticket_item(1, "um", spec="repo#171", ticket="repo#1")
+                  + ticket_item(2, "dois", spec="repo#171", ticket="repo#2")
+                  + item(3, "sem procedência"))
+        lines = self.blocks(self.pack())["eligible"]
+        self.assertTrue(lines[0].endswith("  [repo#1]"), lines[0])
+        self.assertTrue(lines[1].endswith("  [repo#2]"), lines[1])
+        self.assertNotIn("[", lines[2])
+
+    def test_a_TICKET_the_position_rule_cannot_read_is_MARKED_not_silent(self):
+        """Not excluded — Ticket decides no lane, so an unreadable one may not cost
+        the item its place — and not silent either: printing nothing made an item
+        whose ticket no reader may use identical to one that never had a ticket, and
+        the PR then closes nothing while the work ships. `[?]`, the mark this file
+        already uses where a field could not be read and the answer is not
+        exclusion (`pack_effort` prints `?`)."""
+        self.seed(ticket_item(1, "dois tickets", spec="repo#171", ticket="repo#1").replace(
+                      "**Ticket:** repo#1.", "**Ticket:** repo#1. **Ticket:** repo#2.", 1)
+                  + ticket_item(2, "forma errada", spec="repo#171", ticket="nao e ref"))
+        lines = self.blocks(self.pack())["eligible"]
+        self.assertEqual(len(lines), 2, lines)
+        for ln in lines:
+            self.assertTrue(ln.endswith("  [?]"), ln)
+
+    def test_a_marker_QUOTED_IN_PROSE_earns_no_mark_at_all(self):
+        """The other side of the same question, and the one the first `[?]` got
+        wrong: an item whose only **Ticket:** is a note citing the marker never had
+        a ticket, so it must read like an item that never had one. `[?]` there sends
+        whoever writes the PR hunting for a ticket that does not exist."""
+        self.seed(item(1, "só cita o marcador").rstrip("\n")
+                  + "\n  nota: cita o **Ticket:** de outro item, só em prosa.\n"
+                  + item(2, "sem marcador nenhum"))
+        for ln in self.blocks(self.pack())["eligible"]:
+            self.assertNotIn("[", ln, ln)
+
+    def test_a_marker_QUOTED_IN_PROSE_does_not_hide_the_real_ticket(self):
+        """The block-wide count `pack_closes` used to ask before the reader: an
+        item's real, well-placed **Ticket:** printed NOTHING because a continuation
+        line merely cited the marker in prose. One rule asked in two spellings, and
+        the looser one silently won — the shape the consolidation exists to end."""
+        self.seed(ticket_item(1, "ticket real", spec="repo#171", ticket="repo#1").rstrip("\n")
+                  + "\n  nota: cita o **Ticket:** de outro item, só em prosa.\n")
+        self.assertTrue(self.blocks(self.pack())["eligible"][0].endswith("  [repo#1]"))
+
+    def test_the_ONE_reader_refuses_a_reference_quoted_before_the_ANCHOR(self):
+        """The position rule, proved through `pack_ref` itself. A `**Spec:**` or
+        `**Ticket:**` segment sitting BEFORE the **Class:** the chain anchors at is
+        the item's own prose wearing a field's name, and the anchor-free reader was
+        measured green against the whole suite: nothing exercised either caller with
+        this shape, so a hand-edited item could have named a lane from its prose."""
+        self.seed("- [ ] **T001** — nota: **Ticket:** repo#9. **Class:** AUTONOMOUS. "
+                  "**Effort:** S. **Criterion:** A: x. **Spec:** repo#171. "
+                  "**Ticket:** repo#1. **Source:** 2026-08-13\n"
+                  + ticket_item(2, "dois", spec="repo#171", ticket="repo#2"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out),
+                         {"T001": "spec repo#171", "T002": "spec repo#171"})
+        # the segment BEFORE the anchor is prose: the chain names Ticket twice and
+        # only one of them is real, so the anchor-free reader sees two and marks the
+        # item unreadable, while the position rule reads the one a writer wrote
+        self.assertTrue(self.blocks(out)["eligible"][0].endswith("  [repo#1]"),
+                        self.blocks(out)["eligible"][0])
+
+    def test_two_SPELLINGS_of_one_reference_are_one_spec(self):
+        """The class this consolidation ends. Equality decided the lane by raw
+        string, so `Ambiente#171` and `ambiente#171` — one repo, a forge repo name
+        being case-insensitive — were two specs of one ticket each, both under the
+        floor, both dispatched avulso: two branches and two campaigns for one spec.
+        Leading zeros were the same defect from the other side, and produced a
+        reason naming the item's own spec as the one occupying the lane."""
+        self.seed(ticket_item(1, "um", spec="Ambiente#171")
+                  + ticket_item(2, "dois", spec="ambiente#0171"))
+        self.assertEqual(self.lanes(self.pack()),
+                         {"T001": "spec ambiente#171", "T002": "spec ambiente#171"})
+
+    def test_the_canonical_spelling_is_what_the_WRITER_stores(self):
+        """Canonicalised where the value is validated, so the file holds one
+        spelling per reference and every later comparison is a plain `==` again.
+        Fixing it only at the reader would leave the queue carrying spellings that
+        agree today and disagree the next time somebody adds a reader."""
+        self.seed()
+        r = self.run_tk("add", "importado", "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: x", "--ticket", "Ambiente#0172",
+                        "--spec", "AMBIENTE#171")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Ticket:** ambiente#172. **Spec:** ambiente#171.", self.body())
+
+    def test_a_TICKET_that_is_not_a_forge_reference_is_never_printed(self):
+        """The asymmetry this consolidation removes: the Ticket had a reader of its
+        own, with the position rule and no shape gate, and a hand-edited
+        `**Ticket:** repo#1] injetado` spliced a second bracket group and free text
+        into a line whose consumer is a skill's prose. Silent, not excluded — Ticket
+        decides no lane — but never printed unvalidated."""
+        for junk in ("repo#1] injetado", "repo#1  coluna falsa", "", "fecha o 173"):
+            with self.subTest(junk=junk):
+                self.seed(ticket_item(1, "um", ticket=junk) if junk
+                          else "- [ ] **T001** — um **Class:** AUTONOMOUS. **Effort:** S. "
+                               "**Criterion:** A: x. **Ticket:** . **Source:** 2026-08-13\n")
+                line = self.blocks(self.pack())["eligible"][0]
+                if junk:
+                    self.assertNotIn(junk, line, line)
+                self.assertTrue(line.endswith("  [?]"), line)
+
+    def test_the_read_side_shape_gate_refuses_a_PREFIX(self):
+        """`fullmatch`, not `match`. A prefix match reads `repo#171 texto solto` as a
+        well-formed `repo#171` and lets it name a lane — and the value it would name
+        it after is one the writer refuses, so nothing downstream would ever see the
+        text that made it wrong."""
+        self.seed(ticket_item(1, "um", spec="repo#171 texto solto")
+                  + ticket_item(2, "dois", spec="repo#171 texto solto"))
+        out = self.pack()
+        self.assertEqual(self.blocks(out)["eligible"], [])
+        for label in ("T001", "T002"):
+            self.assertIn("not a forge reference", self.reason(out, label))
+
+    def test_a_below_floor_ticket_still_NAMES_its_spec(self):
+        """`avulso` alone made a lone ticket of a spec identical to a ticket of no
+        spec, and they are not the same thing to whoever dispatches: the open-PR
+        check has to know which spec to ask about, and a lone ticket of a spec whose
+        branch is already open is the case that check exists for."""
+        self.seed(ticket_item(1, "um", spec="repo#171") + item(2, "dois"))
+        self.assertEqual(self.lanes(self.pack()),
+                         {"T001": "avulso (repo#171)", "T002": "avulso"})
+
+    def test_a_RISK_outranks_a_malformed_Spec_on_the_ladder(self):
+        """The rung the help documents: class, risk, env, spec. The shape check sat
+        with the marker defects for one round, and that put a typo'd Spec ahead of a
+        real **Risk:** line — the item was excluded either way, but the reason
+        printed was the typo and the risk nobody saw went unprinted, on the one
+        field that says unattended execution can do damage."""
+        self.seed(ticket_item(1, "um", spec="nao e uma ref", risk="apaga dado do usuário"))
+        self.assertEqual(self.reason(self.pack(), "T001"), "Risk: apaga dado do usuário")
+
+    def test_the_lane_exclusion_is_the_LAST_step_of_the_ladder(self):
+        """A ticket of the second spec that ALSO carries a Risk is reported for the
+        Risk: the ladder's earlier steps are about the item itself, and the lane is
+        about the package it did not fit in.
+
+        Structural, not a guard of its own: the set the lane pushes out is built
+        from the CANDIDATES, so an item an earlier rule already excluded can never
+        be in it. What protects that is the mutant on `pack_lanes(candidates)`;
+        this test is here because the ordering is the thing a reader of the output
+        depends on, and a structure nobody wrote down is one a later refactor
+        undoes without noticing."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#180", risk="apaga dado")
+                  + ticket_item(3, "tres", spec="repo#171")
+                  + ticket_item(4, "quatro", spec="repo#180"))
+        self.assertEqual(self.reason(self.pack(), "T002"), "Risk: apaga dado")
 
 # --- handoff: the briefing that lives and dies with the item ---------------
 
@@ -3572,8 +4038,8 @@ class TestIdSpelling(QueueTest):
         self.seed(item(1, "item curto"), self.wide())
         r = self.run_tk("pack")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("T001  S             item curto\n", r.stdout)
-        self.assertIn("T0001  S             item de id largo\n", r.stdout)
+        self.assertIn("T001  S             avulso                item curto\n", r.stdout)
+        self.assertIn("T0001  S             avulso                item de id largo\n", r.stdout)
 
     def test_a_wide_spelling_is_still_an_allocated_id(self):
         """The one-way rule, at its sharp end: with `T0001` ALONE in the file, a
