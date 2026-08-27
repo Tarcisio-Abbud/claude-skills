@@ -107,11 +107,53 @@ A change lands as a PR **on this repo** — the cwd default, so plain `gh`, no w
 - **Read**: `gh pr view <n> --json title,body,comments,reviewDecision` + `gh pr diff <n>`
 - **Merge**: the human's call, since this repo's `main` is consumed by a running installation.
 
-Keep PR titles, PR bodies and commit messages here free of the tracker's slug, of ticket
-numbers from it, and of account or company names: describe the change on its own terms, and
-name the work by what it is — "tk v3 slice" — rather than by the ticket's number, which
-belongs to the private tracker. The cross-reference goes the other way — comment the PR's URL
-onto the ticket.
+### What may name the private tracker here
+
+One line may, and it is the closing line of a PR body:
+
+```
+Fixes <owner>/<repo>#<n>
+```
+
+`Fixes` is the forge's native keyword and it works across repositories, so this line is what
+makes the merge close the ticket — closure as a mechanism rather than as prose somebody has to
+read and then act on. Buying that costs the private repository's **name** and the ticket's
+**number**, made public. That cost was weighed and accepted; it does not extend one word
+further.
+
+**Where it ends up is wider than the PR body, so count on that.** A squash or merge commit
+composed from the PR body carries the line into this repo's own history, where it is permanent
+and public like any other commit — and the commit guard never saw it, because the forge wrote
+that commit server-side, not git on this machine. Treat the line as landing in `main`'s log,
+not merely on a page.
+
+The keyword's precondition is easy to miss: it fires only when the PR targets **its own
+repository's default branch**. A stacked PR merged into its parent branch closes nothing, in
+silence.
+
+Everything else keeps the old rule, and the old rule was not softened:
+
+| Surface | The tracker's slug and ticket numbers |
+|---|---|
+| PR body, in the closing line | **allowed** — that is the whole point of the line |
+| PR body, anywhere else | avoid; describe the change on its own terms |
+| PR title | not allowed |
+| Commit messages | not allowed |
+| Branch names | not allowed — a branch name is pushed and public exactly like a path |
+| Code, paths, fixtures | not allowed |
+
+**Company names, account names, people's names and internal content stay out of every one of
+those surfaces, the closing line included.** The concession is a repository name and an
+integer, nothing else.
+
+Name the work by what it is — "tk v3 slice" — everywhere the closing line does not reach. The
+cross-reference still goes the other way too: comment the PR's URL onto the ticket.
+
+**The commit guard is unaffected, and it has to be.** `githooks/private-values` reads the
+lines a commit adds, the paths it introduces, the commit message and the branch name — and
+still refuses the slug on all four. PR bodies travel through `gh`, never through git, so no
+hook sees them; the closing line is outside the guard's reach by construction rather than by
+an exception carved into it. Writing the slug into a FILE is still the defect it always was.
 
 ### The commit guard
 

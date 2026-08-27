@@ -220,6 +220,39 @@ MUTATIONS = [
      '    os.path.join(BIN_DIR, os.pardir, "references", "subagent-policy.md"))',
      ["TestRoleTable.test_the_default_table_is_the_one_beside_the_bin"]),
 
+    # --- the `pr` cell, and the closing line it decides --------------------
+    ("the closing line is decided by the role's NAME instead of its `pr` cell",
+     '    if row.pr != "opens":',
+     '    if row.role != "implementer":',
+     ["TestRoleTable.test_the_pr_cell_decides_the_closing_line_not_the_role_s_name"]),
+
+    ("an unreadable `pr` value falls back to `no line` instead of failing",
+     '    ("pr", ("opens", "none")),\n)',
+     ')',
+     ["TestRoleTable.test_a_pr_value_outside_the_vocabulary_is_a_defect_not_a_default"]),
+
+    ("the closing line names no repo, so it aims at the PR's own",
+     '        "    Fixes <owner>/<repo>#<n>",',
+     '        "    Fixes #<n>",',
+     ["TestBlockContent.test_it_demands_the_closing_line_of_a_role_that_opens_a_pr"]),
+
+    ("every role is handed the closing line, PR-opening or not",
+     '    if row.pr != "opens":\n        return []',
+     '    if False:\n        return []',
+     ["TestBlockContent.test_a_role_that_opens_no_pr_is_told_nothing_about_one"]),
+
+    ("the owner-less reference is left to the reader's judgement",
+     '        "**A reference with no owner half closes nothing across repositories.** The queue",',
+     '        "**A reference with no owner half is usually fine.** The queue",',
+     ["TestBlockContent.test_it_refuses_the_owner_less_reference_instead_of_guessing"]),
+
+    ("the block promises a presence check, so a present line reads as a passing one",
+     '        "before it offers the merge — that the line is there, that its number is the ticket",\n'
+     '        "the item names, and that the PR targets its own repository\'s default branch, which",',
+     '        "before it offers the merge, and a PR that arrives without it stops there.",\n'
+     '        "",',
+     ["TestBlockContent.test_it_names_the_three_things_the_gate_will_check"]),
+
     # --- determinism, and the four rules the block exists to carry ---------
     ("the block stops being byte-stable between two identical runs",
      'lines.append("- Quota is ONE window across both venues. A cloud run buys RAM, '

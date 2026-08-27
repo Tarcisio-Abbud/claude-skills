@@ -110,13 +110,15 @@
         <h4>T000 · WHAT THE SLICE DELIVERED <span class="risk">risk: low</span></h4>
         <p>Two or three sentences a reader who will not open the diff can judge: what changed,
            and what it buys.</p>
-        <ul class="verdicts"><!-- the four safe-to-merge verdicts, one line each -->
+        <ul class="verdicts"><!-- the five safe-to-merge verdicts, one line each -->
           <li data-vista-veredito="tests"><b>Tests</b> — green on the final tree: WHAT RAN</li>
           <li data-vista-veredito="review"><b>Review</b> — WHICH REVIEW RAN, every finding fixed
               or accepted with a reason</li>
           <li data-vista-veredito="criterion"><b>Criterion</b> — the one-line claim the proof
               carries; the evidence block itself stays in the PR, linked below</li>
           <li data-vista-veredito="reversal"><b>Reversal</b> — the way back, in one line</li>
+          <li data-vista-veredito="closure"><b>Closure</b> — the PR body's `Fixes
+            &lt;owner&gt;/&lt;repo&gt;#&lt;n&gt;` line, or NO TICKET said in those words</li>
         </ul>
         <!-- BLOCK 4 · the link to this slice's proof. The proof lives in the PR; the vista points -->
         <!-- FILL: the real forge URL. A reserved placeholder domain is refused by the gate,
