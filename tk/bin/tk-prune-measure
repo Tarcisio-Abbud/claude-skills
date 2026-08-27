@@ -1,0 +1,487 @@
+#!/usr/bin/env python3
+"""tk-prune-measure — the numbers a pruning pass reads, for one markdown file.
+
+The pruning skill decides what to cut; this bin decides nothing. It MEASURES, and
+its exit code says so: every measurement exits 0, however far the file sits from
+every target. A file is refused only when there is nothing to measure — a path
+that does not exist, or a directory.
+
+WHAT IT COUNTS, and where each number comes from:
+
+- lines: the whole file, as `wc -l` counts it. Frontmatter and code blocks are in
+  this one, because a reader scrolling the file scrolls those too.
+- body words: everything else EXCLUDES the frontmatter and the fenced code blocks.
+  A word is a whitespace-separated token holding at least one alphanumeric, so an
+  em dash alone is not a word and `**bold**` is one.
+- sentences, mean and max words per sentence, sentences over 30 words.
+- description words: the `description` of the frontmatter, which is the skill's
+  context pointer and is measured against a rule of its own. A file with no
+  frontmatter has no description, and that is reported as absent rather than 0 —
+  the bin measures any markdown, and a runbook legitimately has none.
+- inline evidence: ISO dates, the word "measured", and a count followed by
+  "times" or "before". Evidence belongs to the repo's history, not to a skill.
+- pointers to other files.
+- negations, LISTED WITH CONTEXT. A count alone would be a verdict the regex
+  cannot support: `never` steering the agent and `never` inside the name of an
+  outcome look identical to it, and only the human reading the line can tell.
+- defined terms, and the ones a SIBLING markdown file in the same directory
+  defines too — a term whose meaning is written in two places is a term the
+  reader has to assemble.
+
+THE SENTENCE UNIT is the one thing here that is a judgement, and it is made
+explicit because every average below rides on it. A sentence ends at `.`, `!` or
+`?`, AND at the end of a list item, a table row or a heading — those carry an
+instruction each and almost never carry a full stop. Without that second half
+`dispatch` measures 51 words per sentence: its whole palette is one table, and
+its rows would read as one enormous sentence with no punctuation in it.
+
+WHAT IT DOES NOT MEASURE, so that no report borrows authority this bin lacks:
+
+- WHETHER A SENTENCE INSTRUCTS. Every sentence is measured the same way, and the
+  targets read as "no sentence in this file is longer than an instruction may
+  be". Which sentences instruct is the pruning table's question, not this one's.
+- WHETHER A NEGATION OR A TERM SHOULD GO. Both are reported without a target on
+  purpose: a target that fails `writing-for-agents` is not a target.
+- WHETHER THE FILE IS GOOD. `--targets` marks each number against a default; a
+  file that misses every one may still be the right file, and a file that hits
+  every one may say nothing.
+
+Usage:  tk-prune-measure <file.md> [--targets] [--json]
+Exit:   0 measured (always) · 2 no such file, or a directory
+"""
+
+import argparse
+import bisect
+import json
+import os
+import re
+import sys
+
+# The targets, as DEFAULTS of the bin rather than numbers written into a skill:
+# the environment is the source of truth, and a skill that repeats them grows a
+# second copy to keep in sync. `<=` is the only comparison here — every rule is
+# a ceiling. Calibrated so the `mattpocock-skills` set passes.
+TARGETS = {
+    "max_sentence_words": 25,      # the house rule for one instruction
+    "description_words": 30,       # the house rule for one description
+    "mean_sentence_words": 22,
+    "sentences_over_30": 4,
+    "inline_evidence": 0,
+    "terms_defined_in_sibling": 0,
+}
+
+LONG_SENTENCE = 30                 # the threshold `sentences_over_30` counts past
+
+# Row order and labels of the report. Derived from here in text and in JSON, so a
+# metric added once appears in both.
+METRICS = [
+    ("lines", "lines"),
+    ("body_words", "body words"),
+    ("sentences", "sentences"),
+    ("mean_sentence_words", "mean words per sentence"),
+    ("max_sentence_words", "max words in a sentence"),
+    ("sentences_over_30", "sentences over 30 words"),
+    ("description_words", "description words"),
+    ("inline_evidence", "inline evidence"),
+    ("pointers", "pointers to other files"),
+    ("negations", "negations"),
+    ("defined_terms", "defined terms"),
+    ("terms_defined_in_sibling", "terms defined in a sibling too"),
+]
+
+FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
+LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+TABLE_ROW = re.compile(r"^\s*\|")
+BLOCKQUOTE = re.compile(r"^\s*>\s?")
+WORD = re.compile(r"[^\W_]", re.UNICODE)        # "holds an alphanumeric"
+
+# A period that ends a sentence, versus one inside `e.g.` or an initial. The
+# lookahead is whitespace-or-end; the word before it is checked in code, because
+# a lookbehind cannot be variable-width.
+SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
+# `no` is deliberately absent: "No. 5" is rare in a skill and the word "no."
+# ending a sentence is not, and swallowing a real sentence end costs more.
+ABBREV = {"e.g", "i.e", "etc", "vs", "cf", "mr", "mrs", "ms", "dr", "prof",
+          "fig", "approx", "al", "st"}
+
+NEGATIONS = re.compile(r"(?i)(?<![\w'’])(do not|don['’]t|never|not|no)(?![\w'’])")
+ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+MEASURED = re.compile(r"(?i)\bmeasured\b")
+COUNT_EVIDENCE = re.compile(r"(?i)\b\d+\s+(?:times|before)\b")
+URL = re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://\S+")
+# A path, not a word with a slash in it. One branch needs a real path prefix
+# (`/`, `./`, `../`, `~/`), the other a known extension — and `KEEP/MOVE/DROP`
+# has neither, so it cannot enter through its own slash. The shared lookbehind
+# is what refuses the tail of a word: in `KEEP/MOVE` the inner `/MOVE` follows a
+# word character and never starts a match of its own.
+POINTER = re.compile(
+    r"(?<![\w/])(?:(?:~|\.{1,2})?/[\w./~@-]*[\w/]"
+    r"|[\w][\w./@-]*\.(?:md|py|sh|json|html|txt|yml|yaml|toml)\b)")
+# `A **term** is`, with the article optional so the house form `**Pruning** is`
+# is found too, and `**term**:` opening a line. The `^` is what anchors the
+# second one, not the call site: `.match` would anchor it too, and then neither
+# would be load-bearing and no mutation could tell either of them was gone.
+TERM_IS = re.compile(r"(?:\b(?:an?|the)\s+)?\*\*([^*\n]+)\*\*\s+(?:is|means)\b",
+                     re.IGNORECASE)
+TERM_COLON = re.compile(r"^\*\*([^*\n]+)\*\*\s*:")
+
+
+def strip_frontmatter(lines):
+    """(body lines paired with their 1-based numbers, the frontmatter lines).
+
+    Frontmatter is the block between the `---` on line 1 and the next `---`. An
+    opening fence with no closing one is NOT frontmatter: the whole file would
+    vanish from the body, and a file that merely starts with a horizontal rule
+    would measure as empty.
+    """
+    if not lines or lines[0].rstrip() != "---":
+        return list(enumerate(lines, 1)), []
+    for i in range(1, len(lines)):
+        if lines[i].rstrip() in ("---", "..."):
+            return list(enumerate(lines[i + 1:], i + 2)), lines[1:i]
+    return list(enumerate(lines, 1)), []
+
+
+def frontmatter_description(fm_lines):
+    """The `description` value, or None when the frontmatter carries none.
+
+    Enough YAML for a skill's frontmatter and no more: the value on the key's own
+    line, plus the indented continuation lines under it — which covers a wrapped
+    quoted string and a `>-` block alike.
+
+    Quotes and block markers are LEFT WHERE THEY ARE rather than stripped. It
+    reads like an omission and it is the opposite: neither holds an alphanumeric,
+    so neither is a word, and stripping them cannot change a number this bin
+    prints. Code that no measurement can tell apart from its absence is code with
+    nothing holding it right.
+    """
+    for i, line in enumerate(fm_lines):
+        m = re.match(r"^description\s*:\s*(.*)$", line)
+        if not m:
+            continue
+        parts = [m.group(1).strip()]
+        for cont in fm_lines[i + 1:]:
+            if not cont.strip():
+                continue
+            if not cont[:1].isspace():
+                break
+            parts.append(cont.strip())
+        return " ".join(p for p in parts if p).strip()
+    return None
+
+
+def outside_code(body):
+    """`body` without its fenced blocks, fences included.
+
+    Fences are matched by their own rule rather than by a fixed length: a block
+    opened with four backticks closes on four, and a three-backtick line INSIDE
+    it is content. A block left unclosed runs to the end of the file, which is
+    what a renderer does with it too.
+    """
+    out, fence = [], None
+    for number, line in body:
+        m = FENCE.match(line)
+        if fence is None:
+            if m:
+                fence = m.group(1)
+            else:
+                out.append((number, line))
+            continue
+        if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence):
+            fence = None
+    return out
+
+
+def line_text(line):
+    """The line's prose, with the markers that are not words removed."""
+    text = BLOCKQUOTE.sub("", line)
+    text = HEADING.sub("", text)
+    text = LIST_ITEM.sub("", text)
+    if TABLE_ROW.match(text):
+        text = " ".join(cell.strip() for cell in text.strip().strip("|").split("|"))
+    return text.strip()
+
+
+def hard_break(line):
+    """True when the END of this line ends a sentence, full stop or not."""
+    stripped = BLOCKQUOTE.sub("", line)
+    return bool(HEADING.match(stripped) or LIST_ITEM.match(stripped)
+                or TABLE_ROW.match(stripped))
+
+
+def words(text):
+    return [t for t in text.split() if WORD.search(t)]
+
+
+def split_sentences(text):
+    """`text` cut at its sentence ends — (start offset, sentence) pairs."""
+    out, start = [], 0
+    for m in SENTENCE_END.finditer(text):
+        before = text[start:m.start()]
+        last = re.split(r"[\s(\[\"'“‘]", before)[-1].lower().rstrip(".")
+        if last in ABBREV or (len(last) == 1 and last.isalpha()):
+            continue
+        piece = text[start:m.end()]
+        if words(piece):
+            out.append((start, piece))
+        start = m.end()
+    tail = text[start:]
+    if words(tail):
+        out.append((start, tail))
+    return out
+
+
+def sentences(body):
+    """Every sentence of the body, as (line number, word count) pairs.
+
+    A CHUNK is a run of plain lines, or one hard-break line on its own; it is cut
+    internally at full stops and forcibly at its end. Offsets are carried so each
+    sentence keeps the line it starts on rather than the line the chunk does.
+    """
+    found = []
+
+    def flush(chunk):
+        if not chunk:
+            return
+        text, offsets, starts = "", [], []
+        for number, piece in chunk:
+            offsets.append(len(text))
+            starts.append(number)
+            text += piece + " "
+        for offset, sentence in split_sentences(text.strip()):
+            i = bisect.bisect_right(offsets, offset) - 1
+            found.append((starts[max(i, 0)], len(words(sentence))))
+        chunk.clear()
+
+    chunk = []
+    for number, line in body:
+        text = line_text(line)
+        if not text:
+            flush(chunk)
+            continue
+        chunk.append((number, text))
+        if hard_break(line):
+            flush(chunk)
+    flush(chunk)
+    return found
+
+
+def defined_terms(body):
+    """(line number, term) for every term this body defines."""
+    found = []
+    for number, line in body:
+        text = line_text(line)
+        m = TERM_COLON.search(text)
+        if m:
+            found.append((number, m.group(1).strip()))
+            continue
+        for m in TERM_IS.finditer(text):
+            found.append((number, m.group(1).strip()))
+    return found
+
+
+def sibling_terms(path):
+    """{normalised term: [sibling file names]} for the other markdown beside it."""
+    directory = os.path.dirname(os.path.abspath(path))
+    here = os.path.basename(os.path.abspath(path))
+    out = {}
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return out
+    for name in names:
+        if name == here or not name.lower().endswith(".md"):
+            continue
+        full = os.path.join(directory, name)
+        if not os.path.isfile(full):
+            continue
+        try:
+            with open(full, encoding="utf-8-sig") as f:
+                lines = f.read().splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        body, _ = strip_frontmatter(lines)
+        for _, term in defined_terms(outside_code(body)):
+            out.setdefault(term.casefold(), []).append(name)
+    return out
+
+
+def scan(body, pattern, kind=None):
+    """Every match of `pattern` in the body, with the line it sits on.
+
+    A hit carries its KIND when the caller named one, and its CONTEXT when it did
+    not, because the two are read for different things: an evidence hit is judged
+    by which rule matched it, and a negation only by reading the line it steers.
+    """
+    found = []
+    for number, line in body:
+        text = URL.sub(" ", line_text(line))
+        for m in pattern.finditer(text):
+            hit = {"line": number, "match": m.group(0)}
+            if kind is None:
+                hit["context"] = context(text, m)
+            else:
+                hit["kind"] = kind
+            found.append(hit)
+    return found
+
+
+def context(text, match):
+    """A window around the match, so a listed negation can be judged in place."""
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= 100:
+        return collapsed
+    start = max(0, match.start() - 40)
+    end = min(len(collapsed), start + 100)
+    return ("…" if start else "") + collapsed[start:end] + ("…" if end < len(collapsed) else "")
+
+
+def measure(path):
+    """Every number and every list this bin reports for one file."""
+    with open(path, encoding="utf-8-sig") as f:
+        raw = f.read()
+    lines = raw.splitlines()
+    body_all, fm_lines = strip_frontmatter(lines)
+    body = outside_code(body_all)
+
+    description = frontmatter_description(fm_lines)
+    sents = sentences(body)
+    counts = [n for _, n in sents]
+    body_words = sum(counts)
+
+    evidence = (scan(body, ISO_DATE, "iso date")
+                + scan(body, MEASURED, "measured")
+                + scan(body, COUNT_EVIDENCE, "count"))
+    evidence.sort(key=lambda e: (e["line"], e["match"]))
+    pointers = scan(body, POINTER, "pointer")
+    negations = scan(body, NEGATIONS)
+    terms = defined_terms(body)
+
+    siblings = sibling_terms(path)
+    shared = [{"line": number, "term": term, "also_in": siblings[term.casefold()]}
+              for number, term in terms if term.casefold() in siblings]
+
+    metrics = {
+        "lines": len(lines),
+        "body_words": body_words,
+        "sentences": len(sents),
+        "mean_sentence_words": round(body_words / len(sents), 1) if sents else 0.0,
+        "max_sentence_words": max(counts) if counts else 0,
+        "sentences_over_30": sum(1 for n in counts if n > LONG_SENTENCE),
+        "description_words": None if description is None else len(words(description)),
+        "inline_evidence": len(evidence),
+        "pointers": len(pointers),
+        "negations": len(negations),
+        "defined_terms": len(terms),
+        "terms_defined_in_sibling": len(shared),
+    }
+    return {
+        "path": path,
+        "metrics": metrics,
+        "long_sentences": [{"line": number, "words": n}
+                           for number, n in sents if n > LONG_SENTENCE],
+        "inline_evidence": evidence,
+        "pointers": pointers,
+        "negations": negations,
+        "defined_terms": [{"line": number, "term": term} for number, term in terms],
+        "terms_defined_in_sibling": shared,
+    }
+
+
+def marks(metrics):
+    """One row per metric that has a target: its value, the ceiling, the verdict."""
+    out = []
+    for key, _ in METRICS:
+        if key not in TARGETS:
+            continue
+        value = metrics[key]
+        out.append({"metric": key, "value": value, "target": TARGETS[key],
+                    "status": "n/a" if value is None else
+                              ("ok" if value <= TARGETS[key] else "over")})
+    return out
+
+
+def render(report, show_targets):
+    """The text report — the same numbers `--json` carries, laid out for reading."""
+    metrics = report["metrics"]
+    lines = [f"tk-prune-measure  {report['path']}", ""]
+    marked = {m["metric"]: m for m in marks(metrics)} if show_targets else {}
+
+    label_width = max(len(label) for _, label in METRICS)
+    header = f"{'metric':<{label_width}}  {'value':>7}"
+    if show_targets:
+        header += f"  {'target':>6}  status"
+    lines += [header, "-" * len(header)]
+    for key, label in METRICS:
+        value = metrics[key]
+        shown = "—" if value is None else f"{value}"
+        row = f"{label:<{label_width}}  {shown:>7}"
+        if show_targets:
+            mark = marked.get(key)
+            row += (f"  {mark['target']:>6}  {mark['status']}" if mark
+                    else f"  {'—':>6}  —")
+        lines.append(row)
+
+    lines += section("long sentences", report["long_sentences"],
+                     lambda e: f"{e['words']} words")
+    lines += section("inline evidence", report["inline_evidence"],
+                     lambda e: f"{e['kind']:<9} {e['match']}")
+    lines += section("pointers to other files", report["pointers"],
+                     lambda e: e["match"])
+    lines += section("negations", report["negations"],
+                     lambda e: f"{e['match']:<7} {e['context']}")
+    lines += section("defined terms", report["defined_terms"],
+                     lambda e: e["term"])
+    lines += section("terms defined in a sibling too", report["terms_defined_in_sibling"],
+                     lambda e: f"{e['term']} — also in {', '.join(e['also_in'])}")
+    return "\n".join(lines)
+
+
+def section(title, entries, line_of):
+    if not entries:
+        return []
+    out = ["", f"{title} ({len(entries)})"]
+    for entry in entries:
+        out.append(f"  {entry['line']:>4}  {line_of(entry)}")
+    return out
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(
+        prog="tk-prune-measure",
+        description="Measures one markdown file for a pruning pass: length, sentence "
+                    "shape, inline evidence, pointers, negations and defined terms.",
+        epilog="Exits 0 for every measurement — it measures, it does not judge. "
+               "A path that does not exist, or a directory, exits 2.")
+    p.add_argument("file", metavar="FILE.md",
+                   help="the markdown file to measure (one per call)")
+    p.add_argument("--targets", action="store_true",
+                   help="mark each metric against the bin's default target")
+    p.add_argument("--json", action="store_true", dest="as_json",
+                   help="the same numbers as JSON")
+    args = p.parse_args(argv)
+
+    if os.path.isdir(args.file):
+        print(f"{args.file}: is a directory — measure one markdown file", file=sys.stderr)
+        return 2
+    if not os.path.isfile(args.file):
+        print(f"{args.file}: no such file", file=sys.stderr)
+        return 2
+    try:
+        report = measure(args.file)
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"{args.file}: unreadable — {e}", file=sys.stderr)
+        return 2
+
+    if args.as_json:
+        if args.targets:
+            report["targets"] = marks(report["metrics"])
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(render(report, args.targets))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
