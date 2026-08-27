@@ -347,11 +347,12 @@ re-triages; tracker tickets are referenced, not mirrored):
   decides the item's **lane**: tickets of one spec are implemented on a single accumulated
   branch under one PR, everything else gets a PR of its own. `tk-queue pack` prints the lane
   of every eligible item and is the only reader of the field — it reads the queue, never the
-  forge. One spec per package: the lane goes to the spec of the FIRST ticket in queue order,
-  and tickets of any other spec leave the package with the reason `lane de spec ocupada por
-  #<n>`, to return in the next one. A spec with a single ticket in the package is under the
-  floor and that ticket is dispatched on its own, because a draft PR and a three-step tail
-  cost more than one item is worth — a lane, never an exclusion. The shape is validated
+  forge. One spec per package: the lane goes to the FIRST spec in queue order that reaches the
+  FLOOR of two tickets among the candidates — one ticket does not pay for a draft PR and a
+  three-step tail, so a spec under the floor is dispatched as `avulso`. A ticket leaves the
+  package for its lane in exactly one case, its spec would be a SECOND accumulated lane, with
+  the reason `lane de spec ocupada por #<n>`; it returns in the next package. A spec under the
+  floor is never excluded, whoever holds the lane — the floor is a lane, never a filter. The shape is validated
   exactly, like `--env` against the roster: a malformed `--ticket` feeds a `closes` line that
   closes nothing, and a malformed `--spec` opens a second branch for a spec that already has
   one. Neither failure reports itself.

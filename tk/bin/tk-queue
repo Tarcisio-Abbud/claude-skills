@@ -1471,14 +1471,15 @@ REPAIR_MIGRATE = "an item with no ID: `tk-queue migrate` assigns one"
 # saying so. The sample is a REAL run and the suite asserts it character for
 # character against the queue that produces it — a documented shape nothing
 # executes is the one that goes stale first, and this one documents an AC.
-PACK_SAMPLE = """eligible (3 of 6, in queue order):
+PACK_SAMPLE = """eligible (3 of 7, in queue order):
 T007  S (~20min)    spec #171     the first ticket of the spec
 T008  M (~1h)       spec #171     the second one
 T009  S             avulso        the item's text
 
-excluded (3):
+excluded (4):
 T012  another item  — class is DECISION
 T021  a ticket of a second spec  — lane de spec ocupada por #171
+T022  and its sibling  — lane de spec ocupada por #171
 T031  a legacy item  — no **Class:** field
 
 repairs:
@@ -1486,7 +1487,7 @@ repairs:
 """
 
 PACK_FORMAT = """output format (stable — a skill's prose reads it). The sample below is a real
-run, on a queue of six items, asserted character for character by the suite:
+run, on a queue of seven items, asserted character for character by the suite:
 
 """ + PACK_SAMPLE + """
 Eligible: ID, Effort, LANE, text — Effort raw and never summed, because summing
@@ -1515,14 +1516,17 @@ and never from the forge (this command opens no network connection):
              one accumulated branch with one PR for the whole spec
   avulso     everything else — one PR of its own
 
-ONE spec per package, so there is one branch, one campaign and one tail. The
-spec is the one of the FIRST ticket in QUEUE ORDER, asked of the candidates only
-— an item excluded for its class or its Risk is not in the package and cannot
-take its lane with it. Tickets of any OTHER spec leave with the reason
-`lane de spec ocupada por #<n>`; they are the next package's, not lost. A spec
-with a single ticket in the package is under the FLOOR: that ticket is dispatched
-as `avulso`, because a draft PR and a three-step tail cost more than one item is
-worth. The floor is a lane, never a filter — the ticket stays in the package.
+ONE spec per package, so there is one branch, one campaign and one tail. The lane
+goes to the FIRST spec in QUEUE ORDER that reaches the FLOOR of two tickets among
+the candidates — a spec with a single ticket in the package costs a draft PR and a
+three-step tail for one item, so that ticket is dispatched `avulso` instead. Asked
+of the candidates only: an item excluded for its class or its Risk is not in the
+package and cannot take its lane with it.
+
+A ticket leaves the package for its lane in exactly ONE case — its spec would be a
+SECOND accumulated lane — and the reason is `lane de spec ocupada por #<n>`. Those
+tickets are the next package's, not lost. A spec under the floor is never excluded,
+whoever holds the lane: the floor is a lane, never a filter.
 
 A marker the position rule may not read excludes the item too, and is reported
 BEFORE any value, whichever field carries it: "there is a **Risk:** marker I am
@@ -1734,27 +1738,47 @@ def pack_lanes(candidates):
     """{label: lane} for the candidates that stay, and {label: reason} for the
     tickets the taken lane pushes out.
 
-    ONE spec per package — one branch, one draft PR, one campaign, one tail —
-    and it is the spec of the FIRST ticket in QUEUE ORDER. Not the spec with the
-    most tickets: priority in this queue is the file's order, global, and
-    choosing by count would put a hidden heuristic in the one place the queue
-    deliberately has none. The tickets that lose the lane are not lost, they are
-    the next package's.
+    ONE spec per package — one branch, one draft PR, one campaign, one tail — and
+    it is the FIRST spec in QUEUE ORDER that reaches the floor. First in queue
+    order, because priority here is the file's order, global; not the spec with
+    the most tickets, which would put a hidden heuristic in the one place this
+    queue deliberately has none.
+
+    "That reaches the floor" is the half the spec left open, and the reading is
+    the one that keeps every sentence of it true. A spec with a single ticket in
+    the package is under the floor: it gets no accumulated lane, so it has no lane
+    to occupy either. Letting it take the lane anyway — which is the literal
+    first-ticket-wins reading — made `pack` report `lane de spec ocupada por #m`
+    for a lane nobody was using, and a package holding one lone ticket and three
+    tickets of a second spec ran ZERO accumulated lanes while excluding the three.
+    That is the capacity the two coexisting lanes exist to stop leaving on the
+    table (#171, US 27), and it costs nothing against "one spec per package"
+    (US 28): the package still has one branch, one campaign, one tail.
+
+    So a ticket leaves the package for its lane in exactly one case — its spec
+    would be a SECOND accumulated lane. A spec under the floor is never excluded,
+    whoever holds the lane: the floor is a lane, never a filter.
 
     Asked of the CANDIDATES only, after every other rule has run. An item already
     excluded for its class or its Risk is not in the package, so letting it take
     the package's lane with it would refuse a lane nothing is using."""
     specs = [(label, pack_spec(block)) for label, block in candidates]
-    taken = next((ref for _, ref in specs if ref), None)
-    in_lane = sum(1 for _, ref in specs if ref == taken)
+    tickets = {}
+    for _, ref in specs:
+        if ref is not None:
+            tickets[ref] = tickets.get(ref, 0) + 1
+    taken = next((ref for _, ref in specs
+                  if ref is not None and tickets[ref] >= SPEC_LANE_FLOOR), None)
     lanes, pushed = {}, {}
     for label, ref in specs:
-        if ref is None or ref == taken:
-            # the floor decides the lone ticket's lane, not its membership
-            lanes[label] = (LANE_SPEC % spec_mark(taken)
-                            if ref is not None and in_lane >= SPEC_LANE_FLOOR else LANE_SOLO)
-        else:
+        if ref is not None and ref == taken:
+            lanes[label] = LANE_SPEC % spec_mark(taken)
+        elif ref is not None and tickets[ref] >= SPEC_LANE_FLOOR:
+            # the only exclusion here: this spec would be a SECOND accumulated
+            # lane. Under the floor it would be no lane at all, so it stays
             pushed[label] = LANE_TAKEN % spec_mark(taken)
+        else:
+            lanes[label] = LANE_SOLO
     return lanes, pushed
 
 

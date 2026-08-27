@@ -1278,8 +1278,8 @@ MUTATIONS = [
      ["TestPack.test_the_output_format_is_documented_in_the_help"]),
 
     ("T126 the documented sample drifts from what the command prints",
-     'PACK_SAMPLE = """eligible (3 of 6, in queue order):',
-     'PACK_SAMPLE = """eligible (3 of 6, in file order):',
+     'PACK_SAMPLE = """eligible (3 of 7, in queue order):',
+     'PACK_SAMPLE = """eligible (3 of 7, in file order):',
      ["TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     # --- the Risk rule -------------------------------------------------------
@@ -2092,23 +2092,27 @@ MUTATIONS = [
       "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     ("T172 the lane's spec is the LAST ticket's instead of the first's",
-     "    taken = next((ref for _, ref in specs if ref), None)",
-     "    taken = next((ref for _, ref in reversed(specs) if ref), None)",
+     "    taken = next((ref for _, ref in specs\n"
+     "                  if ref is not None and tickets[ref] >= SPEC_LANE_FLOOR), None)",
+     "    taken = next((ref for _, ref in reversed(specs)\n"
+     "                  if ref is not None and tickets[ref] >= SPEC_LANE_FLOOR), None)",
      ["TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order"]),
 
-    ("T172 the floor goes, so a lone ticket claims the accumulated lane",
-     "if ref is not None and in_lane >= SPEC_LANE_FLOOR else LANE_SOLO)",
-     "if ref is not None and in_lane >= 1 else LANE_SOLO)",
-     ["TestPackLane.test_a_single_ticket_of_a_spec_is_a_LANE_not_an_exclusion",
-      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+    ("T172 the floor goes, so a lone spec becomes a SECOND lane and is excluded",
+     "        elif ref is not None and tickets[ref] >= SPEC_LANE_FLOOR:",
+     "        elif ref is not None and tickets[ref] >= 1:",
+     ["TestPackLane.test_no_spec_reaching_the_floor_leaves_every_ticket_avulso",
+      "TestPackLane.test_a_spec_under_the_floor_does_not_take_the_lane_it_cannot_use"]),
 
     # the floor turned into a FILTER — the direction that drops the lone ticket
     # out of a package it belongs in, which is what "lane, not exclusion" names
-    ("T172 the floor excludes the lone ticket instead of relaning it",
-     "        if ref is None or ref == taken:",
-     "        if ref is None or (ref == taken and in_lane >= SPEC_LANE_FLOOR):",
-     ["TestPackLane.test_a_single_ticket_of_a_spec_is_a_LANE_not_an_exclusion",
-      "TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order"]),
+    ("T172 no ticket ever reaches the accumulated lane",
+     "        if ref is not None and ref == taken:\n"
+     "            lanes[label] = LANE_SPEC % spec_mark(taken)",
+     "        if False:\n"
+     "            lanes[label] = LANE_SPEC % spec_mark(taken)",
+     ["TestPackLane.test_two_tickets_of_one_spec_share_the_accumulated_lane",
+      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
 
     ("T172 a second spec keeps a lane of its own instead of leaving the package",
      "            pushed[label] = LANE_TAKEN % spec_mark(taken)",
@@ -2116,6 +2120,12 @@ MUTATIONS = [
      ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason",
       "TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    ("T172 the lane goes to the first spec seen, floor or no floor",
+     '    taken = next((ref for _, ref in specs\n'
+     '                  if ref is not None and tickets[ref] >= SPEC_LANE_FLOOR), None)',
+     "    taken = next((ref for _, ref in specs if ref is not None), None)",
+     ["TestPackLane.test_a_spec_under_the_floor_does_not_take_the_lane_it_cannot_use"]),
 
     ("T172 the lane is decided over EVERY item, not the candidates only",
      "    lanes, pushed = pack_lanes(candidates)",

@@ -2714,6 +2714,7 @@ class TestPack(PackOutput):
                   + item(9, "the item's text")
                   + decision_item(12, "another item")
                   + ticket_item(21, "a ticket of a second spec", spec="repo#180")
+                  + ticket_item(22, "and its sibling", spec="repo#180")
                   + "- [ ] **T031** — a legacy item **Effort:** S. **Criterion:** A: x. "
                     "**Source:** 2026-08-13\n")
         r = self.run_tk("pack")
@@ -3109,32 +3110,66 @@ class TestPackLane(PackOutput):
         lane so the caller does not have to work out which."""
         self.seed(ticket_item(1, "um", spec="repo#171")
                   + ticket_item(2, "dois", spec="repo#180")
-                  + ticket_item(3, "tres", spec="repo#171"))
+                  + ticket_item(3, "tres", spec="repo#171")
+                  + ticket_item(4, "quatro", spec="repo#180"))
         out = self.pack()
         self.assertEqual(self.lanes(out), {"T001": "spec #171", "T003": "spec #171"})
-        self.assertEqual(self.reason(out, "T002"), "lane de spec ocupada por #171")
+        for label in ("T002", "T004"):
+            self.assertEqual(self.reason(out, label), "lane de spec ocupada por #171")
 
     def test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order(self):
-        """Priority IS the file's order. Picking the spec with the most tickets —
-        or the last one seen — would re-prioritise the queue silently, from a
-        heuristic nothing in this queue has."""
+        """Both specs reach the floor, so ORDER is the only thing that can decide.
+        Picking the spec with the most tickets — or the last one seen — would
+        re-prioritise the queue silently, from a heuristic nothing here has."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#171")
+                  + ticket_item(3, "tres", spec="repo#180")
+                  + ticket_item(4, "quatro", spec="repo#180"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T001": "spec #171", "T002": "spec #171"})
+        for label in ("T003", "T004"):
+            self.assertEqual(self.reason(out, label), "lane de spec ocupada por #171")
+
+    def test_a_spec_under_the_floor_does_not_take_the_lane_it_cannot_use(self):
+        """The interaction #171 left open, decided by its own US 27. The lone
+        ticket of #171 gets no accumulated lane — it is under the floor — so it has
+        none to occupy either, and #180 takes it. The literal reading, first ticket
+        wins whatever its count, ran this package with ZERO accumulated lanes while
+        excluding two tickets in the name of a lane nobody was using."""
         self.seed(ticket_item(1, "um", spec="repo#171")
                   + ticket_item(2, "dois", spec="repo#180")
                   + ticket_item(3, "tres", spec="repo#180"))
         out = self.pack()
-        self.assertEqual(self.lanes(out), {"T001": "avulso"})
-        for label in ("T002", "T003"):
-            self.assertEqual(self.reason(out, label), "lane de spec ocupada por #171")
+        self.assertEqual(self.lanes(out),
+                         {"T001": "avulso", "T002": "spec #180", "T003": "spec #180"})
+        self.assertEqual(self.blocks(out)["excluded"], [])
+
+    def test_no_spec_reaching_the_floor_leaves_every_ticket_avulso(self):
+        """Three specs, one ticket each: no lane exists, so nothing can occupy one
+        and nothing is excluded. The direction that would turn the floor into a
+        filter takes the whole package with it."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#180")
+                  + ticket_item(3, "tres", spec="repo#190"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out),
+                         {"T001": "avulso", "T002": "avulso", "T003": "avulso"})
+        self.assertEqual(self.blocks(out)["excluded"], [])
 
     def test_the_lane_is_decided_among_ELIGIBLE_items_only(self):
         """An item excluded for its class or its Risk is not in the package, so it
         cannot take the package's lane with it — the second spec would then be
         refused a lane that nothing is using."""
         self.seed(ticket_item(1, "um", spec="repo#171", klass="DECISION")
-                  + ticket_item(2, "dois", spec="repo#180")
-                  + ticket_item(3, "tres", spec="repo#180"))
+                  + ticket_item(2, "dois", spec="repo#171", klass="DECISION")
+                  + ticket_item(3, "tres", spec="repo#180")
+                  + ticket_item(4, "quatro", spec="repo#180"))
         out = self.pack()
-        self.assertEqual(self.lanes(out), {"T002": "spec #180", "T003": "spec #180"})
+        self.assertEqual(self.lanes(out), {"T003": "spec #180", "T004": "spec #180"})
+        # #171 reaches the floor over the WHOLE queue and holds no lane all the same:
+        # neither of its tickets is in the package
+        self.assertEqual([ln for ln in self.blocks(out)["excluded"]
+                          if "ocupada" in ln], [])
 
     def test_a_spec_QUOTED_IN_PROSE_never_becomes_the_lane(self):
         """A marker before the **Class:** the chain anchors at is the item's own
@@ -3173,11 +3208,13 @@ class TestPackLane(PackOutput):
         edit of the queue, which the contract forbids and real files carry anyway.
         Printing `#` plus the whole value, or an empty `#`, would name a lane that
         matches nothing the caller can search for."""
-        self.seed(ticket_item(1, "um", spec="repo#171").replace("repo#171", "lixo", 1)
-                  + ticket_item(2, "dois", spec="repo#171"))
+        self.seed(ticket_item(1, "um", spec="lixo") + ticket_item(2, "dois", spec="lixo")
+                  + ticket_item(3, "tres", spec="repo#171")
+                  + ticket_item(4, "quatro", spec="repo#171"))
         out = self.pack()
-        self.assertEqual(self.lanes(out), {"T001": "avulso"})
-        self.assertEqual(self.reason(out, "T002"), "lane de spec ocupada por lixo")
+        self.assertEqual(self.lanes(out), {"T001": "spec lixo", "T002": "spec lixo"})
+        for label in ("T003", "T004"):
+            self.assertEqual(self.reason(out, label), "lane de spec ocupada por lixo")
 
     def test_the_lane_exclusion_is_the_LAST_step_of_the_ladder(self):
         """A ticket of the second spec that ALSO carries a Risk is reported for the
@@ -3192,7 +3229,8 @@ class TestPackLane(PackOutput):
         undoes without noticing."""
         self.seed(ticket_item(1, "um", spec="repo#171")
                   + ticket_item(2, "dois", spec="repo#180", risk="apaga dado")
-                  + ticket_item(3, "tres", spec="repo#171"))
+                  + ticket_item(3, "tres", spec="repo#171")
+                  + ticket_item(4, "quatro", spec="repo#180"))
         self.assertEqual(self.reason(self.pack(), "T002"), "Risk: apaga dado")
 
 # --- handoff: the briefing that lives and dies with the item ---------------
