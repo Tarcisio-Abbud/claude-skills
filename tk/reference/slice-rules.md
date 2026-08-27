@@ -100,3 +100,12 @@ doubt the remote.
 
 **Re-read the ticket's comments before opening the PR.** A sibling slice comments on your ticket
 while you work, and a review that reads the ticket cold is the wrong way to learn it.
+
+**A verification subagent gets the ticket's body and its comments named in the prompt that
+dispatches it, with the command ready.** That subagent reads the spec its prompt names and
+nothing else, so a gap in your reading returns as its approval. One such run passed a slice
+clean that was missing four binding requirements, all of them living in the comments. Hand the
+subagent `gh api "repos/<owner>/<repo>/issues/<n>/comments" --paginate`, with owner and repo
+spelled out. The `{owner}/{repo}` placeholders resolve from the working directory's remote, and
+the ticket often lives in another repo. Say to read a long comment in chunks, since an amendment
+that revokes the body's decision lives in one.
