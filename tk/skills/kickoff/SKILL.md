@@ -354,9 +354,13 @@ re-triages; tracker tickets are referenced, not mirrored):
   tail, so a spec under the floor is dispatched as `avulso`. A ticket leaves the package for
   its lane in exactly one case, its spec would be a SECOND accumulated lane, with a reason
   naming both references; it returns in the next package. A spec under the floor is never
-  excluded, whoever holds the lane — the floor is a lane, never a filter. The shape is asked
-  again on the way OUT: a **Spec:** that is not a forge reference forms no lane, because a
-  hand edit is not the writer. The shape is validated
+  excluded, whoever holds the lane — the floor is a lane, never a filter; its lane still NAMES
+  the spec (`avulso (<ref>)`), because the open-PR check has to know which spec to ask about.
+  Every reference is stored and printed in ONE canonical spelling — repo lower-cased, issue
+  number without leading zeros — decided when the value is written and re-decided when it is
+  read: two spellings of one reference would be two lanes, two branches and two campaigns for
+  one spec. The shape is asked again on the way OUT, for both fields, because a hand edit is
+  not the writer: a value that is not a forge reference forms no lane and is never printed. The shape is validated
   exactly, like `--env` against the roster: a malformed `--ticket` feeds a `closes` line that
   closes nothing, and a malformed `--spec` opens a second branch for a spec that already has
   one. Neither failure reports itself.

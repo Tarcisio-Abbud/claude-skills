@@ -818,8 +818,8 @@ MUTATIONS = [
       "TestEnvField.test_add_writes_no_field_for_the_reserved_word"]),
 
     ("T120 add stops validating the env",
-     '    validate_env(args.env)\n    validate_ref("ticket", args.ticket)',
-     '    validate_ref("ticket", args.ticket)',
+     '    validate_env(args.env)\n    # the gate HANDS BACK',
+     "    # the gate HANDS BACK",
      ["TestEnvField.test_add_refuses_a_value_outside_the_roster"]),
 
     ("T120 edit stops validating the env",
@@ -1278,8 +1278,8 @@ MUTATIONS = [
      ["TestPack.test_the_output_format_is_documented_in_the_help"]),
 
     ("T126 the documented sample drifts from what the command prints",
-     'PACK_SAMPLE = """eligible (3 of 7, in queue order):',
-     'PACK_SAMPLE = """eligible (3 of 7, in file order):',
+     'PACK_SAMPLE = """eligible (4 of 8, in queue order):',
+     'PACK_SAMPLE = """eligible (4 of 8, in file order):',
      ["TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     # --- the Risk rule -------------------------------------------------------
@@ -2061,7 +2061,8 @@ MUTATIONS = [
      ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
 
     ("T172 the ref shape is not checked at all",
-     '    validate_ref("ticket", args.ticket)\n    validate_ref("spec", args.spec)',
+     '    args.ticket = validate_ref("ticket", args.ticket)\n'
+     '    args.spec = validate_ref("spec", args.spec)',
      "    pass",
      ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
 
@@ -2168,9 +2169,10 @@ MUTATIONS = [
      ["TestPackLane.test_a_duplicate_ID_never_costs_the_LANE_HOLDER_its_place"]),
 
     ("T172 the READ side stops asking the Spec's shape",
-     "        if not REF_RE.fullmatch(value):",
-     "        if False:",
-     ["TestPackLane.test_a_Spec_that_is_not_a_forge_reference_never_forms_a_LANE"]),
+     '    if field["Spec"] is not None and pack_ref(block, "Spec") is None:',
+     "    if False:",
+     ["TestPackLane.test_a_Spec_that_is_not_a_forge_reference_never_forms_a_LANE",
+      "TestPackLane.test_the_read_side_shape_gate_refuses_a_PREFIX"]),
 
     ("T172 the lane names only the issue number, so two repos collapse into one",
      "            lanes[n] = LANE_SPEC % taken",
@@ -2193,12 +2195,8 @@ MUTATIONS = [
     # the other direction: a Ticket the position rule may not read must stay
     # SILENT — it decides no lane, so it may not cost the item its place
     ("T172 an unreadable Ticket is printed anyway",
-     "    segs, markers = qualified_fields(block, \"Ticket\")\n"
-     "    if len(segs) != 1 or markers > len(segs):\n"
-     '        return ""',
-     "    segs, markers = qualified_fields(block, \"Ticket\")\n"
-     "    if not segs:\n"
-     '        return ""',
+     '    if qualified_fields(block, "Ticket")[1] != 1:\n        return ""',
+     "    pass",
      ["TestPackLane.test_a_TICKET_the_position_rule_cannot_read_is_SILENT"]),
 
     ("T172 the leading character of a repo name goes unbounded",
@@ -2215,6 +2213,50 @@ MUTATIONS = [
      'REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}#[0-9]{1,9}")',
      'REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*#[0-9]{1,9}")',
      ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
+    # --- T172, round 2: the consolidation onto one form and one reader -------
+    ("T172 the reference is stored as typed, so two spellings are two specs",
+     '    args.ticket = validate_ref("ticket", args.ticket)',
+     '    validate_ref("ticket", args.ticket)',
+     ["TestPackLane.test_the_canonical_spelling_is_what_the_WRITER_stores"]),
+
+    ("T172 the gate hands back nothing, so the writer stores nothing",
+     '             "does not exist.")\n    return canonical_ref(value)',
+     '             "does not exist.")\n    return value',
+     ["TestPackLane.test_the_canonical_spelling_is_what_the_WRITER_stores"]),
+
+    ("T172 the repo half keeps its case, so one repo counts as two",
+     '    return f"{repo.lower()}#{int(number)}"', '    return f"{repo}#{int(number)}"',
+     ["TestPackLane.test_two_SPELLINGS_of_one_reference_are_one_spec"]),
+
+    ("T172 leading zeros survive, so one issue counts as two",
+     '    return f"{repo.lower()}#{int(number)}"', '    return f"{repo.lower()}#{number}"',
+     ["TestPackLane.test_two_SPELLINGS_of_one_reference_are_one_spec"]),
+
+    ("T172 the one reader drops the shape, so the Ticket goes back ungated",
+     "    return canonical_ref(value) if REF_RE.fullmatch(value) else None",
+     "    return canonical_ref(value)",
+     ["TestPackLane.test_a_TICKET_that_is_not_a_forge_reference_is_never_printed",
+      "TestPackLane.test_the_read_side_shape_gate_refuses_a_PREFIX"]),
+
+    ("T172 the one reader accepts a PREFIX again",
+     "    return canonical_ref(value) if REF_RE.fullmatch(value) else None",
+     "    return canonical_ref(value) if REF_RE.match(value) else None",
+     ["TestPackLane.test_the_read_side_shape_gate_refuses_a_PREFIX"]),
+
+    ("T172 the Spec's shape jumps back over the Risk it must not hide",
+     '    if field["Risk"] is not None:\n'
+     '        return "Risk: " + field_value(field["Risk"]), None',
+     '    if field["Spec"] is not None and pack_ref(block, "Spec") is None:\n'
+     '        return ("Spec is not a forge reference", REPAIR_CANCEL)\n'
+     '    if field["Risk"] is not None:\n'
+     '        return "Risk: " + field_value(field["Risk"]), None',
+     ["TestPackLane.test_a_RISK_outranks_a_malformed_Spec_on_the_ladder"]),
+
+    ("T172 a below-floor ticket stops naming its spec",
+     "            lanes[n] = LANE_SOLO if ref is None else LANE_SOLO_SPEC % ref",
+     "            lanes[n] = LANE_SOLO",
+     ["TestPackLane.test_a_below_floor_ticket_still_NAMES_its_spec",
+      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
 ]
 
 

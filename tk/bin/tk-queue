@@ -1144,8 +1144,35 @@ def displayed_claim(block):
 REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}#[0-9]{1,9}")
 
 
+def canonical_ref(value):
+    """The one spelling of a forge reference this queue stores and compares.
+
+    Two spellings of one reference is the mechanism this slice's review kept
+    finding a new door into, and equality is where it bites: `pack_lanes` counts
+    tickets per spec by raw string equality, so `Ambiente#171` and
+    `ambiente#171` — measured — were two specs of one ticket each, both under
+    the floor, both dispatched `avulso`, two branches and two campaigns for one
+    spec. And `ambiente#0171` beside `ambiente#171` produced the other symptom:
+    a reason naming the item's own spec as the one occupying the lane.
+
+    Both halves are canonicalised, and neither is a guess about the forge:
+
+      repo    lower-cased. A forge repo name is case-insensitive to look up and
+              case-preserving to display, so two casings ARE one repo — the one
+              thing a queue comparing them by `==` cannot know.
+      number  through int(), which drops leading zeros. `#0171` and `#171` are
+              one issue; `#0171` is not even a form the forge's own `#N` syntax
+              resolves.
+
+    Applied at the WRITER, so the file only ever holds the canonical form, and
+    again at the reader, because a hand edit is not the writer."""
+    repo, _, number = value.rpartition("#")
+    return f"{repo.lower()}#{int(number)}"
+
+
 def validate_ref(flag, value):
-    """Refuse a provenance value that is not a forge reference.
+    """Refuse a provenance value that is not a forge reference, and return the
+    one spelling of the one that passes (see canonical_ref).
 
     A typo here is silent everywhere it matters: `--ticket` feeds the `closes`
     line of a PR, so a malformed one closes nothing and the ticket stays open
@@ -1155,13 +1182,14 @@ def validate_ref(flag, value):
     makes the shape a gate rather than a warning.
     """
     if value is None:
-        return
+        return None
     if not REF_RE.fullmatch(value):
         fail(f"--{flag} {value!r} is not a forge reference: the shape is `<repo>#<n>` "
              "(e.g. homeserver-ambiente#172) — the repo's own name, no owner prefix, "
              "and the issue number after '#'. The match is exact: a near-miss feeds a "
              "`closes` line that closes nothing, or names a lane after an issue that "
              "does not exist.")
+    return canonical_ref(value)
 
 
 def validate_project(tag):
@@ -1471,10 +1499,11 @@ REPAIR_MIGRATE = "an item with no ID: `tk-queue migrate` assigns one"
 # saying so. The sample is a REAL run and the suite asserts it character for
 # character against the queue that produces it — a documented shape nothing
 # executes is the one that goes stale first, and this one documents an AC.
-PACK_SAMPLE = """eligible (3 of 7, in queue order):
+PACK_SAMPLE = """eligible (4 of 8, in queue order):
 T007  S (~20min)    spec ambiente#171     the first ticket of the spec  [ambiente#172]
 T008  M (~1h)       spec ambiente#171     the second one  [ambiente#173]
 T009  S             avulso                the item's text
+T010  S             avulso (ambiente#159)  a lone ticket, under the floor
 
 excluded (4):
 T012  another item  — class is DECISION
@@ -1487,7 +1516,7 @@ repairs:
 """
 
 PACK_FORMAT = """output format (stable — a skill's prose reads it). The sample below is a real
-run, on a queue of seven items, asserted character for character by the suite:
+run, on a queue of eight items, asserted character for character by the suite:
 
 """ + PACK_SAMPLE + """
 Eligible: ID, Effort, LANE, text, and — appended in brackets, only for the items
@@ -1522,7 +1551,13 @@ and never from the forge (this command opens no network connection):
               one accumulated branch with one PR for the whole spec. The WHOLE
               reference, repo half included: two repos can carry one issue number,
               and the repo half is what names the branch
-  avulso      everything else — one PR of its own
+  avulso (<ref>)  a ticket of a spec UNDER the floor — one PR of its own, and the
+              spec named all the same, because the open-PR check is asked about it
+  avulso      an item that is no ticket of any spec — one PR of its own
+
+Every reference is printed in ONE canonical spelling — repo lower-cased, issue
+number without leading zeros — decided when the value is written and re-decided
+when it is read, so two spellings can never count as two specs.
 
 ONE spec per package, so there is one branch, one campaign and one tail. The lane
 goes to the FIRST spec in QUEUE ORDER that reaches the FLOOR of two tickets among
@@ -1645,20 +1680,6 @@ def pack_exclusion(iid, block, identity):
                     "ambiguous", REPAIR_CANCEL)
         field[name] = segs[0] if segs else None
 
-    # the shape, on the READ side. `validate_ref` guards `cmd_add`, and that is the
-    # only writer of this field — but not the only way it arrives: a hand edit, a
-    # foreign tool, a merge. Measured on a queue nothing but `add` should have
-    # written: two items carrying `**Spec:** homeserver ambiente#999.` (a blank, a
-    # value `add` refuses) formed a REAL accumulated lane, printed `spec #999`, and
-    # pushed two tickets of a genuine spec out of the package with a reason naming
-    # an issue that existed only in the typo. Asked with the other defects, before
-    # any ordinary value: this is the item being unreadable, not the item being busy.
-    if field["Spec"] is not None:
-        value = field_value(field["Spec"])
-        if not REF_RE.fullmatch(value):
-            return (f"Spec is {value!r}, which is not a forge reference (`<repo>#<n>`), so "
-                    "the lane it names cannot be told from a typo", REPAIR_CANCEL)
-
     if field["Risk"] is not None:
         return "Risk: " + field_value(field["Risk"]), None
     if field["Env"] is not None:
@@ -1671,6 +1692,23 @@ def pack_exclusion(iid, block, identity):
             # as a clean name. The whole reason the value is in the line is to make a
             # wrong one look wrong
             return f"Env is {value!r}, {where}", None
+
+    # the Spec's SHAPE, asked at the rung the help documents — after risk and env,
+    # not before them. It sat with the marker defects for one round, and that put a
+    # typo'd Spec AHEAD of a real **Risk:** line: the item was excluded either way,
+    # but the reason printed was the typo and the risk nobody saw went unprinted, on
+    # the one field that says unattended execution can do damage.
+    #
+    # `validate_ref` guards `cmd_add`, the only writer, and this asks again because
+    # the writer is not the only door — a hand edit, a foreign tool, a merge.
+    # Measured on a queue nothing but `add` should have written: two items carrying
+    # `**Spec:** homeserver ambiente#999.` formed a REAL accumulated lane and pushed
+    # two tickets of a genuine spec out of the package, naming an issue that existed
+    # only in the typo.
+    if field["Spec"] is not None and pack_ref(block, "Spec") is None:
+        return (f"Spec is {field_value(field['Spec'])!r}, which is not a forge reference "
+                "(`<repo>#<n>`), so the lane it names cannot be told from a typo",
+                REPAIR_CANCEL)
 
     # asked of `displayed_claim`, so `list` and the package cannot disagree about who
     # holds an item — the package has always been built from exactly that display
@@ -1715,6 +1753,13 @@ def pack_effort(block):
 # two vocabularies for one feature. Translating all three together, in the ticket
 # that owns the string, is the repair.
 LANE_SOLO = "avulso"
+# a ticket of a spec that did not reach the floor: the lane is the solo one, and
+# the spec is NAMED all the same. Printing a bare `avulso` made it identical to a
+# ticket of no spec at all, and the two are not the same thing to the caller that
+# dispatches: the open-PR check (the orchestrator's, it needs the forge) has to
+# know which spec to ask about, and a lone ticket of a spec whose branch is
+# already open is exactly the case that check exists for.
+LANE_SOLO_SPEC = "avulso (%s)"
 LANE_SPEC = "spec %s"
 # the taken spec first, then this item's own — both WHOLE references. Printing
 # only the issue number (`#171`) was measured collapsing two real specs into one
@@ -1730,18 +1775,38 @@ LANE_TAKEN = "lane de spec ocupada por %s; esta é %s"
 SPEC_LANE_FLOOR = 2
 
 
-def pack_spec(block):
-    """The spec this item is a ticket of, or None when it is not one.
+def pack_ref(block, field):
+    """The forge reference this item's `field` carries, canonical — or None when
+    it carries none this reader may use.
 
-    A READER, not a gate: the defective shapes — a **Spec:** marker the position
-    rule may not read, two of them in the chain — are refused one function up, in
-    `pack_exclusion`, and this is only ever asked of what survived that. Asking
-    them again here would be the same rule in two places, which is how one copy
-    comes to keep a position the other dropped (the answer `qualified_fields`
-    already gives about `real_fields`). What is left is the position rule itself,
-    read from the one function that spells it."""
-    segs = real_fields(block, "Spec")
-    return field_value(segs[0]) if segs else None
+    ONE reader for BOTH provenance fields, and that is the whole point. Three
+    rules meet on a reference — where it may be read from, whether it is
+    well-formed, which spelling of it counts — and this slice's review found a
+    new defect every round for as long as each site decided them separately:
+    `**Spec:**` was gated on the way out and `**Ticket:**` was not, so a
+    hand-edited ticket value spliced free text into a line a skill parses; and
+    equality was raw, so two casings of one spec became two lanes. Both are the
+    same defect wearing a different field's name.
+
+    So the three rules are asked here, once, for whoever asks:
+
+      position   `real_fields` — the chain after the **Class:** it anchors at,
+                 never a search of the block.
+      shape      `REF_RE`, again. The writer's gate is not the only door: a hand
+                 edit, a foreign tool, a merge. `fullmatch`, not `match` — a
+                 prefix match would read `repo#171 texto solto` as a well-formed
+                 `repo#171` and let it name a lane.
+      spelling   `canonical_ref`, so `Ambiente#171` and `ambiente#0171` are the
+                 one reference they name, whichever door they came in through.
+
+    None is the answer to every shape this may not use, and it is never fatal:
+    what None COSTS the item is decided by the caller, and the two callers
+    decide differently on purpose (see pack_exclusion and pack_closes)."""
+    segs = real_fields(block, field)
+    if not segs:
+        return None
+    value = field_value(segs[0])
+    return canonical_ref(value) if REF_RE.fullmatch(value) else None
 
 
 # NEITHER FIELD IS AN `edit` FLAG, and the omission is deliberate — the same
@@ -1766,13 +1831,25 @@ def pack_closes(block):
     It is here at all because `--ticket` had no reader. The field feeds the
     `closes` line of the package's PR (#171), the package is dispatched from THIS
     output, and a provenance nothing returns is the prose the field was added to
-    replace. Read through the position rule, and silent when it cannot be read:
-    Ticket decides no lane, so an unreadable one may not cost the item its place —
-    the same answer `pack_effort` gives."""
-    segs, markers = qualified_fields(block, "Ticket")
-    if len(segs) != 1 or markers > len(segs):
+    replace.
+
+    Read through `pack_ref`, the SAME reader the lane is built from, and that is
+    the correction this function earned: with a reader of its own it had the
+    position rule and no shape gate, and a hand-edited `**Ticket:** repo#1]
+    injetado` spliced a second bracket group and free text into a line whose
+    consumer is a skill's prose. Nothing about a ticket makes it need a looser
+    rule than a spec.
+
+    SILENT when the reference cannot be read, where the lane EXCLUDES the item:
+    the two callers of one reader differ exactly here, and the difference is what
+    each field decides. Spec decides the lane, so an unreadable one is a
+    dispatch this filter would get wrong; Ticket decides nothing here, so an
+    unreadable one may not cost the item its place — the answer `pack_effort`
+    gives. What it must not do is print a value no reader validated."""
+    if qualified_fields(block, "Ticket")[1] != 1:
         return ""
-    return f"  [{field_value(segs[0])}]"
+    ref = pack_ref(block, "Ticket")
+    return f"  [{ref}]" if ref else ""
 
 
 def pack_lanes(candidates):
@@ -1803,7 +1880,7 @@ def pack_lanes(candidates):
     Asked of the CANDIDATES only, after every other rule has run. An item already
     excluded for its class or its Risk is not in the package, so letting it take
     the package's lane with it would refuse a lane nothing is using."""
-    specs = [(n, pack_spec(block)) for n, block in candidates]
+    specs = [(n, pack_ref(block, "Spec")) for n, block in candidates]
     tickets = {}
     for _, ref in specs:
         if ref is not None:
@@ -1819,7 +1896,7 @@ def pack_lanes(candidates):
             # lane. Under the floor it would be no lane at all, so it stays
             pushed[n] = LANE_TAKEN % (taken, ref)
         else:
-            lanes[n] = LANE_SOLO
+            lanes[n] = LANE_SOLO if ref is None else LANE_SOLO_SPEC % ref
     return lanes, pushed
 
 
@@ -1980,8 +2057,11 @@ def cmd_add(args):
     if args.project:
         validate_project(args.project)
     validate_env(args.env)
-    validate_ref("ticket", args.ticket)
-    validate_ref("spec", args.spec)
+    # the gate HANDS BACK the canonical form, and the item is composed from it:
+    # a file that holds one spelling per reference is what makes every later
+    # comparison a plain `==` again
+    args.ticket = validate_ref("ticket", args.ticket)
+    args.spec = validate_ref("spec", args.spec)
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:

@@ -2713,6 +2713,7 @@ class TestPack(PackOutput):
                   + ticket_item(8, "the second one", spec="ambiente#171",
                                 ticket="ambiente#173", effort="M (~1h)")
                   + item(9, "the item's text")
+                  + ticket_item(10, "a lone ticket, under the floor", spec="ambiente#159")
                   + decision_item(12, "another item")
                   + ticket_item(21, "a ticket of a second spec", spec="ambiente#144")
                   + ticket_item(22, "and its sibling", spec="ambiente#144")
@@ -3108,7 +3109,7 @@ class TestPackLane(PackOutput):
         failure to avoid is turning a floor into a filter."""
         self.seed(ticket_item(1, "um", spec="repo#171") + item(2, "dois"))
         out = self.pack()
-        self.assertEqual(self.lanes(out), {"T001": "avulso", "T002": "avulso"})
+        self.assertEqual(self.lanes(out), {"T001": "avulso (repo#171)", "T002": "avulso"})
         self.assertEqual(self.blocks(out)["excluded"], [])
 
     def test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason(self):
@@ -3148,7 +3149,7 @@ class TestPackLane(PackOutput):
                   + ticket_item(3, "tres", spec="repo#180"))
         out = self.pack()
         self.assertEqual(self.lanes(out),
-                         {"T001": "avulso", "T002": "spec repo#180", "T003": "spec repo#180"})
+                         {"T001": "avulso (repo#171)", "T002": "spec repo#180", "T003": "spec repo#180"})
         self.assertEqual(self.blocks(out)["excluded"], [])
 
     def test_no_spec_reaching_the_floor_leaves_every_ticket_avulso(self):
@@ -3160,7 +3161,8 @@ class TestPackLane(PackOutput):
                   + ticket_item(3, "tres", spec="repo#190"))
         out = self.pack()
         self.assertEqual(self.lanes(out),
-                         {"T001": "avulso", "T002": "avulso", "T003": "avulso"})
+                         {"T001": "avulso (repo#171)", "T002": "avulso (repo#180)",
+                          "T003": "avulso (repo#190)"})
         self.assertEqual(self.blocks(out)["excluded"], [])
 
     def test_the_lane_is_decided_among_ELIGIBLE_items_only(self):
@@ -3280,6 +3282,74 @@ class TestPackLane(PackOutput):
         self.assertEqual(len(lines), 2, lines)
         for ln in lines:
             self.assertNotIn("[repo#", ln)
+
+    def test_two_SPELLINGS_of_one_reference_are_one_spec(self):
+        """The class this consolidation ends. Equality decided the lane by raw
+        string, so `Ambiente#171` and `ambiente#171` — one repo, a forge repo name
+        being case-insensitive — were two specs of one ticket each, both under the
+        floor, both dispatched avulso: two branches and two campaigns for one spec.
+        Leading zeros were the same defect from the other side, and produced a
+        reason naming the item's own spec as the one occupying the lane."""
+        self.seed(ticket_item(1, "um", spec="Ambiente#171")
+                  + ticket_item(2, "dois", spec="ambiente#0171"))
+        self.assertEqual(self.lanes(self.pack()),
+                         {"T001": "spec ambiente#171", "T002": "spec ambiente#171"})
+
+    def test_the_canonical_spelling_is_what_the_WRITER_stores(self):
+        """Canonicalised where the value is validated, so the file holds one
+        spelling per reference and every later comparison is a plain `==` again.
+        Fixing it only at the reader would leave the queue carrying spellings that
+        agree today and disagree the next time somebody adds a reader."""
+        self.seed()
+        r = self.run_tk("add", "importado", "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: x", "--ticket", "Ambiente#0172",
+                        "--spec", "AMBIENTE#171")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Ticket:** ambiente#172. **Spec:** ambiente#171.", self.body())
+
+    def test_a_TICKET_that_is_not_a_forge_reference_is_never_printed(self):
+        """The asymmetry this consolidation removes: the Ticket had a reader of its
+        own, with the position rule and no shape gate, and a hand-edited
+        `**Ticket:** repo#1] injetado` spliced a second bracket group and free text
+        into a line whose consumer is a skill's prose. Silent, not excluded — Ticket
+        decides no lane — but never printed unvalidated."""
+        for junk in ("repo#1] injetado", "repo#1  coluna falsa", "", "fecha o 173"):
+            with self.subTest(junk=junk):
+                self.seed(ticket_item(1, "um", ticket=junk) if junk
+                          else "- [ ] **T001** — um **Class:** AUTONOMOUS. **Effort:** S. "
+                               "**Criterion:** A: x. **Ticket:** . **Source:** 2026-08-13\n")
+                line = self.blocks(self.pack())["eligible"][0]
+                self.assertNotIn("[", line, line)
+
+    def test_the_read_side_shape_gate_refuses_a_PREFIX(self):
+        """`fullmatch`, not `match`. A prefix match reads `repo#171 texto solto` as a
+        well-formed `repo#171` and lets it name a lane — and the value it would name
+        it after is one the writer refuses, so nothing downstream would ever see the
+        text that made it wrong."""
+        self.seed(ticket_item(1, "um", spec="repo#171 texto solto")
+                  + ticket_item(2, "dois", spec="repo#171 texto solto"))
+        out = self.pack()
+        self.assertEqual(self.blocks(out)["eligible"], [])
+        for label in ("T001", "T002"):
+            self.assertIn("not a forge reference", self.reason(out, label))
+
+    def test_a_below_floor_ticket_still_NAMES_its_spec(self):
+        """`avulso` alone made a lone ticket of a spec identical to a ticket of no
+        spec, and they are not the same thing to whoever dispatches: the open-PR
+        check has to know which spec to ask about, and a lone ticket of a spec whose
+        branch is already open is the case that check exists for."""
+        self.seed(ticket_item(1, "um", spec="repo#171") + item(2, "dois"))
+        self.assertEqual(self.lanes(self.pack()),
+                         {"T001": "avulso (repo#171)", "T002": "avulso"})
+
+    def test_a_RISK_outranks_a_malformed_Spec_on_the_ladder(self):
+        """The rung the help documents: class, risk, env, spec. The shape check sat
+        with the marker defects for one round, and that put a typo'd Spec ahead of a
+        real **Risk:** line — the item was excluded either way, but the reason
+        printed was the typo and the risk nobody saw went unprinted, on the one
+        field that says unattended execution can do damage."""
+        self.seed(ticket_item(1, "um", spec="nao e uma ref", risk="apaga dado do usuário"))
+        self.assertEqual(self.reason(self.pack(), "T001"), "Risk: apaga dado do usuário")
 
     def test_the_lane_exclusion_is_the_LAST_step_of_the_ladder(self):
         """A ticket of the second spec that ALSO carries a Risk is reported for the
