@@ -176,14 +176,15 @@ def load_site():
     return site
 
 
-def main(argv=None):
-    argparse.ArgumentParser(
-        prog="tk-roster",
-        description="The projects on this machine that have a queue, and the "
-                    "directory to open a session in for each.",
-    ).parse_args(argv)
+def sweep(site):
+    """The sweep itself: which queues enter, which a list holds back, which no
+    single directory resolves — and the root all three were read from.
 
-    site = load_site()
+    Split out of `main` so a SECOND reader of the roster (`tk-hygiene`, which
+    needs the project paths and not the report) gets the same answer from the
+    same code. Parsing this bin's stdout would have been a second answer to
+    "which projects are there", drifting the day the report's shape changes.
+    """
     allow = site.fleet_allow if site else ()
     deny = site.fleet_deny if site else ()
 
@@ -201,6 +202,20 @@ def main(argv=None):
             swept.append((name, paths[0]))
         else:
             blind.append((name, memdir, paths))
+    return root, swept, held, blind, listed
+
+
+def main(argv=None):
+    argparse.ArgumentParser(
+        prog="tk-roster",
+        description="The projects on this machine that have a queue, and the "
+                    "directory to open a session in for each.",
+    ).parse_args(argv)
+
+    site = load_site()
+    allow = site.fleet_allow if site else ()
+    deny = site.fleet_deny if site else ()
+    root, swept, held, blind, listed = sweep(site)
 
     if swept:
         print(f"## roster — {len(swept)} project(s) to sweep\n")

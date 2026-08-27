@@ -17,6 +17,16 @@ project's own `.claude/skills/kickoff` overrides this skill entirely.)
 
 ## 1. Gather the agenda
 
+**Open on a clean tree.** Run `../../bin/tk-hygiene` first, before any agenda source is
+read. It audits every repository the roster reaches for `delete_branch_on_merge`, and it
+prunes each local branch whose remote is gone and which carries no commit of its own. It
+never asks anything and it is safe to run twice.
+
+Report its result in the kickoff's own report, in one or two lines: the branches it pruned,
+and every repository whose line reads `delete_branch_on_merge=false`. Exit 1 means a
+repository still has the box off — that is an item for the queue, never a question for the
+user. Exit 2 means a repository could not be reached; say which, and carry on.
+
 Sources, in this order:
 
 - **`next-steps.md`** in the project's auto-memory (dir `memory/`; the `MEMORY.md` index is
@@ -39,8 +49,9 @@ be re-opened by mistake. The report prints one `### <project>` heading per memor
 sees the week whole. No lines in the window → say the week was quiet, in one line, and move
 on.
 
-**Done when:** the user saw the week's closed items (or the quiet week stated), and there is
-a single list of candidate items, each with its source.
+**Done when:** the hygiene result is in the report, the user saw the week's closed items (or
+the quiet week stated), and there is a single list of candidate items, each with its
+source.
 
 ## 2. Verify against reality
 

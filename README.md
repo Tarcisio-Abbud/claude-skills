@@ -198,6 +198,10 @@ tk/
                                   from memory, and carrying no copy of either
   bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
                                   where their projects are, minus the site file's lists
+  bin/tk-hygiene                  audits delete_branch_on_merge across the roster's repos
+                                  and prunes local branches whose remote is gone and which
+                                  carry no commit of their own. Exit 0 green, 1 a box still
+                                  off, 2 a repo it could not reach
   bin/tk-collisions               merges each pair of open branches for real, so a pair
                                   that cannot both land is named before either does. No
                                   network: the refs must already be local
@@ -206,6 +210,9 @@ tk/
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
+  tests/test_tk_hygiene.py        regression suite for the audit and the prune, against
+                                  throwaway repos and a fake forge CLI on PATH — never
+                                  the network
   tests/test_tk_collisions.py     regression suite, against a real git repository built
                                   in a throwaway directory
   tests/test_tk_vista_check.py    regression suite for the vista gate
@@ -220,6 +227,7 @@ tk/
                                   which is what the seam was written for
   tests/mutations_vista.py        entries only: it folds into the same runner, through the
                                   seam that runner exposes for a module and its entries
+  tests/mutations_hygiene.py      entries only, through the same seam
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
