@@ -48,6 +48,30 @@ the order lost, and any prose past the done-log's title cut gone with it. The
 fold the `repairs:` block prints has a limit of its own — it is refused outright
 when the item's text carries a field marker inside it.
 
+**The lane is a second reading of the same list, and one exclusion is yours.** `tk-queue pack`
+prints a lane beside every eligible item — `spec <ref>` for a ticket implemented on the
+accumulated branch of its spec, `avulso` or `avulso (<ref>)` for an item that gets a pull request
+of its own — and it reads the queue, never the forge. The one question it cannot ask is whether
+that spec already has a pull request open, so the orchestrator asks it here, once, for the spec
+holding the lane. Ask it of the repository the lane's items LAND in, which is where the branch
+lives; the Spec reference names the tracker the spec is filed in, and the two are routinely
+different repositories:
+
+```sh
+gh pr list -R "<owner>/<code repo>" --state open --json number,headRefName \
+  --jq '.[] | select(.headRefName | startswith("spec/<m>-"))'
+```
+
+`<m>` is the **issue half** of the Spec reference — `171` out of `ambiente#171` — and it is what
+identifies the branch, which is why the match is on the prefix rather than on the whole name.
+A hit takes every ticket of that spec out of the package on the rung `tk-queue pack` already
+prints, carrying the value that caused it:
+
+    lane de spec ocupada por ambiente#171; PR #42 aberta
+
+One spec advances one package per human merge. That is what the rung costs, and naming it in the
+report is what keeps the next cut from rediscovering it.
+
 **Then cut.** Take the eligible in the order printed — priority IS the order of
 the file, and `tk-queue bump "<id>"` is what moves an item to the top — then add
 items while the package still fits ONE session: the parent only orchestrates and
@@ -64,11 +88,29 @@ package rather than a per-item one, and the round it has measured is in that ste
 What multiplies a lane is the number of correction cycles, not the size of the diff —
 budgeting a lane by its diff was measured underestimating by ~3× (2026-08-19).
 
-**Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45"),
+**Recount by spec after the cut, and re-apply the floor.** `tk-queue pack` computed every lane
+over the whole eligible list; the cut is yours and happens afterwards, so an item printed `spec
+ambiente#171` can reach a package holding the only ticket of that spec. Dispatched on the label it
+was handed, that item opens a branch, a draft pull request and a three-step tail for itself —
+the waste the floor of two tickets exists to prevent. Count the tickets per Spec reference among
+the items that SURVIVED the cut: a spec below two drops to the solo lane, and where no spec
+reaches two the package has no accumulated lane at all. The reference is printed whole, so the
+recount is arithmetic over the lines already in front of you — no second read of the queue, no
+call to the forge.
+
+**Two lines of the cut are not items.** A package with an accumulated lane pays its review once,
+over the accumulated diff, and pays a tail after its last ticket merges. Reserve both beside the
+lanes rather than inside them: the review line at parity with the summed lanes — the 1.11:1
+serialized ratio `WINDOW.md` measures, taken there as the planning number — and the tail line as
+one suite, the N criteria of the package's items, and the merge of `origin/main`. A cut that
+funds only the lanes has hidden about half of what the package will spend.
+
+**Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45") and
+the lane each one carries after the recount, the review line and the tail line stand beside them,
 every exclusion carries either the command that cleared it or the one-line verdict that it
 still holds, and every item left out is noted with the reason — the eligible ones dropped for
-size AND the ones `tk-queue pack` excluded, which are not eligible at all and would otherwise
-leave no trace anywhere.
+size, the ones an open spec pull request took out, AND the ones `tk-queue pack` excluded, which
+are not eligible at all and would otherwise leave no trace anywhere.
 
 ## 2. `pack` only: confirm
 
@@ -97,13 +139,47 @@ so a sibling in the shared tree cannot move the ground under it.
 A package that dies holding claims leaves them behind — `tk-queue release "<id>"` hands an item
 back without closing it, and prints whose claim it dropped.
 
+### The spec lane opens after the claims, and runs in series
+
+A refused claim removes an item exactly as the cut did, so the floor is asked one last time here,
+against the items this package actually holds: count the tickets per Spec reference among the
+CLAIMED, and a spec that fell below two drops to the solo lane. Only then create the accumulated
+branch, and push it before anything is dispatched from it:
+
+```sh
+git worktree add <path>/spec-<m> -b "spec/<m>-<slug>" origin/main
+git -C <path>/spec-<m> push -u origin "spec/<m>-<slug>"
+```
+
+`<slug>` comes from the spec's own title, lower-cased with each run of non-alphanumerics as one
+hyphen. It is there for whoever reads `git branch`; `<m>` is what identifies the branch, which is
+why every reader matches the prefix `spec/<m>-`. The push at creation is what makes the branch's
+pushed tip exist from the first dispatch onward — the rule below and every later generation read
+that ref, and a branch that lives only in this worktree is reachable by neither. Where the recount
+left no spec at the floor, this section does not run: the package has no spec branch and every
+item takes the solo lane.
+
+**Each ticket of the lane starts from the branch's pushed tip.** Dispatch them one at a time, in
+the queue's order, each into a worktree of its own on `spec/<m>/T<id>`, cut from
+`origin/spec/<m>-<slug>` as it stands at that moment — `git fetch` first, and read the remote ref
+rather than a local copy carried over from the previous dispatch. Serial dispatch is what gives
+that tip its meaning: the ticket before it either went green, merged and pushed, and the tip
+carries it, or it did not, and the tip is exactly where the previous dispatch found it. An
+implementer cut from a sibling's branch instead re-delivers work the tip already holds, and the
+merge behind it applies that work twice.
+
+**The lane is serial; the package is not.** The solo items dispatch beside it, under the rule
+below.
+
 ### The vehicle, and who writes the queue
 
 The mechanisms are the palette's, in `../dispatch/SKILL.md`; the choice among them here is by
 SIZE, and that rule is this step's own. Default: one background subagent per item, in its own
-worktree, dispatched **in series**, since items from one queue usually share a repo.
-Parallel only across disjoint repos or areas, and never past the local ceiling the contract
-block states. An item whose work does not fit one subagent's context is not squeezed into
+worktree. **Solo items** dispatch **in series**, since items from one queue usually share a repo,
+and in parallel only across disjoint repos or areas. **The spec lane** is serial by the rule
+above whatever the areas say — its tickets share a branch, not merely a repository. Neither lane
+goes past the local ceiling the contract block states, and that ceiling counts both together.
+An item whose work does not fit one subagent's context is not squeezed into
 one: write its briefing with `tk-queue handoff "<id>"` and dispatch it as a session of its own
 — and where this machine cannot open one unattended, the item leaves the package carrying
 that briefing, and its ready-to-paste line goes in the report.
@@ -141,6 +217,22 @@ Two parts, both produced here and neither delegated back:
   the line above. Handed a reference with no owner half, the keyword closes an unrelated issue
   of the repo the PR sits on, or nothing at all — so an item whose ticket you cannot resolve is
   dispatched saying so, and its run opens the PR with no closing line rather than a guessed one.
+  On the spec lane the resolved reference stays HERE: the run opens no pull request, and the
+  orchestrator is what writes the closing lines into the body of the lane's own.
+
+**On the spec lane, one line of the generated block is overridden here, and the override costs
+its line in step 6.** The `implementer` row carries `pr = opens`, so the block hands the run a
+"Closing the ticket" section telling it to open a pull request and write the closing line into
+the body. On this lane the orchestrator owns the branch, the pull request and its body, so the
+dispatch says the run opens none and hands back its pushed branch instead:
+
+    implementer: pr opens→none — on the spec lane the PR is the orchestrator's
+
+The block's checkpoint invariant is the half that stands unchanged, and it is load-bearing here:
+commit and push at every north star, onto `spec/<m>/T<id>`. That pushed WIP is what a re-dispatch
+resumes from and what the orchestrator reads when it verifies by artefact — work left in the
+implementer's worktree is reachable by nobody, and a re-dispatch cut from the tip would start the
+ticket over.
 
 **Count each run by the venue signature it returns, never by the flag you passed** — a
 signature that came back local counts against the local ceiling. The measurement behind that
@@ -151,9 +243,11 @@ dispatches here, fire them after that step returns — so on a wave this step's 
 reached only once step 4 has returned and the runs it allowed have gone out.
 
 **Done when:** every package item was claimed — all of them, before the first dispatch — or
-reported as held elsewhere, and every dispatched run carries a contract block generated for
-that dispatch and a prompt self-sufficient without the tracker — the ticket reference it must
-write, owner half resolved here, included among what the prompt carries.
+reported as held elsewhere; the floor was recounted against the claims and, where a spec still
+reaches it, its branch exists and is pushed before its first ticket goes out; and every dispatched
+run carries a contract block generated for that dispatch and a prompt self-sufficient without the
+tracker — the ticket reference, owner half resolved here, included among what the prompt carries,
+and on the spec lane the branch it starts from and the branch it pushes to named in it.
 
 ## 4. Audit the spec and the tickets
 
