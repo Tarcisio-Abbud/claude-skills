@@ -2195,9 +2195,29 @@ MUTATIONS = [
     # the other direction: a Ticket the position rule may not read must stay
     # SILENT — it decides no lane, so it may not cost the item its place
     ("T172 an unreadable Ticket is printed anyway",
-     '    if qualified_fields(block, "Ticket")[1] != 1:\n        return ""',
-     "    pass",
-     ["TestPackLane.test_a_TICKET_the_position_rule_cannot_read_is_SILENT"]),
+     '    return "  [?]" if FIELD_MARKER_RE["Ticket"].search(block) else ""',
+     '    return ""',
+     ["TestPackLane.test_a_TICKET_the_position_rule_cannot_read_is_MARKED_not_silent",
+      "TestPackLane.test_a_TICKET_that_is_not_a_forge_reference_is_never_printed"]),
+
+    # the position rule, proved THROUGH the one reader — the anchor-free version was
+    # measured green against the whole suite before this test existed
+    ("T172 the one reader drops the anchor, so prose in the chain is a field",
+     "    segs = real_fields(block, field)\n    if len(segs) != 1:",
+     "    segs = [m for m in field_chain(block)\n"
+     "            if canonical_field(m.group(1)) == field]\n    if len(segs) != 1:",
+     ["TestPackLane.test_the_ONE_reader_refuses_a_reference_quoted_before_the_ANCHOR"]),
+
+    ("T172 the one reader reads the FIRST of two fields in the chain",
+     "    segs = real_fields(block, field)\n    if len(segs) != 1:",
+     "    segs = real_fields(block, field)\n    if not segs:",
+     ["TestPackLane.test_a_TICKET_the_position_rule_cannot_read_is_MARKED_not_silent"]),
+
+    ("T172 pack_closes asks the ambiguity itself, of the whole block",
+     "    ref = pack_ref(block, \"Ticket\")\n    if ref:",
+     '    if qualified_fields(block, "Ticket")[1] != 1:\n        return ""\n'
+     "    ref = pack_ref(block, \"Ticket\")\n    if ref:",
+     ["TestPackLane.test_a_marker_QUOTED_IN_PROSE_does_not_hide_the_real_ticket"]),
 
     ("T172 the leading character of a repo name goes unbounded",
      'REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}#[0-9]{1,9}")',

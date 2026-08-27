@@ -3269,19 +3269,48 @@ class TestPackLane(PackOutput):
         self.assertTrue(lines[1].endswith("  [repo#2]"), lines[1])
         self.assertNotIn("[", lines[2])
 
-    def test_a_TICKET_the_position_rule_cannot_read_is_SILENT(self):
-        """Silent, not printed and not fatal: Ticket decides no lane, so an
-        unreadable one may not cost the item its place — the answer `pack_effort`
-        gives — and printing the first of two would hand the PR a `closes` line
-        pointing at whichever field came first."""
+    def test_a_TICKET_the_position_rule_cannot_read_is_MARKED_not_silent(self):
+        """Not excluded — Ticket decides no lane, so an unreadable one may not cost
+        the item its place — and not silent either: printing nothing made an item
+        whose ticket no reader may use identical to one that never had a ticket, and
+        the PR then closes nothing while the work ships. `[?]`, the mark this file
+        already uses where a field could not be read and the answer is not
+        exclusion (`pack_effort` prints `?`)."""
         self.seed(ticket_item(1, "dois tickets", spec="repo#171", ticket="repo#1").replace(
                       "**Ticket:** repo#1.", "**Ticket:** repo#1. **Ticket:** repo#2.", 1)
-                  + ticket_item(2, "marca fora da cadeia", spec="repo#171").rstrip("\n")
-                  + "\n  nota: **Ticket:** repo#3\n")
+                  + ticket_item(2, "forma errada", spec="repo#171", ticket="nao e ref"))
         lines = self.blocks(self.pack())["eligible"]
         self.assertEqual(len(lines), 2, lines)
         for ln in lines:
-            self.assertNotIn("[repo#", ln)
+            self.assertTrue(ln.endswith("  [?]"), ln)
+
+    def test_a_marker_QUOTED_IN_PROSE_does_not_hide_the_real_ticket(self):
+        """The block-wide count `pack_closes` used to ask before the reader: an
+        item's real, well-placed **Ticket:** printed NOTHING because a continuation
+        line merely cited the marker in prose. One rule asked in two spellings, and
+        the looser one silently won — the shape the consolidation exists to end."""
+        self.seed(ticket_item(1, "ticket real", spec="repo#171", ticket="repo#1").rstrip("\n")
+                  + "\n  nota: cita o **Ticket:** de outro item, só em prosa.\n")
+        self.assertTrue(self.blocks(self.pack())["eligible"][0].endswith("  [repo#1]"))
+
+    def test_the_ONE_reader_refuses_a_reference_quoted_before_the_ANCHOR(self):
+        """The position rule, proved through `pack_ref` itself. A `**Spec:**` or
+        `**Ticket:**` segment sitting BEFORE the **Class:** the chain anchors at is
+        the item's own prose wearing a field's name, and the anchor-free reader was
+        measured green against the whole suite: nothing exercised either caller with
+        this shape, so a hand-edited item could have named a lane from its prose."""
+        self.seed("- [ ] **T001** — nota: **Ticket:** repo#9. **Class:** AUTONOMOUS. "
+                  "**Effort:** S. **Criterion:** A: x. **Spec:** repo#171. "
+                  "**Ticket:** repo#1. **Source:** 2026-08-13\n"
+                  + ticket_item(2, "dois", spec="repo#171", ticket="repo#2"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out),
+                         {"T001": "spec repo#171", "T002": "spec repo#171"})
+        # the segment BEFORE the anchor is prose: the chain names Ticket twice and
+        # only one of them is real, so the anchor-free reader sees two and marks the
+        # item unreadable, while the position rule reads the one a writer wrote
+        self.assertTrue(self.blocks(out)["eligible"][0].endswith("  [repo#1]"),
+                        self.blocks(out)["eligible"][0])
 
     def test_two_SPELLINGS_of_one_reference_are_one_spec(self):
         """The class this consolidation ends. Equality decided the lane by raw
@@ -3319,7 +3348,9 @@ class TestPackLane(PackOutput):
                           else "- [ ] **T001** — um **Class:** AUTONOMOUS. **Effort:** S. "
                                "**Criterion:** A: x. **Ticket:** . **Source:** 2026-08-13\n")
                 line = self.blocks(self.pack())["eligible"][0]
-                self.assertNotIn("[", line, line)
+                if junk:
+                    self.assertNotIn(junk, line, line)
+                self.assertTrue(line.endswith("  [?]"), line)
 
     def test_the_read_side_shape_gate_refuses_a_PREFIX(self):
         """`fullmatch`, not `match`. A prefix match reads `repo#171 texto solto` as a

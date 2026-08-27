@@ -1165,7 +1165,12 @@ def canonical_ref(value):
               resolves.
 
     Applied at the WRITER, so the file only ever holds the canonical form, and
-    again at the reader, because a hand edit is not the writer."""
+    again at the reader, because a hand edit is not the writer.
+
+    PRECONDITION: `value` has already passed `REF_RE.fullmatch`. Both callers gate
+    on it in the statement before, and this is written to that contract — `int()`
+    raises on anything else, and a reader that raises is worse than one that
+    refuses. Do not call it on an unvalidated value."""
     repo, _, number = value.rpartition("#")
     return f"{repo.lower()}#{int(number)}"
 
@@ -1520,7 +1525,11 @@ run, on a queue of eight items, asserted character for character by the suite:
 
 """ + PACK_SAMPLE + """
 Eligible: ID, Effort, LANE, text, and — appended in brackets, only for the items
-that carry one — the **Ticket:** the item's PR closes. Effort is raw and never
+that carry one — the **Ticket:** the item's PR closes, or `[?]` where the item
+carries a **Ticket:** marker no reader may use (two in the chain, one off the
+position rule, a value that is not a forge reference). `[?]` rather than silence:
+an item whose ticket cannot be read is not an item that never had one, and the PR
+that closes nothing is the failure the field exists to prevent. Effort is raw and never
 summed, because summing free text is the hidden heuristic this queue's order
 deliberately has none of. The Ticket is appended rather than given a column for
 the reason the claim is in `list`: almost no item carries one.
@@ -1799,11 +1808,25 @@ def pack_ref(block, field):
       spelling   `canonical_ref`, so `Ambiente#171` and `ambiente#0171` are the
                  one reference they name, whichever door they came in through.
 
+    A FOURTH rule joined them, and it joined them HERE rather than in a caller,
+    which is the correction that finished this consolidation:
+
+      one        a chain naming the field TWICE says two things, so it says
+                 nothing this reader may pick between.
+
+    `pack_closes` asked that fourth question itself, one line before calling this
+    — and asked it of the whole BLOCK, where this asks it of the chain. Measured:
+    an item whose real, well-placed `**Ticket:** ambiente#172` sat beside a
+    continuation line merely CITING the marker in prose printed no ticket at all,
+    because the block-wide count saw two. One rule, two spellings, and the looser
+    one silently won: the shape this consolidation exists to end, surviving in the
+    caller that was supposed to stop keeping its own copy.
+
     None is the answer to every shape this may not use, and it is never fatal:
-    what None COSTS the item is decided by the caller, and the two callers
-    decide differently on purpose (see pack_exclusion and pack_closes)."""
+    what None COSTS the item is decided by the caller, and the two callers decide
+    differently on purpose (see pack_exclusion and pack_closes)."""
     segs = real_fields(block, field)
-    if not segs:
+    if len(segs) != 1:
         return None
     value = field_value(segs[0])
     return canonical_ref(value) if REF_RE.fullmatch(value) else None
@@ -1840,16 +1863,30 @@ def pack_closes(block):
     consumer is a skill's prose. Nothing about a ticket makes it need a looser
     rule than a spec.
 
-    SILENT when the reference cannot be read, where the lane EXCLUDES the item:
-    the two callers of one reader differ exactly here, and the difference is what
-    each field decides. Spec decides the lane, so an unreadable one is a
-    dispatch this filter would get wrong; Ticket decides nothing here, so an
-    unreadable one may not cost the item its place — the answer `pack_effort`
-    gives. What it must not do is print a value no reader validated."""
-    if qualified_fields(block, "Ticket")[1] != 1:
-        return ""
+    Three outcomes, not two, and the third is the one this function got wrong for
+    a round. An unreadable Ticket may not cost the item its place — Ticket decides
+    no lane, so excluding it would be the lane's answer to a field that is not the
+    lane's (that IS how the two callers of one reader differ, and it is on purpose).
+    But SILENCE is not the alternative: printing nothing made an item whose
+    `**Ticket:**` no reader may use identical to an item that never had one, and
+    those are not the same thing to whoever writes the PR — one wants no `closes`
+    line, the other wants the one it cannot have. The merge then closes nothing and
+    the ticket stays open with the work shipped, which is the failure `validate_ref`
+    names as the reason the write gate exists.
+
+    So the unreadable one is MARKED, and marked the way this file already marks a
+    field it could not read where the answer is not exclusion: `pack_effort`
+    prints `?`, and so does this.
+
+      no marker at all   nothing is appended. The overwhelming majority of items.
+      readable           `  [<ref>]`, canonical.
+      marker, no ref     `  [?]` — two in the chain, one the position rule may not
+                         read, or a value that is not a forge reference.
+    """
     ref = pack_ref(block, "Ticket")
-    return f"  [{ref}]" if ref else ""
+    if ref:
+        return f"  [{ref}]"
+    return "  [?]" if FIELD_MARKER_RE["Ticket"].search(block) else ""
 
 
 def pack_lanes(candidates):
