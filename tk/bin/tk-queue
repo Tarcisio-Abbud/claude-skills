@@ -47,6 +47,14 @@ item no machine ever picks up with no error to say why. No roster, no `--env`:
 the flag is refused with the file to create, because the plugin ships no
 machine's name of its own.
 
+WHERE the item CAME FROM is a pair of optional fields, written by whoever imports
+a forge ticket into the queue: **Ticket:** names the issue the item implements
+(it feeds the `closes` line of its PR) and **Spec:** names the spec that issue
+belongs to. **Spec:** is the one `pack` reads — it decides the item's LANE, and
+`tk-queue pack --help` carries the rule. Both are forge references (`<repo>#<n>`)
+and both are validated by SHAPE, for the reason `--env` is validated against the
+roster: neither failure reports itself. An item born in conversation has neither.
+
 WHO is working on it is a third field, and the only one this script writes on
 its own: `claim <id> --as <name>` marks the item under the queue's exclusive
 lock, and a second `claim` is REFUSED naming the owner and the moment — that is
@@ -526,6 +534,13 @@ FIELD_VARIANTS = {
     "Deferred": r"(?:Deferred|Adiado)",
     "Env": r"(?:Env|Ambiente)",
     "Claimed": r"(?:Claimed|Posse)",
+    # PROVENANCE, written by whoever imports a ticket into the queue (`add
+    # --ticket/--spec`). One spelling each, and deliberately: the Portuguese
+    # alias every field above carries is there because the queues predate this
+    # script and a human had written the field by hand — these two have no such
+    # population, and an alias nothing writes is a second grammar to keep in step.
+    "Ticket": r"Ticket",
+    "Spec": r"Spec",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
 # the marker SHAPE alone, with no trailing value — every other use of ANY_FIELD
@@ -1112,6 +1127,43 @@ def displayed_claim(block):
     return "claimed ambiguously — `tk-queue claim` says why" if segs else None
 
 
+# A forge reference, `<repo>#<n>` — the shape of both provenance fields. Bounded
+# by construction on both halves (GitHub caps a repo name at 100 chars; nine
+# digits is more issues than any repo this queue serves will ever hold), so the
+# gate is strictly tighter than the single-line, embedded-marker and prose-field
+# ceilings the free-text flags answer to: a newline, a blank and a `**Field:**`
+# shape are all unspellable inside it. That is the same answer `--env` gets from
+# the roster and `--as` from OWNER_RE, and it is why these two flags are not
+# added to check_field_ceilings — a second, looser bound on a value this already
+# decides would only be able to disagree with it.
+#
+# `owner/repo#n` is refused along with the rest. The queue's tickets live in the
+# repos one account owns, the ticket writes `<repo>#<n>`, and admitting a second
+# spelling of the same reference is how the lane comes to read two names for one
+# spec and open two branches for it.
+REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}#[0-9]{1,9}")
+
+
+def validate_ref(flag, value):
+    """Refuse a provenance value that is not a forge reference.
+
+    A typo here is silent everywhere it matters: `--ticket` feeds the `closes`
+    line of a PR, so a malformed one closes nothing and the ticket stays open
+    with the work merged; `--spec` decides the lane, so a malformed one puts the
+    ticket in a lane of its own — a second branch and a second campaign for a
+    spec that already has both. Neither failure reports itself, which is what
+    makes the shape a gate rather than a warning.
+    """
+    if value is None:
+        return
+    if not REF_RE.fullmatch(value):
+        fail(f"--{flag} {value!r} is not a forge reference: the shape is `<repo>#<n>` "
+             "(e.g. homeserver-ambiente#172) — the repo's own name, no owner prefix, "
+             "and the issue number after '#'. The match is exact: a near-miss feeds a "
+             "`closes` line that closes nothing, or names a lane after an issue that "
+             "does not exist.")
+
+
 def validate_project(tag):
     if not PROJECT_RE.match(tag):
         fail(f"--project must be a short lowercase slug (letters, digits, '-'/'_', "
@@ -1419,11 +1471,14 @@ REPAIR_MIGRATE = "an item with no ID: `tk-queue migrate` assigns one"
 # saying so. The sample is a REAL run and the suite asserts it character for
 # character against the queue that produces it — a documented shape nothing
 # executes is the one that goes stale first, and this one documents an AC.
-PACK_SAMPLE = """eligible (1 of 3, in queue order):
-T007  S (~20min)    the item's text
+PACK_SAMPLE = """eligible (3 of 6, in queue order):
+T007  S (~20min)    spec #171     the first ticket of the spec
+T008  M (~1h)       spec #171     the second one
+T009  S             avulso        the item's text
 
-excluded (2):
+excluded (3):
 T012  another item  — class is DECISION
+T021  a ticket of a second spec  — lane de spec ocupada por #171
 T031  a legacy item  — no **Class:** field
 
 repairs:
@@ -1431,11 +1486,11 @@ repairs:
 """
 
 PACK_FORMAT = """output format (stable — a skill's prose reads it). The sample below is a real
-run, on a queue of three items, asserted character for character by the suite:
+run, on a queue of six items, asserted character for character by the suite:
 
 """ + PACK_SAMPLE + """
-Eligible: ID, Effort, text — Effort raw and never summed, because summing free
-text is the hidden heuristic this queue's order deliberately has none of.
+Eligible: ID, Effort, LANE, text — Effort raw and never summed, because summing
+free text is the hidden heuristic this queue's order deliberately has none of.
 Excluded: ID, text, and the reason, which always carries the VALUE the filter
 read (`Env is 'desktop', this machine is server`; `Risk: <the line>`): a marker
 absorbed out of an item's prose then reads as an obviously wrong line instead of
@@ -1451,6 +1506,23 @@ in the chain that ends the first line — never by searching the block:
   env        no **Env:** field, or one naming THIS machine (the site file's identity)
   claimed    not held by a sibling session
   id         an item `migrate` never gave an ID to cannot be closed by ID
+  lane       not a ticket of a SECOND spec — see below
+
+LANE, the column an unattended orchestrator dispatches by, read from the queue
+and never from the forge (this command opens no network connection):
+
+  spec #<n>  a ticket of the package's spec (its **Spec:** field), implemented on
+             one accumulated branch with one PR for the whole spec
+  avulso     everything else — one PR of its own
+
+ONE spec per package, so there is one branch, one campaign and one tail. The
+spec is the one of the FIRST ticket in QUEUE ORDER, asked of the candidates only
+— an item excluded for its class or its Risk is not in the package and cannot
+take its lane with it. Tickets of any OTHER spec leave with the reason
+`lane de spec ocupada por #<n>`; they are the next package's, not lost. A spec
+with a single ticket in the package is under the FLOOR: that ticket is dispatched
+as `avulso`, because a draft PR and a three-step tail cost more than one item is
+worth. The floor is a lane, never a filter — the ticket stays in the package.
 
 A marker the position rule may not read excludes the item too, and is reported
 BEFORE any value, whichever field carries it: "there is a **Risk:** marker I am
@@ -1543,7 +1615,13 @@ def pack_exclusion(iid, block, identity):
     # value: a field the position rule cannot read is a defect, and a defect outranks
     # an ordinary state as the thing to say about the item
     field = {}
-    for name in ("Risk", "Env"):
+    # Spec is in this loop and Ticket is not, and the split is what each field
+    # DECIDES here: the lane is built from Spec, so a Spec the position rule may
+    # not read is a lane this filter would get wrong — and getting it wrong sends
+    # a ticket of an open spec branch out as a PR of its own, silently. Ticket
+    # decides nothing in `pack`; it is read by the orchestrator writing the PR
+    # body, which is where a defect in it belongs.
+    for name in ("Risk", "Env", "Spec"):
         segs, markers = qualified_fields(block, name)
         if markers > len(segs):
             return (f"a **{name}:** marker sits where no gate reads it, so what the item "
@@ -1595,13 +1673,86 @@ def pack_effort(block):
     return field_value(segs[0])
 
 
+# The two lanes an eligible item can be dispatched in, and the reason a ticket
+# leaves the package because the accumulated one is taken. The words are the
+# spec's own (#171) and a skill's prose reads them, so they are spelled once
+# here rather than composed at each site.
+LANE_SOLO = "avulso"
+LANE_SPEC = "spec %s"
+LANE_TAKEN = "lane de spec ocupada por %s"
+# how many tickets of one spec earn the accumulated lane. Below it the ticket is
+# dispatched as an ordinary PR: a draft PR, a merge per item and a three-step
+# tail cost more than a single item is worth. A FLOOR, never a filter — the lone
+# ticket stays in the package, in the other lane.
+SPEC_LANE_FLOOR = 2
+
+
+def pack_spec(block):
+    """The spec this item is a ticket of, or None when it is not one.
+
+    Read through the position rule like every other field the package reads, and
+    never fatal: the shapes this answers None to on a DEFECT — a marker outside
+    the chain, two Spec fields in it — are the shapes `pack_exclusion` has
+    already taken out of the package, so what reaches here carries at most one
+    readable Spec."""
+    segs, markers = qualified_fields(block, "Spec")
+    if len(segs) != 1 or markers > len(segs):
+        return None
+    return field_value(segs[0])
+
+
+def spec_mark(ref):
+    """`#<n>` — how a spec is NAMED in the lane column and in the exclusion
+    reason. The repo half is dropped because the reader is the orchestrator of
+    one package, in one repo, and `#171` is how the spec is written everywhere
+    else it is discussed. The whole value survives a reference that carries no
+    '#' at all, which this script cannot write and a hand-edited file can."""
+    _, sep, number = ref.rpartition("#")
+    return "#" + number if sep else ref
+
+
+def pack_lanes(candidates):
+    """{label: lane} for the candidates that stay, and {label: reason} for the
+    tickets the taken lane pushes out.
+
+    ONE spec per package — one branch, one draft PR, one campaign, one tail —
+    and it is the spec of the FIRST ticket in QUEUE ORDER. Not the spec with the
+    most tickets: priority in this queue is the file's order, global, and
+    choosing by count would put a hidden heuristic in the one place the queue
+    deliberately has none. The tickets that lose the lane are not lost, they are
+    the next package's.
+
+    Asked of the CANDIDATES only, after every other rule has run. An item already
+    excluded for its class or its Risk is not in the package, so letting it take
+    the package's lane with it would refuse a lane nothing is using."""
+    specs = [(label, pack_spec(block)) for label, block in candidates]
+    taken = next((ref for _, ref in specs if ref), None)
+    n = sum(1 for _, ref in specs if ref == taken)
+    lanes, pushed = {}, {}
+    for label, ref in specs:
+        if ref is None or ref == taken:
+            # the floor decides the lone ticket's lane, not its membership
+            lanes[label] = (LANE_SPEC % spec_mark(taken)
+                            if ref is not None and n >= SPEC_LANE_FLOOR else LANE_SOLO)
+        else:
+            pushed[label] = LANE_TAKEN % spec_mark(taken)
+    return lanes, pushed
+
+
 def cmd_pack(args):
     memdir = memory_dir(args.dir)
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
         fail("next-steps.md not found in " + memdir)
     identity = pack_identity()
-    eligible, excluded, repairs = [], [], []
+    # ONE pass over the queue, in its order, then the lane. The lane is the only
+    # rule here that is not about the item alone — it needs to know which spec
+    # came first and how many tickets it has — so the verdicts are collected
+    # before any line is composed, and the two lists are built afterwards from
+    # the same ordered rows. Emitting as we went and appending the lane
+    # exclusions at the end would report them out of queue order, in a listing
+    # whose whole contract is that its order IS the priority.
+    rows, candidates = [], []
     for kind, text in split_blocks(content):
         if kind != "item-open":
             continue
@@ -1612,13 +1763,26 @@ def cmd_pack(args):
         # an item with no ID at all
         label = item_label(text)
         verdict = pack_exclusion(iid, text, identity)
+        rows.append((label, text, verdict))
         if verdict is None:
+            candidates.append((label, text))
+    lanes, pushed = pack_lanes(candidates)
+
+    eligible, excluded, repairs = [], [], []
+    for label, text, verdict in rows:
+        if verdict is None and label not in pushed:
             # Effort is free text, so the column is padded and never TRUNCATED: a
             # long one pushes the title right, where a cut one would hide the very
-            # wall-clock guess the caller sizes the package by
-            eligible.append(f"{label}  {pack_effort(text):<12}  {item_title(text)}")
+            # wall-clock guess the caller sizes the package by. The lane sits
+            # between them for the same reason: both columns keep their width and
+            # only the title moves.
+            eligible.append(f"{label}  {pack_effort(text):<12}  "
+                            f"{lanes[label]:<12}  {item_title(text)}")
             continue
-        reason, repair = verdict
+        # the lane is the LAST step of the ladder: it is asked only of an item
+        # every earlier rule let through, so an exclusion here never hides one
+        # about the item itself
+        reason, repair = verdict if verdict is not None else (pushed[label], None)
         excluded.append(f"{label}  {item_title(text, PACK_TITLE)}  — {reason}")
         if repair and repair not in repairs:
             repairs.append(repair)
@@ -1649,6 +1813,13 @@ def compose_item(args, iid):
     fields.append(f"**Criterion:** {args.criterion}.")
     if args.project:
         fields.append(f"**Project:** {args.project}.")
+    # beside **Source:**, the field they are a sharper version of: all three say
+    # where the item came from. Absent unless the caller passed the flag — an
+    # item born in conversation has no ticket, and an empty field would read as
+    # a provenance that was looked for and not found
+    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):
+        if flag:
+            fields.append(f"**{field}:** {flag}.")
     fields.append(f"**Source:** {args.source or datetime.date.today().isoformat()}")
     return f"- [ ] **T{iid:03d}** — {args.text.strip()} " + " ".join(fields) + "\n"
 
@@ -1718,6 +1889,8 @@ def cmd_add(args):
     if args.project:
         validate_project(args.project)
     validate_env(args.env)
+    validate_ref("ticket", args.ticket)
+    validate_ref("spec", args.spec)
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:
@@ -2943,6 +3116,10 @@ def main():
     a.add_argument("--project", help="optional short slug tagging which project this item "
                    "belongs to, e.g. 'ambiente', 'tk' (warns on stderr if unseen in this queue)")
     a.add_argument("--source", help="origin (default: today's date)")
+    a.add_argument("--ticket", help="the forge ticket this item implements, `<repo>#<n>` "
+                                    "— feeds the `closes` line of its PR")
+    a.add_argument("--spec", help="the spec the ticket belongs to, `<repo>#<n>` — decides "
+                                  "the item's LANE in the afk package (see `pack --help`)")
     a.add_argument("--force", action="store_true")
 
     d = sub.add_parser("done", parents=[common], help="conclude: move the item to the done-log")

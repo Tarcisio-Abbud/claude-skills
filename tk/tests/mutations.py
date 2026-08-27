@@ -818,8 +818,8 @@ MUTATIONS = [
       "TestEnvField.test_add_writes_no_field_for_the_reserved_word"]),
 
     ("T120 add stops validating the env",
-     "    validate_env(args.env)\n    path = os.path.join(memdir, \"next-steps.md\")",
-     '    path = os.path.join(memdir, "next-steps.md")',
+     '    validate_env(args.env)\n    validate_ref("ticket", args.ticket)',
+     '    validate_ref("ticket", args.ticket)',
      ["TestEnvField.test_add_refuses_a_value_outside_the_roster"]),
 
     ("T120 edit stops validating the env",
@@ -1278,8 +1278,8 @@ MUTATIONS = [
      ["TestPack.test_the_output_format_is_documented_in_the_help"]),
 
     ("T126 the documented sample drifts from what the command prints",
-     'PACK_SAMPLE = """eligible (1 of 3, in queue order):',
-     'PACK_SAMPLE = """eligible (1 of 3, in file order):',
+     'PACK_SAMPLE = """eligible (3 of 6, in queue order):',
+     'PACK_SAMPLE = """eligible (3 of 6, in file order):',
      ["TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     # --- the Risk rule -------------------------------------------------------
@@ -2054,6 +2054,102 @@ MUTATIONS = [
      ["TestClearingOnAClassLessItemIsRefused.test_an_anchored_item_still_CLEARS_the_field_it_carries",
       "TestRiskDeletion.test_edit_clears_the_risk_field",
       "TestClearingKeepsTheFileIntact.test_clearing_a_risk_rewrites_only_that_field"]),
+    # --- T172: provenance fields, and the lane the package reads from them ---
+    ("T172 the ref shape loosens to a prefix match (\"repo#1x\" is accepted)",
+     "if not REF_RE.fullmatch(value):", "if not REF_RE.match(value):",
+     ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
+
+    ("T172 the ref shape is not checked at all",
+     '    validate_ref("ticket", args.ticket)\n    validate_ref("spec", args.spec)',
+     "    pass",
+     ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
+
+    ("T172 the two fields are dropped on the way into the item",
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):\n'
+     '        if flag:\n'
+     '            fields.append(f"**{field}:** {flag}.")',
+     "    pass",
+     ["TestProvenanceFields.test_both_fields_are_written_at_the_writers_position",
+      "TestProvenanceFields.test_the_values_round_trip_byte_for_byte",
+      "TestProvenanceFields.test_the_flags_are_independent"]),
+
+    # the OTHER direction of the same writer: a field written whether or not the
+    # caller asked for one gives every item a provenance nobody recorded
+    ("T172 an absent flag writes the field anyway",
+     "        if flag:\n"
+     '            fields.append(f"**{field}:** {flag}.")',
+     '        fields.append(f"**{field}:** {flag}.")',
+     ["TestProvenanceFields.test_an_add_without_the_flags_writes_the_item_of_today",
+      "TestProvenanceFields.test_the_flags_are_independent"]),
+
+    ("T172 the lane column leaves the package listing",
+     '            eligible.append(f"{label}  {pack_effort(text):<12}  "\n'
+     '                            f"{lanes[label]:<12}  {item_title(text)}")',
+     '            eligible.append(f"{label}  {pack_effort(text):<12}  {item_title(text)}")',
+     ["TestPackLane.test_an_item_with_no_spec_is_avulso",
+      "TestPackLane.test_two_tickets_of_one_spec_share_the_accumulated_lane",
+      "TestPack.test_an_eligible_item_carries_its_id_effort_and_text",
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    ("T172 the lane's spec is the LAST ticket's instead of the first's",
+     "    taken = next((ref for _, ref in specs if ref), None)",
+     "    taken = next((ref for _, ref in reversed(specs) if ref), None)",
+     ["TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order"]),
+
+    ("T172 the floor goes, so a lone ticket claims the accumulated lane",
+     "if ref is not None and n >= SPEC_LANE_FLOOR else LANE_SOLO)",
+     "if ref is not None and n >= 1 else LANE_SOLO)",
+     ["TestPackLane.test_a_single_ticket_of_a_spec_is_a_LANE_not_an_exclusion",
+      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    # the floor turned into a FILTER — the direction that drops the lone ticket
+    # out of a package it belongs in, which is what "lane, not exclusion" names
+    ("T172 the floor excludes the lone ticket instead of relaning it",
+     "        if ref is None or ref == taken:",
+     "        if ref is None or (ref == taken and n >= SPEC_LANE_FLOOR):",
+     ["TestPackLane.test_a_single_ticket_of_a_spec_is_a_LANE_not_an_exclusion",
+      "TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order"]),
+
+    ("T172 a second spec keeps a lane of its own instead of leaving the package",
+     "            pushed[label] = LANE_TAKEN % spec_mark(taken)",
+     "            lanes[label] = LANE_SPEC % spec_mark(ref)",
+     ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason",
+      "TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order",
+      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    ("T172 the lane is decided over EVERY item, not the candidates only",
+     "    lanes, pushed = pack_lanes(candidates)",
+     "    lanes, pushed = pack_lanes([(l, t) for l, t, _ in rows])",
+     ["TestPackLane.test_the_lane_is_decided_among_ELIGIBLE_items_only"]),
+
+    ("T172 a ticket the taken lane pushed out is listed as eligible TOO",
+     "        if verdict is None and label not in pushed:",
+     "        if verdict is None:",
+     ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason"]),
+
+    ("T172 the Spec field is read by searching the block, not at the writer's position",
+     '    for name in ("Risk", "Env", "Spec"):',
+     '    for name in ("Risk", "Env"):',
+     ["TestPackLane.test_a_spec_QUOTED_IN_PROSE_never_becomes_the_lane",
+      "TestPackLane.test_a_Spec_marker_the_position_rule_may_not_read_excludes_the_item",
+      "TestPackLane.test_two_Spec_fields_in_the_chain_are_ambiguous_not_guessed"]),
+
+    ("T172 the new field names leave the grammar, so no reader knows them",
+     '    "Ticket": r"Ticket",\n    "Spec": r"Spec",',
+     "",
+     ["TestPackLane.test_two_tickets_of_one_spec_share_the_accumulated_lane"]),
+
+    # the position rule, at the writer's end: a provenance field composed BEFORE
+    # the **Class:** the chain anchors at is a field no gate may read — the value
+    # is in the file, the lane is not
+    ("T172 the provenance fields are composed BEFORE the class they must follow",
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):\n'
+     '        if flag:\n'
+     '            fields.append(f"**{field}:** {flag}.")',
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):\n'
+     '        if flag:\n'
+     '            fields.insert(0, f"**{field}:** {flag}.")',
+     ["TestProvenanceFields.test_both_fields_are_written_at_the_writers_position"]),
 ]
 
 
@@ -2074,7 +2170,8 @@ def main():
                                   "TestDecisionDeferralGate", "TestBump",
                                   "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
                                   "TestEnvField", "TestClaim",
-                                  "TestPack", "TestHandoffCreation",
+                                  "TestPack", "TestProvenanceFields", "TestPackLane",
+                                  "TestHandoffCreation",
                                   "TestHandoffLifecycle", "TestByteOrderMark",
                                   "TestIdSpelling", "TestAmbiguousId",
                                   "TestMigrateFold",
