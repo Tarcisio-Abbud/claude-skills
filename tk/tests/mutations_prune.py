@@ -190,7 +190,8 @@ MUTATIONS = [
      ["TestInlineEvidence.test_a_bare_number_is_not_evidence"]),
 
     ("T185 a hit no longer says which kind of evidence it matched",
-     '                hit["kind"] = kind', '                hit["kind"] = "evidence"',
+     'return [{"line": number, "kind": kind, "match": m.group(0)}',
+     'return [{"line": number, "kind": "evidence", "match": m.group(0)}',
      ["TestInlineEvidence.test_each_hit_names_the_kind_it_matched"]),
 
     # -- pointers -----------------------------------------------------------
@@ -240,7 +241,7 @@ MUTATIONS = [
      ["TestNegations.test_no_inside_a_longer_word_is_not_a_negation"]),
 
     ("T185 a negation is counted and never shown, so the reader cannot judge it",
-     '                hit["context"] = context(text, m)', '                hit["context"] = ""',
+     '"context": context(text, m)}', '"context": ""}',
      ["TestNegations.test_every_negation_is_listed_with_the_line_it_sits_on"]),
 
     ("T185 the whole line comes back as context, however long the line is",
@@ -371,6 +372,10 @@ MUTATIONS = [
     ("T185 an absent path is opened, and the refusal names the wrong thing",
      "    if not os.path.isfile(args.file):", "    if False:",
      ["TestUsage.test_a_path_that_does_not_exist_is_named_rather_than_measured"]),
+
+    ("T185 a file that is not text raises instead of being named",
+     "    except (OSError, UnicodeDecodeError) as e:", "    except OSError as e:",
+     ["TestUsage.test_a_file_that_is_not_text_is_named_rather_than_raising"]),
 
     ("T185 the report no longer names the file it measured",
      '        "path": path,', '        "path": os.path.basename(path),',

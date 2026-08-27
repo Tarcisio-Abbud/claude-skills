@@ -80,7 +80,9 @@ METRICS = [
     ("sentences", "sentences"),
     ("mean_sentence_words", "mean words per sentence"),
     ("max_sentence_words", "max words in a sentence"),
-    ("sentences_over_30", "sentences over 30 words"),
+    # the key is a fixed name in the JSON contract, so it does not follow the
+    # constant; the label does, and a reader compares the two
+    ("sentences_over_30", f"sentences over {LONG_SENTENCE} words"),
     ("description_words", "description words"),
     ("inline_evidence", "inline evidence"),
     ("pointers", "pointers to other files"),
@@ -307,24 +309,33 @@ def sibling_terms(path):
     return out
 
 
-def scan(body, pattern, kind=None):
-    """Every match of `pattern` in the body, with the line it sits on.
-
-    A hit carries its KIND when the caller named one, and its CONTEXT when it did
-    not, because the two are read for different things: an evidence hit is judged
-    by which rule matched it, and a negation only by reading the line it steers.
-    """
-    found = []
+def hits(body, pattern):
+    """Every match of `pattern` in the body, with its line number and its line."""
     for number, line in body:
         text = URL.sub(" ", line_text(line))
         for m in pattern.finditer(text):
-            hit = {"line": number, "match": m.group(0)}
-            if kind is None:
-                hit["context"] = context(text, m)
-            else:
-                hit["kind"] = kind
-            found.append(hit)
-    return found
+            yield number, m, text
+
+
+def scan_kind(body, pattern, kind):
+    """Matches labelled with the rule that found them.
+
+    Which rule matched is how a piece of evidence is judged: a date and a count
+    are both evidence, and what to do about each is a different question.
+    """
+    return [{"line": number, "kind": kind, "match": m.group(0)}
+            for number, m, _ in hits(body, pattern)]
+
+
+def scan_context(body, pattern):
+    """Matches carrying the line they sit on.
+
+    A count alone would be a verdict the regex cannot support: `never` steering
+    the agent and `never` naming an outcome look identical to it, and only the
+    person reading the line can tell them apart.
+    """
+    return [{"line": number, "match": m.group(0), "context": context(text, m)}
+            for number, m, text in hits(body, pattern)]
 
 
 def context(text, match):
@@ -350,12 +361,12 @@ def measure(path):
     counts = [n for _, n in sents]
     body_words = sum(counts)
 
-    evidence = (scan(body, ISO_DATE, "iso date")
-                + scan(body, MEASURED, "measured")
-                + scan(body, COUNT_EVIDENCE, "count"))
+    evidence = (scan_kind(body, ISO_DATE, "iso date")
+                + scan_kind(body, MEASURED, "measured")
+                + scan_kind(body, COUNT_EVIDENCE, "count"))
     evidence.sort(key=lambda e: (e["line"], e["match"]))
-    pointers = scan(body, POINTER, "pointer")
-    negations = scan(body, NEGATIONS)
+    pointers = scan_kind(body, POINTER, "pointer")
+    negations = scan_context(body, NEGATIONS)
     terms = defined_terms(body)
 
     siblings = sibling_terms(path)

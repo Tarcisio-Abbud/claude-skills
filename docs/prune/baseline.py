@@ -20,14 +20,22 @@ import sys
 
 BIN = os.path.join("tk", "bin", "tk-prune-measure")
 
-# (metric, column heading). The narrow headings are the point: forty-two rows of
-# twelve numbers only read as a table if the table fits the page.
-COLS = [("lines", "lines"), ("body_words", "words"), ("sentences", "sent"),
-        ("mean_sentence_words", "mean"), ("max_sentence_words", "max"),
-        ("sentences_over_30", ">30"), ("description_words", "desc"),
-        ("inline_evidence", "evid"), ("pointers", "ptr"),
-        ("negations", "neg"), ("defined_terms", "term"),
-        ("terms_defined_in_sibling", "dup")]
+# The metrics the bin reports, read back from a real run rather than listed here.
+# A hand-kept list is a list someone forgets, and a metric added to the bin would
+# then drop out of every later baseline in silence.
+def columns(report):
+    return [(key, HEADINGS[key]) for key in report["metrics"]]
+
+# The short heading each metric gets. The narrow headings are the point: forty-two
+# rows of twelve numbers only read as a table if the table fits the page. The
+# ORDER and the SET of columns come from the bin, not from here — this maps a
+# heading onto a metric and nothing else.
+HEADINGS = {"lines": "lines", "body_words": "words", "sentences": "sent",
+            "mean_sentence_words": "mean", "max_sentence_words": "max",
+            "sentences_over_30": ">30", "description_words": "desc",
+            "inline_evidence": "evid", "pointers": "ptr",
+            "negations": "neg", "defined_terms": "term",
+            "terms_defined_in_sibling": "dup"}
 
 
 def measure(path):
@@ -46,10 +54,11 @@ def cell(report, key):
 
 
 def table(rows):
-    out = ["| skill | " + " | ".join(label for _, label in COLS) + " |",
-           "|---|" + "---|" * len(COLS)]
+    cols = columns(rows[0][1])
+    out = ["| skill | " + " | ".join(label for _, label in cols) + " |",
+           "|---|" + "---|" * len(cols)]
     for name, report in rows:
-        out.append(f"| `{name}` | " + " | ".join(cell(report, k) for k, _ in COLS) + " |")
+        out.append(f"| `{name}` | " + " | ".join(cell(report, k) for k, _ in cols) + " |")
     return "\n".join(out)
 
 
@@ -68,12 +77,28 @@ def over(rows, key=None):
                if m["status"] == "over" and (key is None or m["metric"] == key))
 
 
+def read_ceilings(*sets):
+    """The ceilings the bin carries, taken from a file that HAS a value for each.
+
+    Reading them off whichever file sorted first would take them from a file that
+    may report a metric as absent; a ceiling is the bin's, not the file's, so the
+    file with the most marks is the one that shows all of them.
+    """
+    return max((r["targets"] for rows in sets for _, r in rows), key=len)
+
+
 def main(date, cache):
     tk = [(os.path.relpath(p, os.path.join("tk", "skills")), measure(p))
           for p in sorted(glob.glob(os.path.join("tk", "skills", "*", "*.md")))]
     matt = [(os.path.relpath(p, os.path.join(cache, "skills")), measure(p))
             for p in sorted(glob.glob(os.path.join(cache, "skills", "*", "*", "SKILL.md")))]
-    ceilings = [(m["metric"], m["target"]) for m in tk[0][1]["targets"]]
+    if not tk or not matt:
+        sys.exit(f"baseline.py: nothing to measure — tk {len(tk)}, plugin cache {len(matt)}. "
+                 f"Is {cache} the plugin cache directory?")
+    # written home-relative: this repo is PUBLIC, and the cache lives under the
+    # home of whoever ran it
+    shown_cache = cache.replace(os.path.expanduser("~"), "~", 1)
+    ceilings = [(m["metric"], m["target"]) for m in read_ceilings(tk, matt)]
     per_ceiling = "\n".join(
         f"| `{key}` | {value} | {over(tk, key)}/{len(tk)} | {over(matt, key)}/{len(matt)} |"
         for key, value in ceilings)
@@ -83,7 +108,7 @@ def main(date, cache):
 
     print(f"""# Pruning baseline — {date}
 
-The numbers a pruning pass measures against, for every markdown file of the `tk` plugin and
+The numbers a pruning pass measures against, for every skill file of the `tk` plugin and
 every skill of the `mattpocock-skills` plugin installed on this machine. It is the first run of
 `tk-prune-measure` (ticket #185, spec #184), and the figure the last slice of that spec measures
 its own result against.
@@ -98,7 +123,7 @@ the person reading the line can tell.
 
 ```sh
 python3 docs/prune/baseline.py {date} \\
-    {cache} \\
+    {shown_cache} \\
     > docs/prune/baseline-{date}.md
 ```
 

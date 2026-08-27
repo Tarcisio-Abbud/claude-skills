@@ -101,12 +101,12 @@ class MeasureTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return json.loads(r.stdout)
 
-    def measure(self, text, **kwargs):
+    def metrics_of(self, text, **kwargs):
         """The metrics of a file written for this test alone."""
         return self.report(self.write(text, **kwargs))["metrics"]
 
     def assertMetric(self, text, key, value, **kwargs):
-        self.assertEqual(self.measure(text, **kwargs)[key], value)
+        self.assertEqual(self.metrics_of(text, **kwargs)[key], value)
 
 
 # A file that sits under every target, used wherever a test needs one rule
@@ -546,6 +546,16 @@ class TestUsage(MeasureTest):
         with open(path, "w", encoding="utf-8-sig") as f:
             f.write(QUIET)
         self.assertEqual(self.report(path)["metrics"]["description_words"], 14)
+
+    def test_a_file_that_is_not_text_is_named_rather_than_raising(self):
+        # the third refusal, beside the absent path and the directory: a file
+        # with nothing measurable in it is named, not handed back as a traceback
+        path = os.path.join(self.tmp, "binary.md")
+        with open(path, "wb") as f:
+            f.write(b"---\nname: x\n---\n\n\xff\xfe not text\n")
+        r = self.run_on(path)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("unreadable", r.stderr)
 
     def test_the_report_names_the_file_it_measured(self):
         path = self.fixture("lean")
