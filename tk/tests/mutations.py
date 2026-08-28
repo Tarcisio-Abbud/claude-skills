@@ -2383,8 +2383,26 @@ MUTATIONS = [
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a relative path is a repository again",
-     r'    r"|~?/[^\s*]+"                               # a POSIX absolute path',
-     r'    r"|~?/?[^\s*]+"                              # a POSIX absolute path',
+     r'    r"|~?/[^\s*\[\]]+"                               # a POSIX absolute path',
+     r'    r"|~?/?[^\s*\[\]]+"                              # a POSIX absolute path',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the character class, one door per character. `*` is what makes a field marker
+    # unspellable and `[]` is what keeps the value out of the bracket groups `pack`
+    # appends — the splice measured on **Ticket:** — so each is mutated on its own
+    ("T198 the field marker becomes spellable inside an address again",
+     r'    r"|~?/[^\s*\[\]]+"                               # a POSIX absolute path',
+     r'    r"|~?/[^\s\[\]]+"                                # a POSIX absolute path',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a bracket splices a second group into the line `pack` composes",
+     r'    r"|~?/[^\s*\[\]]+"                               # a POSIX absolute path',
+     r'    r"|~?/[^\s*]+"                                   # a POSIX absolute path',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a drive letter with nothing after it is an address again",
+     r'    r"|[A-Za-z]:[\\/][^\s*\[\]]+)"                   # a Windows drive-letter path',
+     r'    r"|[A-Za-z]:[\\/][^\s*\[\]]*)"                   # a Windows drive-letter path',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a trailing '.' passes, and the value comes back a character short",
@@ -2430,18 +2448,18 @@ MUTATIONS = [
      ["TestPackRepo.test_a_marker_QUOTED_IN_PROSE_is_not_read_as_the_repo"]),
 
     ("T198 two Repo fields in the chain are no longer ambiguous — the first wins",
-     '    value = field_value(segs[0]) if len(segs) == 1 else ""',
+     '    value = field_value(segs[0]) if len(segs) == 1 else None',
      '    value = field_value(segs[0])',
      ["TestPackRepo.test_two_Repo_fields_in_the_chain_are_MARKED_and_never_guessed"]),
 
     ("T198 the read-side shape gate goes, so a hand-edited `origin` is returned",
-     '    return f"  [repo: {value}]" if REPO_RE.fullmatch(value) else "  [repo: ?]"',
-     '    return f"  [repo: {value}]"',
+     '    if value is None or not REPO_RE.fullmatch(value):',
+     '    if value is None:',
      ["TestPackRepo.test_a_value_no_reader_may_use_is_MARKED_too"]),
 
     ("T198 an unreadable address is silent instead of marked",
-     '    return f"  [repo: {value}]" if REPO_RE.fullmatch(value) else "  [repo: ?]"',
-     '    return f"  [repo: {value}]" if REPO_RE.fullmatch(value) else ""',
+     '        return "  [repo: ?]"',
+     '        return ""',
      ["TestPackRepo.test_a_value_no_reader_may_use_is_MARKED_too",
       "TestPackRepo.test_two_Repo_fields_in_the_chain_are_MARKED_and_never_guessed"]),
 ]

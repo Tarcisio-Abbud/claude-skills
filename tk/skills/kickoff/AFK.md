@@ -64,9 +64,9 @@ about pull requests is blind for the whole window between them — long enough f
 package to build a colliding one. Ask it of the repository the items LAND in, which is the same
 repository step 3 opens their worktrees in. The Spec reference names the TRACKER the spec is
 filed in, and the two are routinely different repositories — so the address is a field of its
-own, `Repo:`, and `tk-queue pack` returns it on the item's own line:
-
-    T007  S (~20min)    spec ambiente#171     the first ticket  [ambiente#172]  [repo: https://github.com/owner/code.git]
+own, `Repo:`, and `tk-queue pack` appends it to the item's own line, after the ticket and
+labelled: `… the first ticket of the spec  [ambiente#172]  [repo: https://github.com/owner/code.git]`.
+The whole line's shape is in `tk-queue pack --help`, where the suite asserts it.
 
 ```sh
 git ls-remote --heads "<the item's repo address>" "refs/heads/spec/<m>-*"   # exit 0 and no line = free
@@ -98,12 +98,8 @@ yourself, as every orchestrator did before the field existed; where you cannot n
 repository, you cannot dispatch the item either, and it leaves the package saying so rather than
 being checked against a guess. Either way the report names it, with the repair: `Repo:` is
 written at birth and is no `edit` flag, so a wrong or missing one is `tk-queue cancel` and a
-re-add carrying `--repo`.
-
-**Ask once per distinct address, not once per item.** Two items of one spec normally carry the
-same one. The field is stored exactly as it was typed — nothing canonicalises a URL here — so two
-spellings of one repository are two questions with one answer, which costs a second `ls-remote`
-and nothing else.
+re-add carrying `--repo`. The address is stored exactly as typed, so ask the remote once per
+distinct address — two spellings of one repository are two questions with one answer.
 
 `<m>` is the **issue half** of the Spec reference — `171` out of `ambiente#171` — and it is what
 identifies the branch, which is why the match is on the prefix rather than on the whole name.
@@ -174,7 +170,8 @@ free is a package whose last third is unfunded whichever step ends up running it
 the lane each one carries after the recount, the review line and the tail line stand beside them,
 every exclusion carries either the command that cleared it or the one-line verdict that it
 still holds, and every item left out is noted with the reason — the eligible ones dropped for
-size, the ones a spec's branch on the remote took out, AND the ones `tk-queue pack` excluded, which
+size, the ones a spec's branch on the remote took out, the ones whose code repository nobody
+could name, AND the ones `tk-queue pack` excluded, which
 are not eligible at all and would otherwise leave no trace anywhere.
 
 ## 2. `pack` only: confirm
@@ -245,8 +242,8 @@ git -C "<path>/spec-<m>" push -u origin "spec/<m>-<slug>"
 **A URL is an address, not a working tree.** `git -C` needs a clone on this machine, so where the
 field holds a URL the clone of it is what the command runs in. What the field settles is WHICH
 repository, which is the half that was being guessed; a clone of it is still yours to have. An
-item whose repository has no clone here is dispatched no further than step 1's rung — the same
-rung an item with no address takes.
+item whose repository has no clone here leaves the package the way an item with no address does:
+undispatched, named in the report with the reason.
 
 `<slug>` comes from the spec's own title, lower-cased with each run of non-alphanumerics as one
 hyphen. It is there for whoever reads `git branch`; `<m>` is what identifies the branch, which is

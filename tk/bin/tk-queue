@@ -61,13 +61,12 @@ roster: neither failure reports itself. An item born in conversation has neither
 WHERE THE WORK LANDS is a third optional field, and it is a different question
 from the two above: **Ticket:** and **Spec:** name the TRACKER the issue is filed
 in, and the tracker is routinely another repository than the code's. **Repo:**
-names the code's, as a URL or an ABSOLUTE path — never a remote name, and never a
-relative path: both resolve against a cwd, and the cwd of whoever reads this
-queue is the queue's own directory, routinely a clone of something else. Run from
-there, `git ls-remote origin` was measured exiting 0 with no output, which reads
-exactly like "no branch" (#198). The shape is the gate; `pack` returns the value,
-and an item that carries none is an item whose repository its caller must name
-from outside, as every caller did before the field existed.
+names the code's, as a URL or an ABSOLUTE path. Never a remote name and never a
+relative path: both resolve against a cwd, and the cwd of whoever reads this queue
+is the queue's own directory — routinely a clone of something else. Run from
+there, `git ls-remote origin` was measured exiting 0 with no output (#198). The
+shape is the gate, and `pack` returns the value. An item carrying none is an item
+whose repository its caller names from outside, as every caller did before.
 
 WHO is working on it is a fourth field, and the only one this script writes on
 its own: `claim <id> --as <name>` marks the item under the queue's exclusive
@@ -1255,20 +1254,33 @@ def validate_ref(flag, value):
 # is absolute for the same reason and is how the desktop in this site's roster
 # names a clone.
 #
-# `*` is excluded from every alternative, which is what makes `**Repo:**` and any
-# other field marker UNSPELLABLE inside a value — the same answer REF_RE gives,
-# by construction rather than by a second gate. Whitespace is excluded with it, so
-# a newline cannot reach the single line the chain lives on.
+# Four characters are excluded from every alternative, and each one closes a door
+# that was measured open on the field beside this one:
+#
+#   *   makes `**Repo:**` and every other field marker UNSPELLABLE inside a value
+#       — the same answer REF_RE gives, by construction rather than by a gate.
+#   []  keeps the value out of the BRACKET GROUPS `pack` appends to its line. A
+#       hand-edited `**Ticket:** repo#1] injetado` spliced a second group and free
+#       text into that line (see pack_closes), and REF_RE excludes brackets only
+#       incidentally, by admitting no punctuation at all. Here it is deliberate.
+#   \s  keeps a newline out of the single line the chain lives on — and a blank
+#       out of a line whose readers separate its columns by runs of blanks. A path
+#       with a space in it is refused for that reason, and it is a real refusal:
+#       `C:\My Documents\repo` has to be spelled some other way.
 #
 # A trailing '.' is refused, and that is round-trip and not taste: compose_item
 # writes `**Repo:** <value>.` and field_value strips ONE trailing period, so a
 # value ending in one comes back a character short of what was written — a silent
 # corruption of an address, on the field whose whole job is to be handed to git.
+#
+# Every alternative needs a NON-EMPTY tail, the drive-letter one included: `/` is
+# not an address and neither is `C:/`, and admitting the second while refusing the
+# first would be an asymmetry nothing in the world asked for.
 REPO_RE = re.compile(
-    r"(?:[A-Za-z][A-Za-z0-9+.-]*://[^\s*]+"      # a URL with a scheme
-    r"|[^\s*@/]+@[^\s*:/]+:[^\s*]+"              # the scp-like git address
-    r"|~?/[^\s*]+"                               # a POSIX absolute path
-    r"|[A-Za-z]:[\\/][^\s*]*)"                   # a Windows drive-letter path
+    r"(?:[A-Za-z][A-Za-z0-9+.-]*://[^\s*\[\]]+"      # a URL with a scheme
+    r"|[^\s*\[\]@/]+@[^\s*\[\]:/]+:[^\s*\[\]]+"     # the scp-like git address
+    r"|~?/[^\s*\[\]]+"                               # a POSIX absolute path
+    r"|[A-Za-z]:[\\/][^\s*\[\]]+)"                   # a Windows drive-letter path
     r"(?<!\.)"
 )
 
@@ -1960,13 +1972,14 @@ def pack_ref(block, field):
     return canonical_ref(value) if REF_RE.fullmatch(value) else None
 
 
-# NEITHER FIELD IS AN `edit` FLAG, and the omission is deliberate — the same
-# answer CLEARABLE gives about **Claimed:**. Provenance is written once, by
-# whoever imports the ticket, and it is the one thing about an item that cannot
-# change without the item becoming a different item: a ticket re-pointed at
-# another spec is a ticket of another spec. The repair for a typo is the repair
+# NONE OF THE THREE IS AN `edit` FLAG — Ticket, Spec, Repo — and the omission is
+# deliberate — the same answer CLEARABLE gives about **Claimed:**. Provenance is
+# written once, by whoever imports the ticket, and it is the one thing about an item
+# that cannot change without the item becoming a different item: a ticket re-pointed
+# at another spec is a ticket of another spec, and one re-pointed at another
+# repository is work in another repository. The repair for a typo is the repair
 # for any unreadable chain — `cancel` and re-add, which also puts the wrong
-# `closes` on the record instead of erasing it. `edit --text` keeps both fields:
+# `closes` on the record instead of erasing it. `edit --text` keeps all three:
 # it preserves everything from the first field marker on.
 
 
@@ -2041,6 +2054,16 @@ def pack_repo(block):
     writer, and `origin` sitting in the file is precisely the guess this field
     exists to end.
 
+    The three rules are the three `pack_ref` consolidated — position, shape, one —
+    and this asks them itself rather than calling it, for one reason: `pack_ref` is
+    a reader of FORGE REFERENCES. Its shape is REF_RE and its answer is canonical
+    (`canonical_ref`), and an address has neither — nothing here compares two
+    repositories, so it has no canonical spelling to be reduced to. Passing a shape
+    and a canonicaliser in would give that function two behaviours for its two
+    callers, which is the thing consolidating it was meant to end. What must not
+    diverge is the RULES, so they are named here in the same order and read from
+    the same helpers.
+
     Three outcomes, the same three `pack_closes` gives and for the same reason:
 
       no FIELD at all    nothing is appended. The caller names the repository from
@@ -2058,8 +2081,13 @@ def pack_repo(block):
     segs = real_fields(block, "Repo")
     if not segs:
         return ""
-    value = field_value(segs[0]) if len(segs) == 1 else ""
-    return f"  [repo: {value}]" if REPO_RE.fullmatch(value) else "  [repo: ?]"
+    # None, not "": a chain naming the field twice must reach the mark on its own
+    # answer, and not by leaning on the shape's refusal of an empty string — that
+    # coupling is one edit to REPO_RE away from printing `[repo: ]` for it
+    value = field_value(segs[0]) if len(segs) == 1 else None
+    if value is None or not REPO_RE.fullmatch(value):
+        return "  [repo: ?]"
+    return f"  [repo: {value}]"
 
 
 def pack_lanes(candidates):

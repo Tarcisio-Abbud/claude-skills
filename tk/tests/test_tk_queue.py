@@ -3512,7 +3512,13 @@ class TestRepoField(QueueTest):
         self.assertEqual(self.add("--repo", "git@github.com:Tarcisio-Abbud/claude-skills.git")
                          .returncode, 0)
         before = self.body()
-        self.assertEqual(self.run_tk("list").returncode, 0)
+        listed = self.run_tk("list")
+        self.assertEqual(listed.returncode, 0)
+        # `list` carries no provenance column — not for Ticket, not for Spec, and
+        # so not for this one either: it shows the item and writes nothing. The
+        # assertion is here because the omission is a DECISION, and an undocumented
+        # decision is one a later reader restores by accident
+        self.assertNotIn("github.com", listed.stdout)
         out = self.run_tk("pack")
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(self.body(), before)
@@ -3546,7 +3552,15 @@ class TestRepoField(QueueTest):
                      "./tk", "workspace/projects", "~claude-skills", "", "none",
                      "https://", "git@github.com", "https://exa mple.com/r",
                      "/x\ny", "/pa*th", "https://x/**Spec:**y", "**Repo:** /x",
-                     "/srv/repo.", "https://github.com/o/r.git.", "~/.claude/skills."):
+                     "/srv/repo.", "https://github.com/o/r.git.", "~/.claude/skills.",
+                     # a BRACKET is the other splice, and the one measured on the
+                     # field beside this one: `**Ticket:** repo#1] injetado` put a
+                     # second bracket group and free text into the line `pack`
+                     # composes, whose consumer is a skill's prose
+                     "/srv/repo]injetado", "/x[repo:/y]", "https://h/p]q",
+                     # a drive letter or a slash and nothing after it is not an
+                     # address; `/` was already refused, and `C:/` may not differ
+                     "/", "C:/", "C:\\"):
             with self.subTest(junk=junk):
                 self.seed()
                 r = self.add("--repo", junk)
@@ -3561,7 +3575,8 @@ class TestRepoField(QueueTest):
                       "git@github.com:Tarcisio-Abbud/claude-skills.git",
                       "file:///srv/git/claude-skills.git",
                       "/workspace/projects/.ambiente",
-                      "~/.claude/skills"):
+                      "~/.claude/skills",
+                      "C:/Users/Oraci/.ambiente", "C:\\Users\\Oraci\\.ambiente"):
             with self.subTest(value=value):
                 self.seed()
                 r = self.add("--repo", value)
