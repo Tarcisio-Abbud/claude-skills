@@ -1,22 +1,23 @@
 # The pruning report
 
-One markdown file per run, its first line the path it was written to. Five parts, in order:
+One markdown file per run, named `prune-report.md`, its first line the path it was written to.
+A run that found nothing to prune writes that one line instead of the five parts below.
 
-1. **Numbers** — the bin's metrics for the target, before and after.
+1. **Numbers** — the bin's metrics for every file read, before and after.
 2. **Table** — KEEP / MOVE / DROP, one row per sentence that instructs or defines a criterion.
 3. **Splits** — each suggestion with the `SKILL-MECHANICS` criterion that decided it and the
    consumer that would reach it.
-4. **Paths** — the pruned file, and for an own skill the `docs/` file holding the evidence.
+4. **Paths** — the pruned files, and for an own skill the `docs/` file holding the evidence.
 5. **Proof** — the eval pair or the reviewed diff of rules, named.
 
 The table carries four columns:
 
 | column | what it holds |
 |---|---|
-| line | where the sentence sits in the source |
+| where | the file and the line the sentence sits at |
 | sentence | the sentence, quoted |
 | verdict | KEEP, MOVE or DROP |
-| why | the behaviour kept, the destination chosen, or the reason dropped |
+| why | the run the rule serves, the destination chosen, or the reason dropped |
 
 ## Where a MOVE goes
 
