@@ -4,7 +4,7 @@ description: "One lens over a delivered code or data slice: a single strong suba
 ---
 
 A **lens** is a subagent that attacks the slice from one angle. The **parent** is the session
-that acts on the findings. The lens fires **once**, after the repo's mandatory review has closed.
+that acts on the findings. The lens fires **once**, on the committed slice, before the repo's mandatory two-axis review.
 
 **Site extensions:** read `~/.claude/tk/review.md` and `.claude/tk/review.md` (project root) if
 they exist. They name the lens tier, the user-data directories, and the measurement behind every rule
@@ -24,7 +24,8 @@ is the lens's too.
 
 Measure the diff against the site's trigger items at the slice's **base**: the branch point of
 the work item, so a rewrite split across PRs measures as one rewrite. Capture the command once,
-`git diff <base>...HEAD`, and confirm `<base>` resolves before anything else. A hit item
+`git diff <base>...HEAD`, and confirm `<base>` resolves before anything else. Three dots exclude
+the working tree, so the slice is committed before the lens fires. A hit item
 fires the lens, unless the parent declines it in one line in the PR as worth less than it costs.
 The trigger says when the lens may fire; whether it is worth firing is the parent's own question,
 every time.
@@ -110,9 +111,10 @@ the words are stale, it is prose, fixed on the spot like a nit.
 
 Defects force a **correction batch**: fix each one, or reject it with a reason specific to the
 finding, recorded in the inventory. **The correction batch goes to the repo's mandatory two-axis
-review, never to another lens.** One firing is the whole budget. That review takes the
-pre-correction HEAD as its fixed point. Its brief carries the invariant each finding violated:
-the spec of a repair is the finding.
+review, never to another lens.** One firing is the whole budget. That review reads
+`base...HEAD` and the correction batch is inside it, so the repair is reviewed by the pass the
+slice owed anyway. Its brief carries the invariant each finding violated: the spec of a repair
+is the finding.
 
 **A repeated mechanism is a design signal.** Two findings violating the same guard, or a
 correction that writes one statement in one more place, means the next instance is already
