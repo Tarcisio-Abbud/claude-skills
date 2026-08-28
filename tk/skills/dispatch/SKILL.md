@@ -43,18 +43,26 @@ constraints ("without touching other tests") and a cap ("or stop after 20 turns"
 `/schedule`. Scheduled fires only execute model-invocable skills: to schedule work from a
 `disable-model-invocation: true` skill (kickoff, wrap-up), point the prompt at the skill's
 file in the plugin's install folder ("follow `skills/wrap-up/SKILL.md` of the `tk`
-plugin"). The same lock rules out dispatching such a skill to a subagent: a prompt reading
-"run `/implement`" reaches an agent that cannot invoke it, and the run dies there. When a
-locked skill must open the work, the user types it as the session's first line, and the
-dispatch delivers that line rather than a subagent.
+plugin"). The same lock rules out dispatching such a skill to a subagent **by name**: a prompt
+reading "run `/implement`" reaches an agent that cannot invoke it, and the run dies there.
+Pointing a subagent at the FILE works, for the reason the scheduled fire above works — the lock
+is on invoking the command, and it does not reach a file being read. `../fleet/SKILL.md`
+dispatches every one of its project runs on that route.
+
+What no subagent can open is a **generation**: `../kickoff/WINDOW.md` reserves that for a
+scheduled fire or the user's own first line, because a generation succeeds the session rather
+than running inside it. So where a locked skill must open work that outlives one run, the
+dispatch delivers the line the user types rather than a subagent.
 
 The `next-steps.md` queue (contract: `../kickoff/SKILL.md`, relative to this file) has
-three dispatchers, by presence and scope:
+four dispatchers, by presence and scope:
 
 - **interactive kickoff menu** — the user is present and chooses;
 - **`/tk:kickoff afk` / `pack`** — one-shot package run by an orchestrator + background
   subagents, context-isolated (`../kickoff/AFK.md`);
-- **`/loop` over `loop.md`** — same-session slices, context accumulates across iterations.
+- **`/loop` over `loop.md`** — same-session slices, context accumulates across iterations;
+- **`/tk:fleet`** — every project's queue on this machine at once, one full orchestrator per
+  project at `--budget 1` (`../fleet/SKILL.md`).
 
 Tickets published on the issue tracker are dispatched by the site's per-ticket flow, one
 ticket per fresh session — the tracker is their source of truth.

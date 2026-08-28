@@ -64,6 +64,7 @@ A consumer that copies the values into itself has forked the policy — read the
 | research | sonnet | session | cloud | none | none | Rises to parent when the question turns on fine judgement. Log the rise. |
 | review | sonnet | session | cloud | none | none | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
 | explore | haiku | session | local | none | none | Pure search and file location, no verdict. |
+| fleet-orchestrator | parent | session | local | opens | required | One project's whole package, dispatched by the fleet at `--budget 1`. Its wrap-up versioning gate opens that package's pull requests, so the closing line rides with it wherever the item names a tracker ticket. Local by construction: its queue is auto-memory, which no pushed repo carries. |
 <!-- /tk:roles -->
 
 ## The closing line
