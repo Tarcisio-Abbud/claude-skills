@@ -52,13 +52,65 @@ On the first quota failure, in this order:
    - **the large files already read, and the verdict on each.** A successor that knows a
      source is 1,500 lines and what it holds takes it distilled from a subagent; one that
      knows only "we were at 200k" reads it again at full price.
+
+   **A package holding an accumulated lane owes five more contents in the same field**, four of
+   them new — the section below names them. A lane package's `--state` is not written until they
+   are in it, and the successor's very first command cannot be composed without the first of them.
 4. **Keep the claims.** They are how the next generation knows which items are its own, and
    releasing them here invites a sibling session to take work that is half done. This is the
    one place the release rule of `AFK.md` step 3 does not apply.
 5. **Stop.** Report the wall, the reset time and the handoff's path.
 
-**Done when:** the tree is pushed, one handoff carries the six contents of step 3, the claims
-are intact, and the report names the reset time.
+**Done when:** the tree is pushed, one handoff carries the six contents of step 3 — and, where
+the package holds an accumulated lane, the five contents the section below names for it — the
+claims are intact, and the report names the reset time.
+
+## An accumulated lane: the five contents `--state` carries for it
+
+A package holding a spec's accumulated lane (`AFK.md` step 3) writes five things into `--state`
+for that lane. Four are additions to the six above and the fifth is one of the six, doing a
+second job here. **`--state` gains no flag for any of them** — it is one field of prose, and the
+additions are four more paragraphs inside it.
+
+- **The lane's identity** — the address of the repository its items land in, its branch
+  `spec/<m>-<slug>`, its worktree path, and its pull request's number once one exists. It is
+  written when the lane OPENS (`AFK.md` step 3), not when the first item merges, because the
+  successor needs it before there is a map to read: in the state where nothing has merged yet, a
+  map pinning the branch would be empty, and `git -C "<path>/spec-<m>" fetch --prune origin` —
+  the successor's first command — could not be composed. Only two of the four are recoverable
+  from elsewhere: `<m>` from the WIP branch the second content names, and the address from the
+  item's own `Repo:` field. The slug and the worktree path are recoverable from nothing. Where
+  the slug alone was lost, `AFK.md` step 1's
+  `git ls-remote --heads "<the item's repo address>" 'refs/heads/spec/<m>-*'` names the branch —
+  the fallback, and never the contract.
+- **The item→merge map** — one line per lane item that reached the branch, its `T<id>` against the
+  merge commit that carried it, under the branch's pushed tip. Each line is written **after the
+  push** of `AFK.md` step 5 stage 5, and before that item's `done`. That order is what makes a
+  death between those two cost nothing: the tip already carries the merge, and the successor
+  closes the item from the tip.
+- **The item in flight** — the ticket, the branch its work is pushed to, and the stage of step 5's
+  cycle it reached. The second content above already asks for the branch; the stage is this lane's
+  addition, because it decides whether the successor dispatches a run for that item at all or
+  takes it straight into step 5's cycle.
+- **The tail's state** — which of the tail's three steps had run, what the review returned, and
+  which fixes are committed and pushed. The tail (`AFK.md` step 5, *The lane's tail*) is a merge of
+  `origin/main`, one review over the accumulated diff, then the suite and every lane criterion; a
+  successor told only that the tail had started re-runs all three. What the review returned is the
+  fifth content above read at lane scope, so a review that never reported is re-fired whole here
+  too.
+- **The claims** — the fourth of the six above, written exactly as they are there and gaining
+  nothing on this lane. What they gain is a second reader: they are what tells the successor that
+  the branch it finds on the remote belongs to its own package rather than to a sibling, which no
+  question put to the remote can answer (`AFK.md` step 3).
+
+**The item→merge map is what the predecessor believed; the pushed tip is what is true.** A
+successor closes items by reading `git log --merges` on that tip and never by reading this map,
+because the map stops at the last handoff its writer got to. What the map buys is the report: it
+is the only record of what the predecessor thought it had merged, and a disagreement between it
+and the tip is named there.
+
+The procedure the successor runs from this whole field is `AFK.md`'s *A resumed generation starts
+here*.
 
 ## Review is a first-class consumer of the window
 

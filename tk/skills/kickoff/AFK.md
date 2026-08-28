@@ -11,11 +11,289 @@ one-line format a departure from that table costs.
 
 **Read `WINDOW.md` beside this file before step 3.** It holds what the package does when it
 runs out of window rather than out of work: the checkpoint invariant, the handoff the quota
-wall demands and its six contents, the scope a resumed package is held to, why auto-continue
-covers none of this, what the review lens costs the window and why its tail is
+wall demands and its six contents — plus the five an accumulated lane carries, four of them
+new — the scope a resumed package is held to, why auto-continue covers none of this, what the
+review lens costs the window and why its tail is
 what the wall cuts first, the two vehicles that can open a successor generation, and the
 `--budget N` generations that carry a package past the orchestrator's own context ceiling. Those rules fire at moments the steps below do not
 choose, which is why they are read up front rather than looked up under one.
+
+**A generation resuming a package that already holds a lane starts at *A resumed generation
+starts here*, below, and not at step 1.** It builds no package: the one it inherits is already
+built, and what it owes first is the tree.
+
+## A resumed generation starts here
+
+A generation opened by one of `WINDOW.md`'s two vehicles inherits a package mid-flight: the
+handoff carries the items, the claims, the lane and the five contents `--state` carries for that
+lane, and git carries whatever survived. It builds no package and pulls no new item — the
+claims it inherited are the whole of its work, by `WINDOW.md`'s scope rule. This section runs
+first and once, and only where the handoff names an accumulated lane; a handoff naming solo items
+alone goes straight to step 3's dispatch — the dispatch alone, under the reading two paragraphs
+below.
+
+The order is fixed — **reset, draft, close, re-dispatch** — because each one reads a tree the one
+before it settled. They are named rather than numbered: this file's own steps are numbered, and
+two numberings over one page is how a reader lands on the wrong one.
+
+**Read the handoff whole before the reset.** `tk-queue done` deletes the briefing of the item
+it closes, and the wall anchors that briefing on the item that was in flight — which is exactly
+the item the **close** below finds merged on the tip. Measured in this ticket's rehearsal:
+`done T001` printed `handoff-T001.md removed`, and the re-dispatch would have read nothing. Nothing below
+re-reads the file, so the whole of it is taken up front.
+
+**What this section runs of step 3, and what it does not.** It runs step 3's **dispatch** — the
+vehicle, the prompt, and the lane's serial order — and no other half of that step. It does not
+claim: the items are this package's already, and a second `tk-queue claim` is refused even under
+the SAME label — measured, `claim T001 --as afk-host` run twice answered `T001 is already claimed
+by afk-host` at exit 1, so a generation that claimed would report its whole inherited package as
+held elsewhere. It does not re-run step 3's `git ls-remote` check: the branch that check would
+find on the remote is this package's own lane, and finding it there evicts the lane's tickets from
+the package that owns them. It creates no branch, the lane's branch being what it inherited. Step
+1's cut and step 2's confirmation are not its work at all.
+
+**Two preconditions, before the reset can run.** The ladder at the end of this section grades what
+the beats FIND; these are what makes a tree there to be found, and a ladder row is the wrong home
+for them — measured, `git -C "<path>/spec-<m>" fetch origin` and
+`git -C "<path>/spec-<m>" reset --hard "origin/spec/<m>-<slug>"` on a path that is gone both exit
+128 with `fatal: cannot change to '<path>/spec-<m>': No such file or directory`, before any row is
+consulted.
+
+- **The lane's identity** — its repository address, `spec/<m>-<slug>`, its worktree path and its
+  pull request's number — is the first content `--state` carries for a lane (`WINDOW.md`), and
+  every command below is composed from it. Where the slug alone was lost,
+  `git ls-remote --heads "<the lane's repo address>" 'refs/heads/spec/<m>-*'` names the branch;
+  that is the fallback and not the contract. Where the address or the branch cannot be recovered
+  at all, the lane takes the ladder's handoff-missing rung and nothing below runs.
+- **The lane's worktree.** `git -C "<the lane's repo address>" worktree list` names the worktrees
+  git still knows. Where the lane's is gone, nothing is lost — the branch is on the remote — and
+  it is recreated before the reset, with the report naming the recreation:
+
+  ```sh
+  git -C "<the lane's repo address>" worktree prune
+  git -C "<the lane's repo address>" worktree add --track -B "spec/<m>-<slug>" "<path>/spec-<m>" "origin/spec/<m>-<slug>"
+  ```
+
+  **`--track -B` is not decoration.** Measured: `git worktree add "<path>/spec-<m>"
+  "origin/spec/<m>-<slug>"` without it leaves a **detached** HEAD, and a commit made there reaches
+  nobody. Its `git push origin "spec/<m>-<slug>"` then fails loudly with `error: src refspec
+  spec/<m>-<slug> does not match any` where no local branch of that name exists, and is a silent
+  exit-0 `Everything up-to-date` that pushes nothing where one exists at the remote's sha. The
+  second shape is the dangerous one: it reports success while the remote's tip never moves.
+
+**Reset** the lane's worktree to the pushed tip.
+
+```sh
+git -C "<path>/spec-<m>" fetch --prune origin
+git -C "<path>/spec-<m>" reset --hard "origin/spec/<m>-<slug>"
+```
+
+**`--prune`, because a delivered lane leaves no branch behind.** `../wrap-up/SKILL.md`'s gate
+merges the lane's pull request with `--delete-branch`, and a plain fetch never notices: measured,
+after that deletion `git fetch origin` exits 0 and `git rev-parse "origin/spec/<m>-<slug>"` still
+answers the stale sha, while `git fetch --prune origin` reports `- [deleted]` and the same
+`rev-parse` then exits 128. Unpruned, this generation resets onto a ref for a lane already in
+`main` and resumes it; step 5 stage 5 then re-creates on the remote the very branch the merge
+deleted, carrying work `main` already holds. Pruned, a ref that survives IS a live lane, and its
+absence is what the ladder's delivered rung reads.
+
+The pushed tip is the package's only record of the lane, so this discards whatever the predecessor
+left unpushed — an item's merge, the tail's merge of `origin/main`, a `fixer`'s commit — and
+discarding it is what makes this tree agree with what every later reader sees. The work behind a
+discarded merge survives on the item's own pushed branch `spec/<m>/T<id>`, which the re-dispatch or step 5's
+cycle merges again.
+
+**Draft** — open the pull request where the tip carries a merge and the forge has none.
+
+`gh pr list -R "<owner>/<code repo>" --state open --json number,headRefName --head
+"spec/<m>-<slug>"` answers the second half, and `git -C "<path>/spec-<m>" log --merges --oneline
+"origin/main..HEAD"` the first. **The range is part of that command, here and at the close.**
+Unbounded, `log --merges` also lists `main`'s whole merge history once the tail has merged
+`origin/main`, and no lane item put those merges there.
+
+A tip carrying a `T<id>` merge with no pull request on it means the predecessor died between its
+first push and its `gh pr create`. Open it with the command and the body of step 5
+stage 6, which owns both; opening it here supplies only the moment, and every item the close writes
+needs a `PR #<n>` to point at.
+
+**Close** every item whose merge is already on the tip.
+
+Read `git -C "<path>/spec-<m>" log --merges --oneline "origin/main..HEAD"` and take the leading
+`T<id>` of each title — the position step 5 stage 4 puts it in for exactly this reader. Then ask
+`tk-queue list` for each id, which answers both halves of the test on one line: whether the item is
+still open at all, and whose claim it is under —
+`T001  AUTONOMOUS  0d  <the item's text>  [claimed by <owner> since <moment>]`. An item still open
+**that an inherited claim names** closes here with `tk-queue done "<id>" --how "PR #<n>"`, which is
+a re-close and never a re-run, and an id that list does not show is closed already and takes
+nothing. **The claim is the second half of the test because nothing else enforces it**: measured,
+`tk-queue done` on an item claimed by another owner closed it at exit 0 with no warning. An id open
+under somebody else's claim is a sibling's item, and closing it would take that item out of the
+queue with no session alive to notice.
+
+**Read the merges from the tip, never from the item→merge map.** The map stops at the last handoff
+its writer got to and the tip does not, so the tip is the one that knows about a death between the
+push and the `done` — the death the close exists for. Where the two disagree, the tip decides and
+the report names the disagreement.
+
+An item closed here whose section is missing from the pull request's body gets one, naming its
+merge and saying that its evidence block died with the generation that verified it. The tail's
+step 3 re-runs that item's criterion on the final tree, and that run is what the user's verdict
+reads.
+
+**Write a fresh handoff before leaving the close.** `tk-queue done` deletes the briefing of every
+item it closes — measured, `done T001` printed `handoff-T001.md removed` — so a generation that
+closed and then died leaves the queue holding claimed items and no briefing at all. That state is
+the ladder's handoff-missing rung: the package stops and the claims are held with nothing alive to
+release them. `WINDOW.md` owns the rule that the handoff is refreshed at every seam, and this is
+the seam where the artefact is destroyed, so the seam is named here. Run
+`tk-queue handoff "<id>" --objective "..." --state "..." --blockers "..."` in that file's own form
+— `<id>` being the item still in flight, or with none the head of what the claims still hold —
+and put in `--state` the five lane contents rebuilt from the tip this beat just settled, not the
+ones the dead handoff carried. Then run the `edit` that command prints on stderr, which is the
+item's only discovery path to the briefing.
+
+**Re-dispatch** the item in flight, from its pushed WIP branch.
+
+**The handoff names the item, its branch and the stage — and the handoff is belief, the same way
+the item→merge map is.** `WINDOW.md` refreshes it at every seam, so it is written AFTER stage 7's
+`done`, and a death between the two leaves it naming an item already merged and closed. So ask the
+tip and `tk-queue list` before dispatching anything: an id the close just closed, and any id
+`tk-queue list` does not show open, is **not** re-dispatched whatever stage the handoff names.
+Dispatched on that stale name, the item is implemented and merged a second time — reproduced, the
+lane ended carrying two `T002:` merge commits of one name. No item closes twice, since the queue
+refuses the second close (`T002 already left the queue`, exit 1); what the duplicate destroys is
+the per-item reversal stage 4's `--no-ff` exists to buy, because `git revert -m 1` on either merge
+leaves the other's copy of the work in. The tip is truth and the map is belief on this beat exactly
+as on the close.
+
+An id that survives that test is dispatched into a worktree **of** its own branch, never into one
+cut fresh from the lane's tip, with the prompt saying what is already committed there — that is
+what makes the run continue instead of starting the ticket over. Its cycle then runs from stage 1
+of step 5, like any item's.
+
+**Where the item's own worktree survived the death, dispatch into that one.** Step 5 removes an
+item's worktree only when the item leaves the cycle, so a hard death leaves it in place with the
+branch checked out. Fetch in it and put step 5 stage 1's two questions to it — a clean tree, and a
+HEAD equal to its upstream — repairing a breach the way that stage prescribes, by committing and
+pushing from here.
+
+**Where it is gone**, cut a new one in the lane's repository:
+
+```sh
+git -C "<the lane's repo address>" fetch origin
+git -C "<the lane's repo address>" worktree add --track -B "spec/<m>/T<id>" "<path>/T<id>" "origin/spec/<m>/T<id>"
+```
+
+Step 3's `-b` form is the wrong command here, because the re-dispatch's branch exists by
+definition: measured in the clone the predecessor dispatched from,
+`git worktree add "<path>/T<id>" -b "spec/<m>/T<id>" "origin/spec/<m>/T<id>"` returned
+`fatal: a branch named 'spec/<m>/T<id>' already exists`. The `--track -B` form above returned
+`fatal: 'spec/<m>/T<id>' is already checked out at '<the predecessor's worktree>'` while that
+worktree was still registered — which is the surviving-worktree case above, answered by using that
+worktree and never by `git worktree remove --force`. Force discards uncommitted work, and what
+would make it look harmless is the checkpoint invariant: anything that matters is already pushed.
+That is a claim stage 1's two questions VERIFY rather than a fact to assume, and where they fail
+the repair is to push, not to force. A worktree git still lists whose directory is gone takes
+`git worktree prune`, which discards nothing.
+
+**The stage the handoff names decides whether a run is dispatched at all.** An item that had not
+gone green still owes work, and the run resumes it from that branch. An item already verified
+green owes none — it died at its merge or its push — so nothing is dispatched, and the item enters
+step 5's cycle at stage 1, where the caller re-runs its proof before merging. Dispatching a green
+item spends a whole run to re-deliver what its own branch already holds.
+
+A branch with no commits of its own is a run that died before its first push, and two commands
+say which shape it is:
+
+```sh
+git -C "<the lane's repo address>" ls-remote --heads origin "refs/heads/spec/<m>/T<id>"   # no line = never pushed
+git -C "<the lane's repo address>" rev-list --count "origin/spec/<m>-<slug>..origin/spec/<m>/T<id>"   # 0 = pushed at the lane's tip, never committed on
+```
+
+Read the exit code of the first as well as its output, on step 1's rule: an unreachable host exits
+128 and prints no line either. Nothing anybody could reach was lost in either shape, so the item is
+dispatched the way step 3 dispatches a fresh ticket.
+
+**Then the package carries on**: step 3's dispatch — that half of it alone, by the reading at the
+top of this section — sends out what the claims still hold, in the queue's
+order, and step 5's tail runs after the last of them. **The tail and its review are work remaining,
+not work behind** — budget them here the way step 1's cut does, as two lines beside the items, and
+a generation that runs out of window before them writes them into `--state` again rather than
+dropping them.
+
+### The three deaths this order survives
+
+| The death | What recovers it |
+|---|---|
+| **Died before the push**, as step 5 stage 7 names it | the reset discards the merge; the item is still open and its own branch still pushed, so it re-enters step 5's cycle at stage 1 and merges once |
+| **Died between the push and the `done`**, as that same stage names it | the close, reading the tip's merges |
+| **Died during the tail** — the third, which stage 7 does not reach | the three questions below |
+
+**A death during the tail is redone, not resumed.** What says where the tail stopped is the
+handoff's tail state read against the tree the reset just produced — the handoff alone can be a step
+behind, and the tree alone cannot say what a review returned. Three questions settle it:
+
+- **Does the tip already carry `origin/main`?** `git -C "<path>/spec-<m>" merge-base --is-ancestor
+  origin/main HEAD` exits 0 when it does, and the tail's step 1 then writes nothing — run it and
+  git answers `Already up to date`. Exit 1 means main is ahead, whether because the merge never
+  landed or because the reset discarded it or because main moved since, and step 1 merges it. **Exit
+  0 is not "the merge commit exists"**: measured in this ticket's rehearsal, it exits 0 on a lane
+  whose `origin/main` never moved and that never merged main at all. What the test settles is
+  whether anything is left to merge, which is the only half that changes what runs.
+- **Did the review report?** The handoff says, and nothing in the tree does. A review that never
+  reported is re-fired whole; one that reported leaves its findings in the handoff, and what runs
+  then is a `fixer` over the confirmed findings that are not yet on the tip — never the review a
+  second time.
+- **Did the criteria run finish?** It does not matter: it is redone whole. It measures the final
+  tree, and either answer above can have moved that tree, so a half-finished run measured a tree
+  that is gone.
+
+Nothing in this section reopens an item, reverts a merge or rewrites anything pushed. The machine
+reports and the user decides, here as everywhere on the lane.
+
+### Every exit, and where it leaves the object
+
+The rows grade **different objects** — a merge, the item in flight, the forge, the handoff, a
+claim — so several apply to one lane at once and **every row that applies runs**. First-match
+holds WITHIN one object and nowhere else: two rows about the same merge, or about the same handoff,
+cannot both be the one. Worked case: a tip carrying no `T<id>` merge takes the first row, and the
+same lane whose handoff names a stale tip takes the stale-handoff row as well. What the beats need
+before they can run at all is not graded here — it is the two preconditions above.
+
+| Exit | Where the object ends up | What runs next |
+|---|---|---|
+| `origin/main..HEAD` carries no `T<id>` merge at all | no item closes and no pull request opens | the re-dispatch; the lane's first green merge opens the draft, under step 5 stage 6 |
+| A `T<id>` merge in that range for an item `tk-queue list` does not show | closed already; nothing is written | the next id in the merge list |
+| A `T<id>` merge in that range for an id open under no claim of this package | the item stays open and the merge stays on the branch, both untouched | report it beside the lane — inside that range the merge is on the lane's own side, so a sibling pushed onto this branch and the tail's review reads its diff too. Unbounded, the same list also carries `main`'s merge history, whose ids no lane put there and which would take this rung on a false diagnosis |
+| The item in flight has no pushed branch, or none with commits of its own | the item is open and no tree holds its work | dispatch it fresh, as step 3 does a ticket |
+| The draft pull request already exists | nothing to open | the close |
+| The handoff names a tip older than the remote's — `git -C "<path>/spec-<m>" rev-parse "origin/spec/<m>-<slug>"` after the pruned fetch, against the sha the map is written under | the tip decides, and the item→merge map is the stale half | resume normally; the report names the gap |
+| The handoff is missing, or the pruned fetch left no `origin/spec/<m>-<slug>` and the query below returns `[]` | the package cannot be resumed from here | stop; report the lane's branch, the claims still held and what the remote does show. The claims stay, so no sibling takes the items |
+| The pruned fetch left no `origin/spec/<m>-<slug>` and the query below returns a row whose `state` is `MERGED` | the lane is delivered | close any lane item still open, taking its `T<id>` from `git log --merges --oneline "<mergeCommit>^1..<mergeCommit>^2"` — the lane's own side of the merge that landed it on `origin/main` — and report the pull request; the tail does not run |
+| A claim the handoff lists is held by another owner — `tk-queue list` prints it as `[claimed by <owner> since <moment>]`, the same line the close reads | that item leaves this generation | report it as carried under the dependency gate (step 6) and resume the rest |
+
+**The handoff-missing row and the delivered row are one observation with opposite outcomes** — no
+`origin/spec/<m>-<slug>` after the prune — and one query separates them. They are about the same
+object, so first-match would take the earlier one every time; the query is what puts the right one
+first:
+
+```sh
+gh pr list -R "<owner>/<code repo>" --state all --json number,headRefName,state,mergeCommit --head "spec/<m>-<slug>"
+```
+
+`--state all`, not the `--state open` the draft beat uses, which returns `[]` for both. Measured
+against this repository: over a merged lane's branch it returned
+`[{"headRefName":"…","mergeCommit":{"oid":"3eedd21…"},"number":51,"state":"MERGED"}]`, and over
+a branch that never existed it returned `[]`. `mergeCommit` is asked for here because the delivered
+rung reads its merges from it. Reading the two rows apart is what keeps a delivered lane from
+stopping the package with its items claimed forever.
+
+**Done when:** the lane's worktree exists and stands at the pushed tip of a branch a pruned fetch
+still shows, the draft pull request exists where the tip carries a merge, every `T<id>` in
+`origin/main..HEAD` belongs to an item the queue no longer shows open or to a rung above, a fresh
+handoff was written after the close and before the re-dispatch, the item in flight is dispatched
+from its own branch — or was withheld because the queue no longer shows it open — and the report
+names every exit this section took.
 
 ## 1. Build the package
 
@@ -227,9 +505,18 @@ and evicts the package's own lane, every run.
 **A branch already there is a package still running, or one that died.** Either way this package
 does not create it and does not push over it: force-pushing would destroy the merges a sibling
 package is building on. Recovering a dead package's branch is a resumed generation's work, and
-the prose for that is still being written; until it arrives, take that spec's tickets out of the
+*A resumed generation starts here* is where that happens. Here, take that spec's tickets out of the
 package on step 1's rung, with the branch as their value, and say in the report that the branch
-was found and left untouched. **Release each one** — `tk-queue release "<id>"`, which prints whose
+was found and left untouched.
+
+**The remote cannot tell a sibling's branch from this package's own** — it reads identically for
+both — so nothing here asks it to. The discrimination is upstream of this check: a generation
+resuming its own lane knows the branch from the handoff that named it and the claims it inherited,
+and it never reaches this check, because *A resumed generation starts here* names the dispatch as
+the only half of this step it runs. This check therefore runs for a
+package being BUILT, where a branch on the remote is always somebody else's. A dead package's
+claims outlive it by `WINDOW.md`'s rule, so the same items are refused on the item rung too, and
+the two gates agree. **Release each one** — `tk-queue release "<id>"`, which prints whose
 claim it dropped. They were claimed at the top of this step, and a claim outlives the package that
 took it: an item that leaves still claimed is an item every later package is refused, with no
 session alive to explain why.
@@ -700,17 +987,16 @@ point: the queue is the only record that survives this session, and the two ways
 here resolve because the push precedes it.
 
 - **Died between the push and the `done`.** The merge is on the pushed tip and the item is still
-  open. What recovers it reads `git log --merges` on that tip, finds the item's `T<id>` and closes
-  it — a re-close, never a re-run.
-- **Died before the push.** The merge existed only in the lane's worktree, and a resumed
-  generation resets that worktree to the pushed tip, which discards it. The item is still open and
-  its own branch is still pushed, so it re-enters the cycle at stage 1 and merges once. A death
-  between the merge and the push is this same shape: the push is what makes the merge exist for
-  anybody else.
+  open.
+- **Died before the push.** The merge existed only in the lane's worktree, and the item is still
+  open with its own branch still pushed. A death between the merge and the push is this same
+  shape: the push is what makes the merge exist for anybody else.
 
-Neither shape loses work and neither merges an item twice, which is what the order buys. The
-procedure a resumed generation follows is being written under `ambiente#176`; what this step owes
-it is the order above.
+Neither shape loses work and neither merges an item twice, which is what the order buys. **This
+step names the two shapes and nothing more.** The procedure that recovers each of them — which
+merges to read, the claim test the close applies before writing, and the handoff that follows it —
+has ONE home, *A resumed generation starts here* at the top of this file; a second statement of it
+here is a copy to go out of step with that one.
 
 **A red item never reaches the lane's branch.** It ends the way any item ends today — three
 attempts, then verify's DECISION carrying its handoff — with one addition: the DECISION names
