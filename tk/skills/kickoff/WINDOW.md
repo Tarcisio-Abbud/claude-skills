@@ -67,7 +67,7 @@ The lens is one agent and it fires once, so the line is one agent's window; meas
 2026-08-28, that was 144k subagent tokens against a 1,534-line slice. Where the lens would
 cost more window than the implementation did, the slice takes the mandatory review alone.
 
-**Campaigns serialize** — one at a time per orchestrating session. So review time is a **sum**
+**Reviews serialize** — one at a time per orchestrating session. So review time is a **sum**
 over the package's slices, not a maximum across them, and that serialized tail is the part of
 a package the wall reaches first. A package planned as though review rode along inside
 implementation is a package whose last third is unfunded.

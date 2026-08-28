@@ -198,7 +198,7 @@ package actually holds: count the tickets per Spec reference among the CLAIMED, 
 fell below two drops to the solo lane. It demotes and never promotes, for the reason step 1
 gives. This recount is the LAST one, so the lanes it leaves are the ones step 6 hands over —
 and a lane that collapsed here takes its two cost lines with it, since a package with no
-accumulated lane pays neither the one campaign nor the tail.
+accumulated lane pays neither the one review nor the tail.
 
 **Then ask the remote once more, before creating anything.** Step 1 asked before the cut and the
 claims, and a sibling package can push a spec's branch in the window between — so run step 1's
