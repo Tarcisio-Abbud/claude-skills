@@ -188,7 +188,8 @@ tk/
   skills/kickoff/WINDOW.md        branch file: what the package does when it runs
                                   out of window rather than out of work — the
                                   checkpoint invariant, the quota wall's handoff,
-                                  what the review lens costs the window, and
+                                  the five contents an accumulated lane adds to
+                                  it, what the review lens costs the window, and
                                   the --budget generations
   reference/subagent-policy.md    model, effort, venue, PR-authorship and the
                                   checkpoint invariant per subagent role; the role
