@@ -17,11 +17,13 @@ conditions:
 Every code change delivered goes through the two-axis review (Standards + Spec),
 `/mattpocock-skills:code-review`, before being called done.
 
-Since 2026-08-28 the two axes run in a SEPARATE, COLD session. The session that writes the
-code commits and pushes. A fresh one reads the ticket and reviews. A commit with no review in
-THIS transcript is therefore often correct. Name the case, then finish:
+Since 2026-08-28 the two axes run in a SEPARATE, COLD session. The HOT session writes the
+code, commits and pushes. A COLD one then reads the ticket and reviews. A commit with no
+review in THIS transcript is therefore often correct. Name the case, satisfy it, then finish:
 
-  - **the hot session of a ticket** -- the review is the next session, and it runs there;
+  - **the hot session of a ticket** -- the review is the next session. Name the artefact that
+    summons it there: the ticket, or the queue item, still OPEN. Nothing open to name means
+    nothing will summon the review, so open it before finishing;
   - **a small commit straight to main** -- the review still runs retroactively, from a fresh
     session, and its findings go into an immediate follow-up commit;
   - **nothing was committed here** -- the transcript only mentions a commit;
