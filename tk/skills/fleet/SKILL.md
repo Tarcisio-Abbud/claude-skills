@@ -23,8 +23,9 @@ rule survives the fleet only because every write happens inside the project run 
 
 ## 1. Build the roster
 
-`../../bin/tk-roster`, no flags, no subcommand. It prints four sections, and they are not four
-views of one list — each carries a different obligation.
+`../../bin/tk-roster`, no flags, no subcommand. It prints up to four sections, and they are not
+four views of one list — each carries a different obligation. A section with nothing to say is
+absent rather than empty, and an absent one needs no line in the report.
 
 | Section | What the fleet does with it |
 |---|---|
@@ -40,7 +41,8 @@ refuses to guess. The fleet refuses with it. Their queues are still readable wit
 by the `queue:` path the section prints (`tk-queue list --dir <that path>`), when the report is
 better for saying what is waiting there.
 
-**The allow/denylist belongs to the site file, not to this skill.** `fleet-allow` (present: only
+**The allow/denylist belongs to the site file (`~/.claude/tk/env`), not to this skill.**
+`fleet-allow` (present: only
 those enter) and `fleet-deny` (those leave, and it wins over the allow) are read by the bin.
 The fleet accepts no list of its own by flag and reimplements no filter: a second answer to
 "what does the fleet touch" is a second source of truth, and the one the user edits is the file.
@@ -51,16 +53,15 @@ no queue is the only signal that a line exists and is doing nothing. It goes in 
 under its own heading, whatever else the run found.
 
 **Two exits, two meanings.** Exit 1 is a rotten site file: the fleet stops and quotes
-`tk_site`'s message from stderr verbatim, because every ceiling below comes from that same
-file. Exit 0 with an empty roster is a fact, not a failure: report that there was nothing to
+`tk-roster`'s own stderr verbatim, because every ceiling below comes from that same file. Exit 0 with an empty roster is a fact, not a failure: report that there was nothing to
 sweep, and stop before dispatching anything.
 
-**Done when:** all four sections were read; the first is the only one that will be dispatched;
-the other three are already written into the report.
+**Done when:** every section the bin printed was read; `## roster` is the only one that will be
+dispatched; every other one it printed is already written into the report.
 
 ## 2. Size each project, and order the fleet
 
-**Largest first.** A project's size is the eligible count `tk-queue pack` prints for it. Run it
+**Largest first.** A project's size is the **eligible count** `tk-queue pack` prints for it. Run it
 from the project's own directory, so the queue resolves the documented way instead of from a
 path this skill built:
 
@@ -68,12 +69,13 @@ path this skill built:
 (cd "<the project's directory>" && python3 <.../tk/bin>/tk-queue pack)
 ```
 
-Read the `eligible (N of M, in queue order)` line. `N` is the size. **`N = 0` leaves the
-project out of the fleet** — there is nothing to dispatch — and into the report with the
-exclusions `pack` printed, since a queue that is full of ineligible items is a different story
-from an empty one, and only the exclusion values tell them apart.
+Read the `eligible (<count> of <total>, in queue order)` line. **An eligible count of zero leaves
+the project out of the fleet** — there is nothing to dispatch — and into the report with one line
+per exclusion REASON, not one per excluded item: a queue full of ineligible items is a different
+story from an empty one, and the reason classes are what tell them apart without reprinting
+two dozen lines.
 
-Order the rest by `N`, descending; ties keep the roster's order. The reason is the wall clock:
+Order the rest by eligible count, descending; ties keep the roster's order. The reason is the wall clock:
 the ceiling bounds how many run at once, not how many run in total, so the longest project has
 to start earliest or the fleet ends when it ends.
 
@@ -81,22 +83,27 @@ This step only reads: `pack` takes no claim, so a project sized here and never d
 no release.
 
 **Done when:** every dispatchable project carries an eligible count, the zero ones have left the
-fleet with their exclusion values, and the rest are ordered descending.
+fleet with their exclusion reasons, and the rest are ordered descending.
 
 ## 3. Fix the width, and let the block state the ceilings
 
-The **width** `N` is how many project runs are in flight at once. It is the number the fleet
+The **width** `W` is how many project runs are in flight at once. It is the number the fleet
 passes as the divisor, and the ceiling it divides is this machine's, read from the site file by
-the bin:
+the bin.
+
+**Read the ceiling first, with no divisor.** `--fleet` takes the width as input, so the width
+cannot be chosen from a block generated at it. Omit the flag and the block states the whole
+ceiling, which is the number the cap below is computed from:
 
 ```sh
-python3 <.../tk/bin>/tk-contract --role fleet-orchestrator --fleet <N>
+python3 <.../tk/bin>/tk-contract --role fleet-orchestrator                 # states the ceiling
+python3 <.../tk/bin>/tk-contract --role fleet-orchestrator --fleet <W>     # the block to paste
 ```
 
-**Every ceiling a prompt states comes out of that block, pasted verbatim.** A hand-written one
-is a fork of the policy, and the block itself says it wins wherever it and the surrounding prose
-disagree. Where `--fleet N` divides down to nothing the bin says so in words: shrink the width,
-which is the move it names.
+**Every ceiling a prompt states comes out of the second block, pasted verbatim.** A hand-written
+one is a fork of the policy, and the block itself says it wins wherever it and the surrounding
+prose disagree. Where `--fleet W` divides down to nothing the bin says so in words: shrink the
+width, which is the move it names.
 
 ### What the divisor does not count
 
@@ -104,7 +111,7 @@ The divisor splits the WHOLE ceiling among the project runs. It does not reserve
 run itself, and a project run is a local subagent like any other. So the machine's real peak is
 
 ```
-peak = N project runs + the sum of what they dispatch
+peak = W project runs + the most any of them had dispatched at one moment
 ```
 
 which is larger than the ceiling the divisor divided. The fleet does not fix that arithmetic
@@ -117,10 +124,13 @@ instead:
   is known to be heavy.
 - **Report the peak.** The measurement line of step 6 carries `peak` beside the other numbers,
   because the site file's own ceiling is written as a calibrable number and this is the run that
-  produces the evidence to calibrate it.
+  produces the evidence to calibrate it. It is what the runs OBSERVABLY held at once, taken from
+  their returns — the permitted share is what they were allowed, and calibrating a ceiling
+  against a permission measures the permission.
 
-**Done when:** the width is fixed at `ceiling // 2` or below; every dispatch below will paste a
-block generated at that width; and the peak is being tracked for the report.
+**Done when:** the ceiling was read from a block generated with no divisor; the width is fixed at
+`ceiling // 2` or below; every dispatch below will paste a block generated at that width; and the
+observed peak is being tracked for the report.
 
 ## 4. Dispatch, and refill without a barrier
 
@@ -128,21 +138,30 @@ Each project run is dispatched as a **background subagent**, cwd at the project'
 the `fleet-orchestrator` row.
 
 **The prompt names the skill's file, never the command.** `../kickoff/SKILL.md` carries
-`disable-model-invocation: true`, so a subagent handed "run `/tk:kickoff afk`" cannot invoke it
-and the run dies there (`../dispatch/SKILL.md`, *Mechanism boundaries*). Point it at the path:
-"follow `skills/kickoff/AFK.md` of the `tk` plugin, with the `afk` argument". The prompt carries,
-in this order:
+`disable-model-invocation: true`, so a prompt reading "run `/tk:kickoff afk`" reaches an agent
+that cannot invoke it and the run dies there. What the lock stops is the COMMAND; it does not
+reach a file being read, which is the route `../dispatch/SKILL.md` already documents under
+*Mechanism boundaries*.
+
+The prompt carries, in this order:
 
 1. **the contract block**, verbatim from step 3;
-2. **the load** — `afk` by default; the argument replaces it (below);
-3. **`--budget 1`, explicitly.** A project run is one generation and writes a handoff instead of
-   opening a successor. Generations are sequential per package, and a successor opened from
-   inside a fleet member would be a second live orchestrator over that queue;
-4. **the project's directory**, as the cwd every `tk-queue` call resolves from.
+2. **the load, as an ABSOLUTE path on this machine.** "`skills/kickoff/SKILL.md` of the `tk`
+   plugin" is how a human says it and not something a run can open: the path is relative, and
+   this machine holds both an installed plugin copy and any worktree the fleet is running from.
+   Resolve it here and paste the resolved path, so the run follows the copy the fleet meant;
+3. **the load's own flags** — the table below says what each load carries, and a load whose skill
+   reads no flag is handed none. For `afk` the flag is **`--budget 1`, explicitly**: a project run
+   is one generation and writes a handoff instead of opening a successor, since a successor
+   opened from inside a project run would be a second live orchestrator over that queue;
+4. **the project's directory**, as the run's FIRST instruction — every `tk-queue` call resolves
+   its queue from the cwd, and no dispatch mechanism here sets a subagent's cwd for it. It is
+   carried as an instruction the run obeys, which is why it leads the dispatch rather than
+   trailing it.
 
 **No barrier between waves.** The width is a ceiling on concurrency, not a batch size: when a
 project run returns, its slot is free and the next project in the step-2 order enters
-immediately. Waiting for the slowest member of a wave leaves every earlier finisher's slot idle
+immediately. Waiting for the slowest project run of a wave leaves every earlier finisher's slot idle
 for exactly as long as that member runs.
 
 **The quota wall belongs to the project run, not to the fleet.** Each run is a full orchestrator
@@ -151,14 +170,16 @@ checkpoint below.
 
 ### The checkpoint is a completed project, not a wave
 
-With no barrier there is no end of wave to anchor on. The consolidated report is therefore
-checkpointed **each time a project run returns**: its section is written then, on disk, before
-the next dispatch goes out. A fleet cut off by the quota wall leaves a report covering every
-project that finished, and the ones still in flight are named as such.
+With no barrier there is no end of wave to anchor on. The **textual report** is therefore
+checkpointed **each time a project run returns**: that project's section is appended to it, on
+disk, before the next dispatch goes out. The vista of step 6 is written once, at the close, from
+that file — checkpointing the page instead would rewrite five blocks per return to protect
+prose that a plain append protects. A fleet cut off by the quota wall leaves the textual report
+covering every project that finished, with the ones still in flight named as such.
 
 **Done when:** every dispatchable project has been dispatched or is queued behind a slot; every
-in-flight run carries a generated block, a load, `--budget 1` and its own cwd; and the report on
-disk covers every run that has returned.
+in-flight run carries a generated block, an absolute load path, that load's flags and its own
+working directory; and the textual report on disk covers every run that has returned.
 
 ## 5. A project fails alone
 
@@ -179,29 +200,39 @@ them for each returned run, in that run's project.
 **Done when:** every failure is confined to its own section, no project's failure ended the
 fleet, and no section rests on a run's self-report alone.
 
-## 6. The consolidated report
+## 6. The consolidated vista
 
-The fleet closes on **one vista**, and `../../reference/vista.md` is its whole contract — the
-five blocks, the closed outcome vocabulary, the outbox it lands in, the gate `tk-vista-check`
-and that gate's four states. **Read it and follow it.** It is the consolidated reporter's
-contract as much as the package close's, which is why it already answers what "consolidated"
-changes in blocks 1, 2 and 5; this step does not restate those readings and must not fork them.
+The close has two artefacts. The **textual report** is the close itself — the one step 4 has been
+appending to since the first return, on the template in `../wrap-up/SKILL.md`, *The closing
+template*, which is also where block 1's four counts come from. The **vista** is its companion,
+and `../../reference/vista.md` is that page's whole contract: the five blocks, the closed
+outcome vocabulary, the outbox it lands in, the gate `tk-vista-check` and that gate's four
+states. **Read it and follow it.** It is the consolidated reporter's contract as much as the
+package close's, which is why it already answers what "consolidated" changes in blocks 1, 2
+and 5; this step does not restate those readings and must not fork them.
 
-Two things belong to the fleet and to no other reader of that file:
+Three things belong to the fleet and to no other reader of that file:
 
-- **Group the cards by project.** The grouping headings are prose and free, and the project is
-  the only grouping that lets a reader find one queue's items among eleven queues' worth.
+- **The package's name is `fleet`**, so the file is `<outbox>/vista-fleet-<YYYY-MM-DD>.html`.
+  `vista.md` derives that name from a package's anchor or first item, and a fleet run has no
+  package and no anchor — it has one run over many queues, and the run is what the name says.
+- **Keep `vista.md`'s grouping, and name the project on every card.** Block 2 groups by
+  OUTCOME, and that is not this step's to change. What eleven queues add is the ambiguity of a
+  bare item id, which the card's own text resolves by naming its project.
 - **Carry the fleet's own numbers beside the blocks**: the **measurement line** — projects
-  planned × projects completed × wall clock, plus step 3's `peak` — and one **deviation line**
-  per departure from the role table, in `../../reference/subagent-policy.md`'s format. The model
-  inherits by that table; a downgrade is legitimate and costs the line.
+  planned × projects completed × wall clock, plus step 3's observed `peak` — and one **deviation
+  line** per departure from the role table, in `../../reference/subagent-policy.md`'s format.
+  **Planned is the count that entered step 4**, the dispatchable projects with work, never the
+  roster's own total: the roster measures the machine and the fleet measures what it ran. The
+  clock starts at the first dispatch. The model inherits by the role table; a downgrade is
+  legitimate and costs the line.
 
-A red gate does not hold the fleet. The textual report is the close and the vista is its
-companion, so a refusal is reported in the state `vista.md` names and the run ends anyway.
+A red gate does not hold the fleet: the textual report is the close, so a refusal is reported in
+the state `vista.md` names and the run ends anyway.
 
-**Done when:** the vista satisfies `vista.md` rather than this section's summary of it, its cards
-are grouped by project, the gate was run and its state is in the report, and the measurement and
-deviation lines are written.
+**Done when:** the textual report is complete on the wrap-up template; the vista satisfies
+`vista.md` rather than this section's summary of it, with every card naming its project; the gate
+was run and its state is in the report; and the measurement and deviation lines are written.
 
 ## The load is a parameter
 
@@ -209,10 +240,15 @@ deviation lines are written.
 leaving every other mechanic — roster, order, width, refill, isolation, consolidated report —
 exactly as written:
 
-| Argument | What each project run is told to do |
-|---|---|
-| `afk` (default) | follow `../kickoff/AFK.md` with the `afk` argument, at `--budget 1` |
-| `docs-audit` | follow `../docs-audit/SKILL.md` |
+| Argument | What each project run is told to do | Flags it carries |
+|---|---|---|
+| `afk` (default) | follow `../kickoff/SKILL.md` with the `afk` argument | `--budget 1` |
+| `docs-audit` | follow `../docs-audit/SKILL.md` | none |
+
+**The `afk` load enters at `../kickoff/SKILL.md`, not at `AFK.md`.** `AFK.md` is a continuation:
+kickoff's own steps 1–3 gather the agenda and check what is still real, and only then does the
+`afk` argument switch to that file. A run pointed straight at `AFK.md` packages items nobody
+verified against reality, which is the one check the unattended path cannot afford to skip.
 
 A load with no queue of its own — `docs-audit` sweeps a codebase, not a queue — changes step 2's
 size: order those projects by the roster's own order and say in the report that the fleet was
