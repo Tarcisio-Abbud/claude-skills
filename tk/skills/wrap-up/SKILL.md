@@ -284,9 +284,8 @@ the tail's merge and its step 3 rather than to merge on a green line that has ag
 reverted.** Each keeps something different in the digest:
 
 - **A criterion red at the tail's step 3** — the digest lists, in order, the `T<id>` merges that
-  landed after that item and the merge of `origin/main`, read from
-  `git log --merges --oneline "<that item's merge>"..HEAD`, because a revert of that item passes
-  through every one of them.
+  landed after that item and the merge of `origin/main`, which the tail's step 3 read for it,
+  because a revert of that item passes through every one of them.
 - **A type-B criterion** — verdict 3 stays amber under the rule above, and the digest carries the
   proof with the one-line claim it was given.
 - **A finding no fixer could close** — the digest carries the finding's inventory: what it is,

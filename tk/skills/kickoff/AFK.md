@@ -1063,8 +1063,8 @@ being asked to merge. The class of that diff picks the flow, under the site's CL
 
 A `fixer` applies the confirmed findings and pushes. Where a correction belongs to ONE item,
 `T<id>` leads its commit title, so the user's revert of that item carries the fix with it. A
-finding nobody here can close stops nothing: its inventory goes to the digest — what it is, where
-it sits, and what closing it would take — and the pull request waits for the user on it.
+finding nobody here can close stops nothing: the tail hands it to the digest in the inventory
+shape `../wrap-up/SKILL.md`'s gate names, and the pull request waits for the user on it.
 
 **3. The whole suite and every criterion, on the final tree.** The last measurement before the
 gate, and the one the digest displays. Run the repository's suite once, then each LANE item's own
@@ -1073,15 +1073,14 @@ step's opening rule: the caller re-runs the proof, and a run's account of it is 
 Record the tip and `origin/main`'s sha beside the result; the digest's Tests line names both.
 
 **The lane's items are already closed**, each by stage 7 at its own merge, and nothing here
-reopens one. A criterion that goes red at this step is reported, never repaired by reverting: the
-digest lists, in order, the `T<id>` merges that landed after that item and the merge of
-`origin/main` — `git log --merges --oneline "<that item's merge>"..HEAD` — because a revert of
-that item passes through every one of them. Reverting by name, dropping that item's closing line
-from the body, and `tk-queue add`-ing the item back are the user's three acts, and the digest
-names them as the user's rather than performing any of them. A red suite is the same shape at
-package scope: the digest's Tests verdict goes red and the pull request waits. A **type-B**
-criterion ends at proof ready here as it does inside the cycle, and its proof with the one-line
-claim goes to that item's digest, where the verdict is the user's to give.
+reopens one. A criterion that goes red at this step is reported, never repaired by reverting: run
+`git log --merges --oneline "<that item's merge>"..HEAD` — the `T<id>` merges that landed after
+that item, and the merge of `origin/main` — and hand that list, in order, to that item's digest. A
+red suite is the same shape at package scope: the tail reports it and the pull request waits. A
+**type-B** criterion ends at proof ready here as it does inside the cycle, and the tail hands that
+proof with its one-line claim to that item's digest. What each of those three does to a verdict,
+and which acts on a red criterion are the user's, belong to `../wrap-up/SKILL.md`'s gate, and this
+file states none of it a second time.
 
 **Then mark the pull request ready for review, and remove the lane's worktree.** The gate merges
 with `--delete-branch`, and that flag fails on a branch still checked out somewhere.
