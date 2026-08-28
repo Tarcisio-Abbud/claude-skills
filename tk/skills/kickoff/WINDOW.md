@@ -73,8 +73,8 @@ and these are three more paragraphs inside it.
   the merge, and the successor closes the item from the tip.
 - **The item in flight** — the ticket, the branch its work is pushed to, and the stage of step 5's
   cycle it reached. The second content above already asks for the branch; the stage is this lane's
-  addition, since it decides whether the successor re-dispatches the run or picks the cycle up
-  after it.
+  addition, because it decides whether the successor dispatches a run for that item at all or
+  takes it straight into step 5's cycle.
 - **The tail's state** — which of the tail's three steps had run, what the review returned, and
   which fixes are committed and pushed. The tail (`AFK.md` step 5, *The lane's tail*) is a merge of
   `origin/main`, one review over the accumulated diff, then the suite and every lane criterion; a
