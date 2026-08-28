@@ -217,6 +217,11 @@ tk/
                                   network: the refs must already be local
   bin/tk-vista-check              the gate on a vista: refuses a page that fetches anything,
                                   and one missing a block, a risk tag or a proof link
+  bin/tk-prune-measure            measures one markdown file for a pruning pass: length,
+                                  sentence shape, inline evidence, pointers, negations and
+                                  defined terms, with `--targets` marking each against the
+                                  ceilings it carries as defaults. It measures and does not
+                                  judge, so every measurement exits 0
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
@@ -238,6 +243,12 @@ tk/
   tests/mutations_vista.py        entries only: it folds into the same runner, through the
                                   seam that runner exposes for a module and its entries
   tests/mutations_hygiene.py      entries only, through the same seam
+  tests/test_tk_prune_measure.py  regression suite for the measure bin, over the fixtures
+                                  beside it
+  tests/fixtures/prune/           seven skill directories whose numbers were counted by
+                                  hand; the third-party one is a verbatim MIT copy, so that
+                                  no fixture was adjusted to agree with the measurement
+  tests/mutations_prune.py        entries only, through the same seam
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
@@ -251,6 +262,14 @@ docs/agents/                      what the mattpocock engineering skills read; v
   issue-tracker.md                where the issues live and how to reach them, with the
                                   private half resolved from local git config
   triage-labels.md                the five triage roles, mapped to label strings
+docs/prune/                       pruning baselines: what the skills of this plugin and of
+                                  `mattpocock-skills` measure, and the gap between them
+  baseline.py                     lays a baseline out from the bin's `--json --targets`; it
+                                  measures nothing itself, which is why it is here and not
+                                  in `tk/bin`
+  baseline-<date>.md              one run. Named file by file in `.gitignore`, like the
+                                  block above: a pruning report on a PRIVATE skill must not
+                                  reach this public repo
 githooks/
   private-values                  refuses a commit that would publish a value from this
                                   clone's local git config; installed as two hooks
@@ -280,8 +299,9 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 githooks/tests/mutations_private_values.py`, the tracker wrapper through
 `python3 bin/tests/mutations_tracker_gh.py`, `tk-vista-check` through
 `python3 tk/tests/mutations_vista.py`, the roster through
-`python3 tk/tests/mutations_roster.py`, and `tk-hygiene` through
-`python3 tk/tests/mutations_hygiene.py`. The harnesses are separate files sharing one
+`python3 tk/tests/mutations_roster.py`, `tk-hygiene` through
+`python3 tk/tests/mutations_hygiene.py`, and `tk-prune-measure` through
+`python3 tk/tests/mutations_prune.py`. The harnesses are separate files sharing one
 shape; the oldest differs only in naming its test module inline.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
