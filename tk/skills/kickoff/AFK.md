@@ -62,20 +62,25 @@ open a second pull request over the same spec's work.
 moment the lane opens and the pull request only at the first green merge, so a check that asks
 about pull requests is blind for the whole window between them — long enough for a sibling
 package to build a colliding one. Ask it of the repository the items LAND in, which is the same
-repository step 3 opens their worktrees in; where you cannot name that repository for an item you
-cannot dispatch it either, so this is not a new unknown. The Spec reference names the TRACKER the
-spec is filed in, and the two are routinely different repositories:
+repository step 3 opens their worktrees in. The Spec reference names the TRACKER the spec is
+filed in, and the two are routinely different repositories — so the address is a field of its
+own, `Repo:`, and `tk-queue pack` returns it on the item's own line:
+
+    T007  S (~20min)    spec ambiente#171     the first ticket  [ambiente#172]  [repo: https://github.com/owner/code.git]
 
 ```sh
-git ls-remote --heads "<code repo URL>" "refs/heads/spec/<m>-*"   # exit 0 and no line = free
+git ls-remote --heads "<the item's repo address>" "refs/heads/spec/<m>-*"   # exit 0 and no line = free
 ```
 
 **A URL or a path, never a remote NAME.** A bare `origin` resolves against the cwd, and the
 orchestrator's cwd is the queue's directory, which is routinely a clone of something else: run
 from there, `origin` was measured returning exit 0 and no output — a clean false negative that
-reads exactly like "no branch". **And read the exit code, not only the output.** An unreachable
-host, a wrong URL and a failed authentication all exit 128 with a `fatal:` line; a check whose
-output you capture into a variable turns all three into "free" and admits the item.
+reads exactly like "no branch". `--repo` refuses that shape on the way in and `pack` refuses it
+again on the way out, so a `[repo: …]` you read here is already a URL or an absolute path — an
+address you supplied yourself, for an item carrying none, answers to the same rule.
+**And read the exit code, not only the output.** An unreachable host, a wrong URL and a failed
+authentication all exit 128 with a `fatal:` line; a check whose output you capture into a
+variable turns all three into "free" and admits the item.
 
 **A branch that survived its merge still holds the lane**, because the remote cannot tell a
 package being worked from one finished months ago and never deleted — the forge's default. The
@@ -86,10 +91,19 @@ exclusion read as a live lane. Asking the question here instead was measured cos
 bought — it needs a clone whose trunk is current, a ref name step 1 does not yet know, and an exit
 code of its own, and each of the three was a way to answer "free" over live work.
 
-The queue carries no field for this URL — `Ticket:` and `Spec:` name the TRACKER, and `Project:`
-is a grouping tag — so the orchestrator supplies it, from the same knowledge step 3 needs to open
-the item's worktree. An item whose code repository you cannot name is an item you cannot dispatch,
-and it leaves the package saying so rather than being checked against a guess.
+**Two shapes of item carry no address to read.** `pack` prints `[repo: ?]` where the item's
+`Repo:` field exists and no reader may use it — two in the chain, or a value the shape refuses —
+and prints nothing at all where the item never had one. In both cases you supply the address
+yourself, as every orchestrator did before the field existed; where you cannot name the code
+repository, you cannot dispatch the item either, and it leaves the package saying so rather than
+being checked against a guess. Either way the report names it, with the repair: `Repo:` is
+written at birth and is no `edit` flag, so a wrong or missing one is `tk-queue cancel` and a
+re-add carrying `--repo`.
+
+**Ask once per distinct address, not once per item.** Two items of one spec normally carry the
+same one. The field is stored exactly as it was typed — nothing canonicalises a URL here — so two
+spellings of one repository are two questions with one answer, which costs a second `ls-remote`
+and nothing else.
 
 `<m>` is the **issue half** of the Spec reference — `171` out of `ambiente#171` — and it is what
 identifies the branch, which is why the match is on the prefix rather than on the whole name.
@@ -218,12 +232,21 @@ claim it dropped. They were claimed at the top of this step, and a claim outlive
 took it: an item that leaves still claimed is an item every later package is refused, with no
 session alive to explain why.
 
-**Only then create the accumulated branch**, and push it before anything is dispatched from it:
+**Only then create the accumulated branch**, and push it before anything is dispatched from it.
+Create it IN the repository the items land in — the `[repo: …]` step 1 read from the lane's
+tickets, never the cwd. The orchestrator's cwd is the queue's directory, and a `git worktree add`
+run from there opens a branch of the wrong repository, which no later command reports:
 
 ```sh
-git worktree add "<path>/spec-<m>" -b "spec/<m>-<slug>" origin/main
+git -C "<the lane's repo address>" worktree add "<path>/spec-<m>" -b "spec/<m>-<slug>" origin/main
 git -C "<path>/spec-<m>" push -u origin "spec/<m>-<slug>"
 ```
+
+**A URL is an address, not a working tree.** `git -C` needs a clone on this machine, so where the
+field holds a URL the clone of it is what the command runs in. What the field settles is WHICH
+repository, which is the half that was being guessed; a clone of it is still yours to have. An
+item whose repository has no clone here is dispatched no further than step 1's rung — the same
+rung an item with no address takes.
 
 `<slug>` comes from the spec's own title, lower-cased with each run of non-alphanumerics as one
 hyphen. It is there for whoever reads `git branch`; `<m>` is what identifies the branch, which is
@@ -234,8 +257,9 @@ left no spec at the floor, this section does not run: the package has no spec br
 item takes the solo lane.
 
 **Each ticket of the lane starts from the branch's pushed tip.** Dispatch them one at a time, in
-the queue's order, each into a worktree of its own on `spec/<m>/T<id>`, cut from
-`origin/spec/<m>-<slug>` as it stands at that moment — `git fetch` first, and read the remote ref
+the queue's order, each into a worktree of its own on `spec/<m>/T<id>`, opened in the same
+repository the lane's branch was created in, cut from `origin/spec/<m>-<slug>` as it stands at
+that moment — `git fetch` first, and read the remote ref
 rather than a local copy carried over from the previous dispatch. Serial dispatch is what gives
 that tip its meaning: the ticket before it either went green, was merged onto the branch and
 pushed, and the tip carries it, or it did not, and the tip is exactly where the previous dispatch
@@ -253,7 +277,8 @@ below.
 
 The mechanisms are the palette's, in `../dispatch/SKILL.md`; the choice among them here is by
 SIZE, and that rule is this step's own. Default: one background subagent per item, in its own
-worktree. **Solo items** dispatch **in series**, since items from one queue usually share a repo,
+worktree, opened in the repository that item's `[repo: …]` names. **Solo items** dispatch **in
+series**, since items from one queue usually share a repo,
 and in parallel only across disjoint repos or areas. **The spec lane** is serial by the rule
 above whatever the areas say — its tickets share a branch, not merely a repository. Neither lane
 goes past the local ceiling the contract block states, and that ceiling counts both together.

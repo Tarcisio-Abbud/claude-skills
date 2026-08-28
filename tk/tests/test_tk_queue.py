@@ -2663,6 +2663,18 @@ class PackOutput(QueueTest):
             res[label] = lane
         return res
 
+    def repos(self, out):
+        """{label: repo} for the eligible items that carry one, read from the
+        LABELLED group rather than from a position: the repo is appended after
+        the ticket and either of the two may be absent, so a test counting
+        bracket groups would assert the shape of the fixture and not the rule."""
+        res = {}
+        for ln in self.blocks(out)["eligible"]:
+            m = re.search(r"\[repo: ([^\]]*)\]", ln)
+            if m:
+                res[ln.split()[0]] = m.group(1)
+        return res
+
 
 class TestPack(PackOutput):
     """The package an unattended session runs was filtered by eye until now, from
@@ -2736,10 +2748,12 @@ class TestPack(PackOutput):
         notice. Both halves of the AC are here: the shape is documented, and the
         documentation is executed."""
         self.seed(ticket_item(7, "the first ticket of the spec", spec="ambiente#171",
-                              ticket="ambiente#172", effort="S (~20min)")
+                              ticket="ambiente#172", effort="S (~20min)",
+                              repo="https://github.com/owner/code.git")
                   + ticket_item(8, "the second one", spec="ambiente#171",
                                 ticket="ambiente#173", effort="M (~1h)")
-                  + item(9, "the item's text")
+                  + ticket_item(9, "the item's text",
+                                repo="/workspace/projects/comercial")
                   + ticket_item(10, "a lone ticket, under the floor", spec="ambiente#159")
                   + decision_item(12, "another item")
                   + ticket_item(21, "a ticket of a second spec", spec="ambiente#144")
@@ -3011,14 +3025,17 @@ class TestPack(PackOutput):
 
 # --- T172: provenance fields, and the lane the package reads from them -----
 
-def ticket_item(iid, text, spec=None, ticket=None, **kw):
-    """An item as `add --ticket/--spec` writes one: the two fields sit between
-    the Project tag and Source, which is where compose_item puts them."""
+def ticket_item(iid, text, spec=None, ticket=None, repo=None, **kw):
+    """An item as `add --ticket/--spec/--repo` writes one: the three fields sit
+    between the Project tag and Source, in that order, which is where
+    compose_item puts them."""
     fields = ""
     if ticket:
         fields += f" **Ticket:** {ticket}."
     if spec:
         fields += f" **Spec:** {spec}."
+    if repo:
+        fields += f" **Repo:** {repo}."
     return item(iid, text, **kw).replace(" **Source:**", fields + " **Source:**", 1)
 
 
@@ -3449,6 +3466,201 @@ class TestPackLane(PackOutput):
                   + ticket_item(3, "tres", spec="repo#171")
                   + ticket_item(4, "quatro", spec="repo#180"))
         self.assertEqual(self.reason(self.pack(), "T002"), "Risk: apaga dado")
+
+# --- T198: the repository the item's code LANDS in -------------------------
+
+class TestRepoField(QueueTest):
+    """`Ticket:` and `Spec:` name the TRACKER, and the tracker is routinely a
+    different repository from the one the work lands in. Two consumers already
+    need that second address — the open-branch check of AFK.md step 1 and the
+    worktree of step 3 — and both guessed it from outside the queue. `--repo`
+    is the field that carries it.
+
+    The VALUE is a URL or an absolute path, and never a remote NAME: `origin`
+    resolves against the cwd, the orchestrator's cwd is the queue's directory,
+    which is routinely a clone of something else, and `git ls-remote origin`
+    run from there was measured exiting 0 with no output — a clean false
+    negative that reads exactly like "no branch". A relative path fails the
+    same way, for the same reason, which is why neither shape is accepted."""
+
+    def add(self, *extra, text="importado"):
+        return self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                           "--criterion", "A: x", *extra)
+
+    def test_the_field_is_written_at_the_writers_position(self):
+        """In the chain, after **Class:**, and after the two provenance fields it
+        stands beside — the only position the gates read a field at. Written
+        anywhere else the value is there and no reader may use it, which is worse
+        than absent: absent is visible."""
+        self.seed()
+        r = self.add("--ticket", "homeserver-ambiente#198",
+                     "--spec", "homeserver-ambiente#171",
+                     "--repo", "https://github.com/Tarcisio-Abbud/claude-skills.git")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Ticket:** homeserver-ambiente#198. "
+                      "**Spec:** homeserver-ambiente#171. "
+                      "**Repo:** https://github.com/Tarcisio-Abbud/claude-skills.git. "
+                      "**Source:**", self.body())
+
+    def test_the_value_round_trips_byte_for_byte(self):
+        """Through the readers that exist: `pack` prints the value and writes
+        nothing, `list` shows the item and writes nothing, and the file still
+        carries the address character for character. A reader that rewrote what it
+        read is the defect no assertion on its OUTPUT would show — and this value
+        is one a URL-normaliser would be tempted to touch."""
+        self.seed()
+        self.assertEqual(self.add("--repo", "git@github.com:Tarcisio-Abbud/claude-skills.git")
+                         .returncode, 0)
+        before = self.body()
+        self.assertEqual(self.run_tk("list").returncode, 0)
+        out = self.run_tk("pack")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(self.body(), before)
+        self.assertIn("**Repo:** git@github.com:Tarcisio-Abbud/claude-skills.git.", before)
+        self.assertIn("[repo: git@github.com:Tarcisio-Abbud/claude-skills.git]", out.stdout)
+
+    def test_an_add_without_the_flag_writes_the_item_of_today(self):
+        """The whole file, byte for byte, against the same add on the version
+        before the flag existed. One new optional field is the cheapest place to
+        change the shape of EVERY item by accident."""
+        self.seed()
+        self.assertEqual(self.add(text="sem repo").returncode, 0)
+        today = datetime.date.today().isoformat()
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T001** — sem repo **Class:** AUTONOMOUS. "
+                         "**Effort:** S. **Criterion:** A: x. "
+                         f"**Source:** {today}\n")
+
+    def test_a_remote_name_or_a_cwd_relative_path_is_refused(self):
+        """The refusal is the whole point of the field: a value the orchestrator
+        would have to resolve against a cwd answers "free" from the wrong
+        repository and says nothing. `-origin` is NOT in this list and may not be:
+        argparse takes any value starting with `-` as an unknown option and
+        refuses it before the guard runs."""
+        # the trailing '.' is in this list for a reason of its own: compose_item
+        # writes `**Repo:** <value>.` and field_value strips ONE trailing period, so
+        # a value ending in one would come back a character short of what was
+        # written — an address silently corrupted on the field whose whole job is to
+        # be handed to git
+        for junk in ("origin", "upstream", "repo", "claude-skills", "../claude-skills",
+                     "./tk", "workspace/projects", "~claude-skills", "", "none",
+                     "https://", "git@github.com", "https://exa mple.com/r",
+                     "/x\ny", "/pa*th", "https://x/**Spec:**y", "**Repo:** /x",
+                     "/srv/repo.", "https://github.com/o/r.git.", "~/.claude/skills."):
+            with self.subTest(junk=junk):
+                self.seed()
+                r = self.add("--repo", junk)
+                self.assertNotEqual(r.returncode, 0, f"--repo {junk!r} was accepted")
+                self.assertNotIn("- [ ] ", self.body(), "the item was written anyway")
+
+    def test_the_shapes_that_actually_occur_are_accepted(self):
+        for value in ("https://github.com/Tarcisio-Abbud/claude-skills.git",
+                      "https://github.com/Tarcisio-Abbud/claude-skills",
+                      "http://gitea.lan:3000/t/r.git",
+                      "ssh://git@github.com/Tarcisio-Abbud/claude-skills.git",
+                      "git@github.com:Tarcisio-Abbud/claude-skills.git",
+                      "file:///srv/git/claude-skills.git",
+                      "/workspace/projects/.ambiente",
+                      "~/.claude/skills"):
+            with self.subTest(value=value):
+                self.seed()
+                r = self.add("--repo", value)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn(f"**Repo:** {value}.", self.body())
+
+    def test_a_value_past_the_field_ceiling_is_refused(self):
+        """The shape bounds the CHARACTERS a path may hold and not how many of
+        them: unlike a forge reference, a path has no length the world gives it,
+        so the ceiling every other prose field answers to is the bound here too."""
+        self.seed()
+        ceiling = load_tk().FIELD_CEILING
+        self.assertEqual(self.add("--repo", "/" + "a" * (ceiling - 1)).returncode, 0)
+        self.seed()
+        r = self.add("--repo", "/" + "a" * ceiling)
+        self.assertNotEqual(r.returncode, 0, "a value past the field ceiling was accepted")
+        self.assertNotIn("- [ ] ", self.body())
+
+    def test_the_flag_is_independent_of_the_provenance_pair(self):
+        """An item born in conversation lands in a repository too, and a ticket
+        imported from a tracker may have no address recorded yet: coupling the
+        three would refuse a real case to enforce a rule nothing needs."""
+        self.seed()
+        self.assertEqual(self.add("--repo", "/workspace/projects/.ambiente").returncode, 0)
+        body = self.body()
+        self.assertIn("**Repo:** /workspace/projects/.ambiente.", body)
+        self.assertNotIn("**Ticket:**", body)
+        self.assertNotIn("**Spec:**", body)
+
+
+class TestPackRepo(PackOutput):
+    """The package is dispatched from this output, so the address is returned by
+    it: a field nothing prints is the prose it was added to replace. It is
+    APPENDED and LABELLED, beside the ticket rather than in a column of its own,
+    because almost no item carries either and a bare second bracket would be told
+    from the ticket's only by its shape."""
+
+    def test_the_repo_of_an_eligible_item_comes_back(self):
+        self.seed(ticket_item(1, "um", repo="https://github.com/o/r.git"))
+        self.assertEqual(self.repos(self.pack()),
+                         {"T001": "https://github.com/o/r.git"})
+
+    def test_an_item_with_no_repo_prints_the_line_of_today(self):
+        """The overwhelming majority of items. An empty group would read as an
+        address that was looked for and not found."""
+        self.seed(item(1, "um"))
+        self.assertEqual(self.blocks(self.pack())["eligible"],
+                         ["T001  S             avulso                um"])
+
+    def test_the_repo_follows_the_ticket_on_the_line(self):
+        """The order is the stable half of the shape: a skill's prose reads this
+        line, and two appended groups that swap places are two shapes."""
+        self.seed(ticket_item(1, "um", ticket="repo#1", repo="/srv/r"))
+        line, = self.blocks(self.pack())["eligible"]
+        self.assertTrue(line.endswith("um  [repo#1]  [repo: /srv/r]"), line)
+
+    def test_a_marker_QUOTED_IN_PROSE_is_not_read_as_the_repo(self):
+        """The position rule, the same one every other field is read through: an
+        item that never had an address must not come back carrying one from its
+        own prose."""
+        self.seed("- [ ] **T001** — a nota cita **Repo:** /outro/lugar em prosa — um "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.assertEqual(self.repos(self.pack()), {})
+
+    def test_two_Repo_fields_in_the_chain_are_MARKED_and_never_guessed(self):
+        """Two addresses say two things, so the chain says nothing this reader may
+        pick between — and silence would make it identical to an item that never
+        had one. Those are not the same thing to whoever opens the worktree: one
+        needs no address, the other needs the one it cannot have."""
+        self.seed(ticket_item(1, "um", repo="/srv/a").replace(
+            "**Repo:** /srv/a.", "**Repo:** /srv/a. **Repo:** /srv/b.", 1))
+        self.assertEqual(self.repos(self.pack()), {"T001": "?"})
+
+    def test_a_value_no_reader_may_use_is_MARKED_too(self):
+        """A hand edit is not the writer, so the shape is asked again on the way
+        out — `origin` in the file is the very guess the field exists to end."""
+        self.seed(ticket_item(1, "um", repo="origin"))
+        self.assertEqual(self.repos(self.pack()), {"T001": "?"})
+
+    def test_an_unreadable_repo_does_not_EXCLUDE_the_item(self):
+        """Absent has a safe default here — the orchestrator names the repository
+        from outside, as it did before this field existed — so the answer to a
+        value this reader may not use is a mark, not the item's place in the
+        package. That is where Repo parts from Risk and Env, whose absence means
+        unknown danger."""
+        self.seed(ticket_item(1, "um", repo="origin"))
+        self.assertEqual(self.eligible(), ["T001"])
+
+    def test_the_repo_decides_no_lane(self):
+        """Two addresses for one spec are still one lane, and one address across
+        two specs is still two: the lane is read from **Spec:** alone. Coupling
+        them would put the branch's name in the hands of a field that does not
+        name the tracker."""
+        self.seed(ticket_item(1, "um", spec="repo#171", repo="/srv/a")
+                  + ticket_item(2, "dois", spec="repo#171", repo="/srv/b"))
+        lanes = self.lanes(self.pack())
+        self.assertEqual(lanes, {"T001": "spec repo#171", "T002": "spec repo#171"})
+
 
 # --- handoff: the briefing that lives and dies with the item ---------------
 

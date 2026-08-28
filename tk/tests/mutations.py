@@ -341,7 +341,7 @@ MUTATIONS = [
      "    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,\n"
      "                         criterion=args.criterion, project=args.project, "
      "source=args.source,\n"
-     "                         deferred=args.deferred)",
+     "                         deferred=args.deferred, repo=args.repo)",
      "    pass",
      ["TestCeilingScope.test_add_measures_field_values_too"]),
 
@@ -533,9 +533,9 @@ MUTATIONS = [
     ("T119 add stops measuring the justification against the field ceiling",
      "                         criterion=args.criterion, project=args.project, "
      "source=args.source,\n"
-     "                         deferred=args.deferred)",
+     "                         deferred=args.deferred, repo=args.repo)",
      "                         criterion=args.criterion, project=args.project, "
-     "source=args.source)",
+     "source=args.source, repo=args.repo)",
      ["TestDecisionDeferralGate.test_the_justification_is_measured_against_the_field_ceiling"]),
 
     ("T119 edit stops measuring the justification against the field ceiling",
@@ -2100,7 +2100,8 @@ MUTATIONS = [
      ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
 
     ("T172 the two fields are dropped on the way into the item",
-     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):\n'
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):\n'
      '        if flag:\n'
      '            fields.append(f"**{field}:** {flag}.")',
      "    pass",
@@ -2181,10 +2182,12 @@ MUTATIONS = [
     # the **Class:** the chain anchors at is a field no gate may read — the value
     # is in the file, the lane is not
     ("T172 the provenance fields are composed BEFORE the class they must follow",
-     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):\n'
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):\n'
      '        if flag:\n'
      '            fields.append(f"**{field}:** {flag}.")',
-     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):\n'
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):\n'
      '        if flag:\n'
      '            fields.insert(0, f"**{field}:** {flag}.")',
      ["TestProvenanceFields.test_both_fields_are_written_at_the_writers_position"]),
@@ -2207,8 +2210,8 @@ MUTATIONS = [
       "TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason"]),
 
     ("T172 the ticket the PR closes stops coming back from the command",
-     "                            + pack_closes(text))",
-     '                            + "")',
+     "                            + pack_closes(text) + pack_repo(text))",
+     '                            + "" + pack_repo(text))',
      ["TestPackLane.test_the_TICKET_the_PR_closes_comes_back_from_the_command",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
 
@@ -2368,6 +2371,79 @@ MUTATIONS = [
      '                    help=f"print the report a real run would print and write {DRY_RUN_WRITES}. "',
      '                    help=f"print the report a real run would print and write NOTHING. "',
      ["TestMigrateDryRun.test_the_help_carries_the_same_enumeration_as_the_banner"]),
+    # --- T198: the repository the item's code lands in ----------------------
+    ("T198 the shape gate goes, so `origin` is a repository again",
+     "    if not REPO_RE.fullmatch(value):",
+     "    if False:",
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the shape loosens to a PREFIX, so junk behind a URL passes",
+     "    if not REPO_RE.fullmatch(value):",
+     "    if not REPO_RE.match(value):",
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a relative path is a repository again",
+     r'    r"|~?/[^\s*]+"                               # a POSIX absolute path',
+     r'    r"|~?/?[^\s*]+"                              # a POSIX absolute path',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a trailing '.' passes, and the value comes back a character short",
+     "\n" + r'    r"(?<!\.)"' + "\n)",
+     "\n)",
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the field ceiling stops holding the one field the shape does not bound",
+     "                         deferred=args.deferred, repo=args.repo)",
+     "                         deferred=args.deferred)",
+     ["TestRepoField.test_a_value_past_the_field_ceiling_is_refused"]),
+
+    ("T198 the field is not written at all",
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):',
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):',
+     ["TestRepoField.test_the_field_is_written_at_the_writers_position",
+      "TestRepoField.test_the_value_round_trips_byte_for_byte"]),
+
+    ("T198 the repo is written BEFORE the ticket, so the chain's order drifts",
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):',
+     '    for flag, field in ((args.repo, "Repo"), (args.ticket, "Ticket"),\n'
+     '                        (args.spec, "Spec")):',
+     ["TestRepoField.test_the_field_is_written_at_the_writers_position"]),
+
+    ("T198 `pack` stops returning the repository",
+     "                            + pack_closes(text) + pack_repo(text))",
+     "                            + pack_closes(text))",
+     ["TestPackRepo.test_the_repo_of_an_eligible_item_comes_back",
+      "TestPackRepo.test_the_repo_follows_the_ticket_on_the_line",
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    ("T198 the repo is appended BEFORE the ticket",
+     "                            + pack_closes(text) + pack_repo(text))",
+     "                            + pack_repo(text) + pack_closes(text))",
+     ["TestPackRepo.test_the_repo_follows_the_ticket_on_the_line",
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    ("T198 the repo is read from the whole BLOCK, so prose becomes an address",
+     '    segs = real_fields(block, "Repo")',
+     '    segs = list(re.finditer(FIELD_MARKER_RE["Repo"].pattern + r"[^*\\n]*", block))',
+     ["TestPackRepo.test_a_marker_QUOTED_IN_PROSE_is_not_read_as_the_repo"]),
+
+    ("T198 two Repo fields in the chain are no longer ambiguous — the first wins",
+     '    value = field_value(segs[0]) if len(segs) == 1 else ""',
+     '    value = field_value(segs[0])',
+     ["TestPackRepo.test_two_Repo_fields_in_the_chain_are_MARKED_and_never_guessed"]),
+
+    ("T198 the read-side shape gate goes, so a hand-edited `origin` is returned",
+     '    return f"  [repo: {value}]" if REPO_RE.fullmatch(value) else "  [repo: ?]"',
+     '    return f"  [repo: {value}]"',
+     ["TestPackRepo.test_a_value_no_reader_may_use_is_MARKED_too"]),
+
+    ("T198 an unreadable address is silent instead of marked",
+     '    return f"  [repo: {value}]" if REPO_RE.fullmatch(value) else "  [repo: ?]"',
+     '    return f"  [repo: {value}]" if REPO_RE.fullmatch(value) else ""',
+     ["TestPackRepo.test_a_value_no_reader_may_use_is_MARKED_too",
+      "TestPackRepo.test_two_Repo_fields_in_the_chain_are_MARKED_and_never_guessed"]),
 ]
 
 
@@ -2389,6 +2465,7 @@ def main():
                                   "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
                                   "TestEnvField", "TestClaim",
                                   "TestPack", "TestProvenanceFields", "TestPackLane",
+                                  "TestRepoField", "TestPackRepo",
                                   "PackOutput",
                                   "TestHandoffCreation",
                                   "TestHandoffLifecycle", "TestByteOrderMark",
