@@ -4,9 +4,9 @@ One markdown file per run, named `prune-report.md`, its first line the path it w
 A run that found nothing to prune writes that one line instead of the five parts below.
 
 1. **Numbers** — the bin's metrics for every file read, before and after.
-2. **Table** — KEEP / MOVE / DROP, one row per sentence that instructs or defines a criterion.
-3. **Splits** — each suggestion with the `SKILL-MECHANICS` criterion that decided it and the
-   consumer that would reach it.
+2. **Table** — KEEP / MOVE / DROP, one row per sentence, by the unit step 4 names.
+3. **Splits and notes** — each splitting suggestion with its `SKILL-MECHANICS` criterion and
+   the consumer that would reach it, then every rewording, marked as carrying no verdict.
 4. **Paths** — the pruned files, and for an own skill the `docs/` file holding the evidence.
 5. **Proof** — the eval pair or the reviewed diff of rules, named.
 
