@@ -52,9 +52,9 @@ find on the remote is this package's own lane, and finding it there evicts the l
 the package that owns them. It creates no branch, the lane's branch being what it inherited. Step
 1's cut and step 2's confirmation are not its work at all.
 
-**Two preconditions, before the reset can run.** The ladder at the end of this section grades what
-the beats FIND; these are what makes a tree there to be found, and a ladder row is the wrong home
-for them — measured, `git -C "<path>/spec-<m>" fetch origin` and
+**Two preconditions, before the reset can run.** The exit table at the end of this section grades
+what the beats FIND; these are what makes a tree there to be found, and a row of that table is the
+wrong home for them — measured, `git -C "<path>/spec-<m>" fetch origin` and
 `git -C "<path>/spec-<m>" reset --hard "origin/spec/<m>-<slug>"` on a path that is gone both exit
 128 with `fatal: cannot change to '<path>/spec-<m>': No such file or directory`, before any row is
 consulted.
@@ -64,7 +64,7 @@ consulted.
   every command below is composed from it. Where the slug alone was lost,
   `git ls-remote --heads "<the lane's repo address>" 'refs/heads/spec/<m>-*'` names the branch;
   that is the fallback and not the contract. Where the address or the branch cannot be recovered
-  at all, the lane takes the ladder's handoff-missing rung and nothing below runs.
+  at all, the lane takes the exit table's handoff-missing row and nothing below runs.
 - **The lane's worktree.** `git -C "<the lane's repo address>" worktree list` names the worktrees
   git still knows. Where the lane's is gone, nothing is lost — the branch is on the remote — and
   it is recreated before the reset, with the report naming the recreation:
@@ -95,7 +95,7 @@ answers the stale sha, while `git fetch --prune origin` reports `- [deleted]` an
 `rev-parse` then exits 128. Unpruned, this generation resets onto a ref for a lane already in
 `main` and resumes it; step 5 stage 5 then re-creates on the remote the very branch the merge
 deleted, carrying work `main` already holds. Pruned, a ref that survives IS a live lane, and its
-absence is what the ladder's delivered rung reads.
+absence is what the exit table's delivered row reads.
 
 The pushed tip is the package's only record of the lane, so this discards whatever the predecessor
 left unpushed — an item's merge, the tail's merge of `origin/main`, a `fixer`'s commit — and
@@ -143,8 +143,8 @@ reads.
 **Write a fresh handoff before leaving the close.** `tk-queue done` deletes the briefing of every
 item it closes — measured, `done T001` printed `handoff-T001.md removed` — so a generation that
 closed and then died leaves the queue holding claimed items and no briefing at all. That state is
-the ladder's handoff-missing rung: the package stops and the claims are held with nothing alive to
-release them. `WINDOW.md` owns the rule that the handoff is refreshed at every seam, and this is
+the exit table's handoff-missing row: the package stops and the claims are held with nothing alive
+to release them. `WINDOW.md` owns the rule that the handoff is refreshed at every seam, and this is
 the seam where the artefact is destroyed, so the seam is named here. Run
 `tk-queue handoff "<id>" --objective "..." --state "..." --blockers "..."` in that file's own form
 — `<id>` being the item still in flight, or with none the head of what the claims still hold —
@@ -264,7 +264,7 @@ before they can run at all is not graded here — it is the two preconditions ab
 |---|---|---|
 | `origin/main..HEAD` carries no `T<id>` merge at all | no item closes and no pull request opens | the re-dispatch; the lane's first green merge opens the draft, under step 5 stage 6 |
 | A `T<id>` merge in that range for an item `tk-queue list` does not show | closed already; nothing is written | the next id in the merge list |
-| A `T<id>` merge in that range for an id open under no claim of this package | the item stays open and the merge stays on the branch, both untouched | report it beside the lane — inside that range the merge is on the lane's own side, so a sibling pushed onto this branch and the tail's review reads its diff too. Unbounded, the same list also carries `main`'s merge history, whose ids no lane put there and which would take this rung on a false diagnosis |
+| A `T<id>` merge in that range for an id open under no claim of this package | the item stays open and the merge stays on the branch, both untouched | report it beside the lane — inside that range the merge is on the lane's own side, so a sibling pushed onto this branch and the tail's review reads its diff too. Unbounded, the same list also carries `main`'s merge history, whose ids no lane put there and which would take this row on a false diagnosis |
 | The item in flight has no pushed branch, or none with commits of its own | the item is open and no tree holds its work | dispatch it fresh, as step 3 does a ticket |
 | The draft pull request already exists | nothing to open | the close |
 | The handoff names a tip older than the remote's — `git -C "<path>/spec-<m>" rev-parse "origin/spec/<m>-<slug>"` after the pruned fetch, against the sha the map is written under | the tip decides, and the item→merge map is the stale half | resume normally; the report names the gap |
@@ -285,12 +285,12 @@ gh pr list -R "<owner>/<code repo>" --state all --json number,headRefName,state,
 against this repository: over a merged lane's branch it returned
 `[{"headRefName":"…","mergeCommit":{"oid":"3eedd21…"},"number":51,"state":"MERGED"}]`, and over
 a branch that never existed it returned `[]`. `mergeCommit` is asked for here because the delivered
-rung reads its merges from it. Reading the two rows apart is what keeps a delivered lane from
+row reads its merges from it. Reading the two rows apart is what keeps a delivered lane from
 stopping the package with its items claimed forever.
 
 **Done when:** the lane's worktree exists and stands at the pushed tip of a branch a pruned fetch
 still shows, the draft pull request exists where the tip carries a merge, every `T<id>` in
-`origin/main..HEAD` belongs to an item the queue no longer shows open or to a rung above, a fresh
+`origin/main..HEAD` belongs to an item the queue no longer shows open or to a row above, a fresh
 handoff was written after the close and before the re-dispatch, the item in flight is dispatched
 from its own branch — or was withheld because the queue no longer shows it open — and the report
 names every exit this section took.
