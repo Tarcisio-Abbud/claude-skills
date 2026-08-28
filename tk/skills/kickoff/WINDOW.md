@@ -46,10 +46,9 @@ On the first quota failure, in this order:
    - the item in flight, and the branch its work is pushed to;
    - the reset time the error named;
    - the claims this package holds;
-   - **the review still owed** — for a campaign interrupted between rounds, the pending round
-     and its finder lenses; interrupted *inside* a round, which lenses reported and which the
-     wall killed, since a partial round does not count and is re-run whole. A slice whose
-     campaign never ran waits implemented, unreviewed and unmerged, and says so;
+   - **the review still owed** — the slice, its base and the lens's angle, for a lens the wall
+     killed before it reported; a lens that did not report is re-fired whole. A slice whose
+     lens never ran waits implemented, unreviewed and unmerged, and says so;
    - **the large files already read, and the verdict on each.** A successor that knows a
      source is 1,500 lines and what it holds takes it distilled from a subagent; one that
      knows only "we were at 200k" reads it again at full price.
@@ -63,13 +62,12 @@ are intact, and the report names the reset time.
 
 ## Review is a first-class consumer of the window
 
-Budget a campaign as its own line, beside the implementation it reviews and never as its tail.
-Measured over one full window on 2026-08-20 — three slices, three implementers, 28 lens
-agents — the lenses were **71% of the spend**, a lens:implementation ratio of 2.5:1 with
-campaigns running in parallel. Serialized, the same ratio measured **1.11:1**: near parity.
-Take parity as the planning number, and take it for prose slices too until one is measured.
+Budget the review as its own line, beside the implementation it reviews and never as its tail.
+The lens is one agent and it fires once, so the line is one agent's window; measured
+2026-08-28, that was 144k subagent tokens against a 1,534-line slice. Where the lens would
+cost more window than the implementation did, the slice takes the mandatory review alone.
 
-**Campaigns serialize** — one at a time per orchestrating session. So review time is a **sum**
+**Reviews serialize** — one at a time per orchestrating session. So review time is a **sum**
 over the package's slices, not a maximum across them, and that serialized tail is the part of
 a package the wall reaches first. A package planned as though review rode along inside
 implementation is a package whose last third is unfunded.

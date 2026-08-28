@@ -12,7 +12,7 @@ one-line format a departure from that table costs.
 **Read `WINDOW.md` beside this file before step 3.** It holds what the package does when it
 runs out of window rather than out of work: the checkpoint invariant, the handoff the quota
 wall demands and its six contents, the scope a resumed package is held to, why auto-continue
-covers none of this, what a review campaign costs the window and why its serialized tail is
+covers none of this, what the review lens costs the window and why its tail is
 what the wall cuts first, the two vehicles that can open a successor generation, and the
 `--budget N` generations that carry a package past the orchestrator's own context ceiling. Those rules fire at moments the steps below do not
 choose, which is why they are read up front rather than looked up under one.
@@ -198,7 +198,7 @@ package actually holds: count the tickets per Spec reference among the CLAIMED, 
 fell below two drops to the solo lane. It demotes and never promotes, for the reason step 1
 gives. This recount is the LAST one, so the lanes it leaves are the ones step 6 hands over —
 and a lane that collapsed here takes its two cost lines with it, since a package with no
-accumulated lane pays neither the one campaign nor the tail.
+accumulated lane pays neither the one review nor the tail.
 
 **Then ask the remote once more, before creating anything.** Step 1 asked before the cut and the
 claims, and a sibling package can push a spec's branch in the window between — so run step 1's
