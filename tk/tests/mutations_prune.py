@@ -627,12 +627,12 @@ MUTATIONS = [
 
     # -- the round-3 correction batch ------------------------------------
     ('T185 a quoted key is not a key, so the changesets format reads as prose',
-     'FM_KEY = re.compile(r"""^(?:[A-Za-z_][\\w.-]*|"[^"]+"|\'[^\']+\')\\s*:""")',
+     'FM_KEY = re.compile(r"""^(?:[A-Za-z_][\\w.-]*|"[^"\\s]+"|\'[^\'\\s]+\')\\s*:""")',
      'FM_KEY = re.compile(r"""^(?:[A-Za-z_][\\w.-]*)\\s*:""")',
      ['TestTheFrontmatterShapes.test_a_quoted_key_is_a_key', 'TestTheFrontmatterShapes.test_a_single_quoted_key_is_a_key_too']),
 
     ('T185 a key may open with a digit, so a dated line of prose is a mapping',
-     'FM_KEY = re.compile(r"""^(?:[A-Za-z_][\\w.-]*|"[^"]+"|\'[^\']+\')\\s*:""")',
+     'FM_KEY = re.compile(r"""^(?:[A-Za-z_][\\w.-]*|"[^"\\s]+"|\'[^\'\\s]+\')\\s*:""")',
      'FM_KEY = re.compile(r"""^(?:[\\w.-]*|"[^"]+"|\'[^\']+\')\\s*:""")',
      ['TestTheFrontmatterShapes.test_a_line_opening_with_a_digit_is_not_a_key']),
 
@@ -672,15 +672,27 @@ MUTATIONS = [
      '            if len(token) > POINTER_MAX:',
      ['TestWhatIsNotAPointer.test_a_scheme_less_repository_host_is_not_a_pointer']),
 
-    ('T185 a dot directory is read as a hostname',
-     '    return "/" in token and not head.startswith(".") and "." in head',
-     '    return "/" in token and "." in head',
-     ['TestWhatIsNotAPointer.test_a_relative_path_prefix_is_not_a_hostname']),
-
     ('T185 a path is a host whenever any segment of it carries a dot',
-     '    head = token.split("/", 1)[0]\n    return "/" in token and not head.startswith(".") and "." in head',
-     '    head = token\n    return "/" in token and not head.startswith(".") and "." in head',
+     '    head = token.split("/", 1)[0]\n    if "/" not in token',
+     '    head = token\n    if "/" not in token',
      ['TestWhatIsNotAPointer.test_a_repo_relative_path_of_two_segments_is_still_a_pointer']),
+
+    # -- the round-4 correction batch ------------------------------------
+    ('T185 any dot in the head is a hostname, so a release directory is an address',
+     '    tld = head.rsplit(".", 1)[-1]\n    return len(tld) >= 2 and tld.isalpha()',
+     '    return True',
+     ['TestWhatIsNotAPointer.test_a_versioned_directory_is_not_a_hostname',
+      'TestWhatIsNotAPointer.test_a_relative_path_prefix_is_not_a_hostname']),
+
+    ('T185 a one-character head segment is a TLD, so `a.b/c.md` is an address',
+     '    return len(tld) >= 2 and tld.isalpha()',
+     '    return tld.isalpha()',
+     ['TestWhatIsNotAPointer.test_a_single_letter_head_segment_is_not_a_TLD']),
+
+    ('T185 a quoted key may hold whitespace, so a quotation opens a mapping',
+     '"[^"\\s]+"',
+     '"[^"]+"',
+     ['TestTheFrontmatterShapes.test_a_quoted_phrase_is_not_a_key']),
 
     ('T185 every line is prose, so a blank one no longer ends a chunk',
      '        role = "prose" if text else "blank"',

@@ -833,6 +833,15 @@ class TestTheFrontmatterShapes(MeasureTest):
         self.assertMetric('---\n"pkg-name": patch\ndescription: one two three\n---\n\nbody\n',
                           "description_words", 3)
 
+    def test_a_quoted_phrase_is_not_a_key(self):
+        # the quoted branch admitted any run between two quotes, so a first
+        # paragraph opening on a quotation was held out of the body: this case
+        # measured 29 body words before the whitespace test and 0 after
+        self.assertMetric('---\n"To be, or not to be": that is the question, '
+                          'whether tis nobler in the mind\n  to suffer the slings '
+                          'and arrows of outrageous fortune or to take arms\n---\n',
+                          "body_words", 29)
+
     def test_a_single_quoted_key_is_a_key_too(self):
         self.assertMetric("---\n'pkg-name': patch\ndescription: one two\n---\n\nbody\n",
                           "description_words", 2)
@@ -887,7 +896,8 @@ class TestWhatIsNotAPointer(MeasureTest):
 
     def test_a_relative_path_prefix_is_not_a_hostname(self):
         # `./` and `../` put a dot in the segment before the first slash, which
-        # is the very thing that marks a host; the leading dot is the exception
+        # is the very thing that marks a host; what says they are not is that
+        # the segment's last dot leaves nothing after it
         self.assertMetric(QUIET + "\nRead `./foo.md` and `../bar/baz.md` next.\n",
                           "pointers", 2)
 
@@ -898,6 +908,17 @@ class TestWhatIsNotAPointer(MeasureTest):
 
     def test_a_repo_relative_path_of_two_segments_is_still_a_pointer(self):
         self.assertMetric(QUIET + "\nThe script is `docs/prune/baseline.py` here.\n",
+                          "pointers", 1)
+
+    def test_a_versioned_directory_is_not_a_hostname(self):
+        # the dot alone marked a host, and a release directory carries one; the
+        # head's last segment has to read as a TLD for the token to be an address
+        self.assertMetric(QUIET + "\nSee 3.3.0/CHANGELOG.md and v1.2/notes.md now.\n",
+                          "pointers", 2)
+
+    def test_a_single_letter_head_segment_is_not_a_TLD(self):
+        # no TLD is one character; a head that short is a path someone wrote
+        self.assertMetric(QUIET + "\nThe file is `a.b/config.json` in the tree.\n",
                           "pointers", 1)
 
 

@@ -90,6 +90,13 @@ they stop rather than discover it:
   sentence…` with an indented second line satisfies every test
   `looks_like_frontmatter` makes, and is held out of the body. The gate narrowed
   this from "anything between two `---`"; it did not close it.
+- A MARKDOWN HEADING INSIDE THAT BLOCK IS READ AS A YAML COMMENT. Skipping `#`
+  lines is what lets a real mapping carry a comment, and it took away the one
+  line shape that used to break the false match above: `---`, `# Overview`, a
+  `Note:` line, `---` measured 18 body words before the skip and 4 after. The
+  two `#` lines are the same characters and only the block structure of the
+  document tells them apart, which is the parser this bin is not. Measured on
+  2 201 markdown files installed here: no real file takes this path.
 - SENTENCE SPLITTING IS QUADRATIC IN THE ABBREVIATIONS ON ONE LINE. `split_sentences`
   re-splits the run before each `.` it rejects: 8 000 of `e.g.` on one line takes
   5.6 s. The worst real file on this machine carries ten, so the cost is
@@ -172,7 +179,7 @@ WORD = re.compile(r"[^\W_]", re.UNICODE)        # "holds an alphanumeric"
 # exactly what a prose paragraph about a description key also has; what prose
 # has and a mapping does not is a line that is neither a key, nor a continuation
 # indented under one, nor an item of a list under one.
-FM_KEY = re.compile(r"""^(?:[A-Za-z_][\w.-]*|"[^"]+"|'[^']+')\s*:""")
+FM_KEY = re.compile(r"""^(?:[A-Za-z_][\w.-]*|"[^"\s]+"|'[^'\s]+')\s*:""")
 FM_ITEM = re.compile(r"^-\s")
 FM_COMMENT = re.compile(r"^\s*#")
 
@@ -630,11 +637,24 @@ def web_host(token):
     is `github.com/owner/repo/README.md`, which ends in a known extension and is
     not a file of this tree. What tells it from `docs/prune/baseline.py` is a
     DOT in the segment before the first slash: a directory of this repo does not
-    carry one, and a hostname does. A leading dot is excepted, so `.changeset/x.md`
-    stays the path it is.
+    carry one, and a hostname does.
+
+    The dot alone said "hostname" once, and a VERSIONED DIRECTORY carries one:
+    `3.3.0/CHANGELOG.md` and `v1.2/notes.md` stopped being pointers. So the head's
+    last segment must read as a TLD — two characters or more, all alphabetic.
+    `3.3.0` ends in `0` and is a path again; `github.com` ends in `com` and is not.
+
+    A leading dot was excepted here as well, for `./x.md` and `.changeset/x.md`.
+    The TLD test made it dead: `./` and `../` leave an EMPTY last segment, and
+    `PATHISH` never captures the leading dot at all — `.changeset/note.md` reaches
+    this as `changeset/note.md`. A branch no token can reach is a branch no test
+    can prove, so it is gone rather than covered.
     """
     head = token.split("/", 1)[0]
-    return "/" in token and not head.startswith(".") and "." in head
+    if "/" not in token or "." not in head:
+        return False
+    tld = head.rsplit(".", 1)[-1]
+    return len(tld) >= 2 and tld.isalpha()
 
 
 def scan_context(body, pattern):
