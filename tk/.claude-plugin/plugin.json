@@ -1,7 +1,7 @@
 {
   "name": "tk",
   "version": "2.3.0",
-  "description": "Session and engineering flow: kickoff (session open, dispatches the next-steps queue; afk/pack package modes), wrap-up (session close with a versioning gate; afk mode), dispatch (task → execution mechanism), docs-audit (docs vs. code), verify (the item's acceptance criterion as the ruler of the delivery), review (lens campaign: the second pair of eyes on a delivered code or data slice), second-opinion (a fresh Fable subagent judges what the session is discussing — once, or argued to consensus within a turn budget). Site-specific integrations plug in via ~/.claude/tk/<skill>.md extension files.",
+  "description": "Session and engineering flow: kickoff (session open, dispatches the next-steps queue; afk/pack package modes), wrap-up (session close with a versioning gate; afk mode), dispatch (task → execution mechanism), docs-audit (docs vs. code), verify (the item's acceptance criterion as the ruler of the delivery), review (lens campaign: the second pair of eyes on a delivered code or data slice), second-opinion (a fresh Fable subagent judges what the session is discussing — once, or argued to consensus within a turn budget), prune (prunes a skill against the writing-for-agents ruler and reports what to keep, move and drop). Site-specific integrations plug in via ~/.claude/tk/<skill>.md extension files.",
   "author": {
     "name": "Tarcisio-Abbud"
   }
