@@ -265,10 +265,9 @@ that moment — `git fetch` first, and read the remote ref
 rather than a local copy carried over from the previous dispatch. Serial dispatch is what gives
 that tip its meaning: the ticket before it either went green, was merged onto the branch and
 pushed, and the tip carries it, or it did not, and the tip is exactly where the previous dispatch
-found it. That merge is the orchestrator's own — the cycle it belongs to, verify then merge then
-push then close, is still being written into this file, and until it arrives the reader of this
-step owns it. What this step fixes either way is the starting point: read the pushed tip at the
-moment of dispatch. An
+found it. That merge is the orchestrator's own, and step 5 writes the cycle it belongs to —
+verify, merge, push, then close. What this step fixes is the starting point: read the pushed tip
+at the moment of dispatch. An
 implementer cut from a sibling's branch instead re-delivers work the tip already holds, and the
 merge behind it applies that work twice.
 
@@ -583,9 +582,10 @@ to run. A clean round with no findings is the first state and says so in those w
 The ruler is the item's own criterion and the rite belongs to `../verify/SKILL.md` — read it
 before the first item closes. What this step owes that file:
 
-- **The caller re-runs the proof**, here, once, on the final tree — the one measurement, which
-  the close then displays rather than repeating. The run's own account of its work is an input
-  to it and never a substitute: verify by artifact, not by summary.
+- **The caller re-runs the proof**, here, on the final tree — the one measurement the close
+  displays rather than repeating. The run's own account of its work is an input to it and never
+  a substitute: verify by artifact, not by summary. On the spec lane that run is preceded by a
+  second one, before the merge, and the cycle below says what each of the two decides.
 - **An empty return is a failed attempt.** A run that comes back with no evidence block did
   not deliver, however confident its prose, and the attempt counts toward the three.
 - The three attempts, the four outcomes and the DECISION-plus-handoff a failure writes are
@@ -595,8 +595,132 @@ An approved item then leaves the queue here — `tk-queue done "<id>" --how "<po
 form verify prescribes for carrying the evidence block — and an item verify turned into a
 DECISION stays, carrying its handoff.
 
+### The spec lane's item cycle: verify, merge, push, close
+
+A solo item is verified on the tree its own pull request carries, and a red one harms nothing but
+itself. An item on the **spec lane** shares a branch with every ticket after it and with the pull
+request the user judges, so it is verified BEFORE it reaches that branch. The lane therefore runs
+one cycle per item, in the seven stages below, and step 3 dispatches the next ticket only once
+that cycle has ended — the serial order is what makes the branch's pushed tip mean "everything
+verified so far, and nothing else". Every stage is the orchestrator's own work: verifying, merging
+and pushing are commands, not judgement, which is why the role table has no `merger` row to
+dispatch them to.
+
+**1. Read the artefact.** The run owed a push at every north star by the checkpoint invariant, so
+ask its worktree the two questions that decide whether the branch is what you are about to verify:
+
+```sh
+git -C "<the item's worktree>" fetch origin
+git -C "<the item's worktree>" status --porcelain      # no output
+git -C "<the item's worktree>" rev-parse HEAD "@{u}"   # two identical lines
+```
+
+A dirty tree, or a HEAD ahead of its upstream, is a broken invariant rather than a detail to work
+around: what you would verify is unreachable by every later reader, including the generation that
+resumes this package. Commit and push that worktree from here before any stage below runs, and say
+so in the report — the run that owed it is finished, and re-dispatching it to press one button
+costs more than the two commands.
+
+**2. Run the item's criterion AND the whole suite**, in that worktree, tailing both. The tail is
+what keeps N items from spending the orchestrator's context on N dumps, and it is also what hides
+the exit code — `tail` returns its own — so read the command's status out of `PIPESTATUS`, bash's
+array of the statuses of a pipeline:
+
+```sh
+<the item's criterion command> 2>&1 | tail -40; echo "criterion: ${PIPESTATUS[0]}"
+<the repository's suite command> 2>&1 | tail -40; echo "suite: ${PIPESTATUS[0]}"
+```
+
+The suite runs beside the criterion because the branch is shared: an item can satisfy its own
+criterion and break a neighbour's, and on this lane that break reaches the next ticket's starting
+tree. Both runs are the orchestrator's own, here — a run's report of either is an input, never
+the measurement.
+
+**3. Green is both, and green is what merges.** Verify's four outcomes decide it:
+**approved** (a type-A criterion that passed) and **proof ready** (a type-B artefact with its
+claim) are green, and both merge — a type-B item still never merges to `main` unattended, but the
+lane's pull request is not `main` and waits for the user whatever it carries. **Failed 3×** and
+**rotten criterion** are red. A red suite is red too, and it spends one of the same three
+attempts rather than opening a second budget: the item goes back to the implementer either way,
+with the tail as its context.
+
+**4. Merge with `--no-ff`, `T<id>` first in the title**, in the lane's worktree:
+
+```sh
+git -C "<path>/spec-<m>" merge --no-ff "spec/<m>/T<id>" -m "T<id>: <the item's title>"
+```
+
+Neither half is decoration. Without `--no-ff` the first item fast-forwards, and there is then no
+merge commit for the user to `git revert -m 1` by name — the whole reason each item enters by one.
+The `T<id>` prefix is what a report, and a later generation reading `git log --merges`, matches on,
+which is why it leads the title rather than sitting inside it.
+
+**A conflict here is a broken invariant, not a merge to resolve.** The branch was cut from this
+tip and nothing else has moved it, so a marker means the ticket started somewhere else. Abort with
+`git merge --abort`, leave the lane where it was, and report it; the one place on this lane where
+a marker is expected is the tail's merge of `origin/main`.
+
+**5. Push.** That push is the checkpoint of `WINDOW.md`'s invariant for the lane itself, and it is
+what makes every later step — the next dispatch, the close below, a resumed generation — read the
+same tip:
+
+```sh
+git -C "<path>/spec-<m>" push origin "spec/<m>-<slug>"
+```
+
+**6. On the FIRST green merge of the package, open the draft pull request.** Not at branch
+creation: the forge refuses a pull request with no commits between the branch and its base, so the
+first merge is the earliest moment it can exist. It opens as a draft because the package fills its
+body item by item and the review runs once, at the tail.
+
+```sh
+gh pr create -R "<owner>/<code repo>" --draft --base main \
+  --head "spec/<m>-<slug>" --title "<the spec's title>" --body "<the opening body>"
+```
+
+**The body is the orchestrator's, and nobody else writes it.** That is why the lane's runs take
+the `implementer-spec` row, whose `pr = none` keeps the closing section out of their contract
+block. The body gains, per item closed, the closing line in the shape
+`../../reference/subagent-policy.md` prescribes — `Fixes <owner>/<repo>#<n>`, owner half included,
+one line per TICKET. The spec itself is named without a keyword: the user closes their own spec
+when they judge it delivered, and a keyword on that reference would close it at the merge.
+
+**7. Close the item last** — `tk-queue done "<id>" --how "PR #<n>"`, after the push and after the
+pull request exists, with the evidence block in the body under that item's section. Last is the
+point: the queue is the only record that survives this session, and the two ways a package dies
+here resolve because the push precedes it.
+
+- **Died between the push and the `done`.** The merge is on the pushed tip and the item is still
+  open. What recovers it reads `git log --merges` on that tip, finds the item's `T<id>` and closes
+  it — a re-close, never a re-run.
+- **Died before the push.** The merge existed only in the lane's worktree, and a resumed
+  generation resets that worktree to the pushed tip, which discards it. The item is still open and
+  its own branch is still pushed, so it re-enters the cycle at stage 1 and merges once. A death
+  between the merge and the push is this same shape: the push is what makes the merge exist for
+  anybody else.
+
+Neither shape loses work and neither merges an item twice, which is what the order buys. The
+procedure a resumed generation follows is being written under `#176`; what this step owes it is
+the order above.
+
+**A red item never reaches the lane.** It ends the way any item ends today — three attempts, then
+verify's DECISION carrying its handoff — with one addition: the DECISION names the item's own
+pushed branch `spec/<m>/T<id>`, which is where its work stays. Nothing merges it, so the lane's
+tip never carries it, and the next ticket is cut from a tip that never did. **The lane does not
+halt for it**: the following tickets dispatch from that unchanged tip, so they are cut from a tree
+without the red item's work, and the report names the red item beside them so the reader knows
+what they did not have.
+
+**The item's worktree goes when the item leaves the cycle** — merged green, or red as a DECISION —
+and `git worktree remove` is the whole of it. Its **branch stays** until the lane's pull request
+merges: the red item's DECISION points at it, and a re-dispatch resumes from it. A worktree that
+refuses to be removed is a dirty tree, which stage 1 should already have caught; read what is
+in it and never reach for `--force`, which discards exactly the work the invariant exists to keep.
+
 **Done when:** every package item carries exactly one verify outcome with its evidence block
-in the PR body or on the item, every claim this package took has either left with its item or
+in the PR body or on the item, every lane item that reached the branch did so by a `T<id>` merge
+commit that was pushed before its `done` and every red one is absent from that branch, every claim
+this package took has either left with its item or
 been released, and `tk-queue list` shows exactly the items the run left open — every item it
 closed gone from that list, every claim it did not close released — or the queue file itself is
 gone, and the report says so instead of a criterion nobody could meet.

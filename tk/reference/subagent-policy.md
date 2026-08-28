@@ -60,6 +60,7 @@ A consumer that copies the values into itself has forked the policy — read the
 | tiebreak | parent | high | local | none | none | Settles a split verdict. Effort is pinned. |
 | implementer | parent | session | local | opens | required | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
 | implementer-spec | parent | session | local | none | required | A package item on a spec's accumulated lane. The orchestrator owns that branch's pull request and writes its body, so this role opens none and hands back its pushed branch. Same downgrade as implementer. |
+| fixer | parent | session | local | none | required | Applies a campaign's corrections, and resolves a conflict marker the tail's merge of `origin/main` left, with both sides as context. Commits into a branch someone else opened the pull request on; where the correction belongs to one item, `T<id>:` leads the commit title, so the user's revert of that item carries it. No mechanical downgrade: a marker is the one thing here that is never fully specified. |
 | research | sonnet | session | cloud | none | none | Rises to parent when the question turns on fine judgement. Log the rise. |
 | review | sonnet | session | cloud | none | none | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
 | explore | haiku | session | local | none | none | Pure search and file location, no verdict. |
