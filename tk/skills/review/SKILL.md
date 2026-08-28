@@ -1,6 +1,6 @@
 ---
 name: review
-description: "Lens campaign over a delivered code or data slice: five subagents attack the diff from distinct angles on top of the repo's mandatory code review, with a severity ruler (nit/defect), a re-lens loop on a 3-round budget, a design signal and an attack inventory. Use when a diff hits a trigger item named in the site's CLAUDE.md, when the parent claims an exemption or fires it by choice, when a campaign resumes from a handoff, or when another skill needs the severity ruler or the inventory. Prose (a skill, a CLAUDE.md, a report) gets the mandatory review only."
+description: "Lens campaign over a delivered code or data slice: five subagents attack the diff from distinct angles on top of the repo's mandatory code review, with a severity ruler (nit/defect), a re-lens loop that shrinks each round on a 3-round budget, a design signal and an attack inventory. Use when a diff hits a trigger item named in the site's CLAUDE.md, when the parent claims an exemption or fires it by choice, when a campaign resumes from a handoff, or when another skill needs the severity ruler or the inventory. Prose (a skill, a CLAUDE.md, a report) gets the mandatory review only."
 ---
 
 A **lens** is a subagent that attacks the slice from one angle. The **parent** is the session
@@ -108,8 +108,12 @@ Then **re-lens the finders**: exactly the lenses that found a defect, against th
 lens when a correction enters ground no finder covered (a moved block, a new write path); from
 then on it is a finder. The correction commit is a round of this campaign, never a new trigger.
 
-Every round runs at the tier and effort of round 1. The **budget** is 3 rounds, round 1
-included; the mandatory review is round 0, outside it.
+**Rounds shrink.** Round 1 is five lenses; round 2 is the finders and nothing else; round 3
+fires only when the user grants it, and the parent asks with the round-2 findings in hand. The
+tier and the effort stay at round 1's — what decays is the COUNT, because yield per lens falls
+about threefold after round 1 while the cost per lens does not. The **budget** is 3 rounds,
+round 1 included; the mandatory review is round 0, outside it. **The parent never grants
+itself a round beyond the budget** — a round the user did not grant is a round nobody priced.
 
 **Done when:** the re-lens round has reported, and the campaign is at one of the states in §5.
 
@@ -124,6 +128,12 @@ wrong side it is a code defect and the campaign covers it; only when the code is
 the words are stale is it prose. A prose finding is then fixed on the spot and listed, the
 way §3 already disposes of a nit, and it reopens nothing. It is not handed back to the
 mandatory review: that review is round 0 and has already closed.
+
+A round is also **spent** when most of its defects were already there: reproduce them against
+the slice's branch point, and where the majority reproduce on the PARENT, the campaign ends and
+the inventory says so. Those defects are the repo's backlog, not this slice's, and a campaign
+that has started returning them is measuring the codebase rather than the change. Carry them to
+the item or the ticket; do not fire another round to find more of them.
 
 Three stops block the merge and go to the user with the round-by-round findings:
 
@@ -140,8 +150,10 @@ Three stops block the merge and go to the user with the round-by-round findings:
 
 The user's choices at each stop are the table's exit column.
 
-A **redesign** reruns the round-1 composition on the rounds left, never fewer than one; when none
-remain the parent asks how many the user grants. It inherits the budget and the signal's history.
+A **redesign** reruns the finders on the rounds left, never fewer than one; the full round-1
+composition only where the user grants it, since a redesign the user chose is already a round
+they paid for. When no round remains the parent asks how many the user grants. It inherits the
+budget and the signal's history.
 A **cut** drops the artifact; the deletion is a slice of its own, decided by §1 like any diff,
 and this campaign ends blocked.
 A **blocked** slice becomes a queue item carrying the findings; the user reopens it into the
@@ -151,7 +163,8 @@ next round, on the rounds they grant, with the signal's history intact.
 |---|---|---|
 | not fired | no item hit, or an exemption receipt | mandatory review only → merge-ready; parent fires by choice → round 1 |
 | round N | trigger or parent's choice (N=1); correction batch; redesign; granted round; resumed handoff | clean → inventory; covered defects (§1) → correction batch, design signal (N≥2), all rejected, or ceiling (N≥3) |
-| correction batch | a round with defects, none escalated | re-lens the finders → round N+1 |
+| correction batch | a round with defects, none escalated | re-lens the finders → round N+1; a round 3 runs only on the user's grant |
+| spent | most of a round's defects reproduce on the slice's branch point | inventory, and the pre-existing ones go to the item or the ticket → merge-ready |
 | design signal | round N≥2: 2+ defects, or a repeated mechanism | correct and continue → correction batch; redesign → round N+1; cut or block → blocked |
 | ceiling | round N≥3 not clean | one more round → round N+1; redesign → the rounds granted; block → blocked |
 | all rejected | every defect of a round rejected | as at the ceiling |
@@ -179,8 +192,13 @@ briefing, §7), and every finding of every round appears in it.
 
 ### 7. Window and handoff
 
-A campaign costs at least as much window as the implementation; that floor is the plan's review
-line. Campaigns serialize: one starts only when the remaining window fits it and every campaign
+**A campaign may not cost more window than the implementation it reviews.** That is a CEILING,
+and it binds: where round 1 alone would breach it, the slice takes the mandatory review and
+nothing else, with the reason in the PR. The line was written as a floor once — "a campaign
+costs at least as much window as the implementation" — and a floor with no ceiling is how one
+bin of ~600 lines drew 19 lens-agents across five rounds (T185, 27/08).
+
+Campaigns serialize: one starts only when the remaining window fits it and every campaign
 already running. One that does not fit waits whole, as a queue item heading the next window's
 review line; the slice stays implemented, unreviewed, unmerged.
 
@@ -197,6 +215,10 @@ The measurements behind each line live in the site's `review.md`, one row per th
   approve.
 - **Re-lens the finders, not a fixed count.** The fix is new code nobody reviewed, and a defect
   born in the repair is the common case.
+- **Rounds shrink, and a spent round ends the campaign.** Yield per lens falls about threefold
+  after round 1 while cost per lens holds; and a round returning defects that reproduce on the
+  parent has stopped measuring the change. T185 paid ~397k for a round whose defects were seven
+  parts backlog to two parts new.
 - **A repeated finding is a design signal, not a coverage gap.** Another round on the same
   mechanism buys a new instance of the same defect; the question is whether the artifact should
   exist as built.
