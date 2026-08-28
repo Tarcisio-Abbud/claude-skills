@@ -84,12 +84,15 @@ variable turns all three into "free" and admits the item.
 
 **A branch that survived its merge still holds the lane**, because the remote cannot tell a
 package being worked from one finished months ago and never deleted — the forge's default. The
-answer belongs at the source: whatever merges a lane's pull request deletes its branch, and that
-prose is still being written. Until it arrives, a spec whose finished branch is still on the
-remote sits out every package, and the report names the branch it found rather than letting the
-exclusion read as a live lane. Asking the question here instead was measured costing more than it
-bought — it needs a clone whose trunk is current, a ref name step 1 does not yet know, and an exit
-code of its own, and each of the three was a way to answer "free" over live work.
+answer belongs at the source, and it is written there: the gate of `../wrap-up/SKILL.md` merges a
+lane's pull request with `--delete-branch`, so a lane that finished leaves no branch behind. What
+still reaches this check is bounded and repairable — a branch merged before that rule existed, and
+a merge the user made by hand without deleting — and it costs that spec every package until
+somebody deletes the branch. So the report names the branch it found, with the deletion as the
+repair, rather than letting the exclusion read as a live lane. Asking the question here instead
+was measured costing more than it bought — it needs a clone whose trunk is current, a ref name
+step 1 does not yet know, and an exit code of its own, and each of the three was a way to answer
+"free" over live work.
 
 **Two shapes of item carry no address to read.** `pack` prints `[repo: ?]` where the item's
 `Repo:` field exists and no reader may use it — two in the chain, or a value the shape refuses —
@@ -115,9 +118,9 @@ remote. One spec advances one package per human merge — that is what the rung 
 it in the report is what keeps the next cut from rediscovering it.
 
 **Where that item lands in the close.** Step 6 groups the items a package did not close by
-reason, and its ladder has no rung for this one yet; the prose that gives it one is still being
-written. Until it arrives, report the item as **carried**, with the branch as its value: it was
-eligible, and it left over a lane held elsewhere rather than over anything wrong with the item.
+reason, and its ladder carries the rung: **carried** under the lane gate, with the branch as its
+value. It was eligible, and it left over a lane held elsewhere rather than over anything wrong
+with the item.
 
 **Then cut.** Take the eligible in the order printed — priority IS the order of
 the file, and `tk-queue bump "<id>"` is what moves an item to the top — then add
@@ -161,10 +164,12 @@ item's Effort printed `?`, the sum is a floor and says so; a parity line over an
 is a number nobody can check. A cut that
 funds only the lanes has hidden about half of what the package will spend.
 
-The tail's three steps are not yet written into this file, and step 7's close does not yet know
-the accumulated lane either. Reserving the line is what this step owes regardless: a cut made
-before the prose arrives is a cut that funds it, and a package planned as though the tail were
-free is a package whose last third is unfunded whichever step ends up running it.
+The two lines fund one stretch of work: step 5's tail merges `origin/main`, runs that review over
+the accumulated diff and then re-runs every lane criterion, in that order. They are two lines
+because they are priced differently — the review at parity with the lanes, the rest as one suite,
+N criteria and a merge — not because they happen apart. A package planned as though either were
+free is a package whose last third is unfunded, and `../wrap-up/SKILL.md`'s per-item digest is
+where the result reaches the user.
 
 **Done when:** the package lists its items with the summed Effort (e.g. "4 items, ~1h45") and
 the lane each one carries after the recount, the review line and the tail line stand beside them,
@@ -722,11 +727,86 @@ it. A worktree that refuses to be removed is a dirty tree, which stage 1 should 
 caught; read what is in it and never reach for `--force`, which discards exactly the work the
 invariant exists to keep.
 
+### The lane's tail: `origin/main`, the review, then every criterion
+
+The lane's last ticket merged and its branch is complete; the tail is what turns that branch into
+a pull request the user can judge. It runs once per package, only where step 3's recount left an
+accumulated lane, and every step of it is the orchestrator's own work in the lane's worktree.
+
+**Every exit below ends in one place**: the pull request out of draft, carrying the per-item
+digest of `../wrap-up/SKILL.md` with what the tail found. That file's gate decides the merge and
+the tail never does. No item is reopened, no merge commit is undone and nothing already pushed is
+rewritten — the machine reports and the user decides. What an exit changes is what the digest
+lists, and nothing else: the steps below run in order whatever the one before them found. A lane
+where no item ever went green has no pull request to ready — stage 6 of the cycle opens it at the
+first green merge — so the tail does not run at all, and the report says the branch carries
+nothing.
+
+**1. Merge `origin/main` into the lane's branch.** This is the only place on the lane where a
+conflict marker is expected: every item entered from a branch cut from this very tip, while main
+moved on its own.
+
+```sh
+git -C "<path>/spec-<m>" fetch origin
+git -C "<path>/spec-<m>" merge origin/main
+```
+
+- **Git merged it with no marker** — the merge stands, and so does a marker that lives only in a
+  file some tool regenerates (a manifest, a lock file): re-run the tool that owns it and the
+  marker is gone, which is a regeneration rather than a hand edit.
+- **Any other marker** goes to a `fixer` (`../../reference/subagent-policy.md`) dispatched into
+  that worktree with BOTH sides as context — the `T<id>` merge commit that wrote the lane's side,
+  and main's commit — and it resolves and commits.
+- **Then check the merge before pushing it.** `git -C "<path>/spec-<m>" grep -n '^<<<<<<< '`
+  returns nothing and the tree is clean; marker-free, push it to `spec/<m>-<slug>`. Otherwise run
+  `git -C "<path>/spec-<m>" reset --hard "@{u}"`, which discards the merge this step just made and
+  nothing else — it was never pushed, no item's merge commit is inside it, and main's side sits on
+  `origin/main` where it always was. The digest then carries the merge as outstanding, and step 2
+  reads the same diff either way, since its three dots exclude main's side.
+
+**2. Review the accumulated diff once, against the pull request's base.** Once for the lane, not
+once per item: the base is the pull request's, so what the review reads is everything the user is
+being asked to merge. The class of that diff picks the flow, under the site's CLAUDE.md:
+
+- **prose an agent follows** — a skill, a CLAUDE.md, a runbook — takes the two axes alone, in one
+  round: Standards against `writing-for-agents`, Spec against the package's own subset of tickets,
+  the lane's and no others, each one's body AND comments;
+- **code, or the data code writes**, takes the lens of `../review/SKILL.md` first, on the committed
+  diff, and the two axes after — they read `base...HEAD`, so the lens's correction batch is already
+  inside the diff they read.
+
+A `fixer` applies the confirmed findings and pushes. Where a correction belongs to ONE item,
+`T<id>` leads its commit title, so the user's revert of that item carries the fix with it. A
+finding nobody here can close stops nothing: its inventory goes to the digest — what it is, where
+it sits, and what closing it would take — and the pull request waits for the user on it.
+
+**3. The whole suite and every criterion, on the final tree.** The last measurement before the
+gate, and the one the digest displays. Run the repository's suite once, then each LANE item's own
+criterion — all of them, not a sample — in the lane's worktree at its pushed tip, under this
+step's opening rule: the caller re-runs the proof, and a run's account of it is never the proof.
+Record the tip and `origin/main`'s sha beside the result; the digest's Tests line names both.
+
+**The lane's items are already closed**, each by stage 7 at its own merge, and nothing here
+reopens one. A criterion that goes red at this step is reported, never repaired by reverting: the
+digest lists, in order, the `T<id>` merges that landed after that item and the merge of
+`origin/main` — `git log --merges --oneline "<that item's merge>"..HEAD` — because a revert of
+that item passes through every one of them. Reverting by name, dropping that item's closing line
+from the body, and `tk-queue add`-ing the item back are the user's three acts, and the digest
+names them as the user's rather than performing any of them. A red suite is the same shape at
+package scope: the digest's Tests verdict goes red and the pull request waits. A **type-B**
+criterion ends at proof ready here as it does inside the cycle, and its proof with the one-line
+claim goes to that item's digest, where the verdict is the user's to give.
+
+**Then mark the pull request ready for review, and remove the lane's worktree.** The gate merges
+with `--delete-branch`, and that flag fails on a branch still checked out somewhere.
+
 **Done when:** every package item carries exactly one verify outcome with its evidence block
 in the PR body or on the item, every lane item that reached the branch did so by a `T<id>` merge
-commit that was pushed before its `done` and every red one is absent from that branch, every claim
-this package took has either left with its item or
-been released, and `tk-queue list` shows exactly the items the run left open — every item it
+commit that was pushed before its `done` and every red one is absent from that branch, the lane's
+tail merged `origin/main` or named it outstanding, reviewed the accumulated diff once, ran the
+suite and every lane criterion on the final tree with the tip and main's sha recorded and left
+the pull request out of draft with its worktree removed, every claim this package took has either
+left with its item or been released, and `tk-queue list` shows exactly the items the run left open — every item it
 closed gone from that list, every claim it did not close released — or the queue file itself is
 gone, and the report says so instead of a criterion nobody could meet.
 
@@ -753,6 +833,12 @@ reason — the convention `tk-queue pack` already uses for its own exclusions:
 - an item another session holds is **carried** under the dependency gate — whose shape here is
   a sibling session holding it — and its reason is the owner and the moment, printed either by
   `tk-queue pack`'s exclusion or by the claim this package was refused;
+- an item a spec's branch on the remote took out is **carried** under the lane gate, and its
+  reason is that branch — with the pull request's number beside it where step 1's `gh pr list`
+  showed one. Nothing is wrong with the item: it returns in the package after that lane's pull
+  request merges and the merge deletes the branch. Where no pull request was found, the reason
+  says so and names deleting the branch as the repair, since a branch merged and never deleted
+  reads here exactly like a live lane;
 - an item `tk-queue pack` excluded for anything else is **carried** too, recording the value
   the filter printed: it was never eligible at all, and "left out" alone reads as a size call
   nobody made. Where that value names a defect in the ITEM rather than a decision about it —
