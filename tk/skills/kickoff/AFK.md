@@ -11,9 +11,9 @@ one-line format a departure from that table costs.
 
 **Read `WINDOW.md` beside this file before step 3.** It holds what the package does when it
 runs out of window rather than out of work: the checkpoint invariant, the handoff the quota
-wall demands and its six contents — plus the three an accumulated lane adds to them — the
-scope a resumed package is held to, why auto-continue
-covers none of this, what the review lens costs the window and why its tail is
+wall demands and its six contents — plus the four an accumulated lane carries, three of them
+new — the scope a resumed package is held to, why auto-continue covers none of this, what the
+review lens costs the window and why its tail is
 what the wall cuts first, the two vehicles that can open a successor generation, and the
 `--budget N` generations that carry a package past the orchestrator's own context ceiling. Those rules fire at moments the steps below do not
 choose, which is why they are read up front rather than looked up under one.
@@ -25,8 +25,8 @@ built, and what it owes first is the tree.
 ## A resumed generation starts here
 
 A generation opened by one of `WINDOW.md`'s two vehicles inherits a package mid-flight: the
-handoff carries the items, the claims, the lane and the three contents that lane adds to
-`--state`, and git carries whatever survived. It builds no package and pulls no new item — the
+handoff carries the items, the claims, the lane and the four contents `--state` carries for that
+lane, and git carries whatever survived. It builds no package and pulls no new item — the
 claims it inherited are the whole of its work, by `WINDOW.md`'s scope rule. This section runs
 first and once, and only where the handoff names an accumulated lane; a handoff naming solo items
 alone goes straight to step 3's dispatch.

@@ -60,11 +60,12 @@ On the first quota failure, in this order:
 **Done when:** the tree is pushed, one handoff carries the six contents of step 3, the claims
 are intact, and the report names the reset time.
 
-## An accumulated lane: three more contents, and when each is written
+## An accumulated lane: the four contents `--state` carries for it
 
-A package holding a spec's accumulated lane (`AFK.md` step 3) writes three more things into
-`--state`, beside the six above. **`--state` gains no flag for them** — it is one field of prose,
-and these are three more paragraphs inside it.
+A package holding a spec's accumulated lane (`AFK.md` step 3) writes four things into `--state`
+for that lane. Three are additions to the six above and the fourth is one of the six, doing a
+second job here. **`--state` gains no flag for any of them** — it is one field of prose, and the
+additions are three more paragraphs inside it.
 
 - **The item→merge map** — one line per lane item that reached the branch, its `T<id>` against the
   merge commit that carried it, under the branch's pushed tip and the draft pull request's number.
@@ -81,6 +82,10 @@ and these are three more paragraphs inside it.
   successor told only that the tail had started re-runs all three. What the review returned is the
   fifth content above read at lane scope, so a review that never reported is re-fired whole here
   too.
+- **The claims** — the fourth of the six above, written exactly as they are there and gaining
+  nothing on this lane. What they gain is a second reader: they are what tells the successor that
+  the branch it finds on the remote belongs to its own package rather than to a sibling, which no
+  question put to the remote can answer (`AFK.md` step 3).
 
 **The item→merge map is what the predecessor believed; the pushed tip is what is true.** A
 successor closes items by reading `git log --merges` on that tip and never by reading this map,
@@ -88,10 +93,8 @@ because the map stops at the last handoff its writer got to. What the map buys i
 is the only record of what the predecessor thought it had merged, and a disagreement between it
 and the tip is named there.
 
-The claims are the fourth of the six above and need nothing added: on this lane they are also what
-tells the successor that the branch it finds on the remote is its own package's rather than a
-sibling's. The procedure the successor runs from this whole field is `AFK.md`'s *A resumed
-generation starts here*.
+The procedure the successor runs from this whole field is `AFK.md`'s *A resumed generation starts
+here*.
 
 ## Review is a first-class consumer of the window
 
