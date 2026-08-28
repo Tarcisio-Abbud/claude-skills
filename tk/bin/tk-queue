@@ -58,7 +58,19 @@ belongs to. **Spec:** is the one `pack` reads — it decides the item's LANE, an
 and both are validated by SHAPE, for the reason `--env` is validated against the
 roster: neither failure reports itself. An item born in conversation has neither.
 
-WHO is working on it is a third field, and the only one this script writes on
+WHERE THE WORK LANDS is a third optional field, and it is a different question
+from the two above: **Ticket:** and **Spec:** name the TRACKER the issue is filed
+in, and the tracker is routinely another repository than the code's. **Repo:**
+names the code's. The gate is a WHITELIST of the shapes this account addresses
+repositories by — an https/ssh/scp URL, `file://`, or an absolute path — and
+REPO_RE carries the list and the reasoning. A remote name and a relative path are
+not on it, because both resolve against a cwd, and the cwd of whoever reads this
+queue is the queue's own directory — routinely a clone of something else. Run from
+there, `git ls-remote origin` was measured exiting 0 with no output (#198). `pack`
+returns the value. An item carrying none is an item whose repository its caller
+names from outside, as every caller did before.
+
+WHO is working on it is a fourth field, and the only one this script writes on
 its own: `claim <id> --as <name>` marks the item under the queue's exclusive
 lock, and a second `claim` is REFUSED naming the owner and the moment — that is
 how two sibling sessions on one queue stop executing the same item (collisions
@@ -566,6 +578,9 @@ FIELD_VARIANTS = {
     # population, and an alias nothing writes is a second grammar to keep in step.
     "Ticket": r"Ticket",
     "Spec": r"Spec",
+    # the third of the group, and the only one that is no forge reference: it
+    # names the REPOSITORY the item's code lands in, which the two above do not
+    "Repo": r"Repo",
     # BIRTH DATE, written by this script and by nothing else: `add` stamps today,
     # `migrate` backdates it from **Source:** when that field states a date, and no
     # flag sets it. One spelling, for the reason Ticket and Spec have one — these
@@ -1235,6 +1250,182 @@ def validate_ref(flag, value):
     return canonical_ref(value)
 
 
+# The repository an item's code LANDS in — the address `**Repo:**` carries, and a
+# different question from the two forge references above. What the shape refuses is
+# the whole reason the field exists: a value that resolves against a CWD.
+#
+#   remote name     `origin`, `upstream`. Measured (#198): `git ls-remote origin`
+#                   run from the queue's directory — a clone of another repo —
+#                   exits 0 and prints nothing, which reads exactly like "the
+#                   branch is free" and admits an item over live work.
+#   relative path   `../claude-skills`, `tk`. The same failure with a different
+#                   spelling, and the one a rule about "remote names" alone
+#                   would have let through.
+#
+# So the accepted shapes are the cwd-independent ones, and they are the shapes
+# this account's repositories are actually addressed by: a URL with a scheme, the
+# scp-like `git@host:path` git also takes, a POSIX absolute path, and a Windows
+# drive-letter path, which is absolute for the same reason and is how the desktop
+# in this site's roster names a clone.
+#
+# The repository an item's code LANDS in, and what may be spelled as one. This gate
+# is a WHITELIST — it names the shapes this account addresses repositories by, and
+# refuses everything else — and it is a whitelist because four rounds of review
+# proved the other design cannot be finished. Each round found a new value that was
+# shape-legal and meant something else to whoever received it:
+#
+#   `../claude-skills`   resolves against the reader's cwd, which is the queue's own
+#                        clone. `git ls-remote origin` run there exits 0 with no
+#                        output, reading exactly like "the branch is free" (#198).
+#   `/a]injetado`        splices a second bracket group into the line `pack` prints,
+#                        the way a hand-edited `**Ticket:** repo#1] injetado` did.
+#   `--upload-pack=<c>@h:p`  git 2.39.5, in a clone with an `origin`, read this as
+#                        the OPTION, fell back to that origin and EXECUTED <c>.
+#   `https://u:tok@h/r`  a password, into a file with no other copy, reprinted by
+#                        `pack` on every package — and `%3A` for the same thing.
+#   `https://ghp_x@h/r`  the same secret with no colon in it at all.
+#   `…/r‌.git`            a zero-width character: two addresses one reader cannot
+#                        tell apart, on a value whose job is to be read and pasted.
+#
+# Six instances of ONE mechanism, and a seventh was always next. So the question
+# stopped being "which value do we refuse" and became "which do we accept":
+#
+#   https://<host>[:port]/<path>       the forge over HTTP, with NO userinfo. A
+#   http://<host>[:port]/<path>        credential belongs in a credential helper,
+#                                      never in a queue file — and refusing the
+#                                      whole `<user>@` half is what makes that true
+#                                      of a token, a password, and an encoding of
+#                                      either, without this file learning to
+#                                      recognise any of them.
+#   ssh://git@<host>[:port]/<path>     the SSH forms, where `git@` is a fixed
+#   git@<host>:<path>                  protocol name and not a secret.
+#   file:///<path>                     a local repository, addressed as a URL.
+#   /<path>   C:\<path>              a local repository, addressed as a path.
+#                                      `~/<path>` is NOT one, and it is the
+#                                      instructive refusal: HOME differs between
+#                                      machines and between users, so a tilde
+#                                      address means a different repository to a
+#                                      different reader — the same defect as
+#                                      `origin`, wearing a path's clothes. The two
+#                                      consumers do not even agree with each other:
+#                                      `git ls-remote` expands the tilde itself and
+#                                      answers, while `git -C "~/x"` is a plain
+#                                      chdir that fails — so the branch check passes
+#                                      and the worktree dies three steps later.
+#                                      Measured on git 2.39.5.
+#
+# A URL's path is ASCII: letters, digits and `. _ - /`. That excludes `%`, so a
+# percent-encoding cannot smuggle back a character refused above, and it excludes
+# `[`, `]`, `*` and every invisible character without naming them. A LOCAL path is
+# wider — it is not handed to a transport and carries no credential — but it is
+# still refused the four characters that break a reader: whitespace (the chain is
+# one line, and `pack`'s columns are runs of blanks), `*` (a field marker would
+# become spellable), `[]` (the bracket groups), and the INVISIBLE characters, which
+# change what a reader sees without changing what git receives.
+#
+# What this refuses AND SHOULD: an IPv6 literal host (`[::1]`, brackets), a
+# percent-encoded URL path, a colon inside a path, a userinfo other than `git@`.
+# Each is a real address somewhere, and none is one this account uses. The
+# asymmetry is deliberate: a refusal prints a message naming the shapes and is
+# repaired by widening one alternative, while an admission is silent and is
+# repaired by a review campaign.
+#
+# A leading `-` needs no rule of its own any more: no alternative below can begin
+# with one. The test that measured it stays, because it is what would catch a
+# widening that let one back in.
+#
+# A trailing '.' is refused, and that is round-trip and not taste: compose_item
+# writes `**Repo:** <value>.` and field_value strips ONE trailing period, so a
+# value ending in one comes back a character short of what was written.
+REPO_INVISIBLE = "\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff"
+# a host, and the PORT SEPARATELY — because only a URL has a field for one. Spelled
+# into the scp-like branch, `git@host:2222:owner/repo.git` reads to a person as a
+# host on a non-standard port and to git as the DEFAULT port and the path
+# `2222:owner/repo.git`: measured under GIT_TRACE, which showed
+# `ssh git@myserver 'git-upload-pack '2222:owner/repo.git''`. That is the silent
+# misreading this whitelist exists to end, so the port goes where it can be honoured.
+# The scp-like branch refuses the OTHER spelling of the same mistake itself: a first
+# path segment that is all digits, `git@host:2222/owner/repo.git`, which git folds
+# into the path exactly the same way — measured the same way, one round later.
+REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*"
+REPO_PORT = r"(?::[0-9]{1,5})?"
+REPO_URL_PATH = r"(?:/[A-Za-z0-9._-]+)+"
+# a local path's characters: everything a reader can see and no reader can be
+# fooled by — see the four exclusions above
+REPO_LOCAL = "[^\\s*\\[\\]" + REPO_INVISIBLE + "]+"
+# NO `.` OR `..` SEGMENT, anywhere, under either separator. The gate cannot
+# canonicalise an address — it hands the value to git untouched, and dropping a
+# `.git` or a trailing slash would be this file guessing at a forge's routing — so
+# the one thing it can do about two spellings of one repository is refuse the
+# second. `/a/./b` and `/a/../b` name the path `/a/b` and read as two addresses to
+# every reader here, which is what AFK.md's "one lane, one address" then cannot
+# decide. It asks only about a segment BETWEEN separators: one at the END of an
+# address ends in `.`, which the trailing-dot rule below already refuses, and a
+# second question about it was dead — the mutation harness proved that, finding no
+# test able to tell the two spellings of this rule apart.
+# A trailing SEPARATOR is refused by the same principle — a URL copied from a
+# browser's address bar carries one, and `/srv/r/` beside `/srv/r` is the same two
+# spellings again. The URL branches refuse it by their segments having to be
+# non-empty; the local ones cannot, because a local path is one character class and
+# `/` is in it, so the closing rule below asks for both at once.
+#
+# That rule also SUBSUMES the non-empty tail every alternative already required:
+# `/` and `C:/` are not addresses, and a value with an empty tail ends in its own
+# separator, so each is now refused twice. Neither rule can be mutated into view on
+# its own any more, and the harness says so by having no mutant for the tail — the
+# redundancy is left standing rather than thinned, because it is one character and
+# it guards the shape that is easiest of all to typo.
+REPO_NO_DOT_SEG = r"(?![^\n]*[/\\]\.{1,2}[/\\])"
+REPO_RE = re.compile(
+    REPO_NO_DOT_SEG +
+    "(?:"
+    "https?://" + REPO_HOST + REPO_PORT + REPO_URL_PATH +      # the forge over HTTP
+    "|ssh://git@" + REPO_HOST + REPO_PORT + REPO_URL_PATH +    # SSH, spelled as a URL
+    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like
+    "|file:///" + REPO_LOCAL +                                 # a local repo, as a URL
+    "|/" + REPO_LOCAL +                                        # a POSIX absolute path
+    "|[A-Za-z]:[\\\\/]" + REPO_LOCAL +                         # a Windows drive-letter path
+    ")"
+    r"(?<![./\\])"
+)
+
+
+def validate_repo(value):
+    """Refuse anything that is not one of the addresses this queue accepts, and
+    return the one that passes UNCHANGED.
+
+    A WHITELIST, and REPO_RE carries the reasoning: the shapes are named, and
+    everything else is refused whether or not anyone has thought of it. Four review
+    rounds of refusing values one class at a time is what bought that inversion.
+
+    Unchanged is deliberate: nothing in this script compares two repositories, so
+    there is no equality for a canonical spelling to serve — and a normaliser
+    (dropping a `.git`, a trailing slash) would be this script guessing at a
+    forge's routing rules on the one value it hands straight to git.
+
+    The LENGTH is not bounded by this shape, unlike a forge reference, because a
+    path has no length the world gives it — so `--repo` answers to the ordinary
+    field ceiling in check_field_ceilings, where the free-text flags answer.
+    """
+    if value is None:
+        return None
+    if not REPO_RE.fullmatch(value):
+        fail(f"--repo {value!r} is not one of the repository addresses this queue "
+             "accepts, which are: https://<host>/<path>, ssh://git@<host>/<path>, "
+             "git@<host>:<path>, file:///<path>, or an ABSOLUTE path "
+             "(/workspace/projects/.ambiente, /root/.claude/skills, C:\\clones\\repo — "
+             "a `~/` address is refused: HOME differs per machine and per reader). "
+             "No trailing '.', and no `<user>@` half on an http(s) URL — a token or a "
+             "password would be stored in this file and reprinted by `pack` on every "
+             "package, and a credential helper is where it belongs. A remote NAME like "
+             "`origin`, or a relative path, is refused because it resolves against "
+             "whatever directory the reader is in — which for this queue's readers is "
+             "the queue's own clone, where the check comes back clean over live work. "
+             "The list is a whitelist: an address that is real and simply not on it is "
+             "one line to add, and the reason to add it goes in the comment there.")
+    return value
+
+
 def validate_project(tag):
     if not PROJECT_RE.match(tag):
         fail(f"--project must be a short lowercase slug (letters, digits, '-'/'_', "
@@ -1680,9 +1871,9 @@ REPAIR_MIGRATE = "an item with no ID: `tk-queue migrate` assigns one"
 # character against the queue that produces it — a documented shape nothing
 # executes is the one that goes stale first, and this one documents an AC.
 PACK_SAMPLE = """eligible (4 of 8, in queue order):
-T007  S (~20min)    spec ambiente#171     the first ticket of the spec  [ambiente#172]
+T007  S (~20min)    spec ambiente#171     the first ticket of the spec  [ambiente#172]  [repo: https://github.com/owner/code.git]
 T008  M (~1h)       spec ambiente#171     the second one  [ambiente#173]
-T009  S             avulso                the item's text
+T009  S             avulso                the item's text  [repo: /workspace/projects/comercial]
 T010  S             avulso (ambiente#159)  a lone ticket, under the floor
 
 excluded (4):
@@ -1700,14 +1891,19 @@ run, on a queue of eight items, asserted character for character by the suite:
 
 """ + PACK_SAMPLE + """
 Eligible: ID, Effort, LANE, text, and — appended in brackets, only for the items
-that carry one — the **Ticket:** the item's PR closes, or `[?]` where the item
-carries a **Ticket:** marker no reader may use (two in the chain, one off the
-position rule, a value that is not a forge reference). `[?]` rather than silence:
-an item whose ticket cannot be read is not an item that never had one, and the PR
-that closes nothing is the failure the field exists to prevent. Effort is raw and never
-summed, because summing free text is the hidden heuristic this queue's order
-deliberately has none of. The Ticket is appended rather than given a column for
-the reason the claim is in `list`: almost no item carries one.
+that carry one — the **Ticket:** the item's PR closes, then the **Repo:** its code
+lands in, labelled `[repo: …]`. `[?]` (and `[repo: ?]`) where the item carries the
+marker and no reader may use its value: two in the chain, one off the position
+rule, a value of the wrong shape. `[?]` rather than silence: an item whose ticket
+cannot be read is not an item that never had one, and the PR that closes nothing is
+the failure the field exists to prevent — the same for an address that would send a
+worktree to the wrong repository. The repo is the one group that carries a LABEL,
+because either group may be absent: a reader telling the two apart by POSITION
+would read an address as a ticket the first time an item carried a repo and no
+ticket. Effort is raw and never summed, because summing free text is the hidden
+heuristic this queue's order deliberately has none of. Both groups are appended
+rather than given a column for the reason the claim is in `list`: almost no item
+carries one.
 Excluded: ID, text, and the reason, which always carries the VALUE the filter
 read (`Env is 'desktop', this machine is server`; `Risk: <the line>`): a marker
 absorbed out of an item's prose then reads as an obviously wrong line instead of
@@ -1766,7 +1962,10 @@ too, and is reported BEFORE any value: "there is a **Risk:** marker I am not
 allowed to read" is not "there is no risk", unattended execution is the wrong
 place to guess, and a defect outranks an ordinary state as the thing to say. The
 two PROVENANCE fields answer a different question and so take the other rule —
-see LANE and the `spec` rung.
+see LANE and the `spec` rung. **Repo:** takes it too, and there is no rung for it
+in the ladder above: its absence has a safe default — the caller names the
+repository from outside, as every caller did before the field existed — so an
+address this command may not read costs the item a mark and never its place.
 
 **Deferred:** is deliberately NOT read here. `--deferred` is refused on every
 class but DECISION and leaving that class drops it, so no path through this CLI
@@ -2025,13 +2224,14 @@ def pack_ref(block, field):
     return canonical_ref(value) if REF_RE.fullmatch(value) else None
 
 
-# NEITHER FIELD IS AN `edit` FLAG, and the omission is deliberate — the same
-# answer CLEARABLE gives about **Claimed:**. Provenance is written once, by
-# whoever imports the ticket, and it is the one thing about an item that cannot
-# change without the item becoming a different item: a ticket re-pointed at
-# another spec is a ticket of another spec. The repair for a typo is the repair
+# NONE OF THE THREE IS AN `edit` FLAG — Ticket, Spec, Repo — and the omission is
+# deliberate — the same answer CLEARABLE gives about **Claimed:**. Provenance is
+# written once, by whoever imports the ticket, and it is the one thing about an item
+# that cannot change without the item becoming a different item: a ticket re-pointed
+# at another spec is a ticket of another spec, and one re-pointed at another
+# repository is work in another repository. The repair for a typo is the repair
 # for any unreadable chain — `cancel` and re-add, which also puts the wrong
-# `closes` on the record instead of erasing it. `edit --text` keeps both fields:
+# `closes` on the record instead of erasing it. `edit --text` keeps all three:
 # it preserves everything from the first field marker on.
 
 
@@ -2088,6 +2288,58 @@ def pack_closes(block):
         return ""
     ref = pack_ref(block, "Ticket")
     return f"  [{ref}]" if ref else "  [?]"
+
+
+def pack_repo(block):
+    """`  [repo: <address>]` — the repository this item's code lands in, or "" when
+    it names none.
+
+    LABELLED, where `pack_closes` is bare, and the label is what keeps the shape
+    readable: both groups are appended to the same line, either one may be absent,
+    and a caller that told them apart by POSITION would read an item's repository
+    as its ticket the first time an item carried a repo and no ticket. Telling them
+    apart by their SHAPE instead — a forge reference against a URL — is a rule
+    nobody wrote down, in output whose consumer is a skill's prose.
+
+    Read at the WRITER's position (`real_fields`) and gated on the SHAPE again on
+    the way out, for the reason every other field is: a hand edit is not the
+    writer, and `origin` sitting in the file is precisely the guess this field
+    exists to end.
+
+    The three rules are the three `pack_ref` consolidated — position, shape, one —
+    and this asks them itself rather than calling it, for one reason: `pack_ref` is
+    a reader of FORGE REFERENCES. Its shape is REF_RE and its answer is canonical
+    (`canonical_ref`), and an address has neither — nothing here compares two
+    repositories, so it has no canonical spelling to be reduced to. Passing a shape
+    and a canonicaliser in would give that function two behaviours for its two
+    callers, which is the thing consolidating it was meant to end. What must not
+    diverge is the RULES, so they are named here in the same order and read from
+    the same helpers.
+
+    Three outcomes, the same three `pack_closes` gives and for the same reason:
+
+      no FIELD at all    nothing is appended. The caller names the repository from
+                         outside, as every caller did before this field existed.
+      readable           `  [repo: <address>]`, exactly as written.
+      field, no address  `  [repo: ?]` — two in the chain, or a value no reader
+                         may use. MARKED and not silent: an item whose address
+                         cannot be read is not an item that never had one, and the
+                         two ask different things of whoever opens the worktree.
+
+    What it never does is EXCLUDE. Absent has a safe default here — the caller
+    names it, as before — where an unreadable **Risk:** or **Env:** means unknown
+    danger; that is the same split the two provenance fields take, and the reason
+    is the same one."""
+    segs = real_fields(block, "Repo")
+    if not segs:
+        return ""
+    # None, not "": a chain naming the field twice must reach the mark on its own
+    # answer, and not by leaning on the shape's refusal of an empty string — that
+    # coupling is one edit to REPO_RE away from printing `[repo: ]` for it
+    value = field_value(segs[0]) if len(segs) == 1 else None
+    if value is None or not REPO_RE.fullmatch(value):
+        return "  [repo: ?]"
+    return f"  [repo: {value}]"
 
 
 def pack_lanes(candidates):
@@ -2183,7 +2435,7 @@ def cmd_pack(args):
             # only the title moves.
             eligible.append(f"{label}  {pack_effort(text):<12}  "
                             f"{lanes[n]:<20}  {item_title(text)}"
-                            + pack_closes(text))
+                            + pack_closes(text) + pack_repo(text))
             continue
         # the lane is the LAST step of the ladder: it is asked only of an item
         # every earlier rule let through, so an exclusion here never hides one
@@ -2223,7 +2475,10 @@ def compose_item(args, iid):
     # where the item came from. Absent unless the caller passed the flag — an
     # item born in conversation has no ticket, and an empty field would read as
     # a provenance that was looked for and not found
-    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):
+    # **Repo:** closes the run because it answers the question the two before it
+    # raise: they name the TRACKER, and this names where the code goes
+    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),
+                        (args.repo, "Repo")):
         if flag:
             fields.append(f"**{field}:** {flag}.")
     # BEFORE Source, and with the period every other segment carries: Source is
@@ -2299,7 +2554,7 @@ def cmd_add(args):
                               deferred=args.deferred)
     check_field_ceilings(args.force, effort=args.effort, risk=args.risk,
                          criterion=args.criterion, project=args.project, source=args.source,
-                         deferred=args.deferred)
+                         deferred=args.deferred, repo=args.repo)
     if args.project:
         validate_project(args.project)
     validate_env(args.env)
@@ -2308,6 +2563,8 @@ def cmd_add(args):
     # comparison a plain `==` again
     args.ticket = validate_ref("ticket", args.ticket)
     args.spec = validate_ref("spec", args.spec)
+    # returned UNCHANGED where the two above are canonicalised — validate_repo says why
+    args.repo = validate_repo(args.repo)
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:
@@ -3643,6 +3900,10 @@ def main():
                                     "— feeds the `closes` line of its PR")
     a.add_argument("--spec", help="the spec the ticket belongs to, `<repo>#<n>` — decides "
                                   "the item's LANE in the afk package (see `pack --help`)")
+    a.add_argument("--repo", help="the repository this item's CODE lands in — a URL or an "
+                                  "ABSOLUTE path, never a remote name and never a relative "
+                                  "path. The tracker `--ticket`/`--spec` name is routinely "
+                                  "another repo (see `pack --help`)")
     a.add_argument("--force", action="store_true")
 
     d = sub.add_parser("done", parents=[common], help="conclude: move the item to the done-log")

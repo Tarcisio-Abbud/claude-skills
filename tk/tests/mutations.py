@@ -341,7 +341,7 @@ MUTATIONS = [
      "    check_field_ceilings(args.force, effort=args.effort, risk=args.risk,\n"
      "                         criterion=args.criterion, project=args.project, "
      "source=args.source,\n"
-     "                         deferred=args.deferred)",
+     "                         deferred=args.deferred, repo=args.repo)",
      "    pass",
      ["TestCeilingScope.test_add_measures_field_values_too"]),
 
@@ -533,9 +533,9 @@ MUTATIONS = [
     ("T119 add stops measuring the justification against the field ceiling",
      "                         criterion=args.criterion, project=args.project, "
      "source=args.source,\n"
-     "                         deferred=args.deferred)",
+     "                         deferred=args.deferred, repo=args.repo)",
      "                         criterion=args.criterion, project=args.project, "
-     "source=args.source)",
+     "source=args.source, repo=args.repo)",
      ["TestDecisionDeferralGate.test_the_justification_is_measured_against_the_field_ceiling"]),
 
     ("T119 edit stops measuring the justification against the field ceiling",
@@ -2100,7 +2100,8 @@ MUTATIONS = [
      ["TestProvenanceFields.test_a_value_outside_the_ref_shape_is_refused"]),
 
     ("T172 the two fields are dropped on the way into the item",
-     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):\n'
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):\n'
      '        if flag:\n'
      '            fields.append(f"**{field}:** {flag}.")',
      "    pass",
@@ -2181,10 +2182,12 @@ MUTATIONS = [
     # the **Class:** the chain anchors at is a field no gate may read — the value
     # is in the file, the lane is not
     ("T172 the provenance fields are composed BEFORE the class they must follow",
-     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):\n'
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):\n'
      '        if flag:\n'
      '            fields.append(f"**{field}:** {flag}.")',
-     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):\n'
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):\n'
      '        if flag:\n'
      '            fields.insert(0, f"**{field}:** {flag}.")',
      ["TestProvenanceFields.test_both_fields_are_written_at_the_writers_position"]),
@@ -2207,8 +2210,8 @@ MUTATIONS = [
       "TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason"]),
 
     ("T172 the ticket the PR closes stops coming back from the command",
-     "                            + pack_closes(text))",
-     '                            + "")',
+     "                            + pack_closes(text) + pack_repo(text))",
+     '                            + "" + pack_repo(text))',
      ["TestPackLane.test_the_TICKET_the_PR_closes_comes_back_from_the_command",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
 
@@ -2368,6 +2371,211 @@ MUTATIONS = [
      '                    help=f"print the report a real run would print and write {DRY_RUN_WRITES}. "',
      '                    help=f"print the report a real run would print and write NOTHING. "',
      ["TestMigrateDryRun.test_the_help_carries_the_same_enumeration_as_the_banner"]),
+    # --- T198: the repository the item's code lands in ----------------------
+    # The gate is a WHITELIST, so a mutation LOOSENS one alternative rather than
+    # deleting a refusal: what must not survive is an address shape reaching the
+    # file that the list does not name. Each entry keeps the mutated source
+    # PARSEABLE — a mutant that breaks the syntax is reported "caught" by every
+    # test's import error, which is a false positive the round-2 lens measured on
+    # the entry this one replaces.
+    ("T198 the shape gate goes, so `origin` is a repository again",
+     "    if not REPO_RE.fullmatch(value):",
+     "    if False:",
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the shape loosens to a PREFIX, so junk behind an address passes",
+     "    if not REPO_RE.fullmatch(value):",
+     "    if not REPO_RE.match(value):",
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the http(s) alternative: the userinfo half is what a token rides in on
+    ("T198 an http(s) URL takes a userinfo half again, so a token is stored",
+     '    "https?://" + REPO_HOST + REPO_PORT + REPO_URL_PATH +      # the forge over HTTP',
+     '    "https?://(?:[A-Za-z0-9._%-]+@)?" + REPO_HOST + REPO_PORT + REPO_URL_PATH +  # the forge over HTTP',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a URL path stops being ASCII, so an encoding smuggles a refused character",
+     'REPO_URL_PATH = r"(?:/[A-Za-z0-9._-]+)+"',
+     'REPO_URL_PATH = r"(?:/[^\\s]+)+"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a URL needs no path, so a bare host is a repository",
+     '    "https?://" + REPO_HOST + REPO_PORT + REPO_URL_PATH +      # the forge over HTTP',
+     '    "https?://" + REPO_HOST + REPO_PORT + "(?:" + REPO_URL_PATH + ")?" +   # the forge over HTTP',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the host loosens, so a bracketed IPv6 literal and worse pass",
+     'REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*"',
+     'REPO_HOST = r"[^/]+"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the ssh alternatives: `git@` is a protocol name, and only that one
+    ("T198 the ssh URL takes any user, not the protocol's own `git@`",
+     '    "|ssh://git@" + REPO_HOST + REPO_PORT + REPO_URL_PATH +    # SSH, spelled as a URL',
+     '    "|ssh://[A-Za-z0-9._-]+@" + REPO_HOST + REPO_PORT + REPO_URL_PATH +    # SSH, spelled as a URL',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like form takes any user half",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|[A-Za-z0-9._:-]+@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like path stops being ASCII, so the marker and bracket return",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|git@" + REPO_HOST + ":/?" + REPO_LOCAL + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the local-path alternatives, and the four characters they still refuse
+    ("T198 a relative path is a repository again",
+     '    "|/" + REPO_LOCAL +                                        # a POSIX absolute path',
+     '    "|/?" + REPO_LOCAL +                                       # a POSIX absolute path',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the field marker becomes spellable inside a local path again",
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     'REPO_LOCAL = "[^\\\\s\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a bracket splices a second group into the line `pack` composes",
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     'REPO_LOCAL = "[^\\\\s*" + REPO_INVISIBLE + "]+"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a blank, and so a newline, reaches the single line the chain lives on",
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     'REPO_LOCAL = "[^*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 an invisible character rides in a local path again",
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]]+"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a trailing '.' passes, and the value comes back a character short",
+     "\n" + r'    r"(?<![./\\])"' + "\n)",
+     "\n)",
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the other direction: a whitelist that narrows silently refuses real work, and
+    # only the acceptance test can say so
+    ("T198 the scp-like address stops being an address at all",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|(?!x)x"   # SSH, scp-like',
+     ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
+
+    ("T198 a host loses its port, so a self-hosted forge stops being addressable",
+     'REPO_PORT = r"(?::[0-9]{1,5})?"',
+     'REPO_PORT = ""',
+     ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
+
+    # --- T198, round 3: the edges the whitelist still had --------------------
+    ("T198 the port returns to the scp-like branch, which cannot honour one",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|git@" + REPO_HOST + REPO_PORT + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a `~/` address is a repository again, and it means one per reader",
+     '    "|/" + REPO_LOCAL +                                        # a POSIX absolute path',
+     '    "|~?/" + REPO_LOCAL +                                      # a POSIX absolute path',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a `.` or `..` segment passes, so one repository has two spellings",
+     r'REPO_NO_DOT_SEG = r"(?![^\n]*[/\\]\.{1,2}[/\\])"',
+     r'REPO_NO_DOT_SEG = ""',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the dot-segment rule stops seeing the Windows separator",
+     r'REPO_NO_DOT_SEG = r"(?![^\n]*[/\\]\.{1,2}[/\\])"',
+     r'REPO_NO_DOT_SEG = r"(?![^\n]*/\.{1,2}/)"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 `file://` takes any number of slashes, so a relative path rides in",
+     '    "|file:///" + REPO_LOCAL +                                 # a local repo, as a URL',
+     '    "|file://" + REPO_LOCAL +                                  # a local repo, as a URL',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the ssh URL needs no path, so a bare host is a repository",
+     '    "|ssh://git@" + REPO_HOST + REPO_PORT + REPO_URL_PATH +    # SSH, spelled as a URL',
+     '    "|ssh://git@" + REPO_HOST + REPO_PORT + "(?:" + REPO_URL_PATH + ")?" +    # SSH, spelled as a URL',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like address needs no path either",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]*" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like path may no longer be absolute, a shape that is real",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|git@" + REPO_HOST + ":[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
+
+    ("T198 a trailing separator passes, so one repository has two spellings",
+     r'    r"(?<![./\\])"',
+     r'    r"(?<!\.)"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like path takes an all-digit first segment, a port git folds in",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the all-digit rule swallows a real path that merely starts with a digit",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?(?![0-9])[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
+
+    ("T198 the field ceiling stops holding the one field the shape does not bound",
+     "                         deferred=args.deferred, repo=args.repo)",
+     "                         deferred=args.deferred)",
+     ["TestRepoField.test_a_value_past_the_field_ceiling_is_refused"]),
+
+    ("T198 the field is not written at all",
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):',
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):',
+     ["TestRepoField.test_the_field_is_written_at_the_writers_position",
+      "TestRepoField.test_the_value_round_trips_byte_for_byte"]),
+
+    ("T198 the repo is written BEFORE the ticket, so the chain's order drifts",
+     '    for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec"),\n'
+     '                        (args.repo, "Repo")):',
+     '    for flag, field in ((args.repo, "Repo"), (args.ticket, "Ticket"),\n'
+     '                        (args.spec, "Spec")):',
+     ["TestRepoField.test_the_field_is_written_at_the_writers_position"]),
+
+    ("T198 `pack` stops returning the repository",
+     "                            + pack_closes(text) + pack_repo(text))",
+     "                            + pack_closes(text))",
+     ["TestPackRepo.test_the_repo_of_an_eligible_item_comes_back",
+      "TestPackRepo.test_the_repo_follows_the_ticket_on_the_line",
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    ("T198 the repo is appended BEFORE the ticket",
+     "                            + pack_closes(text) + pack_repo(text))",
+     "                            + pack_repo(text) + pack_closes(text))",
+     ["TestPackRepo.test_the_repo_follows_the_ticket_on_the_line",
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
+
+    ("T198 the repo is read from the whole BLOCK, so prose becomes an address",
+     '    segs = real_fields(block, "Repo")',
+     '    segs = list(re.finditer(FIELD_MARKER_RE["Repo"].pattern + r"[^*\\n]*", block))',
+     ["TestPackRepo.test_a_marker_QUOTED_IN_PROSE_is_not_read_as_the_repo"]),
+
+    ("T198 two Repo fields in the chain are no longer ambiguous — the first wins",
+     '    value = field_value(segs[0]) if len(segs) == 1 else None',
+     '    value = field_value(segs[0])',
+     ["TestPackRepo.test_two_Repo_fields_in_the_chain_are_MARKED_and_never_guessed"]),
+
+    ("T198 the read-side shape gate goes, so a hand-edited `origin` is returned",
+     '    if value is None or not REPO_RE.fullmatch(value):',
+     '    if value is None:',
+     ["TestPackRepo.test_a_value_no_reader_may_use_is_MARKED_too"]),
+
+    ("T198 an unreadable address is silent instead of marked",
+     '        return "  [repo: ?]"',
+     '        return ""',
+     ["TestPackRepo.test_a_value_no_reader_may_use_is_MARKED_too",
+      "TestPackRepo.test_two_Repo_fields_in_the_chain_are_MARKED_and_never_guessed"]),
 
     # --- T148: the birth date and the age it gives the queue -------------
 
@@ -2451,6 +2659,35 @@ def run_suite(tk_dir, names):
     return subprocess.run(argv, cwd=tests, capture_output=True, text=True)
 
 
+def load_check(tk_dir, rel):
+    """None when the mutated file at `rel` imports cleanly, else the error's first
+    line. A SEPARATE interpreter, because a broken module must not be imported into
+    the harness's own process — and because "does it load" is exactly the question
+    the test subprocesses will ask of it a moment later, asked the same way.
+
+    Every source under `bin/` is a Python module: the CLIs carry no `.py` extension,
+    so they are loaded through SourceFileLoader rather than by name."""
+    path = os.path.join(tk_dir, rel)
+    probe = ("import importlib.machinery as m, importlib.util as u, sys;"
+             "l = m.SourceFileLoader('mutant', sys.argv[1]);"
+             "s = u.spec_from_loader('mutant', l);"
+             "l.exec_module(u.module_from_spec(s))")
+    try:
+        r = subprocess.run([sys.executable, "-c", probe, path],
+                           capture_output=True, text=True,
+                           # a mutant that hangs on import must not stop the harness
+                           # with no diagnostic; no entry needs anything like this long
+                           timeout=60,
+                           # the module the CLIs import sits beside them
+                           cwd=os.path.dirname(path))
+    except subprocess.TimeoutExpired:
+        return "import did not finish in 60s"
+    if r.returncode == 0:
+        return None
+    tail = [ln for ln in r.stderr.strip().splitlines() if ln.strip()]
+    return tail[-1] if tail else f"exit {r.returncode}"
+
+
 def main():
     baseline = run_suite(TK_DIR, ["TestPrefixedId", "TestConcurrency", "TestMissingItemMessage",
                                   "TestDirResolution", "TestProjectTagInDoneLog",
@@ -2463,6 +2700,7 @@ def main():
                                   "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
                                   "TestEnvField", "TestClaim",
                                   "TestPack", "TestProvenanceFields", "TestPackLane",
+                                  "TestRepoField", "TestPackRepo",
                                   "PackOutput",
                                   "TestHandoffCreation",
                                   "TestHandoffLifecycle", "TestByteOrderMark",
@@ -2495,6 +2733,10 @@ def main():
         label, old, new, names = entry[:4]
         rel = entry[4] if len(entry) > 4 else DEFAULT_SRC
         src = sources[rel]
+        if old == new:
+            unrunnable.append(f"{label} (the mutation is a no-op: old == new)")
+            print(f"UNRUNNABLE {label}\n           the mutation is a no-op: old == new")
+            continue
         if src.count(old) != 1:
             # NOT a survivor: the mutation never ran, so it says nothing about the
             # suite. It is still a failure — a stale anchor silently stops proving
@@ -2502,6 +2744,7 @@ def main():
             unrunnable.append(f"{label} (anchor matched {src.count(old)}x, not once)")
             print(f"UNRUNNABLE {label}\n           anchor matched {src.count(old)}x, not once")
             continue
+        mutated = src.replace(old, new, 1)
         tmp = tempfile.mkdtemp(prefix="tk-mutation.")
         try:
             dst = os.path.join(tmp, "tk")
@@ -2511,7 +2754,22 @@ def main():
             # reports a guard as unprotected when it is merely unmutated
             shutil.copytree(TK_DIR, dst, ignore=shutil.ignore_patterns("__pycache__"))
             with open(os.path.join(dst, rel), "w", encoding="utf-8") as f:
-                f.write(src.replace(old, new, 1))
+                f.write(mutated)
+            # THE MUTANT MUST RUN BEFORE A FAILURE MEANS ANYTHING. Every named test
+            # falls when the mutated source cannot be loaded at all, whatever the
+            # guard it was meant to switch off does — so the harness would score the
+            # entry "caught" while exercising nothing. Measured twice, one layer
+            # apart: an edit that broke the implicit concatenation of two adjacent
+            # string literals (a SyntaxError), and an edit that left a regex
+            # unbalanced, which PARSES and then raises re.error the moment the module
+            # is imported. Asking the question the first way — `ast.parse` — closed
+            # the first door and left the second open, so it is asked the way that
+            # has no layers: LOAD the mutated tree and require it to come up.
+            loaded = load_check(dst, rel)
+            if loaded is not None:
+                unrunnable.append(f"{label} (mutated source does not load: {loaded})")
+                print(f"UNRUNNABLE {label}\n           mutated source does not load: {loaded}")
+                continue
             # EACH named test must fall on its own. Running them as one batch only
             # proves that SOME test failed, so a listed test that quietly still
             # passes stays invisible and the tally claims more than it proved

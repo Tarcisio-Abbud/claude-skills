@@ -2670,6 +2670,18 @@ class PackOutput(QueueTest):
             res[label] = lane
         return res
 
+    def repos(self, out):
+        """{label: repo} for the eligible items that carry one, read from the
+        LABELLED group rather than from a position: the repo is appended after
+        the ticket and either of the two may be absent, so a test counting
+        bracket groups would assert the shape of the fixture and not the rule."""
+        res = {}
+        for ln in self.blocks(out)["eligible"]:
+            m = re.search(r"\[repo: ([^\]]*)\]", ln)
+            if m:
+                res[ln.split()[0]] = m.group(1)
+        return res
+
 
 class TestPack(PackOutput):
     """The package an unattended session runs was filtered by eye until now, from
@@ -2743,10 +2755,12 @@ class TestPack(PackOutput):
         notice. Both halves of the AC are here: the shape is documented, and the
         documentation is executed."""
         self.seed(ticket_item(7, "the first ticket of the spec", spec="ambiente#171",
-                              ticket="ambiente#172", effort="S (~20min)")
+                              ticket="ambiente#172", effort="S (~20min)",
+                              repo="https://github.com/owner/code.git")
                   + ticket_item(8, "the second one", spec="ambiente#171",
                                 ticket="ambiente#173", effort="M (~1h)")
-                  + item(9, "the item's text")
+                  + ticket_item(9, "the item's text",
+                                repo="/workspace/projects/comercial")
                   + ticket_item(10, "a lone ticket, under the floor", spec="ambiente#159")
                   + decision_item(12, "another item")
                   + ticket_item(21, "a ticket of a second spec", spec="ambiente#144")
@@ -3018,14 +3032,17 @@ class TestPack(PackOutput):
 
 # --- T172: provenance fields, and the lane the package reads from them -----
 
-def ticket_item(iid, text, spec=None, ticket=None, **kw):
-    """An item as `add --ticket/--spec` writes one: the two fields sit between
-    the Project tag and Source, which is where compose_item puts them."""
+def ticket_item(iid, text, spec=None, ticket=None, repo=None, **kw):
+    """An item as `add --ticket/--spec/--repo` writes one: the three fields sit
+    between the Project tag and Source, in that order, which is where
+    compose_item puts them."""
     fields = ""
     if ticket:
         fields += f" **Ticket:** {ticket}."
     if spec:
         fields += f" **Spec:** {spec}."
+    if repo:
+        fields += f" **Repo:** {repo}."
     return item(iid, text, **kw).replace(" **Source:**", fields + " **Source:**", 1)
 
 
@@ -3456,6 +3473,306 @@ class TestPackLane(PackOutput):
                   + ticket_item(3, "tres", spec="repo#171")
                   + ticket_item(4, "quatro", spec="repo#180"))
         self.assertEqual(self.reason(self.pack(), "T002"), "Risk: apaga dado")
+
+# --- T198: the repository the item's code LANDS in -------------------------
+
+class TestRepoField(QueueTest):
+    """`Ticket:` and `Spec:` name the TRACKER, and the tracker is routinely a
+    different repository from the one the work lands in. Two consumers already
+    need that second address — the open-branch check of AFK.md step 1 and the
+    worktree of step 3 — and both guessed it from outside the queue. `--repo`
+    is the field that carries it.
+
+    The VALUE is a URL or an absolute path, and never a remote NAME: `origin`
+    resolves against the cwd, the orchestrator's cwd is the queue's directory,
+    which is routinely a clone of something else, and `git ls-remote origin`
+    run from there was measured exiting 0 with no output — a clean false
+    negative that reads exactly like "no branch". A relative path fails the
+    same way, for the same reason, which is why neither shape is accepted."""
+
+    def add(self, *extra, text="importado"):
+        return self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                           "--criterion", "A: x", *extra)
+
+    def test_the_field_is_written_at_the_writers_position(self):
+        """In the chain, after **Class:**, and after the two provenance fields it
+        stands beside — the only position the gates read a field at. Written
+        anywhere else the value is there and no reader may use it, which is worse
+        than absent: absent is visible."""
+        self.seed()
+        r = self.add("--ticket", "homeserver-ambiente#198",
+                     "--spec", "homeserver-ambiente#171",
+                     "--repo", "https://github.com/Tarcisio-Abbud/claude-skills.git")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # up to **Born:**, which compose_item stamps between this field and Source
+        self.assertIn("**Ticket:** homeserver-ambiente#198. "
+                      "**Spec:** homeserver-ambiente#171. "
+                      "**Repo:** https://github.com/Tarcisio-Abbud/claude-skills.git. "
+                      "**Born:**", self.body())
+
+    def test_the_value_round_trips_byte_for_byte(self):
+        """Through the readers that exist: `pack` prints the value and writes
+        nothing, `list` shows the item and writes nothing, and the file still
+        carries the address character for character. A reader that rewrote what it
+        read is the defect no assertion on its OUTPUT would show — and this value
+        is one a URL-normaliser would be tempted to touch."""
+        self.seed()
+        self.assertEqual(self.add("--repo", "git@github.com:Tarcisio-Abbud/claude-skills.git")
+                         .returncode, 0)
+        before = self.body()
+        listed = self.run_tk("list")
+        self.assertEqual(listed.returncode, 0)
+        # `list` carries no provenance column — not for Ticket, not for Spec, and
+        # so not for this one either: it shows the item and writes nothing. The
+        # assertion is here because the omission is a DECISION, and an undocumented
+        # decision is one a later reader restores by accident
+        self.assertNotIn("github.com", listed.stdout)
+        out = self.run_tk("pack")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(self.body(), before)
+        self.assertIn("**Repo:** git@github.com:Tarcisio-Abbud/claude-skills.git.", before)
+        self.assertIn("[repo: git@github.com:Tarcisio-Abbud/claude-skills.git]", out.stdout)
+
+    def test_an_add_without_the_flag_writes_the_item_of_today(self):
+        """The whole file, byte for byte, against the same add on the version
+        before the flag existed. One new optional field is the cheapest place to
+        change the shape of EVERY item by accident."""
+        self.seed()
+        self.assertEqual(self.add(text="sem repo").returncode, 0)
+        today = datetime.date.today().isoformat()
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T001** — sem repo **Class:** AUTONOMOUS. "
+                         "**Effort:** S. **Criterion:** A: x. "
+                         f"**Born:** {today}. **Source:** {today}\n")
+
+    def test_a_remote_name_or_a_cwd_relative_path_is_refused(self):
+        """The refusal is the whole point of the field: a value the orchestrator
+        would have to resolve against a cwd answers "free" from the wrong
+        repository and says nothing. `-origin` is NOT in this list and may not be:
+        argparse takes any value starting with `-` as an unknown option and
+        refuses it before the guard runs."""
+        # the trailing '.' is in this list for a reason of its own: compose_item
+        # writes `**Repo:** <value>.` and field_value strips ONE trailing period, so
+        # a value ending in one would come back a character short of what was
+        # written — an address silently corrupted on the field whose whole job is to
+        # be handed to git
+        for junk in ("origin", "upstream", "repo", "claude-skills", "../claude-skills",
+                     "./tk", "workspace/projects", "~claude-skills", "", "none",
+                     "https://", "git@github.com", "https://exa mple.com/r",
+                     "/x\ny", "/pa*th", "https://x/**Spec:**y", "**Repo:** /x",
+                     "/srv/repo.", "https://github.com/o/r.git.", "/root/.claude/skills.",
+                     # `~/` is HOME-relative, so it names a different repository to
+                     # a different reader — the defect `origin` has, in a path's
+                     # clothes. And the two consumers disagree: `git ls-remote`
+                     # expands the tilde and answers, `git -C "~/x"` cannot chdir
+                     "~/.claude/skills", "~/x", "~/",
+                     # a `.` or `..` SEGMENT is a second spelling of one address,
+                     # and the gate cannot canonicalise — so it refuses instead
+                     "/a/./b", "/a/../b", "/a/..", "/a/.",
+                     "C:\\a\\.\\b", "C:\\a\\..\\b",
+                     "file:///a/./b", "https://github.com/o/./r",
+                     # `file://` names an authority, so the path starts at the
+                     # THIRD slash: with two, the address is relative again
+                     "file://srv/r.git", "file://../r",
+                     # a trailing SEPARATOR is the same two spellings of one
+                     # repository the dot-segment rule refuses. The URL branches
+                     # refuse it by their segments being non-empty; a local path
+                     # is one character class with `/` in it, so the closing
+                     # lookbehind is what refuses it there
+                     "/srv/foo/bar/", "file:///srv/r.git/", "C:\\a\\b\\",
+                     # scp-like syntax has no port in EITHER spelling: measured
+                     # under GIT_TRACE, git keeps the default port and asks for
+                     # the path `2222/owner/repo.git`
+                     "git@myserver:2222/owner/repo.git",
+                     # a browser copies the trailing slash; the segments must be
+                     # non-empty, so the message names the shape to write instead
+                     "https://github.com/o/r/",
+                     # scp-like syntax has NO port field: git keeps the default
+                     # port and folds `2222` into the path (measured on GIT_TRACE)
+                     "git@myserver:2222:owner/repo.git",
+                     # a BRACKET is the other splice, and the one measured on the
+                     # field beside this one: `**Ticket:** repo#1] injetado` put a
+                     # second bracket group and free text into the line `pack`
+                     # composes, whose consumer is a skill's prose
+                     "/srv/repo]injetado", "/x[repo:/y]", "https://h/p]q",
+                     # a drive letter or a slash and nothing after it is not an
+                     # address; `/` was already refused, and `C:/` may not differ
+                     "/", "C:/", "C:\\",
+                     # a password in a URL: this file has no other copy and `pack`
+                     # reprints the value on every package
+                     "https://user:token@host/r.git", "git:secret@github.com:o/r.git",
+                     "ssh://u:p@h/r.git",
+                     # a direction override reorders what the reader sees without
+                     # changing what git receives
+                     "https://github.com/o/\u202egit.repo", "/srv/\u2066repo",
+                     # the scp-like shape's own delimiters: a second `@`, a `:` in
+                     # the host, a `/` before the colon, and an empty half
+                     "us@er@host:path", "git@ho/st:path",
+                     "@host:path", "git@:path", "git@host:",
+                     # and the excluded characters INSIDE that shape, which no
+                     # other junk value here reaches
+                     "git@host:pa*th", "git@host:p]q", "git@ho*st:path",
+                     # the whitelist refuses these without a rule naming any of
+                     # them, which is the whole reason it is a whitelist: an
+                     # encoding of a refused character, a userinfo that is not the
+                     # protocol's own `git@`, an invisible character, and a host
+                     # this account does not address a repository by
+                     "https://user%3Atoken@host/r.git", "https://user%3Apass%40host/r.git",
+                     "https://ghp_ABCDEF1234567890@github.com/o/r.git",
+                     "ssh://root@github.com/o/r.git", "https://h/a%20b/r.git",
+                     "https://github.com/o/r\u200b.git", "/srv/\u2060repo",
+                     "https://[::1]/r.git", "https://github.com", "ssh://git@github.com",
+                     "git@host:st:path"):
+            with self.subTest(junk=junk):
+                self.seed()
+                r = self.add("--repo", junk)
+                self.assertNotEqual(r.returncode, 0, f"--repo {junk!r} was accepted")
+                self.assertNotIn("- [ ] ", self.body(), "the item was written anyway")
+
+    def test_a_value_reaching_the_guard_as_an_OPTION_is_refused(self):
+        """`--repo=<value>` is the one spelling that carries a leading `-` PAST
+        argparse, and it is the spelling the attack used. The junk list above
+        cannot hold these: argparse takes a bare `-…` as an unknown option and
+        refuses it before `validate_repo` runs, so a test written that way passes
+        with the guard deleted — measured, as a surviving mutant.
+
+        What the guard is for is not the queue at all. The value is pasted into
+        `git ls-remote --heads "<address>"`, and a token starting with `-` is an
+        OPTION there whether it is quoted or not. Measured on git 2.39.5, in a
+        clone with an `origin` configured — the reader's ordinary state:
+        `git ls-remote --heads '--upload-pack=<cmd>@host:path'` read it as the
+        option, fell back to that origin, and EXECUTED <cmd>."""
+        for junk in ("--upload-pack=touch_pwn@host:path", "-oProxyCommand=x@h:p",
+                     "-/srv/r", "--/srv/r", "-https://github.com/o/r.git"):
+            with self.subTest(junk=junk):
+                self.seed()
+                r = self.add(f"--repo={junk}")
+                self.assertNotEqual(r.returncode, 0, f"--repo={junk!r} was accepted")
+                self.assertNotIn("- [ ] ", self.body(), "the item was written anyway")
+                self.assertIn("--repo", r.stderr, "refused, but not by the field's own gate")
+
+    def test_the_shapes_that_actually_occur_are_accepted(self):
+        for value in ("https://github.com/Tarcisio-Abbud/claude-skills.git",
+                      "https://github.com/Tarcisio-Abbud/claude-skills",
+                      "http://gitea.lan:3000/t/r.git",
+                      "ssh://git@github.com/Tarcisio-Abbud/claude-skills.git",
+                      "git@github.com:Tarcisio-Abbud/claude-skills.git",
+                      "file:///srv/git/claude-skills.git",
+                      "/workspace/projects/.ambiente", "/root/.claude/skills",
+                      "C:/Users/Oraci/.ambiente", "C:\\Users\\Oraci\\.ambiente",
+                      # a user with NO password is the ordinary git address, and a
+                      # port after it is legal: it is the COLON BEFORE the `@` that
+                      # makes a secret, and only that is refused
+                      "ssh://git@github.com/o/r.git", "ssh://git@github.com:22/o/r.git",
+                      "http://gitea.lan:3000/t/r.git",
+                      # a non-ASCII path is not refused: banning it would refuse the
+                      # accented paths this machine really has (see REPO_BAD)
+                      "/workspace/projects/projeção",
+                      # a LOCAL path may carry a colon: the first `/` comes before
+                      # it, so git reads a path and not an scp-like `host:path`
+                      "/srv/repo:v2", "git@host:/srv/r.git",
+                      # only an ALL-digit first segment reads as a port; a real
+                      # path may still begin with a digit
+                      "git@host:2222x/o/r.git", "git@host:2fa/o/r.git"):
+            with self.subTest(value=value):
+                self.seed()
+                r = self.add("--repo", value)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn(f"**Repo:** {value}.", self.body())
+
+    def test_a_value_past_the_field_ceiling_is_refused(self):
+        """The shape bounds the CHARACTERS a path may hold and not how many of
+        them: unlike a forge reference, a path has no length the world gives it,
+        so the ceiling every other prose field answers to is the bound here too."""
+        self.seed()
+        ceiling = load_tk().FIELD_CEILING
+        self.assertEqual(self.add("--repo", "/" + "a" * (ceiling - 1)).returncode, 0)
+        self.seed()
+        r = self.add("--repo", "/" + "a" * ceiling)
+        self.assertNotEqual(r.returncode, 0, "a value past the field ceiling was accepted")
+        self.assertNotIn("- [ ] ", self.body())
+
+    def test_the_flag_is_independent_of_the_provenance_pair(self):
+        """An item born in conversation lands in a repository too, and a ticket
+        imported from a tracker may have no address recorded yet: coupling the
+        three would refuse a real case to enforce a rule nothing needs."""
+        self.seed()
+        self.assertEqual(self.add("--repo", "/workspace/projects/.ambiente").returncode, 0)
+        body = self.body()
+        self.assertIn("**Repo:** /workspace/projects/.ambiente.", body)
+        self.assertNotIn("**Ticket:**", body)
+        self.assertNotIn("**Spec:**", body)
+
+
+class TestPackRepo(PackOutput):
+    """The package is dispatched from this output, so the address is returned by
+    it: a field nothing prints is the prose it was added to replace. It is
+    APPENDED and LABELLED, beside the ticket rather than in a column of its own,
+    because almost no item carries either and a bare second bracket would be told
+    from the ticket's only by its shape."""
+
+    def test_the_repo_of_an_eligible_item_comes_back(self):
+        self.seed(ticket_item(1, "um", repo="https://github.com/o/r.git"))
+        self.assertEqual(self.repos(self.pack()),
+                         {"T001": "https://github.com/o/r.git"})
+
+    def test_an_item_with_no_repo_prints_the_line_of_today(self):
+        """The overwhelming majority of items. An empty group would read as an
+        address that was looked for and not found."""
+        self.seed(item(1, "um"))
+        self.assertEqual(self.blocks(self.pack())["eligible"],
+                         ["T001  S             avulso                um"])
+
+    def test_the_repo_follows_the_ticket_on_the_line(self):
+        """The order is the stable half of the shape: a skill's prose reads this
+        line, and two appended groups that swap places are two shapes."""
+        self.seed(ticket_item(1, "um", ticket="repo#1", repo="/srv/r"))
+        line, = self.blocks(self.pack())["eligible"]
+        self.assertTrue(line.endswith("um  [repo#1]  [repo: /srv/r]"), line)
+
+    def test_a_marker_QUOTED_IN_PROSE_is_not_read_as_the_repo(self):
+        """The position rule, the same one every other field is read through: an
+        item that never had an address must not come back carrying one from its
+        own prose."""
+        self.seed("- [ ] **T001** — a nota cita **Repo:** /outro/lugar em prosa — um "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Source:** 2026-08-13\n")
+        self.assertEqual(self.repos(self.pack()), {})
+
+    def test_two_Repo_fields_in_the_chain_are_MARKED_and_never_guessed(self):
+        """Two addresses say two things, so the chain says nothing this reader may
+        pick between — and silence would make it identical to an item that never
+        had one. Those are not the same thing to whoever opens the worktree: one
+        needs no address, the other needs the one it cannot have."""
+        self.seed(ticket_item(1, "um", repo="/srv/a").replace(
+            "**Repo:** /srv/a.", "**Repo:** /srv/a. **Repo:** /srv/b.", 1))
+        self.assertEqual(self.repos(self.pack()), {"T001": "?"})
+
+    def test_a_value_no_reader_may_use_is_MARKED_too(self):
+        """A hand edit is not the writer, so the shape is asked again on the way
+        out — `origin` in the file is the very guess the field exists to end."""
+        self.seed(ticket_item(1, "um", repo="origin"))
+        self.assertEqual(self.repos(self.pack()), {"T001": "?"})
+
+    def test_an_unreadable_repo_does_not_EXCLUDE_the_item(self):
+        """Absent has a safe default here — the orchestrator names the repository
+        from outside, as it did before this field existed — so the answer to a
+        value this reader may not use is a mark, not the item's place in the
+        package. That is where Repo parts from Risk and Env, whose absence means
+        unknown danger."""
+        self.seed(ticket_item(1, "um", repo="origin"))
+        self.assertEqual(self.eligible(), ["T001"])
+
+    def test_the_repo_decides_no_lane(self):
+        """Two addresses for one spec are still one lane, and one address across
+        two specs is still two: the lane is read from **Spec:** alone. Coupling
+        them would put the branch's name in the hands of a field that does not
+        name the tracker."""
+        self.seed(ticket_item(1, "um", spec="repo#171", repo="/srv/a")
+                  + ticket_item(2, "dois", spec="repo#171", repo="/srv/b"))
+        lanes = self.lanes(self.pack())
+        self.assertEqual(lanes, {"T001": "spec repo#171", "T002": "spec repo#171"})
+
 
 # --- handoff: the briefing that lives and dies with the item ---------------
 

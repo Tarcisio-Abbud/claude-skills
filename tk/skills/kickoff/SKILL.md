@@ -233,6 +233,7 @@ tk-queue add "<action>" --class AUTONOMOUS --effort "M (~30min)" \
          [--deferred "<why the decision could not be asked>"]   # REQUIRED by --class DECISION
          [--risk "..."|none] [--env <name from the site roster>|none] [--project slug] [--source "..."]
          [--ticket <repo>#<n>] [--spec <repo>#<n>]   # provenance, when the item comes from a forge ticket
+         [--repo <URL or ABSOLUTE path>]             # the repo the code lands in — the tracker above is another one
 tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."] [--force]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."] [--force]
 tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--env ...|none] [--criterion ...] [--deferred ...] [--project slug] [--force]
@@ -420,6 +421,16 @@ re-triages; tracker tickets are referenced, not mirrored):
   exactly, like `--env` against the roster: a malformed `--ticket` feeds a `closes` line that
   closes nothing, and a malformed `--spec` opens a second branch for a spec that already has
   one. Neither failure reports itself.
+- **the repository the code lands in**, `**Repo:**`, which the two references above do NOT name:
+  they name the TRACKER, and the tracker is routinely another repo. `pack` appends it to the
+  item's line, labelled `[repo: <address>]`, and prints `[repo: ?]` where the item carries the
+  field and no reader may use its value. What is accepted is a WHITELIST: `https://host/path`,
+  `ssh://git@host/path`, `git@host:path`, `file:///path`, or an absolute path — `~/` is refused, since HOME differs
+between machines and readers. A remote name and
+  a relative path are not on it, because both resolve against the reader's own directory — which
+  here is the queue's clone, where `git ls-remote origin` was measured exiting 0 with no output.
+  Nor is a `<user>@` half on an http(s) URL, which is how a token would reach this file. An item carrying no address is not excluded: the caller names the repository,
+  as it did before the field existed.
 
 An item is a pending action, not an essay — the script enforces **two** size ceilings, and
 durable context goes to a memory file or wiki page, linked from the item with `[[slug]]`:
