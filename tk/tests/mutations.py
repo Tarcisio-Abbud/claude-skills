@@ -2382,33 +2382,80 @@ MUTATIONS = [
      "    if not REPO_RE.match(value):",
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
-    ("T198 a relative path is a repository again",
-     r'    r"|~?/[^\s*\[\]]+"                               # a POSIX absolute path',
-     r'    r"|~?/?[^\s*\[\]]+"                              # a POSIX absolute path',
-     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
-
-    # the character class, one door per character. `*` is what makes a field marker
-    # unspellable and `[]` is what keeps the value out of the bracket groups `pack`
-    # appends — the splice measured on **Ticket:** — so each is mutated on its own
+    # REPO_BAD is the one place the excluded characters are spelled, so one mutant
+    # per character reaches every alternative at once — which is the point of
+    # spelling them once. Each character is mutated on its own: dropping the whole
+    # constant would prove nothing about which of the four is load-bearing
     ("T198 the field marker becomes spellable inside an address again",
-     r'    r"|~?/[^\s*\[\]]+"                               # a POSIX absolute path',
-     r'    r"|~?/[^\s\[\]]+"                                # a POSIX absolute path',
+     r'REPO_BAD = r"\s*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
+     r'REPO_BAD = r"\s\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a bracket splices a second group into the line `pack` composes",
-     r'    r"|~?/[^\s*\[\]]+"                               # a POSIX absolute path',
-     r'    r"|~?/[^\s*]+"                                   # a POSIX absolute path',
+     r'REPO_BAD = r"\s*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
+     r'REPO_BAD = r"\s*\u200e\u200f\u202a-\u202e\u2066-\u2069"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a direction override rides in an address again",
+     r'REPO_BAD = r"\s*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
+     r'REPO_BAD = r"\s*\[\]"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a blank, and so a newline, reaches the single line the chain lives on",
+     r'REPO_BAD = r"\s*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
+     r'REPO_BAD = r"*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the guard that is not about the queue: the value is pasted into a git command
+    ("T198 a leading `-` is an address again, so the value becomes an OPTION",
+     '    r"(?!-)"                                                     # never an OPTION',
+     '    r""                                                          # never an OPTION',
+     ["TestRepoField.test_a_value_reaching_the_guard_as_an_OPTION_is_refused"]),
+
+    ("T198 a password in a URL is stored and reprinted again",
+     '    "(?!" + REPO_AUTH + r"*:" + REPO_AUTH + r"*@)" + REPO_CH + "+"  # a URL, no password',
+     '    REPO_CH + "+"  # a URL, no password',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the scp-like shape's own delimiters. Three doors, three mutants: the lens
+    # that found them measured all three switched off with the suite still green
+    ("T198 the scp user half swallows a second `@` or a `/`",
+     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
+     '    "|" + REPO_CH + r"+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp host half swallows a `@`, a `:` or a `/`",
+     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
+     '    "|[^" + REPO_BAD + r"@/:]+@" + REPO_CH + r"+:" + REPO_CH + "+"  # the scp-like git address',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp path half stops excluding the marker and bracket characters",
+     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
+     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + r"[^\s]+"  # the scp-like git address',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a relative path is a repository again",
+     '    "|~?/" + REPO_CH + "+"                                       # a POSIX absolute path',
+     '    "|~?/?" + REPO_CH + "+"                                      # a POSIX absolute path',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a drive letter with nothing after it is an address again",
-     r'    r"|[A-Za-z]:[\\/][^\s*\[\]]+)"                   # a Windows drive-letter path',
-     r'    r"|[A-Za-z]:[\\/][^\s*\[\]]*)"                   # a Windows drive-letter path',
+     '    "|[A-Za-z]:[\\\\\\\\/]" + REPO_CH + "+)"                         # a Windows drive-letter path',
+     '    "|[A-Za-z]:[\\\\\\\\/]" + REPO_CH + "*)"                         # a Windows drive-letter path',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a trailing '.' passes, and the value comes back a character short",
      "\n" + r'    r"(?<!\.)"' + "\n)",
      "\n)",
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the other direction: the shapes that must KEEP passing. Without this mutant
+    # `test_the_shapes_that_actually_occur_are_accepted` is ordinary coverage and
+    # nothing proves a narrowing would be caught
+    ("T198 the scp-like address stops being an address at all",
+     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
+     '    ""  # the scp-like git address',
+     ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
 
     ("T198 the field ceiling stops holding the one field the shape does not bound",
      "                         deferred=args.deferred, repo=args.repo)",

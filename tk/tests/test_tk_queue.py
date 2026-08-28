@@ -3560,12 +3560,48 @@ class TestRepoField(QueueTest):
                      "/srv/repo]injetado", "/x[repo:/y]", "https://h/p]q",
                      # a drive letter or a slash and nothing after it is not an
                      # address; `/` was already refused, and `C:/` may not differ
-                     "/", "C:/", "C:\\"):
+                     "/", "C:/", "C:\\",
+                     # a password in a URL: this file has no other copy and `pack`
+                     # reprints the value on every package
+                     "https://user:token@host/r.git", "git:secret@github.com:o/r.git",
+                     "ssh://u:p@h/r.git",
+                     # a direction override reorders what the reader sees without
+                     # changing what git receives
+                     "https://github.com/o/\u202egit.repo", "/srv/\u2066repo",
+                     # the scp-like shape's own delimiters: a second `@`, a `:` in
+                     # the host, a `/` before the colon, and an empty half
+                     "us@er@host:path", "git@ho/st:path",
+                     "@host:path", "git@:path", "git@host:",
+                     # and the excluded characters INSIDE that shape, which no
+                     # other junk value here reaches
+                     "git@host:pa*th", "git@host:p]q", "git@ho*st:path"):
             with self.subTest(junk=junk):
                 self.seed()
                 r = self.add("--repo", junk)
                 self.assertNotEqual(r.returncode, 0, f"--repo {junk!r} was accepted")
                 self.assertNotIn("- [ ] ", self.body(), "the item was written anyway")
+
+    def test_a_value_reaching_the_guard_as_an_OPTION_is_refused(self):
+        """`--repo=<value>` is the one spelling that carries a leading `-` PAST
+        argparse, and it is the spelling the attack used. The junk list above
+        cannot hold these: argparse takes a bare `-…` as an unknown option and
+        refuses it before `validate_repo` runs, so a test written that way passes
+        with the guard deleted — measured, as a surviving mutant.
+
+        What the guard is for is not the queue at all. The value is pasted into
+        `git ls-remote --heads "<address>"`, and a token starting with `-` is an
+        OPTION there whether it is quoted or not. Measured on git 2.39.5, in a
+        clone with an `origin` configured — the reader's ordinary state:
+        `git ls-remote --heads '--upload-pack=<cmd>@host:path'` read it as the
+        option, fell back to that origin, and EXECUTED <cmd>."""
+        for junk in ("--upload-pack=touch_pwn@host:path", "-oProxyCommand=x@h:p",
+                     "-/srv/r", "--/srv/r", "-https://github.com/o/r.git"):
+            with self.subTest(junk=junk):
+                self.seed()
+                r = self.add(f"--repo={junk}")
+                self.assertNotEqual(r.returncode, 0, f"--repo={junk!r} was accepted")
+                self.assertNotIn("- [ ] ", self.body(), "the item was written anyway")
+                self.assertIn("--repo", r.stderr, "refused, but not by the field's own gate")
 
     def test_the_shapes_that_actually_occur_are_accepted(self):
         for value in ("https://github.com/Tarcisio-Abbud/claude-skills.git",
@@ -3576,7 +3612,18 @@ class TestRepoField(QueueTest):
                       "file:///srv/git/claude-skills.git",
                       "/workspace/projects/.ambiente",
                       "~/.claude/skills",
-                      "C:/Users/Oraci/.ambiente", "C:\\Users\\Oraci\\.ambiente"):
+                      "C:/Users/Oraci/.ambiente", "C:\\Users\\Oraci\\.ambiente",
+                      # a user with NO password is the ordinary git address, and a
+                      # port after it is legal: it is the COLON BEFORE the `@` that
+                      # makes a secret, and only that is refused
+                      "ssh://git@github.com/o/r.git", "ssh://git@github.com:22/o/r.git",
+                      "http://gitea.lan:3000/t/r.git",
+                      # a non-ASCII path is not refused: banning it would refuse the
+                      # accented paths this machine really has (see REPO_BAD)
+                      "/workspace/projects/projeção",
+                      # the colon that separates host from path is the FIRST one;
+                      # a path carrying another is a path, not a second delimiter
+                      "git@host:st:path"):
             with self.subTest(value=value):
                 self.seed()
                 r = self.add("--repo", value)

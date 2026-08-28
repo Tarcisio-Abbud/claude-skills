@@ -239,6 +239,11 @@ git -C "<the lane's repo address>" worktree add "<path>/spec-<m>" -b "spec/<m>-<
 git -C "<path>/spec-<m>" push -u origin "spec/<m>-<slug>"
 ```
 
+**One lane, one address.** The tickets of a spec must name the same repository, and the field
+is stored exactly as typed — so two spellings of one repo (`…/r.git` against `…/r/`) are two
+addresses to every reader here. Where the lane's tickets disagree, do not pick one: the lane has
+no address, and its tickets leave on the rung an item with no address takes.
+
 **A URL is an address, not a working tree.** `git -C` needs a clone on this machine, so where the
 field holds a URL the clone of it is what the command runs in. What the field settles is WHICH
 repository, which is the half that was being guessed; a clone of it is still yours to have. An

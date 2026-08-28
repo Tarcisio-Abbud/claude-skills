@@ -1254,8 +1254,9 @@ def validate_ref(flag, value):
 # is absolute for the same reason and is how the desktop in this site's roster
 # names a clone.
 #
-# Four characters are excluded from every alternative, and each one closes a door
-# that was measured open on the field beside this one:
+# THE CHARACTERS no address may contain, spelled ONCE for every alternative below
+# (REPO_BAD). Each closes a door that was measured open, and three of the four were
+# measured on this very field:
 #
 #   *   makes `**Repo:**` and every other field marker UNSPELLABLE inside a value
 #       — the same answer REF_RE gives, by construction rather than by a gate.
@@ -1267,6 +1268,36 @@ def validate_ref(flag, value):
 #       out of a line whose readers separate its columns by runs of blanks. A path
 #       with a space in it is refused for that reason, and it is a real refusal:
 #       `C:\My Documents\repo` has to be spelled some other way.
+#   bidi  the Unicode direction overrides and isolates. They REORDER what a reader
+#       sees without changing what git receives, so `…/‮git.repo` can display as
+#       one repository and address another — on a value whose whole purpose is to
+#       be read off a screen and pasted into a command. Homoglyphs (a Cyrillic
+#       `і` in `github.com`) are NOT refused with them: banning non-ASCII would
+#       refuse the accented paths this machine really has, and no rule here can
+#       tell a homoglyph host from a legitimate internationalised one.
+#
+# Spelled once and not per alternative, because four copies of one rule is four
+# places for the next character to be added to three of them.
+REPO_BAD = r"\s*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"
+# one character of an address, and one of an AUTHORITY — the `<user>@<host>` half
+# of a URL, which ends at the first `/`
+REPO_CH = "[^" + REPO_BAD + "]"
+REPO_AUTH = "[^" + REPO_BAD + "/]"
+
+# A LEADING `-` is refused, and this is the guard that is not about the queue at
+# all. The value is pasted into `git ls-remote --heads "<address>"` and
+# `git -C "<address>"`, where a token starting with `-` is an OPTION and not a
+# repository, quoted or not. Measured on git 2.39: `--upload-pack=<cmd>@host:path`
+# matched the scp-like shape below, and `git ls-remote` run in a clone with an
+# `origin` READ IT AS THE OPTION, fell back to that origin, and EXECUTED <cmd> —
+# a command-execution primitive reached from a queue field, and, before that, the
+# same silent answer about the wrong repository that this field exists to end.
+#
+# CREDENTIALS are refused with the same eye: a URL whose userinfo carries a colon
+# (`https://user:token@host/r.git`) is a secret, and this field is written to a
+# file that has no other copy and echoed back by `pack` on every package. `git@`
+# and `ssh://git@host` are untouched — a user with no password is the ordinary
+# form, and it is the colon that makes the difference.
 #
 # A trailing '.' is refused, and that is round-trip and not taste: compose_item
 # writes `**Repo:** <value>.` and field_value strips ONE trailing period, so a
@@ -1277,10 +1308,12 @@ def validate_ref(flag, value):
 # not an address and neither is `C:/`, and admitting the second while refusing the
 # first would be an asymmetry nothing in the world asked for.
 REPO_RE = re.compile(
-    r"(?:[A-Za-z][A-Za-z0-9+.-]*://[^\s*\[\]]+"      # a URL with a scheme
-    r"|[^\s*\[\]@/]+@[^\s*\[\]:/]+:[^\s*\[\]]+"     # the scp-like git address
-    r"|~?/[^\s*\[\]]+"                               # a POSIX absolute path
-    r"|[A-Za-z]:[\\/][^\s*\[\]]+)"                   # a Windows drive-letter path
+    r"(?!-)"                                                     # never an OPTION
+    r"(?:[A-Za-z][A-Za-z0-9+.-]*://"
+    "(?!" + REPO_AUTH + r"*:" + REPO_AUTH + r"*@)" + REPO_CH + "+"  # a URL, no password
+    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address
+    "|~?/" + REPO_CH + "+"                                       # a POSIX absolute path
+    "|[A-Za-z]:[\\\\/]" + REPO_CH + "+)"                         # a Windows drive-letter path
     r"(?<!\.)"
 )
 
@@ -1307,7 +1340,11 @@ def validate_repo(value):
              "and no trailing '.'. A remote NAME like `origin`, or a relative path, "
              "resolves against whatever directory the reader happens to be in — which "
              "for this queue's readers is the queue's own clone, where the check comes "
-             "back clean over live work.")
+             "back clean over live work. Three more shapes are refused for reasons of "
+             "their own: a value starting with '-', which the git command this is pasted "
+             "into reads as an OPTION; a URL carrying a password (`user:token@host`), "
+             "which this file would then hold and `pack` would reprint; and a direction "
+             "override, which reorders what you read without changing what git gets.")
     return value
 
 
