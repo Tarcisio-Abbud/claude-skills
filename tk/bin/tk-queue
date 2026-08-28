@@ -566,6 +566,19 @@ FIELD_VARIANTS = {
     # population, and an alias nothing writes is a second grammar to keep in step.
     "Ticket": r"Ticket",
     "Spec": r"Spec",
+    # BIRTH DATE, written by this script and by nothing else: `add` stamps today,
+    # `migrate` backdates it from **Source:** when that field states a date, and no
+    # flag sets it. One spelling, for the reason Ticket and Spec have one — these
+    # three postdate the hand-written era, so an alias nothing ever wrote would be
+    # a second grammar to keep in step.
+    #
+    # It is NOT **Source:** with a stricter parser. Source is provenance and is
+    # prose by design ("wrap-up 19/08", "[[sharepoint-m365-fonte-canonica]]",
+    # "tracker"): three of every four values in this queue's own file state no date
+    # a machine can read, and the ones that do state it inside a sentence. A field
+    # that only ever holds `YYYY-MM-DD` is what lets `list` subtract two dates
+    # instead of guessing at a sentence.
+    "Born": r"Born",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
 # the marker SHAPE alone, with no trailing value — every other use of ANY_FIELD
@@ -1436,6 +1449,132 @@ def find_open_item(memdir, wanted_id):
     return content, found[0][0], found[0][1]
 
 
+# --- age: how long the item has been standing there -----------------------
+# Work parked in a queue has no age unless something writes one down, and until
+# it does, "old" is archaeology: the reader reconstructs it from whatever the
+# item's prose happens to mention. **Born:** is that stamp, and `list` turns it
+# into the one number a reader acts on.
+#
+# Displayed ALWAYS, and never turned into a question. What a threshold is worth
+# is not decided here and deliberately not: no queue has yet been measured with
+# ages visible, so a number written today would be a guess wearing the authority
+# of a constant. The skills say the same thing in prose — show the age, name the
+# cut you used, and let the value be chosen once there is a distribution to
+# choose it from.
+
+# Anchored on both sides so a longer run of digits is not read as a date: a
+# `20260827-1` in prose is one token, not a date followed by a number.
+ISO_DATE_RE = re.compile(r"(?<![0-9])[0-9]{4}-[0-9]{2}-[0-9]{2}(?![0-9])")
+# The reasons `migrate` may decline to backdate an item, one line each. Spelled
+# here because the report groups BY reason, and a reason that varies per item is
+# a report with one group per item.
+NO_BIRTHDATE = {
+    "none": "no **Source:** field to read a date from",
+    "unreadable": "a **Source:** no reader may use — off the first line, or ahead of "
+                  "the **Class:** anchor (`migrate` reports the repair separately)",
+    "no-date": "a **Source:** stating no `YYYY-MM-DD` date (a `20/08` has no year, "
+             "and inferring one is inventing)",
+    "two": "a **Source:** stating two different dates",
+    "future": "a **Source:** date later than today",
+}
+
+
+def source_birthdate(value, today):
+    """(the date a **Source:** value STATES, or None; why not, when None).
+
+    Never a guess. The queue this was written for carries `wrap-up 19/08`,
+    `kickoff 20/08` and `tracker, 2026-07-22` side by side, and the first two are
+    exactly where a parser earns its reputation: `19/08` is a real day in a real
+    year that the text does not name, so reading it means choosing the year — and
+    an item stamped with the wrong year reports an age nobody can tell from a
+    right one. An item left undated says "unknown" out loud instead.
+
+    A full ISO date inside a sentence still counts (`PR #63, 2026-08-13`): the
+    year is written down, so nothing is being inferred. TWO different ones do not,
+    for the same reason as `19/08` — picking either is a choice the text does not
+    make. The same date twice is one date, not two.
+    """
+    seen = []
+    for m in ISO_DATE_RE.finditer(value or ""):
+        try:
+            d = datetime.date.fromisoformat(m.group(0))
+        except ValueError:
+            continue                    # `2026-13-40` is the shape, not a date
+        if d not in seen:
+            seen.append(d)
+    if not seen:
+        return None, "no-date"
+    if len(seen) > 1:
+        return None, "two"
+    # An item cannot have been born after today, so a later date is not a birth
+    # date that needs honouring — it is a typo or a plan, and stamping it would
+    # make `list` print a NEGATIVE age, the one output a reader has no reading for
+    if seen[0] > today:
+        return None, "future"
+    return seen[0], None
+
+
+def backdate(block, today):
+    """(`block` with a **Born:** stamp read off its **Source:**, why not otherwise).
+
+    `migrate`'s half of the field: `add` stamps what it witnesses, and this reads
+    what an older item wrote down about itself. The alternative was stamping the
+    day of the migration on every legacy item, and it is worse than leaving them
+    blank — the whole queue would come out one day old, which is not "unknown", it
+    is a wrong answer that looks like a right one.
+
+    Returns "stamped" for an item that already carries the field. `migrate` is
+    rerun on the queue it already migrated, and a second pass that restamped would
+    make the age of every item the age of the last run.
+    """
+    if real_fields(block, "Born"):
+        return block, "stamped"
+    src = real_fields(block, "Source")
+    if not src:
+        # The two are not one reason: an item with no Source at all was born
+        # before anything recorded provenance, and an item whose Source the
+        # POSITION rule refuses is one repair away from an age. Reporting both as
+        # "no Source" would send a reader looking for a field the item carries
+        return block, ("unreadable" if FIELD_MARKER_RE["Source"].search(block)
+                       else "none")
+    born, why = source_birthdate(field_value(src[0]), today)
+    if born is None:
+        return block, why
+    # spliced in immediately BEFORE **Source:**, which is where compose_item puts
+    # it — a migrated item and a freshly added one then carry the same line, and
+    # every later reader has one shape to read instead of two.
+    #
+    # That anchor is also what makes the result readable without a readback. The
+    # segment lands contiguous with the one it displaces, carries the period the
+    # chain rule asks of every segment but the last, and sits after the **Class:**
+    # `real_fields` measures from — because Source itself qualified, or this
+    # function would have returned two lines up.
+    at = src[0].start()
+    return block[:at] + f"**Born:** {born.isoformat()}. " + block[at:], None
+
+
+def item_age(block, today):
+    """Days since the item was born, or None when it carries no readable stamp.
+
+    None is the honest answer for a queue that predates the field, and it is what
+    the display renders as `?` rather than as a zero: an item with no stamp is not
+    an item born today.
+    """
+    got = real_fields(block, "Born")
+    if not got:
+        return None
+    try:
+        born = datetime.date.fromisoformat(field_value(got[0]))
+    except ValueError:
+        return None
+    return (today - born).days
+
+
+def age_cell(days):
+    """The age column's cell: `12d`, or `?` for an item with no stamp."""
+    return "?" if days is None else f"{days}d"
+
+
 # --- commands -------------------------------------------------------------
 
 def cmd_list(args):
@@ -1449,28 +1588,32 @@ def cmd_list(args):
     # reader who cannot see that only the first is reachable will keep addressing
     # the second one
     ambiguous = {i for i in ids if i is not None and ids.count(i) > 1}
+    # ONE date for the whole listing: asking datetime per item would let a run
+    # spanning midnight print two different ages for two items of the same age
+    today = datetime.date.today()
     rows = []
     for text, iid in zip(opens, ids):
         pm = PROJECT_TAG_RE.search(text)
-        rows.append((item_label(text), item_class(text) or "?", item_title(text),
+        rows.append((item_label(text), item_class(text) or "?",
+                     age_cell(item_age(text, today)), item_title(text),
                      pm.group(1) if pm else None, displayed_claim(text),
                      iid if iid in ambiguous else None))
     if not rows:
         print("(queue empty)")
         return
-    grouped = group_by_tag([(project, (label, cls, title, mark, dup))
-                            for label, cls, title, project, mark, dup in rows],
+    grouped = group_by_tag([(project, (label, cls, age, title, mark, dup))
+                            for label, cls, age, title, project, mark, dup in rows],
                            by_position=True)
     if grouped is None:
-        for label, cls, title, _, mark, dup in rows:
-            print(list_line(label, cls, title, mark, dup))
+        for label, cls, age, title, _, mark, dup in rows:
+            print(list_line(label, cls, age, title, mark, dup))
     else:
         for n, (project, entries) in enumerate(grouped):
             if n:
                 print()
             print(f"## {project or 'no project'}")
-            for label, cls, title, mark, dup in entries:
-                print(list_line(label, cls, title, mark, dup))
+            for label, cls, age, title, mark, dup in entries:
+                print(list_line(label, cls, age, title, mark, dup))
     if any(r[0] == "----" for r in rows):
         print("\nitems without ID: run `tk-queue migrate` to assign them.")
     if ambiguous:
@@ -1478,11 +1621,18 @@ def cmd_list(args):
               "the others by hand in next-steps.md.")
 
 
-def list_line(label, cls, title, mark, dup=None):
+def list_line(label, cls, age, title, mark, dup=None):
     """The claim is appended, not given a column of its own: it is the exception
     (most items are free), and a column would indent every line of every queue for
-    a field almost none of them carry."""
-    return (f"{label}  {cls:<10}  {title}"
+    a field almost none of them carry.
+
+    The AGE gets the opposite treatment, for the opposite reason: every item added
+    from here on carries one, so it is the rule and not the exception, and a value
+    read down a column is what makes "which of these is old" one glance instead of
+    a line-by-line read. `?` marks the items that predate the field, and it is
+    right-aligned with the rest so the digits line up under each other.
+    """
+    return (f"{label}  {cls:<10}  {age:>4}  {title}"
             + (f"  [{mark}]" if mark else "")
             # `is not None`: T000 is an ID, and truthiness would drop its mark
             + (f"  [{AMBIGUOUS_MARK % dup}]" if dup is not None else ""))
@@ -2076,6 +2226,14 @@ def compose_item(args, iid):
     for flag, field in ((args.ticket, "Ticket"), (args.spec, "Spec")):
         if flag:
             fields.append(f"**{field}:** {flag}.")
+    # BEFORE Source, and with the period every other segment carries: Source is
+    # written last and is the one segment field_chain lets off the period rule, so
+    # a field appended AFTER it would move that free pass onto a segment the rule
+    # still applies to. The birth date is the script's own stamp, never the
+    # caller's: `--source` may say the item was thought of in July, and the item
+    # still entered this queue today. Backdating is `migrate`'s job, and it reads
+    # Source to do it.
+    fields.append(f"**Born:** {datetime.date.today().isoformat()}.")
     fields.append(f"**Source:** {args.source or datetime.date.today().isoformat()}")
     return f"- [ ] **T{iid:03d}** — {args.text.strip()} " + " ".join(fields) + "\n"
 
@@ -3318,6 +3476,24 @@ def fold_chain_onto_first_line(block):
     return folded, None
 
 
+def group_by_reason(pairs):
+    """(reason, [labels]) for `migrate`'s two refusal reports, in INSERTION order.
+
+    Grouped BY REASON and not by item: each reason names the repair its items
+    need, and a reader acts on the sentence once for the whole group. Insertion
+    order, so a queue carrying one reason reads exactly as it did before there
+    were two.
+
+    One implementation, two callers — the fold's refusals and the backdating's —
+    because a report where one half groups and the other half does not is a
+    report whose reader learns two shapes for one idea.
+    """
+    grouped = {}
+    for label, why in pairs:
+        grouped.setdefault(why, []).append(label)
+    return grouped.items()
+
+
 def cmd_migrate(args):
     memdir = memory_dir(args.dir)
     # ONE gate for every write this command makes through `write_atomic` — the
@@ -3358,6 +3534,8 @@ def cmd_migrate(args):
         save(log_path, log)
     out, dropped_prev = [], False
     folded, left_alone = [], []
+    backdated, undated = [], []
+    today = datetime.date.today()
     for kind, text in blocks:
         if kind == "item-done":
             dropped_prev = True
@@ -3376,6 +3554,16 @@ def cmd_migrate(args):
                 folded.append(item_label(text))
             elif refusal:
                 left_alone.append((item_label(text), refusal))
+            # AFTER the fold and the ID: the fold is what puts a legacy item's
+            # fields where a field can be placed beside them, and the label is
+            # read once the item carries the number it will be reported under.
+            # An item that already has a stamp is left alone — this command is
+            # rerun, and a second pass must not restamp what the first one dated
+            text, why = backdate(text, today)
+            if why is None:
+                backdated.append(item_label(text))
+            elif why != "stamped":
+                undated.append((item_label(text), NO_BIRTHDATE[why]))
         if dropped_prev and out:
             # collapse surplus blank lines only at the junction left by the removal
             prev = out.pop()
@@ -3399,15 +3587,21 @@ def cmd_migrate(args):
         print(f"{len(folded)} item(s) with fields off the first line: folded up, where "
               "every gate reads them — " + ", ".join(folded))
     if left_alone:
-        # grouped BY REASON, one line each: the fold refuses for two different
-        # shapes and a reader repairs the shape the sentence names. Insertion
-        # order, so a queue with one shape reads exactly as it did before
-        by_reason = {}
-        for lab, why in left_alone:
-            by_reason.setdefault(why, []).append(lab)
-        for why, labels in by_reason.items():
+        for why, labels in group_by_reason(left_alone):
             print(f"{len(labels)} item(s) left exactly as they are: {why} — "
                   + ", ".join(labels) + ". Close each with `cancel` and re-add it clean.")
+    # The backdating, reported in the same two shapes as the fold: what it did,
+    # and — grouped by reason — what it declined to do. The second half is the
+    # load-bearing one. An item this command leaves undated shows `?` in `list`
+    # forever and nothing else ever says why, so a silent decline is an age the
+    # reader will keep waiting for
+    if backdated:
+        print(f"{len(backdated)} item(s) backdated from **Source:** — "
+              + ", ".join(backdated))
+    if undated:
+        for why, labels in group_by_reason(undated):
+            print(f"{len(labels)} item(s) left with no age: {why} — "
+                  + ", ".join(labels) + ". Nothing here invents one.")
     # `migrate` closes items too — that is its whole job — so it is a closing path,
     # and a closing path that left the briefing behind would be the orphan every
     # other one refuses to make. Measured: a legacy [x] item with a briefing left
