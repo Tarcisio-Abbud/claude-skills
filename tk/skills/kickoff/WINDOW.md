@@ -52,26 +52,42 @@ On the first quota failure, in this order:
    - **the large files already read, and the verdict on each.** A successor that knows a
      source is 1,500 lines and what it holds takes it distilled from a subagent; one that
      knows only "we were at 200k" reads it again at full price.
+
+   **A package holding an accumulated lane owes five more contents in the same field**, four of
+   them new — the section below names them. A lane package's `--state` is not written until they
+   are in it, and the successor's very first command cannot be composed without the first of them.
 4. **Keep the claims.** They are how the next generation knows which items are its own, and
    releasing them here invites a sibling session to take work that is half done. This is the
    one place the release rule of `AFK.md` step 3 does not apply.
 5. **Stop.** Report the wall, the reset time and the handoff's path.
 
-**Done when:** the tree is pushed, one handoff carries the six contents of step 3, the claims
-are intact, and the report names the reset time.
+**Done when:** the tree is pushed, one handoff carries the six contents of step 3 — and, where
+the package holds an accumulated lane, the five contents the section below names for it — the
+claims are intact, and the report names the reset time.
 
-## An accumulated lane: the four contents `--state` carries for it
+## An accumulated lane: the five contents `--state` carries for it
 
-A package holding a spec's accumulated lane (`AFK.md` step 3) writes four things into `--state`
-for that lane. Three are additions to the six above and the fourth is one of the six, doing a
+A package holding a spec's accumulated lane (`AFK.md` step 3) writes five things into `--state`
+for that lane. Four are additions to the six above and the fifth is one of the six, doing a
 second job here. **`--state` gains no flag for any of them** — it is one field of prose, and the
-additions are three more paragraphs inside it.
+additions are four more paragraphs inside it.
 
+- **The lane's identity** — the address of the repository its items land in, its branch
+  `spec/<m>-<slug>`, its worktree path, and its pull request's number once one exists. It is
+  written when the lane OPENS (`AFK.md` step 3), not when the first item merges, because the
+  successor needs it before there is a map to read: in the state where nothing has merged yet, a
+  map pinning the branch would be empty, and `git -C "<path>/spec-<m>" fetch --prune origin` —
+  the successor's first command — could not be composed. Only two of the four are recoverable
+  from elsewhere: `<m>` from the WIP branch the second content names, and the address from the
+  item's own `Repo:` field. The slug and the worktree path are recoverable from nothing. Where
+  the slug alone was lost, `AFK.md` step 1's
+  `git ls-remote --heads "<the item's repo address>" 'refs/heads/spec/<m>-*'` names the branch —
+  the fallback, and never the contract.
 - **The item→merge map** — one line per lane item that reached the branch, its `T<id>` against the
-  merge commit that carried it, under the branch's pushed tip and the draft pull request's number.
-  Each line is written **after the push** of `AFK.md` step 5 stage 5, and before that item's
-  `done`. That order is what makes a death between those two cost nothing: the tip already carries
-  the merge, and the successor closes the item from the tip.
+  merge commit that carried it, under the branch's pushed tip. Each line is written **after the
+  push** of `AFK.md` step 5 stage 5, and before that item's `done`. That order is what makes a
+  death between those two cost nothing: the tip already carries the merge, and the successor
+  closes the item from the tip.
 - **The item in flight** — the ticket, the branch its work is pushed to, and the stage of step 5's
   cycle it reached. The second content above already asks for the branch; the stage is this lane's
   addition, because it decides whether the successor dispatches a run for that item at all or
