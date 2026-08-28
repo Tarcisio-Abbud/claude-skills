@@ -25,6 +25,15 @@
 !/docs/agents/triage-labels.md
 !/docs/agents/domain.md
 
+# Pruning baselines and the script that lays them out (T185). Named file by file
+# for the reason the block above is: a pruning report on a PRIVATE skill must not
+# reach this PUBLIC repo, and an open `!/docs/prune` would let `git add -A` carry
+# one in. The gitignore is the first line here, the pre-commit guard the second.
+!/docs/prune
+/docs/prune/*
+!/docs/prune/baseline.py
+!/docs/prune/baseline-2026-08-27.md
+
 # Python bytecode from the test suites
 __pycache__/
 *.pyc
