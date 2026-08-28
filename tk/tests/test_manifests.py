@@ -1,34 +1,44 @@
 #!/usr/bin/env python3
-"""The two manifests must name every skill that exists on disk, and no other.
+"""The `tk` manifests must name the skills that exist, and only those.
 
 Run: python3 -m unittest discover -s tk/tests   (stdlib only, no deps)
+Proved by: python3 tk/tests/mutations_manifests.py
 
-WHY THIS EXISTS. A skill is advertised in two places — `tk/.claude-plugin/plugin.json`
-(the plugin's own description) and `.claude-plugin/marketplace.json` (the entry a
-marketplace reader sees) — and neither is generated from `tk/skills/`. Nothing but a
-human's memory kept the three in step, and that memory failed twice on 2026-08-28:
+WHY THIS EXISTS. A skill is advertised in two files that nothing generates from
+`tk/skills/` — `tk/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
+Only the memory of whoever edits kept the three in step, and it failed twice on
+2026-08-28:
 
-  - `/tk:review` shipped and never reached `marketplace.json`; the gap survived several
-    merges and was closed by hand in `a0282cb`, noticed only because a rebase put the
-    line under someone's eyes;
-  - `claude-skills#48` added the `prune` skill in a branch while `#49` added `fleet` in
-    another. Both edited the same `description` line, and resolving that conflict by
-    taking either side would have silently dropped the other's skill.
+  - `/tk:review` shipped and never reached `marketplace.json`; the gap outlived several
+    merges and was closed by hand in `a0282cb`, noticed only because a rebase happened
+    to put the line under someone's eyes;
+  - `#48` added the `prune` skill on one branch while `#49` added `fleet` on another,
+    both rewriting the same `description` from the same base. Resolving that conflict by
+    taking either side would have dropped the other's skill with nothing going red.
 
-The failure is quiet in both directions and expensive in one: a skill absent from the
+The failure is quiet in both directions and expensive in one: a skill absent from a
 description is a skill nobody discovers, and the file still parses, still merges, still
 passes every other test.
 
-NO MUTATION HARNESS, deliberately. The sibling suites are proved by putting a defect back
-into a SCRIPT (`mutations_vista.py` and friends). The subject here is not a script but the
-repository's own state, and the only way to plant a defect would be to edit the real
-manifests mid-run — a test that rewrites the files it audits. The guard is proved instead
-by construction: it reads the three sources independently and compares them, so it fails
-whenever any one of them moves without the others.
+THE ANCHOR IS THE POINT. An earlier draft of this suite matched the bare word
+(`\\bprune\\b`) against the description's free prose, and was vacuous against the very
+defect above: deleting a skill's clause while a neighbouring sentence still happened to
+use the word left the suite green. Every skill here is an ordinary English word, so each
+was one prose edit away from that. Both manifests are matched on the form they actually
+advertise in — `<name> (` in the plugin description, `/tk:<name>` in the marketplace one —
+and each match refuses a longer neighbour, so a future `review-fast` cannot satisfy the
+row for `review`.
 
-SCOPE. This checks the SET of names, not the prose around them. A description that names
-every skill and describes each one wrongly passes here — wording is a reader's judgement,
-membership is not.
+WHAT THIS DOES NOT COVER, deliberately:
+
+  - **Wording.** A description naming every skill and describing each one wrongly passes.
+    Membership is verifiable; prose is a reader's judgement.
+  - **`README.md`**, which advertises the same nine skills in a table and was edited by
+    both #48 and #49. It is a third surface with a third format, and it is unguarded.
+  - **The sibling plugins** in `marketplace.json` (`tk-cowork`, `asr`, `plugin-drift`).
+    They do not share this convention — `asr` and `plugin-drift` never name their single
+    skill at all, describing the plugin instead — so the same rule would not merely be
+    wider, it would be wrong. Guarding them needs a rule of their own.
 """
 
 import json
@@ -41,6 +51,12 @@ ROOT = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir))
 PLUGIN = os.path.join(ROOT, "tk", ".claude-plugin", "plugin.json")
 MARKETPLACE = os.path.join(ROOT, ".claude-plugin", "marketplace.json")
 SKILLS_DIR = os.path.join(ROOT, "tk", "skills")
+
+# A skill is advertised as a clause `<name> (…)` in the plugin description, and as
+# `/tk:<name>` in the marketplace one. Both refuse a longer name that merely starts the
+# same way, which is what makes them anchors rather than substring probes.
+PLUGIN_CLAUSE = r"(?<![a-z0-9-])%s \("
+MARKETPLACE_REF = r"/tk:%s(?![a-z0-9-])"
 
 
 def skills_on_disk():
@@ -57,55 +73,77 @@ def plugin_description():
         return json.load(fh)["description"]
 
 
-def marketplace_description():
+def tk_entries():
+    """Every `tk` entry of the marketplace — a list, so its length can be asserted."""
     with open(MARKETPLACE, encoding="utf-8") as fh:
-        entries = json.load(fh)["plugins"]
-    tk = [e for e in entries if e["name"] == "tk"]
-    assert len(tk) == 1, "marketplace.json must carry exactly one `tk` entry"
-    return tk[0]["description"]
+        return [e for e in json.load(fh)["plugins"] if e["name"] == "tk"]
 
 
-class TestSkillsOnDisk(unittest.TestCase):
-    def test_there_are_skills_to_check(self):
-        """A guard that silently checks nothing is worse than no guard."""
-        self.assertTrue(skills_on_disk(), "no skill directory found under tk/skills/")
+def marketplace_description():
+    return tk_entries()[0]["description"]
+
+
+class TestTheGuardHasSomethingToCheck(unittest.TestCase):
+    """A guard that silently checks nothing is worse than no guard at all."""
+
+    def test_there_are_skills_on_disk(self):
+        self.assertTrue(skills_on_disk(), f"no skill directory found under {SKILLS_DIR}")
+
+    def test_the_marketplace_carries_exactly_one_tk_entry(self):
+        # Not a bare `assert`: that is stripped under `python3 -O`, and a second `tk`
+        # entry would then be picked silently by whichever came first.
+        self.assertEqual(
+            len(tk_entries()), 1,
+            "the marketplace must carry exactly one `tk` entry; the description of a "
+            "second would drift unchecked",
+        )
 
 
 class TestPluginManifest(unittest.TestCase):
-    """`plugin.json`'s description names each skill by its bare directory name."""
+    """`plugin.json` advertises each skill as a clause `<name> (…)`."""
 
     def test_every_skill_is_named(self):
         description = plugin_description()
         for skill in skills_on_disk():
             with self.subTest(skill=skill):
                 self.assertRegex(
-                    description,
-                    r"\b%s\b" % re.escape(skill),
-                    "tk/.claude-plugin/plugin.json does not name the skill %r" % skill,
+                    description, PLUGIN_CLAUSE % re.escape(skill),
+                    f"tk/.claude-plugin/plugin.json advertises no `{skill} (…)` clause",
+                )
+
+    def test_names_no_skill_that_does_not_exist(self):
+        """A clause naming no directory sends a reader to a skill that is not there."""
+        advertised = set(re.findall(r"(?<![a-z0-9-])([a-z][a-z0-9-]*) \(",
+                                    plugin_description()))
+        for name in sorted(advertised - set(skills_on_disk())):
+            with self.subTest(skill=name):
+                self.fail(
+                    f"plugin.json has a `{name} (…)` clause with no "
+                    f"tk/skills/{name}/SKILL.md behind it — the description's clause "
+                    f"list is one clause per skill, so a parenthetical that is not a "
+                    f"skill belongs outside it"
                 )
 
 
 class TestMarketplaceManifest(unittest.TestCase):
-    """`marketplace.json`'s description names each skill as `/tk:<name>`."""
+    """`marketplace.json` advertises each skill as `/tk:<name>`."""
 
     def test_every_skill_is_named(self):
         description = marketplace_description()
         for skill in skills_on_disk():
             with self.subTest(skill=skill):
-                self.assertIn(
-                    "/tk:%s" % skill,
-                    description,
-                    ".claude-plugin/marketplace.json does not name /tk:%s" % skill,
+                self.assertRegex(
+                    description, MARKETPLACE_REF % re.escape(skill),
+                    f".claude-plugin/marketplace.json does not name /tk:{skill}",
                 )
 
     def test_names_no_skill_that_does_not_exist(self):
-        """The other direction: a deleted skill left advertised sends readers nowhere."""
         advertised = set(re.findall(r"/tk:([a-z0-9-]+)", marketplace_description()))
         for name in sorted(advertised - set(skills_on_disk())):
             with self.subTest(skill=name):
                 self.fail(
-                    "marketplace.json advertises /tk:%s, which has no "
-                    "tk/skills/%s/SKILL.md" % (name, name)
+                    f"marketplace.json advertises /tk:{name}, which has no "
+                    f"tk/skills/{name}/SKILL.md"
                 )
 
 
