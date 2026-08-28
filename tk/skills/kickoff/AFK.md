@@ -67,8 +67,11 @@ needs a `PR #<n>` to point at.
 
 Read `git -C "<path>/spec-<m>" log --merges --oneline` and take the leading `T<id>` of each title
 — the position step 5 stage 4 puts it in for exactly this reader. Ask `tk-queue list` for each id:
-an item still open closes here with `tk-queue done "<id>" --how "PR #<n>"`, which is a re-close and
-never a re-run, and an id that list does not show is closed already and takes nothing.
+an item still open **that an inherited claim names** closes here with
+`tk-queue done "<id>" --how "PR #<n>"`, which is a re-close and never a re-run, and an id that list
+does not show is closed already and takes nothing. The claim is the second half of the test because
+the queue is shared: an id open under somebody else's claim is a sibling's item, and closing it
+would take that item out of the queue with no session alive to notice.
 
 **Read the merges from the tip, never from the item→merge map.** The map stops at the last handoff
 its writer got to and the tip does not, so the tip is the one that knows about a death between the
@@ -140,7 +143,7 @@ Read in order; the first row that applies is the one.
 |---|---|---|
 | The tip carries no `T<id>` merge at all | no item closes and no pull request opens | the re-dispatch; the lane's first green merge opens the draft, under step 5 stage 6 |
 | A `T<id>` merge for an item `tk-queue list` does not show | closed already; nothing is written | the next id in the merge list |
-| A `T<id>` merge for an id that is neither open in the queue nor in its done-log | the merge stays on the branch untouched | report it beside the lane — a sibling pushed onto this branch, and the tail's review reads its diff too |
+| A `T<id>` merge for an id open under no claim of this package | the item stays open and the merge stays on the branch, both untouched | report it beside the lane — a sibling pushed onto this branch, and the tail's review reads its diff too |
 | The item in flight has no pushed branch, or none with commits of its own | the item is open and no tree holds its work | dispatch it fresh, as step 3 does a ticket |
 | The draft pull request already exists | nothing to open | the close |
 | The handoff names a tip older than the remote's | the tip decides, and the item→merge map is the stale half | resume normally; the report names the gap |
