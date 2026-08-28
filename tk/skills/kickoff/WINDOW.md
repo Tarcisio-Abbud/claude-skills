@@ -53,9 +53,10 @@ On the first quota failure, in this order:
      source is 1,500 lines and what it holds takes it distilled from a subagent; one that
      knows only "we were at 200k" reads it again at full price.
 
-   **A package holding an accumulated lane owes five more contents in the same field**, four of
-   them new — the section below names them. A lane package's `--state` is not written until they
-   are in it, and the successor's very first command cannot be composed without the first of them.
+   **A package holding an accumulated lane owes five contents in the same field** — four of them
+   new, and the fifth one of the six above doing a second job there. The section below names them.
+   A lane package's `--state` is not written until they are in it, and the successor's very first
+   command cannot be composed without the first of them.
 4. **Keep the claims.** They are how the next generation knows which items are its own, and
    releasing them here invites a sibling session to take work that is half done. This is the
    one place the release rule of `AFK.md` step 3 does not apply.

@@ -9,14 +9,15 @@ closes, and implements nothing inline. Every run it dispatches takes its model, 
 venue from the role table in `../../reference/subagent-policy.md` — which also fixes the
 one-line format a departure from that table costs.
 
-**Read `WINDOW.md` beside this file before step 3.** It holds what the package does when it
-runs out of window rather than out of work: the checkpoint invariant, the handoff the quota
-wall demands and its six contents — plus the five an accumulated lane carries, four of them
-new — the scope a resumed package is held to, why auto-continue covers none of this, what the
-review lens costs the window and why its tail is
-what the wall cuts first, the two vehicles that can open a successor generation, and the
-`--budget N` generations that carry a package past the orchestrator's own context ceiling. Those rules fire at moments the steps below do not
-choose, which is why they are read up front rather than looked up under one.
+**Read `WINDOW.md` beside this file before anything below runs**, the section under this one
+included: a resumed generation composes its very first command out of that file's contents. It
+holds what the package does when it runs out of window rather than out of work: the checkpoint
+invariant, the handoff the quota wall demands and its six contents — plus the five an accumulated
+lane carries, four of them new — the scope a resumed package is held to, why auto-continue covers
+none of this, what the review lens costs the window and why its tail is what the wall cuts first,
+the two vehicles that can open a successor generation, and the `--budget N` generations that carry
+a package past the orchestrator's own context ceiling. Those rules fire at moments the steps below
+do not choose, which is why they are read up front rather than looked up under one.
 
 **A generation resuming a package that already holds a lane starts at *A resumed generation
 starts here*, below, and not at step 1.** It builds no package: the one it inherits is already
@@ -119,9 +120,13 @@ needs a `PR #<n>` to point at.
 **Close** every item whose merge is already on the tip.
 
 Read `git -C "<path>/spec-<m>" log --merges --oneline "origin/main..HEAD"` and take the leading
-`T<id>` of each title — the position step 5 stage 4 puts it in for exactly this reader. Then ask
-`tk-queue list` for each id, which answers both halves of the test on one line: whether the item is
-still open at all, and whose claim it is under —
+`T<id>` of each title — the position step 5 stage 4 puts it in for exactly this reader. **Where a
+merge's title carries no leading `T<id>`, the close takes nothing from it and reads the next merge
+in the list.** No lane item put that merge there: the tail's merge of `origin/main` is the one that
+reaches this range, once a predecessor got as far as the tail. The same reading holds wherever this
+file takes a `T<id>` from a merge title, the delivered row's `<mergeCommit>^1..<mergeCommit>^2`
+range included. Then ask `tk-queue list` for each id, which answers both halves of the test on one
+line: whether the item is still open at all, and whose claim it is under —
 `T001  AUTONOMOUS  0d  <the item's text>  [claimed by <owner> since <moment>]`. An item still open
 **that an inherited claim names** closes here with `tk-queue done "<id>" --how "PR #<n>"`, which is
 a re-close and never a re-run, and an id that list does not show is closed already and takes
@@ -160,10 +165,11 @@ the item→merge map is.** `WINDOW.md` refreshes it at every seam, so it is writ
 tip and `tk-queue list` before dispatching anything: an id the close just closed, and any id
 `tk-queue list` does not show open, is **not** re-dispatched whatever stage the handoff names.
 Dispatched on that stale name, the item is implemented and merged a second time — reproduced, the
-lane ended carrying two `T002:` merge commits of one name. No item closes twice, since the queue
-refuses the second close (`T002 already left the queue`, exit 1); what the duplicate destroys is
-the per-item reversal stage 4's `--no-ff` exists to buy, because `git revert -m 1` on either merge
-leaves the other's copy of the work in. The tip is truth and the map is belief on this beat exactly
+lane ended carrying two `T002:` merge commits of one name. Rehearsed through the order above, the
+re-dispatch declined the stale id and the lane kept one merge per `T<id>`. No item closes twice,
+since the queue refuses the second close (`T002 already left the queue`, exit 1); what the duplicate
+destroys is the per-item reversal stage 4's `--no-ff` exists to buy, because `git revert -m 1` on
+either merge leaves the other's copy of the work in. The tip is truth and the map is belief on this beat exactly
 as on the close.
 
 An id that survives that test is dispatched into a worktree **of** its own branch, never into one
@@ -240,10 +246,11 @@ behind, and the tree alone cannot say what a review returned. Three questions se
   0 is not "the merge commit exists"**: measured in this ticket's rehearsal, it exits 0 on a lane
   whose `origin/main` never moved and that never merged main at all. What the test settles is
   whether anything is left to merge, which is the only half that changes what runs.
-- **Did the review report?** The handoff says, and nothing in the tree does. A review that never
-  reported is re-fired whole; one that reported leaves its findings in the handoff, and what runs
-  then is a `fixer` over the confirmed findings that are not yet on the tip — never the review a
-  second time.
+- **Did the review report?** The handoff says, and nothing in the tree does. **A handoff silent on
+  the review is read as a review that never reported**, since no tree can correct it and an
+  unreviewed lane costs more than a lens fired twice. A review that never reported is re-fired
+  whole; one that reported leaves its findings in the handoff, and what runs then is a `fixer` over
+  the confirmed findings that are not yet on the tip — never the review a second time.
 - **Did the criteria run finish?** It does not matter: it is redone whole. It measures the final
   tree, and either answer above can have moved that tree, so a half-finished run measured a tree
   that is gone.
@@ -265,6 +272,7 @@ before they can run at all is not graded here — it is the two preconditions ab
 | `origin/main..HEAD` carries no `T<id>` merge at all | no item closes and no pull request opens | the re-dispatch; the lane's first green merge opens the draft, under step 5 stage 6 |
 | A `T<id>` merge in that range for an item `tk-queue list` does not show | closed already; nothing is written | the next id in the merge list |
 | A `T<id>` merge in that range for an id open under no claim of this package | the item stays open and the merge stays on the branch, both untouched | report it beside the lane — inside that range the merge is on the lane's own side, so a sibling pushed onto this branch and the tail's review reads its diff too. Unbounded, the same list also carries `main`'s merge history, whose ids no lane put there and which would take this row on a false diagnosis |
+| A merge in that range whose title carries no leading `T<id>` — the tail's own merge of `origin/main` | no item closes and the merge stays where it is | the next merge in the list |
 | The item in flight has no pushed branch, or none with commits of its own | the item is open and no tree holds its work | dispatch it fresh, as step 3 does a ticket |
 | The draft pull request already exists | nothing to open | the close |
 | The handoff names a tip older than the remote's — `git -C "<path>/spec-<m>" rev-parse "origin/spec/<m>-<slug>"` after the pruned fetch, against the sha the map is written under | the tip decides, and the item→merge map is the stale half | resume normally; the report names the gap |
