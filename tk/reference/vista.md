@@ -26,17 +26,20 @@ user asks for by name, never what a package close produces.
 | Occasion | Who writes it |
 |---|---|
 | Unattended package close (`/tk:wrap-up afk` closing an afk package) | nobody yet — **held back**, below |
-| A consolidated report across projects | the consolidated reporter, by default |
+| A consolidated report across projects | `../skills/fleet/SKILL.md`, by default |
 | Any session where the user asks for one ("give me the view of this") | that session |
 
 The second row is why this contract sits in `reference/` instead of inside the wrap-up's
 `SKILL.md`: **the consolidated reporter reads this same file**, and the five blocks are one
 contract, not two copies drifting apart.
 
-**Nothing writes a vista on its own today.** The first row was the intended default, and it is
-held back deliberately. A package small enough to read in the digest does not earn a page, and
-judging that belongs to the consolidated reporter, not to the wrap-up. Until that reporter
-lands, a session writes a vista only when it is asked for one.
+**The consolidated reporter is `../skills/fleet/SKILL.md`**, and its closing step is the second
+row above: a fleet run writes one vista across every project it swept, by default and without
+being asked.
+
+**The first row is still held back.** A package small enough to read in the digest does not earn
+a page, and judging that belongs to the reporter that sees several projects at once, not to the
+wrap-up. So outside a fleet run, a session writes a vista only when it is asked for one.
 
 A wrap-up closes on the textual report alone. The vista answers the case where a human judges
 several PRs at once; for a single PR the digest is faster.

@@ -49,12 +49,14 @@ locked skill must open the work, the user types it as the session's first line, 
 dispatch delivers that line rather than a subagent.
 
 The `next-steps.md` queue (contract: `../kickoff/SKILL.md`, relative to this file) has
-three dispatchers, by presence and scope:
+four dispatchers, by presence and scope:
 
 - **interactive kickoff menu** — the user is present and chooses;
 - **`/tk:kickoff afk` / `pack`** — one-shot package run by an orchestrator + background
   subagents, context-isolated (`../kickoff/AFK.md`);
-- **`/loop` over `loop.md`** — same-session slices, context accumulates across iterations.
+- **`/loop` over `loop.md`** — same-session slices, context accumulates across iterations;
+- **`/tk:fleet`** — every project's queue on this machine at once, one full orchestrator per
+  project at `--budget 1` (`../fleet/SKILL.md`).
 
 Tickets published on the issue tracker are dispatched by the site's per-ticket flow, one
 ticket per fresh session — the tracker is their source of truth.
