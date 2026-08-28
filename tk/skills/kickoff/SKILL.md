@@ -154,14 +154,28 @@ this file) before the first dispatch. Dispatches that are user-native commands d
 the flow — they enter the final report as ready-to-paste lines.
 Close with: (a) what is running/scheduled, (b) BLOCKED items with what's missing from the
 user, (c) EXTERNAL items with who to chase, (d) items bound to ANOTHER environment, each
-marked "runs on: X" and carrying its ready-to-paste line where one fits, and (e) the
-**session findings** discarded here (section below) — "discarded: N" plus one line each. (d) is not a
+marked "runs on: X" and carrying its ready-to-paste line where one fits, (e) the
+**session findings** discarded here (section below) — "discarded: N" plus one line each — and
+(f) the **age** of the items this session leaves standing. (d) is not a
 variant of (b): nothing on this machine can run those items, so the user is the only path
 to the machine that can. (e) is the only trace a discard leaves, which is what keeps
 "discarded" from becoming the silent outcome — settle the rest of the queue through
 `tk-queue` (`done`/`cancel`/`edit`/`add`; contract below).
+
+**(f) turns age into a signal instead of archaeology.** Every item that leaves this kickoff
+still open carries the age `tk-queue list` prints beside it. The oldest get a block of their
+own, one line each, naming what that item is waiting for. Entry into that block is a
+**threshold**, and its value is deliberately unfixed: no queue has yet been read with ages
+visible, so a number written today would be a guess wearing the authority of a rule. Read the
+cut off the distribution `list` shows, and say in the report which number you used. Age is
+shown and never asked — a mandatory question about it rebuilds the menu step 4 exists to
+retire. An item printed `?` predates the field; `tk-queue migrate` backdates what a
+**Source:** states and leaves the rest unaged. A DECISION carrying a written deferral is work
+the user parked on purpose, so name that deferral beside the age. That is what tells it from
+work the queue merely forgot, and the user's verdict is worth spending on the second kind.
+
 **Done when:** every checked item is running or scheduled, the report covers (b) through
-(e), and `next-steps.md` reflects the post-kickoff queue.
+(f), and `next-steps.md` reflects the post-kickoff queue.
 
 ## A session finding
 
@@ -213,7 +227,7 @@ calls the script on the spot — `/tk:wrap-up` guarantees it at close; `/tk:kick
 verifies the queue at open.
 
 ```
-tk-queue list                                  # open items with IDs (T001…)
+tk-queue list                                  # open items with IDs (T001…) and their age in days
 tk-queue add "<action>" --class AUTONOMOUS --effort "M (~30min)" \
          --criterion "A: <command that proves it> | B: user verdict" \
          [--deferred "<why the decision could not be asked>"]   # REQUIRED by --class DECISION
@@ -234,8 +248,9 @@ tk-queue pack                                  # candidates for an unattended pa
                                                # plus every exclusion with the value that caused it
 tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
 tk-queue migrate [--dry-run]                   # one-time: moves legacy [x] to the log, assigns IDs,
-                                               # folds a field chain off the first line onto it, and
-                                               # reports (grouped by reason) the items it left alone.
+                                               # folds a field chain off the first line onto it,
+                                               # backdates **Born:** from **Source:**, and reports
+                                               # (grouped by reason) what it left alone or left unaged.
                                                # --dry-run prints that same report and writes no
                                                # queue, no log, no briefing — read it before
                                                # rewriting a queue you cannot undo
@@ -367,6 +382,15 @@ re-triages; tracker tickets are referenced, not mirrored):
   `####` headers (untagged last, same convention) — that grouping is what makes the weekly
   closed-items block legible in a root queue that mixes projects. `###` remains the memory
   dir, a different axis: one per project repo, `####` the tags within it.
+
+- **Born** — the day the item entered the queue, written by the script and by no flag:
+  `add` stamps today, and `migrate` backdates from **Source:** when that field states a
+  `YYYY-MM-DD` date. Neither ever infers one — `20/08` names a real day in a year the text
+  does not, and an item stamped with the wrong year reports an age nobody can tell from a
+  right one. `tk-queue list` subtracts it into the age column and prints `?` where there is
+  no stamp: every item that predates the field, plus every item whose **Source:** states no
+  date, two dates, or a date in the future. There is deliberately no `edit --born`: an age a
+  session can rewrite is an age no reader can act on.
 
 - **Ticket** and **Spec** — where an imported item came from, both forge references of the
   shape `<repo>#<n>` (`homeserver-ambiente#172`), and both optional: an item born in
