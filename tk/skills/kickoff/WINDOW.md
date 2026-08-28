@@ -60,6 +60,39 @@ On the first quota failure, in this order:
 **Done when:** the tree is pushed, one handoff carries the six contents of step 3, the claims
 are intact, and the report names the reset time.
 
+## An accumulated lane: three more contents, and when each is written
+
+A package holding a spec's accumulated lane (`AFK.md` step 3) writes three more things into
+`--state`, beside the six above. **`--state` gains no flag for them** — it is one field of prose,
+and these are three more paragraphs inside it.
+
+- **The item→merge map** — one line per lane item that reached the branch, its `T<id>` against the
+  merge commit that carried it, under the branch's pushed tip and the draft pull request's number.
+  Each line is written **after the push** of `AFK.md` step 5 stage 5, and before that item's
+  `done`. That order is what makes a death between those two cost nothing: the tip already carries
+  the merge, and the successor closes the item from the tip.
+- **The item in flight** — the ticket, the branch its work is pushed to, and the stage of step 5's
+  cycle it reached. The second content above already asks for the branch; the stage is this lane's
+  addition, since it decides whether the successor re-dispatches the run or picks the cycle up
+  after it.
+- **The tail's state** — which of the tail's three steps had run, what the review returned, and
+  which fixes are committed and pushed. The tail (`AFK.md` step 5, *The lane's tail*) is a merge of
+  `origin/main`, one review over the accumulated diff, then the suite and every lane criterion; a
+  successor told only that the tail had started re-runs all three. What the review returned is the
+  fifth content above read at lane scope, so a review that never reported is re-fired whole here
+  too.
+
+**The item→merge map is what the predecessor believed; the pushed tip is what is true.** A
+successor closes items by reading `git log --merges` on that tip and never by reading this map,
+because the map stops at the last handoff its writer got to. What the map buys is the report: it
+is the only record of what the predecessor thought it had merged, and a disagreement between it
+and the tip is named there.
+
+The claims are the fourth of the six above and need nothing added: on this lane they are also what
+tells the successor that the branch it finds on the remote is its own package's rather than a
+sibling's. The procedure the successor runs from this whole field is `AFK.md`'s *A resumed
+generation starts here*.
+
 ## Review is a first-class consumer of the window
 
 Budget the review as its own line, beside the implementation it reviews and never as its tail.
