@@ -25,6 +25,7 @@ class SHRINKS the item). Reading the failure list, not the tally, is what catche
 these — which is why the PR body pastes the measured lines.
 """
 
+import ast
 import os
 import shutil
 import subprocess
@@ -2372,76 +2373,88 @@ MUTATIONS = [
      '                    help=f"print the report a real run would print and write NOTHING. "',
      ["TestMigrateDryRun.test_the_help_carries_the_same_enumeration_as_the_banner"]),
     # --- T198: the repository the item's code lands in ----------------------
+    # The gate is a WHITELIST, so a mutation LOOSENS one alternative rather than
+    # deleting a refusal: what must not survive is an address shape reaching the
+    # file that the list does not name. Each entry keeps the mutated source
+    # PARSEABLE — a mutant that breaks the syntax is reported "caught" by every
+    # test's import error, which is a false positive the round-2 lens measured on
+    # the entry this one replaces.
     ("T198 the shape gate goes, so `origin` is a repository again",
      "    if not REPO_RE.fullmatch(value):",
      "    if False:",
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
-    ("T198 the shape loosens to a PREFIX, so junk behind a URL passes",
+    ("T198 the shape loosens to a PREFIX, so junk behind an address passes",
      "    if not REPO_RE.fullmatch(value):",
      "    if not REPO_RE.match(value):",
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
-    # REPO_BAD is the one place the excluded characters are spelled, so one mutant
-    # per character reaches every alternative at once — which is the point of
-    # spelling them once. Each character is mutated on its own: dropping the whole
-    # constant would prove nothing about which of the four is load-bearing
-    ("T198 the field marker becomes spellable inside an address again",
-     r'REPO_BAD = r"\s*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
-     r'REPO_BAD = r"\s\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
+    # the http(s) alternative: the userinfo half is what a token rides in on
+    ("T198 an http(s) URL takes a userinfo half again, so a token is stored",
+     '    "https?://" + REPO_HOST + REPO_URL_PATH +                  # the forge over HTTP',
+     '    "https?://(?:[A-Za-z0-9._%-]+@)?" + REPO_HOST + REPO_URL_PATH +  # the forge over HTTP',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a URL path stops being ASCII, so an encoding smuggles a refused character",
+     'REPO_URL_PATH = r"(?:/[A-Za-z0-9._-]+)+"',
+     'REPO_URL_PATH = r"(?:/[^\\s]+)+"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a URL needs no path, so a bare host is a repository",
+     '    "https?://" + REPO_HOST + REPO_URL_PATH +                  # the forge over HTTP',
+     '    "https?://" + REPO_HOST + "(?:" + REPO_URL_PATH + ")?" +   # the forge over HTTP',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the host loosens, so a bracketed IPv6 literal and worse pass",
+     'REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?"',
+     'REPO_HOST = r"[^/]+"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the ssh alternatives: `git@` is a protocol name, and only that one
+    ("T198 the ssh URL takes any user, not the protocol's own `git@`",
+     '    "|ssh://git@" + REPO_HOST + REPO_URL_PATH +                # SSH, spelled as a URL',
+     '    "|ssh://[A-Za-z0-9._-]+@" + REPO_HOST + REPO_URL_PATH +    # SSH, spelled as a URL',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like form takes any user half",
+     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|[A-Za-z0-9._:-]+@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like path stops being ASCII, so the marker and bracket return",
+     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + ":/?" + REPO_LOCAL + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    # the local-path alternatives, and the four characters they still refuse
+    ("T198 a relative path is a repository again",
+     '    "|~?/" + REPO_LOCAL +                                      # a POSIX absolute path',
+     '    "|~?/?" + REPO_LOCAL +                                     # a POSIX absolute path',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the field marker becomes spellable inside a local path again",
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     'REPO_LOCAL = "[^\\\\s\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a bracket splices a second group into the line `pack` composes",
-     r'REPO_BAD = r"\s*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
-     r'REPO_BAD = r"\s*\u200e\u200f\u202a-\u202e\u2066-\u2069"',
-     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
-
-    ("T198 a direction override rides in an address again",
-     r'REPO_BAD = r"\s*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
-     r'REPO_BAD = r"\s*\[\]"',
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     'REPO_LOCAL = "[^\\\\s*" + REPO_INVISIBLE + "]+"',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a blank, and so a newline, reaches the single line the chain lives on",
-     r'REPO_BAD = r"\s*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
-     r'REPO_BAD = r"*\[\]\u200e\u200f\u202a-\u202e\u2066-\u2069"',
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     'REPO_LOCAL = "[^*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
-    # the guard that is not about the queue: the value is pasted into a git command
-    ("T198 a leading `-` is an address again, so the value becomes an OPTION",
-     '    r"(?!-)"                                                     # never an OPTION',
-     '    r""                                                          # never an OPTION',
-     ["TestRepoField.test_a_value_reaching_the_guard_as_an_OPTION_is_refused"]),
-
-    ("T198 a password in a URL is stored and reprinted again",
-     '    "(?!" + REPO_AUTH + r"*:" + REPO_AUTH + r"*@)" + REPO_CH + "+"  # a URL, no password',
-     '    REPO_CH + "+"  # a URL, no password',
-     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
-
-    # the scp-like shape's own delimiters. Three doors, three mutants: the lens
-    # that found them measured all three switched off with the suite still green
-    ("T198 the scp user half swallows a second `@` or a `/`",
-     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
-     '    "|" + REPO_CH + r"+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
-     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
-
-    ("T198 the scp host half swallows a `@`, a `:` or a `/`",
-     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
-     '    "|[^" + REPO_BAD + r"@/:]+@" + REPO_CH + r"+:" + REPO_CH + "+"  # the scp-like git address',
-     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
-
-    ("T198 the scp path half stops excluding the marker and bracket characters",
-     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
-     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + r"[^\s]+"  # the scp-like git address',
-     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
-
-    ("T198 a relative path is a repository again",
-     '    "|~?/" + REPO_CH + "+"                                       # a POSIX absolute path',
-     '    "|~?/?" + REPO_CH + "+"                                      # a POSIX absolute path',
+    ("T198 an invisible character rides in a local path again",
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]" + REPO_INVISIBLE + "]+"',
+     'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]]+"',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a drive letter with nothing after it is an address again",
-     '    "|[A-Za-z]:[\\\\\\\\/]" + REPO_CH + "+)"                         # a Windows drive-letter path',
-     '    "|[A-Za-z]:[\\\\\\\\/]" + REPO_CH + "*)"                         # a Windows drive-letter path',
+     '    "|[A-Za-z]:[\\\\\\\\/]" + REPO_LOCAL +                         # a Windows drive-letter path',
+     '    "|[A-Za-z]:[\\\\\\\\/]" + REPO_LOCAL + "*" +                   # a Windows drive-letter path',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a trailing '.' passes, and the value comes back a character short",
@@ -2449,12 +2462,16 @@ MUTATIONS = [
      "\n)",
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
-    # the other direction: the shapes that must KEEP passing. Without this mutant
-    # `test_the_shapes_that_actually_occur_are_accepted` is ordinary coverage and
-    # nothing proves a narrowing would be caught
+    # the other direction: a whitelist that narrows silently refuses real work, and
+    # only the acceptance test can say so
     ("T198 the scp-like address stops being an address at all",
-     '    "|[^" + REPO_BAD + r"@/:]+@[^" + REPO_BAD + r"@:/]+:" + REPO_CH + "+"  # the scp-like git address',
-     '    ""  # the scp-like git address',
+     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|(?!x)x"   # SSH, scp-like',
+     ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
+
+    ("T198 a host loses its port, so a self-hosted forge stops being addressable",
+     'REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?"',
+     'REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*"',
      ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
 
     ("T198 the field ceiling stops holding the one field the shape does not bound",
@@ -2568,6 +2585,19 @@ def main():
             unrunnable.append(f"{label} (anchor matched {src.count(old)}x, not once)")
             print(f"UNRUNNABLE {label}\n           anchor matched {src.count(old)}x, not once")
             continue
+        mutated = src.replace(old, new, 1)
+        # A mutant that does not PARSE proves nothing: every named test then fails
+        # on the import error, whatever the guard does, and the harness would report
+        # it caught. Measured on the T198 credential mutant, whose edit broke the
+        # implicit concatenation of two adjacent string literals — the tally said
+        # 356/356 while that entry exercised nothing. It is UNRUNNABLE, like a stale
+        # anchor, and for the same reason: the mutation never ran
+        try:
+            ast.parse(mutated)
+        except SyntaxError as exc:
+            unrunnable.append(f"{label} (mutated source does not parse: {exc.msg})")
+            print(f"UNRUNNABLE {label}\n           mutated source does not parse: {exc.msg}")
+            continue
         tmp = tempfile.mkdtemp(prefix="tk-mutation.")
         try:
             dst = os.path.join(tmp, "tk")
@@ -2577,7 +2607,7 @@ def main():
             # reports a guard as unprotected when it is merely unmutated
             shutil.copytree(TK_DIR, dst, ignore=shutil.ignore_patterns("__pycache__"))
             with open(os.path.join(dst, rel), "w", encoding="utf-8") as f:
-                f.write(src.replace(old, new, 1))
+                f.write(mutated)
             # EACH named test must fall on its own. Running them as one batch only
             # proves that SOME test failed, so a listed test that quietly still
             # passes stays invisible and the tally claims more than it proved

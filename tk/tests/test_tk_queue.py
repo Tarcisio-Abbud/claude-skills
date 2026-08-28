@@ -3574,7 +3574,18 @@ class TestRepoField(QueueTest):
                      "@host:path", "git@:path", "git@host:",
                      # and the excluded characters INSIDE that shape, which no
                      # other junk value here reaches
-                     "git@host:pa*th", "git@host:p]q", "git@ho*st:path"):
+                     "git@host:pa*th", "git@host:p]q", "git@ho*st:path",
+                     # the whitelist refuses these without a rule naming any of
+                     # them, which is the whole reason it is a whitelist: an
+                     # encoding of a refused character, a userinfo that is not the
+                     # protocol's own `git@`, an invisible character, and a host
+                     # this account does not address a repository by
+                     "https://user%3Atoken@host/r.git", "https://user%3Apass%40host/r.git",
+                     "https://ghp_ABCDEF1234567890@github.com/o/r.git",
+                     "ssh://root@github.com/o/r.git", "https://h/a%20b/r.git",
+                     "https://github.com/o/r\u200b.git", "/srv/\u2060repo",
+                     "https://[::1]/r.git", "https://github.com", "ssh://git@github.com",
+                     "git@host:st:path"):
             with self.subTest(junk=junk):
                 self.seed()
                 r = self.add("--repo", junk)
@@ -3621,9 +3632,9 @@ class TestRepoField(QueueTest):
                       # a non-ASCII path is not refused: banning it would refuse the
                       # accented paths this machine really has (see REPO_BAD)
                       "/workspace/projects/projeção",
-                      # the colon that separates host from path is the FIRST one;
-                      # a path carrying another is a path, not a second delimiter
-                      "git@host:st:path"):
+                      # a LOCAL path may carry a colon: the first `/` comes before
+                      # it, so git reads a path and not an scp-like `host:path`
+                      "/srv/repo:v2", "git@host:/srv/r.git"):
             with self.subTest(value=value):
                 self.seed()
                 r = self.add("--repo", value)

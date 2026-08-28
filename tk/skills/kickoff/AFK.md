@@ -75,9 +75,9 @@ git ls-remote --heads "<the item's repo address>" "refs/heads/spec/<m>-*"   # ex
 **A URL or a path, never a remote NAME.** A bare `origin` resolves against the cwd, and the
 orchestrator's cwd is the queue's directory, which is routinely a clone of something else: run
 from there, `origin` was measured returning exit 0 and no output — a clean false negative that
-reads exactly like "no branch". `--repo` refuses that shape on the way in and `pack` refuses it
-again on the way out, so a `[repo: …]` you read here is already a URL or an absolute path — an
-address you supplied yourself, for an item carrying none, answers to the same rule.
+reads exactly like "no branch". `--repo` accepts only a named list of shapes and `pack` re-checks
+it on the way out, so a `[repo: …]` you read here is already one of them — an address you
+supplied yourself, for an item carrying none, answers to the same rule.
 **And read the exit code, not only the output.** An unreachable host, a wrong URL and a failed
 authentication all exit 128 with a `fatal:` line; a check whose output you capture into a
 variable turns all three into "free" and admits the item.
