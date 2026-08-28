@@ -55,11 +55,18 @@ metadata:
 """
 
 
-def item(iid, text, project=None, klass="AUTONOMOUS", risk=None, effort="S"):
+def item(iid, text, project=None, klass="AUTONOMOUS", risk=None, effort="S", born=None):
+    """The canonical item, as compose_item writes it.
+
+    `born` is OFF by default, and that default is the legacy queue: the field
+    arrived long after these fixtures, so an item without it is exactly the shape
+    every reader has to keep working on. A test that wants an age asks for one.
+    """
     tag = f" **Project:** {project}." if project else ""
     risk_field = f" **Risk:** {risk}." if risk else ""
+    born_field = f" **Born:** {born}." if born else ""
     return (f"- [ ] **T{iid:03d}** — {text} **Class:** {klass}. **Effort:** {effort}."
-            f"{risk_field} **Criterion:** A: x.{tag} **Source:** 2026-08-13\n")
+            f"{risk_field} **Criterion:** A: x.{tag}{born_field} **Source:** 2026-08-13\n")
 
 
 class QueueTest(unittest.TestCase):
@@ -3058,7 +3065,7 @@ class TestProvenanceFields(QueueTest):
         r = self.add("--ticket", "homeserver-ambiente#172", "--spec", "homeserver-ambiente#171")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("**Ticket:** homeserver-ambiente#172. "
-                      "**Spec:** homeserver-ambiente#171. **Source:**", self.body())
+                      "**Spec:** homeserver-ambiente#171. **Born:**", self.body())
 
     def test_the_values_round_trip_byte_for_byte(self):
         """The ticket's criterion, through the readers that exist: `pack` prints
@@ -3086,7 +3093,7 @@ class TestProvenanceFields(QueueTest):
         self.assertEqual(self.body(),
                          HEADER + "- [ ] **T001** — sem procedência **Class:** AUTONOMOUS. "
                          "**Effort:** S. **Criterion:** A: x. "
-                         f"**Source:** {today}\n")
+                         f"**Born:** {today}. **Source:** {today}\n")
 
     def test_a_value_outside_the_ref_shape_is_refused(self):
         for flag in ("--ticket", "--spec"):
@@ -3497,10 +3504,11 @@ class TestRepoField(QueueTest):
                      "--spec", "homeserver-ambiente#171",
                      "--repo", "https://github.com/Tarcisio-Abbud/claude-skills.git")
         self.assertEqual(r.returncode, 0, r.stderr)
+        # up to **Born:**, which compose_item stamps between this field and Source
         self.assertIn("**Ticket:** homeserver-ambiente#198. "
                       "**Spec:** homeserver-ambiente#171. "
                       "**Repo:** https://github.com/Tarcisio-Abbud/claude-skills.git. "
-                      "**Source:**", self.body())
+                      "**Born:**", self.body())
 
     def test_the_value_round_trips_byte_for_byte(self):
         """Through the readers that exist: `pack` prints the value and writes
@@ -3535,7 +3543,7 @@ class TestRepoField(QueueTest):
         self.assertEqual(self.body(),
                          HEADER + "- [ ] **T001** — sem repo **Class:** AUTONOMOUS. "
                          "**Effort:** S. **Criterion:** A: x. "
-                         f"**Source:** {today}\n")
+                         f"**Born:** {today}. **Source:** {today}\n")
 
     def test_a_remote_name_or_a_cwd_relative_path_is_refused(self):
         """The refusal is the whole point of the field: a value the orchestrator
@@ -4370,8 +4378,8 @@ class TestIdSpelling(QueueTest):
         # The duplicate mark belongs to the ambiguity these two also are — one
         # number, two items — and is measured by TestAmbiguousId
         self.assertEqual(r.stdout,
-                         "T001  AUTONOMOUS  item curto  [duplicate ID 1]\n"
-                         "T0001  AUTONOMOUS  item de id largo  [duplicate ID 1]\n"
+                         "T001  AUTONOMOUS     ?  item curto  [duplicate ID 1]\n"
+                         "T0001  AUTONOMOUS     ?  item de id largo  [duplicate ID 1]\n"
                          "\nduplicate IDs: only the FIRST item under each is reachable"
                          " — renumber the others by hand in next-steps.md.\n")
 
@@ -4397,7 +4405,7 @@ class TestIdSpelling(QueueTest):
         anything — it is the only spelling of 1000."""
         self.seed(item(1000, "item de quatro digitos"))
         r = self.run_tk("list")
-        self.assertEqual(r.stdout, "T1000  AUTONOMOUS  item de quatro digitos\n")
+        self.assertEqual(r.stdout, "T1000  AUTONOMOUS     ?  item de quatro digitos\n")
         self.assertEqual(self.add(), "T1001")
 
 
@@ -4431,9 +4439,9 @@ class TestAmbiguousId(QueueTest):
         r = self.run_tk("list")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout,
-                         "T005  AUTONOMOUS  primeira ocorrencia  [duplicate ID 5]\n"
-                         "T007  AUTONOMOUS  item sozinho\n"
-                         "T005  AUTONOMOUS  segunda ocorrencia  [duplicate ID 5]\n"
+                         "T005  AUTONOMOUS     ?  primeira ocorrencia  [duplicate ID 5]\n"
+                         "T007  AUTONOMOUS     ?  item sozinho\n"
+                         "T005  AUTONOMOUS     ?  segunda ocorrencia  [duplicate ID 5]\n"
                          "\nduplicate IDs: only the FIRST item under each is reachable"
                          " — renumber the others by hand in next-steps.md.\n")
 
@@ -4559,7 +4567,12 @@ class TestMigrateFold(QueueTest):
                   "  **Class:** AUTONOMOUS. **Effort:** S.\n"
                   "  **Criterion:** A: x. **Source:** 2026-08-13\n")
         self.migrate()
-        self.assertEqual(self.body(), HEADER + LEGACY.replace("\n  ", " ") % 1)
+        # the fold's own assertion carries the birth stamp too: this command now
+        # backdates as well as folds, and asserting the file minus that field
+        # would be asserting a file the command does not write
+        self.assertEqual(self.body(),
+                         HEADER + LEGACY.replace("\n  ", " ").replace(
+                             "**Source:**", "**Born:** 2026-08-13. **Source:**") % 1)
 
     def test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass(self):
         """Both repairs are `migrate`'s, and the report has to name the number the
@@ -4572,7 +4585,7 @@ class TestMigrateFold(QueueTest):
         self.assertIn("folded up, where every gate reads them — T001\n", r.stdout)
         self.assertEqual(self.body(),
                          HEADER + "- [ ] **T001** — legado sem ID **Class:** AUTONOMOUS. "
-                         "**Effort:** S. **Source:** 2026-08-13\n")
+                         "**Effort:** S. **Born:** 2026-08-13. **Source:** 2026-08-13\n")
 
     # --- idempotency: the command runs on a queue it already rewrote ------
 
@@ -4586,17 +4599,28 @@ class TestMigrateFold(QueueTest):
         self.assertEqual(self.body(), once)
         self.assertNotIn("folded up", r.stdout)
         self.assertNotIn("left exactly as they are", r.stdout)
+        # and the same of the backdating, which is the OTHER repair this command
+        # re-applies: a second pass that restamped would give every item in the
+        # queue the age of the last migration
+        self.assertNotIn("backdated", r.stdout)
 
     def test_an_already_canonical_queue_is_untouched_and_silent(self):
         """The other direction, and the only one that can catch a fold firing on
         every item: a command that rewrites what is already right has no way to
         report that it changed nothing."""
-        self.seed(item(1, "um"), item(2, "dois", project="tk"), item(3, "tres", risk="x"))
+        # dated on purpose: this test is about a repair firing on items that need
+        # none, and an item with no **Born:** legitimately needs one now. The
+        # backdating's own no-op case is the second migrate above
+        self.seed(item(1, "um", born="2026-08-13"),
+                  item(2, "dois", project="tk", born="2026-08-13"),
+                  item(3, "tres", risk="x", born="2026-08-13"))
         before = self.body()
         r = self.migrate()
         self.assertEqual(self.body(), before)
         self.assertNotIn("folded up", r.stdout)
         self.assertNotIn("left exactly as they are", r.stdout)
+        self.assertNotIn("backdated", r.stdout)
+        self.assertNotIn("left with no age", r.stdout)
 
     def test_the_frontmatter_headings_and_the_done_log_move_stay_intact(self):
         """The fold runs inside the command that also moves [x] items out, so the
@@ -4822,7 +4846,7 @@ class TestListReadsTheClassFromTheChain(QueueTest):
 
     def test_a_class_named_only_in_PROSE_is_not_the_one_list_shows(self):
         self.seed(PROSE_CLASS)
-        self.assertIn("T009  AUTONOMOUS  item que fala de",
+        self.assertIn("T009  AUTONOMOUS     ?  item que fala de",
                       self.run_tk("list").stdout)
 
     def test_list_and_pack_no_longer_disagree_about_the_same_item(self):
@@ -4862,8 +4886,8 @@ class TestListReadsTheClassFromTheChain(QueueTest):
         self.seed(item(1, "um"), item(2, "dois", klass="DECISION"),
                   item(3, "tres", klass="RECURRING"))
         out = self.run_tk("list").stdout
-        for line in ("T001  AUTONOMOUS  um", "T002  DECISION    dois",
-                     "T003  RECURRING   tres"):
+        for line in ("T001  AUTONOMOUS     ?  um", "T002  DECISION       ?  dois",
+                     "T003  RECURRING      ?  tres"):
             self.assertIn(line, out)
 
 
@@ -4929,7 +4953,7 @@ class TestResolvedItemKeepsItsOwnSpelling(QueueTest):
         name the one it is about."""
         other = item(1, "item curto de verdade")
         self.seed(WIDE_OFF_LINE, other)
-        self.assertIn("T001  AUTONOMOUS  item curto de verdade",
+        self.assertIn("T001  AUTONOMOUS     ?  item curto de verdade",
                       self.run_tk("list").stdout)
         r = self.run_tk("claim", "T0001", "--as", "teste")
         self.assertEqual(r.returncode, 1)
@@ -5357,9 +5381,9 @@ class TestTheZeroIdIsStillAnId(QueueTest):
         r = self.run_tk("list")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout,
-                         "T000  AUTONOMOUS  primeira ocorrencia  [duplicate ID 0]\n"
-                         "T007  AUTONOMOUS  item sozinho\n"
-                         "T000  AUTONOMOUS  segunda ocorrencia  [duplicate ID 0]\n"
+                         "T000  AUTONOMOUS     ?  primeira ocorrencia  [duplicate ID 0]\n"
+                         "T007  AUTONOMOUS     ?  item sozinho\n"
+                         "T000  AUTONOMOUS     ?  segunda ocorrencia  [duplicate ID 0]\n"
                          "\nduplicate IDs: only the FIRST item under each is reachable"
                          " — renumber the others by hand in next-steps.md.\n")
 
@@ -5916,7 +5940,7 @@ class TestMigrateDryRun(HandoffTest):
     IDLESS = ("- [ ] legado sem ID\n"
               "  **Class:** AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
     IDLESS_MIGRATED = ("- [ ] **T008** — legado sem ID **Class:** AUTONOMOUS. "
-                       "**Effort:** S. **Source:** 2026-08-13\n")
+                       "**Effort:** S. **Born:** 2026-08-13. **Source:** 2026-08-13\n")
     ANCHOR = "anchor [[handoff-T005]] e [[handoff-T006]]"
 
     def seed_everything(self):
@@ -5938,8 +5962,8 @@ class TestMigrateDryRun(HandoffTest):
     def migrated_body(self):
         """The file the real run leaves, whichever way it was reached — spelled
         once, so the two tests that assert it cannot drift apart."""
-        return (HEADER + item(6, "irmao [[handoff-T006]]") + FOLD_CANONICAL
-                + self.IDLESS_MIGRATED + self.REFUSED)
+        return (HEADER + item(6, "irmao [[handoff-T006]]", born="2026-08-13")
+                + FOLD_CANONICAL + self.IDLESS_MIGRATED + self.REFUSED)
 
     def snapshot(self):
         """Every file in the memory dir, by NAME and by BYTES. The names matter as
@@ -5974,6 +5998,14 @@ class TestMigrateDryRun(HandoffTest):
                          "1 item(s) left exactly as they are: folding would have to "
                          "GUESS which text is a field value — T003. Close each with "
                          "`cancel` and re-add it clean.\n"
+                         "2 item(s) backdated from **Source:** — T006, T008\n"
+                         "1 item(s) left with no age: a **Source:** stating no "
+                         "`YYYY-MM-DD` date (a `20/08` has no year, and inferring one "
+                         "is inventing) — T007. Nothing here invents one.\n"
+                         "1 item(s) left with no age: a **Source:** no reader may use "
+                         "— off the first line, or ahead of the **Class:** anchor "
+                         "(`migrate` reports the repair separately) — T003. Nothing "
+                         "here invents one.\n"
                          "handoff-T006.md kept — still reached by T006\n"
                          "handoff-T005.md removed\n")
 
@@ -6080,6 +6112,164 @@ class TestMigrateDryRun(HandoffTest):
         self.assertEqual(self.body(), self.migrated_body())
         self.assertIsNone(self.brief(5))
         self.assertIsNotNone(self.brief(6))
+
+
+# --- T148: the item's birth date, and the age it gives the queue ----------
+# 8 of the 32 items in the queue that motivated this had been standing there
+# unmoved, the oldest for six days, and nothing anywhere said so: "old" was
+# reconstructed by hand from whatever an item's prose happened to mention. The
+# field is the stamp; `list` is the reader; `migrate` is what keeps the ages of
+# the items that predate both from all starting on the day of the deploy.
+
+def legacy(iid, text, source, born=None):
+    """A canonical item with an arbitrary **Source:** — the field `migrate` reads
+    a birth date off. `item()` hard-codes a date there; these tests are about the
+    values that are NOT one."""
+    born_field = f" **Born:** {born}." if born else ""
+    return (f"- [ ] **T{iid:03d}** — {text} **Class:** AUTONOMOUS. **Effort:** S. "
+            f"**Criterion:** A: x.{born_field} **Source:** {source}\n")
+
+
+class TestBirthDate(QueueTest):
+    """`add` stamps what it witnesses; `migrate` reads what an older item wrote
+    down about itself. Neither ever guesses — an item with no date says so."""
+
+    def test_a_new_item_is_born_with_todays_date(self):
+        """Asserted in the file's real format, not through a helper: the stamp has
+        to land IN the field chain, right before **Source:**, or `list` reads no
+        age off an item the command reported as added."""
+        self.seed()
+        today = datetime.date.today().isoformat()
+        r = self.run_tk("add", "nascido hoje", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: x")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(f"**Criterion:** A: x. **Born:** {today}. **Source:** {today}\n",
+                      self.body())
+
+    def test_the_stamp_is_the_day_of_the_add_and_not_what_source_says(self):
+        """`--source` is provenance and may name any moment; the item still entered
+        this queue today. Backdating is `migrate`'s job and nothing else's."""
+        self.seed()
+        today = datetime.date.today().isoformat()
+        r = self.run_tk("add", "pensado em julho", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: x",
+                        "--source", "conversa de 2026-07-02")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(f"**Born:** {today}. **Source:** conversa de 2026-07-02",
+                      self.body())
+
+
+class TestMigrateBackdates(QueueTest):
+    BACKDATED = "item(s) backdated from **Source:** — "
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def test_a_source_that_states_a_date_backdates_the_item(self):
+        """The year is written down, so nothing is inferred — including when the
+        date sits inside a sentence, which is how most of the real queue spells
+        it (`PR #63, 2026-08-13`)."""
+        self.seed(legacy(1, "achado na review", "PR #63, 2026-08-13"))
+        r = self.migrate()
+        self.assertIn("**Criterion:** A: x. **Born:** 2026-08-13. "
+                      "**Source:** PR #63, 2026-08-13", self.body())
+        self.assertIn(self.BACKDATED + "T001", r.stdout)
+
+    def test_a_source_with_no_date_leaves_the_item_undated_and_says_so(self):
+        """The direction that matters. `20/08` is a real day in a year the text
+        does not name, and a stamp built by choosing that year reports an age no
+        reader can tell from a right one. Undated says "unknown" out loud — and
+        the report has to name the item, since nothing else ever will."""
+        self.seed(legacy(1, "veio do tracker", "tracker"),
+                  legacy(2, "do wrap-up", "wrap-up 20/08"))
+        before = self.body()
+        r = self.migrate()
+        self.assertEqual(self.body(), before)
+        self.assertNotIn(self.BACKDATED, r.stdout)
+        self.assertIn("2 item(s) left with no age: a **Source:** stating no "
+                      "`YYYY-MM-DD` date", r.stdout)
+        self.assertIn("— T001, T002. Nothing here invents one.", r.stdout)
+
+    def test_two_different_dates_in_one_source_decide_nothing(self):
+        """Picking either is a choice the text does not make. The same date twice
+        is one date, and still backdates."""
+        self.seed(legacy(1, "duas datas", "aberto 2026-07-02, refeito 2026-08-13"),
+                  legacy(2, "a mesma duas vezes", "2026-08-13 e de novo 2026-08-13"))
+        r = self.migrate()
+        self.assertNotIn("**Born:**", self.body().split("**T002**")[0])
+        self.assertIn("**Born:** 2026-08-13. **Source:** 2026-08-13 e de novo",
+                      self.body())
+        self.assertIn("1 item(s) left with no age: a **Source:** stating two "
+                      "different dates — T001", r.stdout)
+
+    def test_a_source_date_in_the_future_is_not_a_birth_date(self):
+        """An item cannot have been born after today, so the value is a typo or a
+        plan. Honouring it would make `list` print a NEGATIVE age — the one output
+        a reader has no reading for."""
+        ahead = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+        self.seed(legacy(1, "datado para a frente", f"planejado para {ahead}"))
+        before = self.body()
+        r = self.migrate()
+        self.assertEqual(self.body(), before)
+        self.assertIn("1 item(s) left with no age: a **Source:** date later than "
+                      "today — T001", r.stdout)
+
+    def test_a_source_no_reader_may_use_is_reported_as_its_own_case(self):
+        """A field off the first line is one repair away from an age, and an item
+        with no Source at all is not. Reported as "no Source", the first sends a
+        reader looking for a field the item plainly carries."""
+        self.seed("- [ ] **T001** — campos fora da primeira linha **Class:**\n"
+                  "  AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
+        r = self.migrate()
+        self.assertIn("1 item(s) left with no age: a **Source:** no reader may use",
+                      r.stdout)
+
+
+class TestListShowsTheAge(QueueTest):
+    """Displayed ALWAYS, never turned into a question: the value of a threshold is
+    not decided in this slice, and a queue nobody has measured with ages visible
+    is not a queue anyone can pick a number for."""
+
+    def test_a_dated_item_shows_its_age_in_days(self):
+        born = (datetime.date.today() - datetime.timedelta(days=12)).isoformat()
+        self.seed(item(1, "parado ha doze dias", born=born))
+        self.assertIn("T001  AUTONOMOUS   12d  parado ha doze dias",
+                      self.run_tk("list").stdout)
+
+    def test_an_item_born_today_is_zero_days_old_not_blank(self):
+        """`0d` and `?` are different claims — one is an age, the other is the
+        absence of one — and a display that printed both the same way would hide
+        exactly the items `migrate` could not date."""
+        self.seed(item(1, "nasceu hoje", born=datetime.date.today().isoformat()))
+        self.assertIn("T001  AUTONOMOUS    0d  nasceu hoje", self.run_tk("list").stdout)
+
+    def test_a_legacy_queue_lists_without_an_age_and_without_breaking(self):
+        """The population that outnumbers every other one: items written before
+        the field existed, beside items whose stamp is unreadable. `list` is the
+        command every session runs first, so it fails on none of them."""
+        self.seed(item(1, "sem carimbo nenhum"),
+                  legacy(2, "carimbo ilegivel", "2026-08-13", born="ontem"),
+                  legacy(3, "carimbo impossivel", "2026-08-13", born="2026-02-31"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        for line in ("T001  AUTONOMOUS     ?  sem carimbo nenhum",
+                     "T002  AUTONOMOUS     ?  carimbo ilegivel",
+                     "T003  AUTONOMOUS     ?  carimbo impossivel"):
+            self.assertIn(line, r.stdout)
+
+    def test_the_age_survives_the_project_grouping(self):
+        """`list` has two output shapes and only one of them is the flat list. A
+        column added to the flat path alone is a column half the queues never see."""
+        born = (datetime.date.today() - datetime.timedelta(days=3)).isoformat()
+        self.seed(item(1, "com tag", project="tk", born=born), item(2, "sem tag"))
+        out = self.run_tk("list").stdout
+        self.assertIn("## tk", out)
+        self.assertIn("T001  AUTONOMOUS    3d  com tag", out)
+        self.assertIn("T002  AUTONOMOUS     ?  sem tag", out)
 
 
 if __name__ == "__main__":

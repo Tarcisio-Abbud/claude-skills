@@ -1737,8 +1737,8 @@ MUTATIONS = [
       "TestMigrateFold.test_the_two_populations_are_separated_in_ONE_run"]),
 
     ("T121 the items the fold could NOT lift go unreported (silent partial success)",
-     "    if left_alone:\n        # grouped BY REASON",
-     "    if False:\n        # grouped BY REASON",
+     "    if left_alone:\n        for why, labels in group_by_reason(left_alone):",
+     "    if False:\n        for why, labels in group_by_reason(left_alone):",
      ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
       "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
       "TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED",
@@ -1836,8 +1836,8 @@ MUTATIONS = [
     # the report gained a second reason, and a reader repairs the shape the
     # sentence names — melted into one line it sends them after the wrong thing
     ("review#3 both refusals are reported under the same reason",
-     "            by_reason.setdefault(why, []).append(lab)",
-     "            by_reason.setdefault(FOLD_REFUSAL, []).append(lab)",
+     "        grouped.setdefault(why, []).append(label)",
+     "        grouped.setdefault(FOLD_REFUSAL, []).append(label)",
      ["TestFoldKeepsTheItemsMarkdown.test_the_two_refusals_are_reported_under_their_OWN_reasons",
       "TestFoldKeepsTheItemsMarkdown."
       "test_a_marker_stranded_on_a_BLOCK_line_is_left_and_REPORTED"]),
@@ -2576,6 +2576,80 @@ MUTATIONS = [
      '        return ""',
      ["TestPackRepo.test_a_value_no_reader_may_use_is_MARKED_too",
       "TestPackRepo.test_two_Repo_fields_in_the_chain_are_MARKED_and_never_guessed"]),
+
+    # --- T148: the birth date and the age it gives the queue -------------
+
+    ("T148 `add` stops stamping the birth date",
+     '    fields.append(f"**Born:** {datetime.date.today().isoformat()}.")\n',
+     "",
+     ["TestBirthDate.test_a_new_item_is_born_with_todays_date"]),
+
+    ("T148 the stamp takes --source's word for when the item was born",
+     '    fields.append(f"**Born:** {datetime.date.today().isoformat()}.")',
+     '    fields.append(f"**Born:** {args.source or datetime.date.today().isoformat()}.")',
+     ["TestBirthDate.test_the_stamp_is_the_day_of_the_add_and_not_what_source_says"]),
+
+    ("T148 `migrate` invents today's date for a **Source:** that states none",
+     '    if not seen:\n        return None, "no-date"',
+     "    if not seen:\n        return today, None",
+     ["TestMigrateBackdates.test_a_source_with_no_date_leaves_the_item_undated_and_says_so"]),
+
+    ("T148 `migrate` picks the first of two dates instead of declining",
+     '    if len(seen) > 1:\n        return None, "two"',
+     "    if len(seen) > 1:\n        return seen[0], None",
+     ["TestMigrateBackdates.test_two_different_dates_in_one_source_decide_nothing"]),
+
+    ("T148 a **Source:** date in the future is stamped as a birth date",
+     '    if seen[0] > today:\n        return None, "future"',
+     '    if False:\n        return None, "future"',
+     ["TestMigrateBackdates.test_a_source_date_in_the_future_is_not_a_birth_date"]),
+
+    ("T148 backdating stamps the day of the migration, not the date **Source:** states",
+     "    born, why = source_birthdate(field_value(src[0]), today)",
+     "    born, why = today, None",
+     ["TestMigrateBackdates.test_a_source_that_states_a_date_backdates_the_item",
+      "TestMigrateBackdates.test_a_source_with_no_date_leaves_the_item_undated_and_says_so"]),
+
+    ("T148 an unreadable **Source:** is reported as no **Source:** at all",
+     '        return block, ("unreadable" if FIELD_MARKER_RE["Source"].search(block)\n'
+     "                       else \"none\")",
+     '        return block, "none"',
+     ["TestMigrateBackdates.test_a_source_no_reader_may_use_is_reported_as_its_own_case"]),
+
+    ("T148 a second `migrate` restamps an item that already carries a birth date",
+     '    if real_fields(block, "Born"):\n        return block, "stamped"',
+     '    if False:\n        return block, "stamped"',
+     ["TestMigrateFold.test_an_already_canonical_queue_is_untouched_and_silent",
+      "TestMigrateFold.test_a_second_migrate_is_a_no_op_on_the_file_and_says_nothing"]),
+
+    ("T148 `list` drops the age column",
+     'return (f"{label}  {cls:<10}  {age:>4}  {title}"',
+     'return (f"{label}  {cls:<10}  {title}"',
+     ["TestListShowsTheAge.test_a_dated_item_shows_its_age_in_days",
+      "TestListShowsTheAge.test_the_age_survives_the_project_grouping"]),
+
+    # `age_cell`, not `item_age`: an unstamped item and one whose stamp is
+    # unreadable both arrive here as None, and this is the single place that
+    # decides what the reader sees for either
+    ("T148 an item with no readable birth date is displayed as born today",
+     '    return "?" if days is None else f"{days}d"',
+     '    return f"{days or 0}d"',
+     ["TestListShowsTheAge.test_a_legacy_queue_lists_without_an_age_and_without_breaking"]),
+
+    # same anchor as the mutation above, and the opposite half of the decision:
+    # that one asks what an item with NO age shows, this one asks whether an age
+    # of zero is an age at all. A falsy test conflates the two, and `0d` — an item
+    # added today — would print as `?`, the mark that means "predates the field"
+    ("T148 an item born today reads as having no age at all",
+     '    return "?" if days is None else f"{days}d"',
+     '    return "?" if not days else f"{days}d"',
+     ["TestListShowsTheAge.test_an_item_born_today_is_zero_days_old_not_blank"]),
+
+    ("T148 an unreadable birth date crashes `list` instead of reading as unknown",
+     "    try:\n        born = datetime.date.fromisoformat(field_value(got[0]))\n"
+     "    except ValueError:\n        return None",
+     "    born = datetime.date.fromisoformat(field_value(got[0]))",
+     ["TestListShowsTheAge.test_a_legacy_queue_lists_without_an_age_and_without_breaking"]),
 ]
 
 
@@ -2641,7 +2715,9 @@ def main():
                                   "TestFoldFailsSafeOnShapesNobodyEnumerated",
                                   "TestAFieldAppendedBeforeTheAnchorIsRefused",
                                   "TestASetextTitleIsKeptWithItsUnderline",
-                                  "TestClearingOnAClassLessItemIsRefused"])
+                                  "TestClearingOnAClassLessItemIsRefused",
+                                  "TestBirthDate", "TestMigrateBackdates",
+                                  "TestListShowsTheAge"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
