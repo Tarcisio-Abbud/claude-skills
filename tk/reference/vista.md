@@ -50,7 +50,9 @@ The outbox is where it goes, by default and without asking: the machine's **outb
 directory it exports to the user, and the file is `<outbox>/vista-<package>-<YYYY-MM-DD>.html`.
 A package has no id of its own, so `<package>` is the name the session already calls it by — the
 anchor item's id (`T139`) for a package built around one, otherwise its first item's id, and the
-campaign's name where the user gave it one.
+campaign's name where the user gave it one. A **fleet run** has neither anchor nor first item —
+it is one run over many queues — so its slot takes the literal `fleet`.
+
 Two places name that directory, and the reader takes the first that answers — the machine's own
 instruction file (`CLAUDE.md`/`AGENTS.md`, which normally states where deliverables go), then
 the site extension `~/.claude/tk/wrap-up.md`, under a line reading `outbox = <absolute path>`.
