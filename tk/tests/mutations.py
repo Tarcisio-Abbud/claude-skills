@@ -2416,12 +2416,12 @@ MUTATIONS = [
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 the scp-like form takes any user half",
-     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
      '    "|[A-Za-z0-9._:-]+@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 the scp-like path stops being ASCII, so the marker and bracket return",
-     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
      '    "|git@" + REPO_HOST + ":/?" + REPO_LOCAL + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
@@ -2451,20 +2451,15 @@ MUTATIONS = [
      'REPO_LOCAL = "[^\\\\s*\\\\[\\\\]]+"',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
-    ("T198 a drive letter with nothing after it is an address again",
-     '    "|[A-Za-z]:[\\\\\\\\/]" + REPO_LOCAL +                         # a Windows drive-letter path',
-     '    "|[A-Za-z]:[\\\\\\\\/](?:" + REPO_LOCAL + ")?" +                # a Windows drive-letter path',
-     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
-
     ("T198 a trailing '.' passes, and the value comes back a character short",
-     "\n" + r'    r"(?<!\.)"' + "\n)",
+     "\n" + r'    r"(?<![./\\])"' + "\n)",
      "\n)",
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     # the other direction: a whitelist that narrows silently refuses real work, and
     # only the acceptance test can say so
     ("T198 the scp-like address stops being an address at all",
-     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
      '    "|(?!x)x"   # SSH, scp-like',
      ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
 
@@ -2475,7 +2470,7 @@ MUTATIONS = [
 
     # --- T198, round 3: the edges the whitelist still had --------------------
     ("T198 the port returns to the scp-like branch, which cannot honour one",
-     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
      '    "|git@" + REPO_HOST + REPO_PORT + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
@@ -2505,13 +2500,28 @@ MUTATIONS = [
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 the scp-like address needs no path either",
-     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
      '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]*" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 the scp-like path may no longer be absolute, a shape that is real",
-     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
      '    "|git@" + REPO_HOST + ":[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
+
+    ("T198 a trailing separator passes, so one repository has two spellings",
+     r'    r"(?<![./\\])"',
+     r'    r"(?<!\.)"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like path takes an all-digit first segment, a port git folds in",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the all-digit rule swallows a real path that merely starts with a digit",
+     '    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
+     '    "|git@" + REPO_HOST + r":/?(?![0-9])[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like',
      ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
 
     ("T198 the field ceiling stops holding the one field the shape does not bound",
@@ -2588,10 +2598,16 @@ def load_check(tk_dir, rel):
              "l = m.SourceFileLoader('mutant', sys.argv[1]);"
              "s = u.spec_from_loader('mutant', l);"
              "l.exec_module(u.module_from_spec(s))")
-    r = subprocess.run([sys.executable, "-c", probe, path],
-                       capture_output=True, text=True,
-                       # the module the CLIs import sits beside them
-                       cwd=os.path.dirname(path))
+    try:
+        r = subprocess.run([sys.executable, "-c", probe, path],
+                           capture_output=True, text=True,
+                           # a mutant that hangs on import must not stop the harness
+                           # with no diagnostic; no entry needs anything like this long
+                           timeout=60,
+                           # the module the CLIs import sits beside them
+                           cwd=os.path.dirname(path))
+    except subprocess.TimeoutExpired:
+        return "import did not finish in 60s"
     if r.returncode == 0:
         return None
     tail = [ln for ln in r.stderr.strip().splitlines() if ln.strip()]
@@ -2641,6 +2657,10 @@ def main():
         label, old, new, names = entry[:4]
         rel = entry[4] if len(entry) > 4 else DEFAULT_SRC
         src = sources[rel]
+        if old == new:
+            unrunnable.append(f"{label} (the mutation is a no-op: old == new)")
+            print(f"UNRUNNABLE {label}\n           the mutation is a no-op: old == new")
+            continue
         if src.count(old) != 1:
             # NOT a survivor: the mutation never ran, so it says nothing about the
             # suite. It is still a failure — a stale anchor silently stops proving

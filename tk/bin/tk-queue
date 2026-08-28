@@ -1330,7 +1330,10 @@ REPO_INVISIBLE = "\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufef
 # host on a non-standard port and to git as the DEFAULT port and the path
 # `2222:owner/repo.git`: measured under GIT_TRACE, which showed
 # `ssh git@myserver 'git-upload-pack '2222:owner/repo.git''`. That is the silent
-# misreading this whitelist exists to end, so the port goes where it can be honoured
+# misreading this whitelist exists to end, so the port goes where it can be honoured.
+# The scp-like branch refuses the OTHER spelling of the same mistake itself: a first
+# path segment that is all digits, `git@host:2222/owner/repo.git`, which git folds
+# into the path exactly the same way — measured the same way, one round later.
 REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*"
 REPO_PORT = r"(?::[0-9]{1,5})?"
 REPO_URL_PATH = r"(?:/[A-Za-z0-9._-]+)+"
@@ -1347,21 +1350,30 @@ REPO_LOCAL = "[^\\s*\\[\\]" + REPO_INVISIBLE + "]+"
 # address ends in `.`, which the trailing-dot rule below already refuses, and a
 # second question about it was dead — the mutation harness proved that, finding no
 # test able to tell the two spellings of this rule apart.
-# A trailing `/` is refused by the same principle, by the path's segments
-# having to be non-empty — a URL copied from a browser's address bar carries one,
-# and the message names the shape to write instead.
+# A trailing SEPARATOR is refused by the same principle — a URL copied from a
+# browser's address bar carries one, and `/srv/r/` beside `/srv/r` is the same two
+# spellings again. The URL branches refuse it by their segments having to be
+# non-empty; the local ones cannot, because a local path is one character class and
+# `/` is in it, so the closing rule below asks for both at once.
+#
+# That rule also SUBSUMES the non-empty tail every alternative already required:
+# `/` and `C:/` are not addresses, and a value with an empty tail ends in its own
+# separator, so each is now refused twice. Neither rule can be mutated into view on
+# its own any more, and the harness says so by having no mutant for the tail — the
+# redundancy is left standing rather than thinned, because it is one character and
+# it guards the shape that is easiest of all to typo.
 REPO_NO_DOT_SEG = r"(?![^\n]*[/\\]\.{1,2}[/\\])"
 REPO_RE = re.compile(
     REPO_NO_DOT_SEG +
     "(?:"
     "https?://" + REPO_HOST + REPO_PORT + REPO_URL_PATH +      # the forge over HTTP
     "|ssh://git@" + REPO_HOST + REPO_PORT + REPO_URL_PATH +    # SSH, spelled as a URL
-    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like
+    "|git@" + REPO_HOST + r":/?(?![0-9]+/)[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"  # SSH, scp-like
     "|file:///" + REPO_LOCAL +                                 # a local repo, as a URL
     "|/" + REPO_LOCAL +                                        # a POSIX absolute path
     "|[A-Za-z]:[\\\\/]" + REPO_LOCAL +                         # a Windows drive-letter path
     ")"
-    r"(?<!\.)"
+    r"(?<![./\\])"
 )
 
 

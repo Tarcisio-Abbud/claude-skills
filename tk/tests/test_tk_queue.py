@@ -3566,6 +3566,16 @@ class TestRepoField(QueueTest):
                      # `file://` names an authority, so the path starts at the
                      # THIRD slash: with two, the address is relative again
                      "file://srv/r.git", "file://../r",
+                     # a trailing SEPARATOR is the same two spellings of one
+                     # repository the dot-segment rule refuses. The URL branches
+                     # refuse it by their segments being non-empty; a local path
+                     # is one character class with `/` in it, so the closing
+                     # lookbehind is what refuses it there
+                     "/srv/foo/bar/", "file:///srv/r.git/", "C:\\a\\b\\",
+                     # scp-like syntax has no port in EITHER spelling: measured
+                     # under GIT_TRACE, git keeps the default port and asks for
+                     # the path `2222/owner/repo.git`
+                     "git@myserver:2222/owner/repo.git",
                      # a browser copies the trailing slash; the segments must be
                      # non-empty, so the message names the shape to write instead
                      "https://github.com/o/r/",
@@ -3652,7 +3662,10 @@ class TestRepoField(QueueTest):
                       "/workspace/projects/projeção",
                       # a LOCAL path may carry a colon: the first `/` comes before
                       # it, so git reads a path and not an scp-like `host:path`
-                      "/srv/repo:v2", "git@host:/srv/r.git"):
+                      "/srv/repo:v2", "git@host:/srv/r.git",
+                      # only an ALL-digit first segment reads as a port; a real
+                      # path may still begin with a digit
+                      "git@host:2222x/o/r.git", "git@host:2fa/o/r.git"):
             with self.subTest(value=value):
                 self.seed()
                 r = self.add("--repo", value)
