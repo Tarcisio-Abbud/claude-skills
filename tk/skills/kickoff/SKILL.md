@@ -401,7 +401,8 @@ re-triages; tracker tickets are referenced, not mirrored):
   they name the TRACKER, and the tracker is routinely another repo. `pack` appends it to the
   item's line, labelled `[repo: <address>]`, and prints `[repo: ?]` where the item carries the
   field and no reader may use its value. What is accepted is a WHITELIST: `https://host/path`,
-  `ssh://git@host/path`, `git@host:path`, `file:///path`, or an absolute path. A remote name and
+  `ssh://git@host/path`, `git@host:path`, `file:///path`, or an absolute path — `~/` is refused, since HOME differs
+between machines and readers. A remote name and
   a relative path are not on it, because both resolve against the reader's own directory — which
   here is the queue's clone, where `git ls-remote origin` was measured exiting 0 with no output.
   Nor is a `<user>@` half on an http(s) URL, which is how a token would reach this file. An item carrying no address is not excluded: the caller names the repository,

@@ -3552,7 +3552,26 @@ class TestRepoField(QueueTest):
                      "./tk", "workspace/projects", "~claude-skills", "", "none",
                      "https://", "git@github.com", "https://exa mple.com/r",
                      "/x\ny", "/pa*th", "https://x/**Spec:**y", "**Repo:** /x",
-                     "/srv/repo.", "https://github.com/o/r.git.", "~/.claude/skills.",
+                     "/srv/repo.", "https://github.com/o/r.git.", "/root/.claude/skills.",
+                     # `~/` is HOME-relative, so it names a different repository to
+                     # a different reader — the defect `origin` has, in a path's
+                     # clothes. And the two consumers disagree: `git ls-remote`
+                     # expands the tilde and answers, `git -C "~/x"` cannot chdir
+                     "~/.claude/skills", "~/x", "~/",
+                     # a `.` or `..` SEGMENT is a second spelling of one address,
+                     # and the gate cannot canonicalise — so it refuses instead
+                     "/a/./b", "/a/../b", "/a/..", "/a/.",
+                     "C:\\a\\.\\b", "C:\\a\\..\\b",
+                     "file:///a/./b", "https://github.com/o/./r",
+                     # `file://` names an authority, so the path starts at the
+                     # THIRD slash: with two, the address is relative again
+                     "file://srv/r.git", "file://../r",
+                     # a browser copies the trailing slash; the segments must be
+                     # non-empty, so the message names the shape to write instead
+                     "https://github.com/o/r/",
+                     # scp-like syntax has NO port field: git keeps the default
+                     # port and folds `2222` into the path (measured on GIT_TRACE)
+                     "git@myserver:2222:owner/repo.git",
                      # a BRACKET is the other splice, and the one measured on the
                      # field beside this one: `**Ticket:** repo#1] injetado` put a
                      # second bracket group and free text into the line `pack`
@@ -3621,8 +3640,7 @@ class TestRepoField(QueueTest):
                       "ssh://git@github.com/Tarcisio-Abbud/claude-skills.git",
                       "git@github.com:Tarcisio-Abbud/claude-skills.git",
                       "file:///srv/git/claude-skills.git",
-                      "/workspace/projects/.ambiente",
-                      "~/.claude/skills",
+                      "/workspace/projects/.ambiente", "/root/.claude/skills",
                       "C:/Users/Oraci/.ambiente", "C:\\Users\\Oraci\\.ambiente",
                       # a user with NO password is the ordinary git address, and a
                       # port after it is legal: it is the COLON BEFORE the `@` that

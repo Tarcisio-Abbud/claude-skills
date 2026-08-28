@@ -25,7 +25,6 @@ class SHRINKS the item). Reading the failure list, not the tally, is what catche
 these — which is why the PR body pastes the measured lines.
 """
 
-import ast
 import os
 import shutil
 import subprocess
@@ -2391,8 +2390,8 @@ MUTATIONS = [
 
     # the http(s) alternative: the userinfo half is what a token rides in on
     ("T198 an http(s) URL takes a userinfo half again, so a token is stored",
-     '    "https?://" + REPO_HOST + REPO_URL_PATH +                  # the forge over HTTP',
-     '    "https?://(?:[A-Za-z0-9._%-]+@)?" + REPO_HOST + REPO_URL_PATH +  # the forge over HTTP',
+     '    "https?://" + REPO_HOST + REPO_PORT + REPO_URL_PATH +      # the forge over HTTP',
+     '    "https?://(?:[A-Za-z0-9._%-]+@)?" + REPO_HOST + REPO_PORT + REPO_URL_PATH +  # the forge over HTTP',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a URL path stops being ASCII, so an encoding smuggles a refused character",
@@ -2401,19 +2400,19 @@ MUTATIONS = [
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a URL needs no path, so a bare host is a repository",
-     '    "https?://" + REPO_HOST + REPO_URL_PATH +                  # the forge over HTTP',
-     '    "https?://" + REPO_HOST + "(?:" + REPO_URL_PATH + ")?" +   # the forge over HTTP',
+     '    "https?://" + REPO_HOST + REPO_PORT + REPO_URL_PATH +      # the forge over HTTP',
+     '    "https?://" + REPO_HOST + REPO_PORT + "(?:" + REPO_URL_PATH + ")?" +   # the forge over HTTP',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 the host loosens, so a bracketed IPv6 literal and worse pass",
-     'REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?"',
+     'REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*"',
      'REPO_HOST = r"[^/]+"',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     # the ssh alternatives: `git@` is a protocol name, and only that one
     ("T198 the ssh URL takes any user, not the protocol's own `git@`",
-     '    "|ssh://git@" + REPO_HOST + REPO_URL_PATH +                # SSH, spelled as a URL',
-     '    "|ssh://[A-Za-z0-9._-]+@" + REPO_HOST + REPO_URL_PATH +    # SSH, spelled as a URL',
+     '    "|ssh://git@" + REPO_HOST + REPO_PORT + REPO_URL_PATH +    # SSH, spelled as a URL',
+     '    "|ssh://[A-Za-z0-9._-]+@" + REPO_HOST + REPO_PORT + REPO_URL_PATH +    # SSH, spelled as a URL',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 the scp-like form takes any user half",
@@ -2428,8 +2427,8 @@ MUTATIONS = [
 
     # the local-path alternatives, and the four characters they still refuse
     ("T198 a relative path is a repository again",
-     '    "|~?/" + REPO_LOCAL +                                      # a POSIX absolute path',
-     '    "|~?/?" + REPO_LOCAL +                                     # a POSIX absolute path',
+     '    "|/" + REPO_LOCAL +                                        # a POSIX absolute path',
+     '    "|/?" + REPO_LOCAL +                                       # a POSIX absolute path',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 the field marker becomes spellable inside a local path again",
@@ -2454,7 +2453,7 @@ MUTATIONS = [
 
     ("T198 a drive letter with nothing after it is an address again",
      '    "|[A-Za-z]:[\\\\\\\\/]" + REPO_LOCAL +                         # a Windows drive-letter path',
-     '    "|[A-Za-z]:[\\\\\\\\/]" + REPO_LOCAL + "*" +                   # a Windows drive-letter path',
+     '    "|[A-Za-z]:[\\\\\\\\/](?:" + REPO_LOCAL + ")?" +                # a Windows drive-letter path',
      ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
 
     ("T198 a trailing '.' passes, and the value comes back a character short",
@@ -2470,8 +2469,49 @@ MUTATIONS = [
      ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
 
     ("T198 a host loses its port, so a self-hosted forge stops being addressable",
-     'REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?"',
-     'REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*"',
+     'REPO_PORT = r"(?::[0-9]{1,5})?"',
+     'REPO_PORT = ""',
+     ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
+
+    # --- T198, round 3: the edges the whitelist still had --------------------
+    ("T198 the port returns to the scp-like branch, which cannot honour one",
+     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + REPO_PORT + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a `~/` address is a repository again, and it means one per reader",
+     '    "|/" + REPO_LOCAL +                                        # a POSIX absolute path',
+     '    "|~?/" + REPO_LOCAL +                                      # a POSIX absolute path',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 a `.` or `..` segment passes, so one repository has two spellings",
+     r'REPO_NO_DOT_SEG = r"(?![^\n]*[/\\]\.{1,2}[/\\])"',
+     r'REPO_NO_DOT_SEG = ""',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the dot-segment rule stops seeing the Windows separator",
+     r'REPO_NO_DOT_SEG = r"(?![^\n]*[/\\]\.{1,2}[/\\])"',
+     r'REPO_NO_DOT_SEG = r"(?![^\n]*/\.{1,2}/)"',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 `file://` takes any number of slashes, so a relative path rides in",
+     '    "|file:///" + REPO_LOCAL +                                 # a local repo, as a URL',
+     '    "|file://" + REPO_LOCAL +                                  # a local repo, as a URL',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the ssh URL needs no path, so a bare host is a repository",
+     '    "|ssh://git@" + REPO_HOST + REPO_PORT + REPO_URL_PATH +    # SSH, spelled as a URL',
+     '    "|ssh://git@" + REPO_HOST + REPO_PORT + "(?:" + REPO_URL_PATH + ")?" +    # SSH, spelled as a URL',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like address needs no path either",
+     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]*" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     ["TestRepoField.test_a_remote_name_or_a_cwd_relative_path_is_refused"]),
+
+    ("T198 the scp-like path may no longer be absolute, a shape that is real",
+     '    "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
+     '    "|git@" + REPO_HOST + ":[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like',
      ["TestRepoField.test_the_shapes_that_actually_occur_are_accepted"]),
 
     ("T198 the field ceiling stops holding the one field the shape does not bound",
@@ -2535,6 +2575,29 @@ def run_suite(tk_dir, names):
     return subprocess.run(argv, cwd=tests, capture_output=True, text=True)
 
 
+def load_check(tk_dir, rel):
+    """None when the mutated file at `rel` imports cleanly, else the error's first
+    line. A SEPARATE interpreter, because a broken module must not be imported into
+    the harness's own process — and because "does it load" is exactly the question
+    the test subprocesses will ask of it a moment later, asked the same way.
+
+    Every source under `bin/` is a Python module: the CLIs carry no `.py` extension,
+    so they are loaded through SourceFileLoader rather than by name."""
+    path = os.path.join(tk_dir, rel)
+    probe = ("import importlib.machinery as m, importlib.util as u, sys;"
+             "l = m.SourceFileLoader('mutant', sys.argv[1]);"
+             "s = u.spec_from_loader('mutant', l);"
+             "l.exec_module(u.module_from_spec(s))")
+    r = subprocess.run([sys.executable, "-c", probe, path],
+                       capture_output=True, text=True,
+                       # the module the CLIs import sits beside them
+                       cwd=os.path.dirname(path))
+    if r.returncode == 0:
+        return None
+    tail = [ln for ln in r.stderr.strip().splitlines() if ln.strip()]
+    return tail[-1] if tail else f"exit {r.returncode}"
+
+
 def main():
     baseline = run_suite(TK_DIR, ["TestPrefixedId", "TestConcurrency", "TestMissingItemMessage",
                                   "TestDirResolution", "TestProjectTagInDoneLog",
@@ -2586,18 +2649,6 @@ def main():
             print(f"UNRUNNABLE {label}\n           anchor matched {src.count(old)}x, not once")
             continue
         mutated = src.replace(old, new, 1)
-        # A mutant that does not PARSE proves nothing: every named test then fails
-        # on the import error, whatever the guard does, and the harness would report
-        # it caught. Measured on the T198 credential mutant, whose edit broke the
-        # implicit concatenation of two adjacent string literals — the tally said
-        # 356/356 while that entry exercised nothing. It is UNRUNNABLE, like a stale
-        # anchor, and for the same reason: the mutation never ran
-        try:
-            ast.parse(mutated)
-        except SyntaxError as exc:
-            unrunnable.append(f"{label} (mutated source does not parse: {exc.msg})")
-            print(f"UNRUNNABLE {label}\n           mutated source does not parse: {exc.msg}")
-            continue
         tmp = tempfile.mkdtemp(prefix="tk-mutation.")
         try:
             dst = os.path.join(tmp, "tk")
@@ -2608,6 +2659,21 @@ def main():
             shutil.copytree(TK_DIR, dst, ignore=shutil.ignore_patterns("__pycache__"))
             with open(os.path.join(dst, rel), "w", encoding="utf-8") as f:
                 f.write(mutated)
+            # THE MUTANT MUST RUN BEFORE A FAILURE MEANS ANYTHING. Every named test
+            # falls when the mutated source cannot be loaded at all, whatever the
+            # guard it was meant to switch off does — so the harness would score the
+            # entry "caught" while exercising nothing. Measured twice, one layer
+            # apart: an edit that broke the implicit concatenation of two adjacent
+            # string literals (a SyntaxError), and an edit that left a regex
+            # unbalanced, which PARSES and then raises re.error the moment the module
+            # is imported. Asking the question the first way — `ast.parse` — closed
+            # the first door and left the second open, so it is asked the way that
+            # has no layers: LOAD the mutated tree and require it to come up.
+            loaded = load_check(dst, rel)
+            if loaded is not None:
+                unrunnable.append(f"{label} (mutated source does not load: {loaded})")
+                print(f"UNRUNNABLE {label}\n           mutated source does not load: {loaded}")
+                continue
             # EACH named test must fall on its own. Running them as one batch only
             # proves that SOME test failed, so a listed test that quietly still
             # passes stays invisible and the tally claims more than it proved

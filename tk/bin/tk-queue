@@ -1251,10 +1251,9 @@ def validate_ref(flag, value):
 #
 # So the accepted shapes are the cwd-independent ones, and they are the shapes
 # this account's repositories are actually addressed by: a URL with a scheme, the
-# scp-like `git@host:path` git also takes, a POSIX absolute path (`~/` included —
-# it resolves against HOME, not the cwd), and a Windows drive-letter path, which
-# is absolute for the same reason and is how the desktop in this site's roster
-# names a clone.
+# scp-like `git@host:path` git also takes, a POSIX absolute path, and a Windows
+# drive-letter path, which is absolute for the same reason and is how the desktop
+# in this site's roster names a clone.
 #
 # The repository an item's code LANDS in, and what may be spelled as one. This gate
 # is a WHITELIST — it names the shapes this account addresses repositories by, and
@@ -1288,8 +1287,19 @@ def validate_ref(flag, value):
 #   ssh://git@<host>[:port]/<path>     the SSH forms, where `git@` is a fixed
 #   git@<host>:<path>                  protocol name and not a secret.
 #   file:///<path>                     a local repository, addressed as a URL.
-#   /<path>  ~/<path>  C:\<path>       a local repository, addressed as a path.
-#                                      `~/` resolves against HOME, not the cwd.
+#   /<path>   C:\<path>              a local repository, addressed as a path.
+#                                      `~/<path>` is NOT one, and it is the
+#                                      instructive refusal: HOME differs between
+#                                      machines and between users, so a tilde
+#                                      address means a different repository to a
+#                                      different reader — the same defect as
+#                                      `origin`, wearing a path's clothes. The two
+#                                      consumers do not even agree with each other:
+#                                      `git ls-remote` expands the tilde itself and
+#                                      answers, while `git -C "~/x"` is a plain
+#                                      chdir that fails — so the branch check passes
+#                                      and the worktree dies three steps later.
+#                                      Measured on git 2.39.5.
 #
 # A URL's path is ASCII: letters, digits and `. _ - /`. That excludes `%`, so a
 # percent-encoding cannot smuggle back a character refused above, and it excludes
@@ -1315,18 +1325,40 @@ def validate_ref(flag, value):
 # writes `**Repo:** <value>.` and field_value strips ONE trailing period, so a
 # value ending in one comes back a character short of what was written.
 REPO_INVISIBLE = "\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff"
-REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?"
+# a host, and the PORT SEPARATELY — because only a URL has a field for one. Spelled
+# into the scp-like branch, `git@host:2222:owner/repo.git` reads to a person as a
+# host on a non-standard port and to git as the DEFAULT port and the path
+# `2222:owner/repo.git`: measured under GIT_TRACE, which showed
+# `ssh git@myserver 'git-upload-pack '2222:owner/repo.git''`. That is the silent
+# misreading this whitelist exists to end, so the port goes where it can be honoured
+REPO_HOST = r"[A-Za-z0-9][A-Za-z0-9.-]*"
+REPO_PORT = r"(?::[0-9]{1,5})?"
 REPO_URL_PATH = r"(?:/[A-Za-z0-9._-]+)+"
 # a local path's characters: everything a reader can see and no reader can be
 # fooled by — see the four exclusions above
 REPO_LOCAL = "[^\\s*\\[\\]" + REPO_INVISIBLE + "]+"
+# NO `.` OR `..` SEGMENT, anywhere, under either separator. The gate cannot
+# canonicalise an address — it hands the value to git untouched, and dropping a
+# `.git` or a trailing slash would be this file guessing at a forge's routing — so
+# the one thing it can do about two spellings of one repository is refuse the
+# second. `/a/./b` and `/a/../b` name the path `/a/b` and read as two addresses to
+# every reader here, which is what AFK.md's "one lane, one address" then cannot
+# decide. It asks only about a segment BETWEEN separators: one at the END of an
+# address ends in `.`, which the trailing-dot rule below already refuses, and a
+# second question about it was dead — the mutation harness proved that, finding no
+# test able to tell the two spellings of this rule apart.
+# A trailing `/` is refused by the same principle, by the path's segments
+# having to be non-empty — a URL copied from a browser's address bar carries one,
+# and the message names the shape to write instead.
+REPO_NO_DOT_SEG = r"(?![^\n]*[/\\]\.{1,2}[/\\])"
 REPO_RE = re.compile(
+    REPO_NO_DOT_SEG +
     "(?:"
-    "https?://" + REPO_HOST + REPO_URL_PATH +                  # the forge over HTTP
-    "|ssh://git@" + REPO_HOST + REPO_URL_PATH +                # SSH, spelled as a URL
+    "https?://" + REPO_HOST + REPO_PORT + REPO_URL_PATH +      # the forge over HTTP
+    "|ssh://git@" + REPO_HOST + REPO_PORT + REPO_URL_PATH +    # SSH, spelled as a URL
     "|git@" + REPO_HOST + ":/?[A-Za-z0-9._-]+" + r"(?:/[A-Za-z0-9._-]+)*"   # SSH, scp-like
     "|file:///" + REPO_LOCAL +                                 # a local repo, as a URL
-    "|~?/" + REPO_LOCAL +                                      # a POSIX absolute path
+    "|/" + REPO_LOCAL +                                        # a POSIX absolute path
     "|[A-Za-z]:[\\\\/]" + REPO_LOCAL +                         # a Windows drive-letter path
     ")"
     r"(?<!\.)"
@@ -1356,7 +1388,8 @@ def validate_repo(value):
         fail(f"--repo {value!r} is not one of the repository addresses this queue "
              "accepts, which are: https://<host>/<path>, ssh://git@<host>/<path>, "
              "git@<host>:<path>, file:///<path>, or an ABSOLUTE path "
-             "(/workspace/projects/.ambiente, ~/.claude/skills, C:\\clones\\repo). "
+             "(/workspace/projects/.ambiente, /root/.claude/skills, C:\\clones\\repo — "
+             "a `~/` address is refused: HOME differs per machine and per reader). "
              "No trailing '.', and no `<user>@` half on an http(s) URL — a token or a "
              "password would be stored in this file and reprinted by `pack` on every "
              "package, and a credential helper is where it belongs. A remote NAME like "
