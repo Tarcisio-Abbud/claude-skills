@@ -271,6 +271,12 @@ docs/prune/                       pruning baselines: what the skills of this plu
   baseline-<date>.md              one run. Named file by file in `.gitignore`, like the
                                   block above: a pruning report on a PRIVATE skill must not
                                   reach this public repo
+.claude/                          this repo's own agent config; versioned for the reason
+                                  given below, and named file by file in `.gitignore` like
+                                  the two blocks above
+  hookify.code-review-antes-de-pronto.local.md
+                                  the stop rule that reminds a session which committed
+                                  code to run the two-axis review before calling it done
 githooks/
   private-values                  refuses a commit that would publish a value from this
                                   clone's local git config; installed as two hooks
@@ -308,11 +314,12 @@ shape; the oldest differs only in naming its test module inline.
 New own-authored skill: create `tk/skills/<name>/SKILL.md`. No `.gitignore` change needed —
 the whole `tk/` tree is versioned.
 
-`docs/agents/` is versioned, which is unusual for repo-local agent config and follows from the
-paragraph above: a worktree is the standard way to work on a clone whose primary tree is live,
-and `git worktree add` materialises tracked files only. Left untracked, that config reached
-the primary tree and nowhere else, so every dispatched agent and every
-`/mattpocock-skills:code-review` ran with no tracker config at all.
+`docs/agents/` and `.claude/` are versioned, which is unusual for repo-local agent config and
+follows from the paragraph above: a worktree is the standard way to work on a clone whose
+primary tree is live, and `git worktree add` materialises tracked files only. Left untracked,
+that config reached the primary tree and nowhere else, so every dispatched agent and every
+`/mattpocock-skills:code-review` ran with no tracker config at all, and every worktree ran with
+no stop rule holding it to that review.
 
 This repo being public, the private half stays out of it — out of the FILES, that is. One
 line of one surface names the tracker deliberately: the `Fixes <owner>/<repo>#<n>` closing
