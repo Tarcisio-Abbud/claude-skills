@@ -245,12 +245,67 @@ that choice in writing.
 the base branch — deleting it first CLOSES the child (measured twice) — and remove the
 worktrees of the branches in play before the merge round, since `--delete-branch` fails on a
 branch that is still checked out somewhere.
+### A package's accumulated lane: one pull request, one digest per item
+
+`../kickoff/AFK.md` hands this gate a single pull request carrying N tickets, each of them
+entering the branch by its own `T<id>` merge commit. One pull request, so one dossier — and N
+digests, because what the user judges is each item. The five verdicts split accordingly: two are
+measured over the package, three per item.
+
+| # | Verdict | Measured over | What that item's digest shows |
+|---|---|---|---|
+| 1 | **Tests** | the package | the suite ran on the branch, not on main: `suite green on <branch> at <tip>, origin/main at <sha>` |
+| 2 | **Review** | the package | the one review of the tail's step 2, over the accumulated diff against this pull request's base |
+| 3 | **Criterion** | the item | that item's own criterion, re-run on the final tree at the tail's step 3 |
+| 4 | **Reversal** | the item | that item's `T<id>` merge commit, by sha and title: `git revert -m 1 <sha>` is the way back |
+| 5 | **Closure** | the item | the closing line naming that item's ticket, under the three checks above — one line per ticket |
+
+**Verdict 1 names the tree it ran on and where main stood.** The two shas are what let the user
+tell a measurement of what the merge will produce from a measurement of something older: the tail
+merged `origin/main` before it ran anything, and where it left that merge outstanding the tree
+measured is behind main, which the digest says first rather than last.
+
+**`gh pr merge --merge` is a precondition of this merge, and the digest states it as one.** A
+squash or a rebase collapses the N merge commits into one, and verdict 4 dies with them — the
+per-item way back exists only while each item is a merge commit of its own on this branch.
+`--delete-branch` rides with it: step 1 of `../kickoff/AFK.md` asks the remote whether a spec's
+branch exists to decide whether that lane is free, so a branch left behind after its merge takes
+its spec out of every later package until somebody deletes it. Where the user merges by hand,
+deleting the branch is part of the merge, and the digest says so.
+
+**Merge this pull request before the package's solo ones.** `tk-collisions` measures the pair —
+this branch against each solo branch of the same package — because all of them were cut from the
+same `origin/main` and the forge is blind between two pull requests. Order matters beyond the
+collision: verdict 1 here was measured on a tree carrying `origin/main` as it stood at the tail,
+so anything merged to main ahead of it leaves that measurement stale, and the remedy is to re-run
+the tail's merge and its step 3 rather than to merge on a green line that has aged.
+
+**Three shapes end at the same place: this pull request waits for the user, and nothing is
+reverted.** Each keeps something different in the digest:
+
+- **A criterion red at the tail's step 3** — the digest lists, in order, the `T<id>` merges that
+  landed after that item and the merge of `origin/main`, read from
+  `git log --merges --oneline "<that item's merge>"..HEAD`, because a revert of that item passes
+  through every one of them.
+- **A type-B criterion** — verdict 3 stays amber under the rule above, and the digest carries the
+  proof with the one-line claim it was given.
+- **A finding no fixer could close** — the digest carries the finding's inventory: what it is,
+  where it sits, and what closing it would take.
+
+**The three acts that follow are the user's, and the digest names them as the user's**: revert the
+item by the name of its merge commit, drop that item's closing line from the body so the merge
+does not close a ticket the revert emptied, and `tk-queue add` the item back into the queue.
+The package performs none of them, and re-running the tail is an interactive request of the
+user's too.
+
 **Done when:** every pending version-control action was executed or recorded as an explicit
 DECISION — none merely implied — every PR in the gate had its dossier before the menu, with
 its five sections present or named absent, each citation-by-number either resolved or named
 as unresolved, and the collision with the other open PRs measured rather than read off the
-forge; every merged PR's body describes what it merged, and the user has the summary: what
-changed, what was verified, what was deferred.
+forge; a package's accumulated lane carried one digest per item, with its verdicts split
+package/item and its `--merge --delete-branch` precondition stated; every merged PR's body
+describes what it merged, and the user has the summary: what changed, what was verified, what
+was deferred.
 
 ## 6. Close: the report, the handoff, and the next step
 
@@ -419,8 +474,8 @@ the next conversation's opening sentences, each in the shape that fits.
   to read it in the terminal. A PR the strict verdicts keep from merging carries it there too,
   and its DECISION item points at it as the digest reference.
 - **Merge runs on the strict version of the five verdicts**, with verdict 2 hardened: every
-  finding FIXED, zero accepted, since accepting a finding is human judgment. Two cases keep
-  the merge away from an unattended session, and each is checked by itself:
+  finding FIXED, zero accepted, since accepting a finding is human judgment. Three cases bind
+  what an unattended session may merge, and each is checked by itself:
   - **A type-B criterion** — verdict 3 cannot turn green without the user, so the item ends
     at an open PR carrying its proof and waits.
   - **A repo whose default branch is consumed as it lands** — a marketplace serving it live,
@@ -428,6 +483,11 @@ the next conversation's opening sentences, each in the shape that fits.
     extension (`~/.claude/tk/wrap-up.md`), and a merge decided from a machine with no such
     file, or with no such list, is deferred: an unattended merge is authorized by a list
     that was READ, never by the silence of a file that was missing.
+  - **A package's accumulated lane** merges as a merge commit or not at all —
+    `gh pr merge --merge --delete-branch`, under the precondition its section above states. A
+    criterion red at the tail's step 3, or a finding no fixer could close, defers that whole pull
+    request with its per-item digest, exactly as a type-B item defers it; nothing is reverted
+    here, and the item stays closed until the user puts it back.
   Whatever is not merged enters the queue as a DECISION with its digest reference ready.
 - The step-6 report ends with the ready pair for the user's return: `/clear` +
   `/tk:kickoff afk`.
