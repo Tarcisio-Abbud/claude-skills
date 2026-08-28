@@ -34,6 +34,16 @@
 !/docs/prune/baseline.py
 !/docs/prune/baseline-2026-08-27.md
 
+# The hookify stop rule that this repo's own sessions run under, versioned for the same
+# reason `docs/agents/` is (README, "Layout"): `git worktree add` materialises tracked files
+# only, so an unversioned copy leaves every worktree of this repo with no guard at all.
+# Named file by file for the same reason as the blocks above: `.claude/*.local.md` is where
+# a LOCAL rule lands, and an open `!/.claude` would let one carrying private values reach
+# this PUBLIC repo.
+!/.claude
+/.claude/*
+!/.claude/hookify.code-review-antes-de-pronto.local.md
+
 # Python bytecode from the test suites
 __pycache__/
 *.pyc
