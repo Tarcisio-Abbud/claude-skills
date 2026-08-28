@@ -494,7 +494,14 @@ def run(mutations=MUTATIONS, module=TEST_MODULE, tk_dir=TK_DIR,
             # surviving that was in truth never applied. Measured on the older
             # harness; it costs one argument to never meet again
             shutil.copytree(tk_dir, dst, ignore=shutil.ignore_patterns("__pycache__"))
-            with open(os.path.join(dst, rel), "w", encoding="utf-8") as f:
+            # A `rel` may climb out of `tk/` — the manifests suite mutates
+            # `../.claude-plugin/marketplace.json`, which is a repo-root file the
+            # copytree above never reached. Its directory has to exist in the copy
+            # before the write, or the mutant dies of FileNotFoundError and the
+            # runner reads that as the suite noticing.
+            target = os.path.join(dst, rel)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
                 f.write(src.replace(old, new, 1))
             # one test at a time: a batch that goes red says nothing about
             # WHICH of the named tests noticed, and a mutation is only proved
