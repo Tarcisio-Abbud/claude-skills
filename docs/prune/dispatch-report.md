@@ -186,7 +186,9 @@ Fixed in this pull request, each a sentence:
 | D3 | Step 5 says "save every pruned file", which does not name `LOOP.md` — a file that did not exist before the pass and that a MOVE created. Its completion criterion had the same gap. | Both now read "every file the pass wrote". |
 | D4 | **Step 5 contradicted its own completion criterion.** It says to save the report side by side with the pruned files, and the criterion is that the bin then reads each of those files inside the targets. The bin reads every markdown file in a directory as a sibling, and this report quotes the skill's `**Dispatching**` definition — so measured in the output directory the pruned copy read `terms defined in a sibling too: 1`, marked over, and measured where it lands it reads 0. Any report quoting a bolded term of its target does this. | The criterion now says the file is measured where it lands and not beside the report. |
 
-Design, and left for a ticket:
+Design, filed on the tracker rather than patched here — one ticket each, their numbers in this
+branch's pull request, since a bare number in this public repo would resolve against the wrong
+repository:
 
 | # | defect | why it is not a sentence |
 |---|---|---|
