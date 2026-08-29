@@ -392,8 +392,8 @@ tk-queue handoff <id> --objective "..." --state "..." --blockers "..." \
 ```
 
 It writes `handoff-T<id>.md` beside the queue files and warns that the item does not yet
-point at it; run the `edit --text` line it prints, because `[[handoff-T<id>]]` in the item
-is the briefing's only discovery path. A campaign gets ONE briefing, named for its anchor
+point at it; run the `edit` it prints — that file's own rule, not this one's
+(`../verify/SKILL.md`, *The item points at the briefing*). A campaign gets ONE briefing, named for its anchor
 item and pointed at by every item in it. The file dies when the LAST open item reaching it
 closes — its own, or any pointing at it — which is measured behaviour of `done`/`cancel`,
 not a step to perform: a briefing is never removed by hand.

@@ -256,7 +256,8 @@ tk-queue handoff <id> --objective "..." --state "..." --blockers "..." \
                                                # beside next-steps.md; DELETED when the item
                                                # is closed (`tk-queue handoff --help`).
                                                # Then run the edit it prints, so the item
-                                               # points at the briefing (../verify/SKILL.md)
+                                               # points at the briefing (../verify/SKILL.md,
+                                               # The item points at the briefing)
 tk-queue pack                                  # candidates for an unattended package:
                                                # eligible items in queue order with their LANE,
                                                # plus every exclusion with the value that caused it

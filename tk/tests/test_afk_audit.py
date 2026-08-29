@@ -46,27 +46,12 @@ printed.
 import os
 import re
 import shlex
-import shutil
-import stat
-import subprocess
-import sys
-import tempfile
 import unittest
 
+from queue_fixture import QueueFixture, item_fields
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-TK = os.path.join(HERE, os.pardir, "bin", "tk-queue")
 AFK = os.path.join(HERE, os.pardir, "skills", "kickoff", "AFK.md")
-
-HEADER = """---
-name: next-steps
-description: fixture
-metadata:
-  type: project
----
-
-# Next steps
-
-"""
 
 AUDIT_HEADING = re.compile(r"^## \d+\. Audit\b.*$", re.M)
 
@@ -119,16 +104,6 @@ def sets_decision(argv):
     return "--class" in argv and argv[argv.index("--class") + 1] == "DECISION"
 
 
-def item_fields(body):
-    """The `**Field:** value.` segments of the queue's first open item.
-
-    Derived from the item itself, never a hand-kept list: a hand-kept one is the
-    next hole, and this one sits beside a check that claims the chain survived.
-    """
-    line = next((ln for ln in body.splitlines() if ln.startswith("- [ ] ")), "")
-    return [seg.strip() for seg in re.findall(r"\*\*[A-Za-z]+:\*\*[^*]*", line)]
-
-
 def subcommand(argv):
     return argv[1] if len(argv) > 1 else ""
 
@@ -138,62 +113,12 @@ def without_flag(argv, flag):
     return argv[:i] + argv[i + 2:]
 
 
-class AfkAuditTest(unittest.TestCase):
+class AfkAuditTest(QueueFixture):
+    """The queue, the shim and the paste live in `queue_fixture.QueueFixture`."""
+
     def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="tk-afk-audit-test.")
-        self.mem = os.path.join(self.dir, "memory")
-        os.makedirs(self.mem)
-        # HOME is redirected so no real site file (~/.claude/tk/env) can change
-        # what the subprocess accepts depending on whose machine runs the suite.
-        self.home = os.path.join(self.dir, "home")
-        os.makedirs(self.home)
-        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        with open(os.path.join(self.mem, "next-steps.md"), "w", encoding="utf-8") as f:
-            f.write(HEADER)
+        super().setUp()
         self.cmds = prescribed_commands()
-        self.calls = os.path.join(self.dir, "calls.log")
-        self.bin = self.shim()
-
-    def shim(self):
-        """A `tk-queue` on PATH, so a prescribed line runs in a shell as written.
-
-        It records one line per invocation: that log is how a shell run proves the
-        line REACHED tk-queue, rather than dying in the shell first.
-        """
-        d = os.path.join(self.dir, "bin")
-        os.makedirs(d, exist_ok=True)
-        path = os.path.join(d, "tk-queue")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("#!/bin/sh\necho \"reached\" >> %s\nexec %s %s \"$@\" --dir %s\n"
-                    % (shlex.quote(self.calls), shlex.quote(sys.executable),
-                       shlex.quote(os.path.abspath(TK)), shlex.quote(self.mem)))
-        os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-        return d
-
-    def reached(self):
-        if not os.path.exists(self.calls):
-            return 0
-        with open(self.calls, encoding="utf-8") as f:
-            return sum(1 for line in f if line.strip())
-
-    def env(self):
-        return dict(os.environ, HOME=self.home,
-                    PATH=self.bin + os.pathsep + os.environ["PATH"])
-
-    def run_tk(self, argv):
-        """Run a prescribed command as an argv list (no shell)."""
-        return subprocess.run([sys.executable, TK, *argv[1:], "--dir", self.mem],
-                              capture_output=True, text=True, cwd=self.dir,
-                              env=self.env(), timeout=60)
-
-    def run_shell(self, line):
-        """Run a prescribed command by PASTING it into a shell, as a human would."""
-        return subprocess.run(["bash", "-c", line], capture_output=True, text=True,
-                              cwd=self.dir, env=self.env(), timeout=60)
-
-    def body(self):
-        with open(os.path.join(self.mem, "next-steps.md"), encoding="utf-8") as f:
-            return f.read()
 
     def runnable(self):
         """The prescribed lines this file executes, in order."""

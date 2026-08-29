@@ -260,8 +260,11 @@ tk/
                                   against a throwaway queue: an ORDINARY item (no
                                   DECISION, no --deferred) ends up pointing at its
                                   briefing through the edit the handoff prints
-  tests/mutations_window_wall.py  entries only, through the same seam; three of them
-                                  mutate prose, since prose is what that suite audits
+  tests/mutations_window_wall.py  entries only, through the same seam; six of its eleven
+                                  entries edit a skill file, the other five the bin
+  tests/queue_fixture.py          the throwaway queue the two doc-conformance suites run
+                                  their prescriptions against: the directory, the tk-queue
+                                  shim on PATH, the paste-into-bash and the reached() log
   tests/test_manifests.py         the two tk manifests against the skills on disk:
                                   every skill advertised, and nothing advertised that
                                   is not there
@@ -329,10 +332,10 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 tk/tests/mutations_manifests.py`, and the wall's step 2 through
 `python3 tk/tests/mutations_window_wall.py`. The harnesses are separate files sharing
 one shape; the oldest differs only in naming its test module inline. Two of them mutate
-something other than a bin: the manifests one mutates DATA — its subject is the
-repository's own state, and `marketplace.json` sits at the repo root, outside the
-`tk/` the runner copies — and the wall one mutates PROSE, an instruction removed from
-a skill file being exactly the defect its suite exists to catch.
+more than a bin: the manifests one mutates DATA only — its subject is the repository's
+own state, and `marketplace.json` sits at the repo root, outside the `tk/` the runner
+copies — and the wall one mutates PROSE alongside the bin, an instruction removed from a
+skill file being exactly the defect its suite exists to catch.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`, then advertise it in BOTH
 manifests — a `<name> (…)` clause in `tk/.claude-plugin/plugin.json` and a `/tk:<name>`

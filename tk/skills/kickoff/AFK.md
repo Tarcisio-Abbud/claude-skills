@@ -194,8 +194,9 @@ the seam where the artefact is destroyed, so the seam is named here. Run
 `tk-queue handoff "<id>" --objective "..." --state "..." --blockers "..."` in that file's own form
 — `<id>` being the item still in flight, or with none the head of what the claims still hold —
 and put in `--state` the five lane contents rebuilt from the tip this beat just settled, not the
-ones the dead handoff carried. Then run the `edit` that command prints, per
-`../verify/SKILL.md`.
+ones the dead handoff carried. Then run the `edit` that command prints
+(`../verify/SKILL.md`, *The item points at the briefing*), or the briefing this beat just
+rebuilt is one the next generation cannot find.
 
 **Re-dispatch** the item in flight, from its pushed WIP branch.
 
@@ -643,10 +644,11 @@ and in parallel only across disjoint repos or areas. **The spec lane** is serial
 above whatever the areas say — its tickets share a branch, not merely a repository. Neither lane
 goes past the local ceiling the contract block states, and that ceiling counts both together.
 An item whose work does not fit one subagent's context is not squeezed into
-one: write its briefing with `tk-queue handoff "<id>"`, run the `edit` it prints (per
-`../verify/SKILL.md`), and dispatch it as a session of its own — and where this machine cannot
-open one unattended, the item leaves the package carrying that briefing, and its
-ready-to-paste line goes in the report.
+one: write its briefing in the form `../verify/SKILL.md` prescribes, run the `edit` it prints
+(same file, *The item points at the briefing*), and dispatch it as a session of its own — the
+dispatched session reaches the briefing through the item, so an unlinked one arrives with the
+prompt and nothing else. Where this machine cannot open a session unattended, the item leaves
+the package carrying that briefing, and its ready-to-paste line goes in the report.
 
 **Only the orchestrator writes the queue.** `tk-queue` resolves which queue it is writing
 from the cwd, and a run in a worktree has a different one: a subagent calling `done` there
@@ -901,8 +903,8 @@ it stands. `<id>` is the id the `add` printed, and it is quoted for the same rea
 placeholders are — unquoted, a shell reads `<id>` as a redirect and the line dies before
 `tk-queue` sees it.
 
-**Then run the `edit` the handoff prints**, per `../verify/SKILL.md`: a REGRILL that skips it
-parks a decision whose briefing nothing leads to.
+**Then run the `edit` the handoff prints** (`../verify/SKILL.md`, *The item points at the
+briefing*): a REGRILL that skips it parks a decision whose briefing nothing leads to.
 
 `--deferred` is the gate: `--class DECISION` is refused without it, so a REGRILL that reached
 the queue reached it carrying the record of why nobody could be asked.
