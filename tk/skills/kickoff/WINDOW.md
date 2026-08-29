@@ -247,4 +247,4 @@ the statusline and nothing else. Over it:
 3. **Leave the remote as it stands.** The lane's branch opens at `AFK.md` step 3; a branch
    pushed early takes its spec out of the next package's election (`AFK.md` step 1).
 4. **Hand back the line that resumes the package**, and stop. The successor opens on that
-   handoff and reads no queue (`SKILL.md`, its entry).
+   handoff and reads no queue (`SKILL.md`, *A session opening on a package handoff*).
