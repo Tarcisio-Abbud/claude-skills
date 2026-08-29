@@ -537,9 +537,10 @@ authorization.)
 ### The claim is the first line of the concurrent-session guard
 
 Claim every item of the confirmed package before dispatching the first one:
-`tk-queue claim "<id>" --as "<session/host label>"`, taken under the exclusive lock the queue
-already holds. A second claim is REFUSED, naming the owner and the moment — and that refusal
-IS the guard: the item leaves the package untouched and enters the report as held elsewhere.
+`tk-queue claim "<id>" --as afk-host`, taken under the exclusive lock the queue
+already holds. A second claim is REFUSED, naming the owner and the moment — and
+that refusal IS the guard: the item leaves the package untouched and enters the
+report as held elsewhere.
 
 It leads because the tree signals are blind exactly where the collision happens. A sibling
 session working from the shared main tree appears in no `git worktree list` and carries no
