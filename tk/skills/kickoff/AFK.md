@@ -9,8 +9,8 @@ closes, and implements nothing inline. Every run it dispatches takes its model, 
 venue from the role table in `../../reference/subagent-policy.md` — which also fixes the
 one-line format a departure from that table costs.
 
-**Read `WINDOW.md` beside this file before anything below runs**, the section under this one
-included: a resumed generation composes its very first command out of that file's contents. It
+**Read `WINDOW.md` beside this file before anything below runs**, *A resumed generation starts
+here* below included: a resumed generation composes its very first command out of that file's contents. It
 holds what the package does when it runs out of window rather than out of work: the checkpoint
 invariant, the handoff the quota wall demands and its six contents — plus the five an accumulated
 lane carries, four of them new — the scope a resumed package is held to, why auto-continue covers
@@ -24,11 +24,12 @@ do not choose, which is why they are read up front rather than looked up under o
 
 Read this file **by section**, not end to end. Planning a package touches the spine, step 1 and
 step 2; a session that took step 4's body before dispatching anything paid 222 lines for a step
-it may never reach. This file read whole is ~14–18k tokens of the 130k a `pack` reached with
-nothing dispatched (`WINDOW.md`, *The two planning seams*). What a step defers is its BODY, never its
+it may never reach, and this file is ~87 KB read whole. Reading of that shape is what puts a
+`pack` over the planning threshold with nothing dispatched (`WINDOW.md`, *The two planning
+seams*). What a step defers is its BODY, never its
 existence: the steps still run in order, and none is skipped for not having been read.
 
-**The spine is everything above this heading, plus `WINDOW.md` whole**, and it is read at package
+**The spine is this section and everything above it, plus `WINDOW.md` whole**, and it is read at package
 open whatever the session goes on to do. It carries the rules that fire at moments the steps do
 not choose: the quota wall and the handoff it demands, the checkpoint invariant, and the context
 threshold at every seam — planning seams included, which is why a session that reads no step body
@@ -1145,13 +1146,13 @@ gone, and the report says so instead of a criterion nobody could meet.
 ## 6. Measure, and hand the package to the close
 
 Four numbers on one line, emitted here, where the package hands back: **planned × completed ×
-wall clock × planning** — items claimed, items that reached an approved outcome, the time from
-first dispatch to last verdict, and the context this session had spent when it reached the cut,
-read from the statusline at that seam (`WINDOW.md`, *The two planning seams*). They are what
+wall clock × context at the cut** — items claimed, items that reached an approved outcome, the
+time from first dispatch to last verdict, and the context this session had spent when it reached
+the cut, read from the statusline at that seam (`WINDOW.md`, *The two planning seams*). They are what
 stops the cut in step 1 from staying a guess: this package's line is the next package's
 evidence. The fourth is what turns the ~100k planning threshold into a measured number rather
 than a bid, and a generation that ran no cut — one resumed from a handoff — writes there the number its
-predecessor left, or `?` where the handoff carries none. The deviation lines are emitted beside
+predecessor left in `--state`, or `?` where the handoff carries none. The deviation lines are emitted beside
 them, one per departure from the role table, in that file's format — a deviation with no line
 is indistinguishable from a slip. The audit hands over its **block** here, whichever way it
 went, in the four states step 4 defines: having **run**, one line per finding under its outcome

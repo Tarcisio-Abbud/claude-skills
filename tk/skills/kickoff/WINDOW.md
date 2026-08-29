@@ -130,6 +130,10 @@ implementation is a package whose last third is unfunded.
 A resumed package runs out the items it already claimed and ends there. The queue waits for
 the next kickoff, which is the user's.
 
+**A successor opened at a planning seam holds no claim, and its scope is the cut its predecessor
+wrote into the handoff** — that package and no item beyond it. It claims that package itself, at
+`AFK.md` step 3, which is the one thing this scope rule's ordinary reading does not cover.
+
 The reason is the window it wakes into. A resumed package eats a window the user has not
 opened yet, and holding it to the items already claimed puts a ceiling on that appetite that
 needs no number.
@@ -177,7 +181,9 @@ degrades** rather than nursed.
 The rule, at every seam — **the cut, the `pack` confirm**, an item closed, the wall, the end of
 the package:
 
-- **Refresh the handoff.** Always, whatever the context reads.
+- **Refresh the handoff.** Always, whatever the context reads — from the first dispatch on. At
+  the two planning seams nothing is dispatched yet and there is nothing to refresh: the handoff
+  is written there only when the threshold is crossed, and it is what crossing it buys.
 - **Read the context number on purpose**, at each of those seams. It is in the
   statusline, and an orchestrator that never looks does not notice: the 372k session below
   learnt its own number from the user, because no step of the flow had asked for it.
@@ -187,7 +193,7 @@ the package:
 - **Below it**, carry on.
 
 **That ~150–200k threshold is a simple slice's ceiling, not a slice's.** One real slice — one
-`tk-queue` subcommand, 8 commits, five files — closed its session at **372k**, roughly twice the zone,
+`tk-queue` subcommand, 8 commits, five files — closed its session at **372k**, roughly twice that ceiling,
 with no overflow and no compaction, on six correction cycles. Why a slice costs what it does
 is the cut's question and has one home, in `AFK.md` step 1: correction cycles are the
 multiplier there, and the same rule sizes a generation here. So read the zone as the ceiling
@@ -226,14 +232,18 @@ borrowed rather than recomputed. Reading ~150–200k at a planning seam would au
 session that failed. Like the cut's own sizes in `AFK.md` step 1, it is an **opening bid**: step
 6 measures what planning cost this package, and the next cut reads that line.
 
-**The action at a planning seam is not the wall's.** Nothing is claimed yet, so the wall's step 4
-— keep the claims — has nothing to keep, and claiming here would leave an orphan claim every
-later package refuses. Instead:
+**Over the threshold at a planning seam, the action is not the wall's.** Nothing is claimed yet,
+so *The wall*'s fourth step — keep the claims — has nothing to keep, and claiming here would
+leave an orphan claim every later package refuses. Under the threshold the seam costs the look at
+the statusline and nothing else. Over it:
 
 1. **Record the triage through `tk-queue`** — `add`, `edit`, `cancel` — so the verification
    against reality and the re-triage survive the session that paid for them.
-2. **Write one `tk-queue handoff` on the head item**, carrying the cut's order in `--state`,
-   along with whichever of the wall's six contents (step 3 above) a planning seam has to say.
+2. **Write one `tk-queue handoff` on the head item**, in the form `../verify/SKILL.md`
+   prescribes, as *The wall* asks. Its `--state` carries the seam this session stopped at —
+   which is what tells the successor where to enter (`AFK.md`, *A resumed generation starts
+   here*) — the cut's order, the context number just read, and whichever of *The wall*'s six
+   contents a package that dispatched nothing still has to say.
 3. **Leave the remote as it stands.** The lane's branch opens at `AFK.md` step 3; a branch
    pushed early takes its spec out of the next package's election (`AFK.md` step 1).
 4. **Hand back the line that resumes the package**, and stop. The successor opens on that
