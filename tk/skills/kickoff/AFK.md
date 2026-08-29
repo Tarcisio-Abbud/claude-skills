@@ -334,15 +334,18 @@ the order lost, and any prose past the done-log's title cut gone with it. The
 fold the `repairs:` block prints has a limit of its own — it is refused outright
 when the item's text carries a field marker inside it.
 
-**The lane is a second reading of the same list, and one exclusion is yours.** `tk-queue pack`
+**The lane is elected TWICE, and the remote decides between the two calls.** `tk-queue pack`
 prints a lane beside every eligible item — `spec <ref>` for a ticket implemented on the
 accumulated branch of its spec, `avulso (<ref>)` for a lone ticket of a spec under the floor of
 two, plain `avulso` for an item that came from no spec at all — and it reads the queue, never the
 forge. The one question it cannot ask is whether a spec is already being worked, so the
-orchestrator asks it here, once per DISTINCT Spec reference the list names — the lane's and every
-`avulso (<ref>)` alike, which is why that lane prints the reference at all rather than a bare
-`avulso`. A ticket of a spec already under way is ineligible in either lane: the solo one would
-open a second pull request over the same spec's work.
+orchestrator asks the remote here and hands every answer back through a second `tk-queue pack`.
+
+Ask once per DISTINCT Spec reference the first report names — the lanes, every `avulso (<ref>)`,
+and the `esta é <ref>` of the lane rung's exclusions alike. The excluded ones are in that list
+because the second call can ELECT one of them: a spec nobody asked about is a spec dispatched
+over its own open branch. A ticket of a spec already under way is ineligible in either lane: the
+solo one would open a second pull request over the same spec's work.
 
 **Ask the remote for the BRANCH, not the forge for the pull request.** The branch is pushed the
 moment the lane opens and the pull request only at the first green merge, so a check that asks
@@ -392,23 +395,39 @@ distinct address — two spellings of one repository are two questions with one 
 
 `<m>` is the **issue half** of the Spec reference — `171` out of `ambiente#171` — and it is what
 identifies the branch, which is why the match is on the prefix rather than on the whole name.
-A hit takes every ticket of THAT spec out of the package, on the rung `tk-queue pack` already
-prints, carrying the branch as the value that caused it — and the pull request's number too when
-`gh pr list -R "<owner>/<code repo>" --state open --json number,headRefName` shows one on it:
 
-    lane de spec ocupada por ambiente#171; branch spec/171-topologia-de-pr no remoto (PR #42)
+**Then call `pack` a second time, carrying every hit.** The flag is `--spec-under-way
+<repo>#<n>`, repeatable, and it is why there are two calls at all:
 
-The value is what tells this rung apart from the identically worded one `tk-queue pack` prints
-for a second spec, whose value is `esta é <ref>`: that one read the queue, this one read the
-remote. One spec advances one package per human merge — that is what the rung costs, and naming
-it in the report is what keeps the next cut from rediscovering it.
+```sh
+tk-queue pack --spec-under-way ambiente#171 --spec-under-way ambiente#144
+```
+
+The second call skips those specs when it elects the lane, so the lane passes to the next spec in
+queue order that reaches the floor — routinely a spec the first call had excluded behind a lane
+nobody could use. It takes every ticket of a skipped spec out of the package, whatever their
+count, on the rung it already prints:
+
+    lane de spec ocupada por ambiente#171; declarada em curso por --spec-under-way
+
+**Cut from the SECOND call's list.** The first one elected a lane over a spec you now know is
+open, so every line of its eligible block carries a lane that is out of date.
+
+That value is what tells this rung apart from the identically worded one `pack` prints for a
+second spec, whose value is `esta é <ref>`: that one read the queue, this one read the remote.
+`pack` was told the spec is under way and never why, so the REPORT is where the branch is named,
+with the pull request's number when
+`gh pr list -R "<owner>/<code repo>" --state open --json number,headRefName` shows one on it.
+
+One spec advances one package per human merge — that is what the rung costs, and naming it in the
+report is what keeps the next cut from rediscovering it.
 
 **Where that item lands in the close.** Step 6 groups the items a package did not close by
 reason, and its ladder carries the rung: **carried** under the lane gate, with the branch as its
 value. It was eligible, and it left over a lane held elsewhere rather than over anything wrong
 with the item.
 
-**Then cut.** Take the eligible in the order printed — priority IS the order of
+**Then cut.** Take the eligible of the second call in the order printed — priority IS the order of
 the file, and `tk-queue bump "<id>"` is what moves an item to the top — then add
 items while the package still fits ONE session: the parent only orchestrates and
 verifies, yet each item still costs context to dispatch, monitor and check. Each
@@ -434,11 +453,11 @@ lane's spec fell below two the package has no accumulated lane at all. The refer
 whole, so the recount is arithmetic over the lines already in front of you — no second read of the
 queue, no call to the forge.
 
-**The recount only ever DEMOTES**, and no reader should go looking for a promotion: `tk-queue
-pack` already excluded every ticket of a second spec, so the lane's spec is the only one in the
-list that could hold it. A package whose lane collapses — cut down, or taken out by the check
-above — runs with no accumulated lane, and the second spec's tickets return in a later package on
-the rung that excluded them.
+**The recount answers for the CUT alone, and it only ever demotes.** Every promotion the remote
+could earn was made by the second `tk-queue pack` call — before the cut, by the script that owns
+the election — and what happens after the cut is arithmetic over FEWER items, which can only take
+a spec below the floor. A package whose lane collapses here runs with no accumulated lane, and
+the specs still excluded return in a later package on the rung that excluded them.
 
 **Two lines of the cut are not items.** A package with an accumulated lane pays its review once,
 over the accumulated diff, and pays a tail after its last ticket merges. Reserve both beside the
