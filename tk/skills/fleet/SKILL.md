@@ -286,7 +286,9 @@ report — exactly as written:
 **The `afk` load enters at `../kickoff/SKILL.md`, not at `AFK.md`.** `AFK.md` is a continuation:
 kickoff's own steps 1–3 gather the agenda and check what is still real, and only then does the
 `afk` argument switch to that file. A run pointed straight at `AFK.md` packages items nobody
-verified against reality, which is the one check the unattended path cannot afford to skip.
+verified against reality, which is the one check the unattended path cannot afford to skip. A
+project whose queue holds a package handoff is the one exception, and kickoff's entry decides it
+rather than this table: that verification is inside the handoff already.
 
 A load with no queue of its own — `docs-audit` sweeps a codebase, not a queue — changes step 2's
 size: order those projects by the roster's own order and say in the report that the fleet was

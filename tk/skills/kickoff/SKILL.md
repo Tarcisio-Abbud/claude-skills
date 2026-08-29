@@ -16,6 +16,13 @@ and is read in `WINDOW.md`: it is how many orchestrator generations the package 
 root) if they exist — they add site-specific agenda sources and dispatch commands. (A
 project's own `.claude/skills/kickoff` overrides this skill entirely.)
 
+**A session opening on a package handoff takes `AFK.md` ahead of this file's step 1** — the
+arguments above route a package this session builds itself. A package handoff is a briefing
+whose `--state` names a package in flight, with its items, its claims and its lane
+(`WINDOW.md`), so the triage and the verification against reality that steps 1–3 would run are
+paid for already. Enter at *A resumed generation starts here* in `AFK.md`, which routes on what
+the handoff names.
+
 ## 1. Gather the agenda
 
 **Open on a clean tree.** Run `../../bin/tk-hygiene` first, before any agenda source is
@@ -55,17 +62,12 @@ planning threshold (`WINDOW.md`, *The two planning seams*).
 No lines in the window → say the week was quiet, in one line, and move
 on.
 
-**A session opening on a handoff reads the handoff, and no queue.** A planning seam ends a
-package by writing the triage, the cut's order and what is left into one `tk-queue handoff`
-(`WINDOW.md`, *The two planning seams*), and that handoff IS this session's agenda:
-`tk-queue list` and `tk-queue report` would rebuild at full price what the predecessor already
-paid for and wrote down. Read it, then go where its `--state` sends you: *Verify against reality*
-and *Triage* below are done already, and an `afk` or `pack` package takes the entry `AFK.md`'s
-*A resumed generation starts here* assigns a planning-seam handoff.
+**A package handoff reached from an item's `[[handoff-T<id>]]` takes the route above**, at the
+moment the link is read: the handoff is this session's agenda, and the queue behind it waits.
 
-**Done when:** the hygiene result is in the report, and either the user saw the week's closed
-items (or the quiet week stated) with a single list of candidate items, each with its source —
-or the session opened on a handoff, and that handoff's contents are the agenda.
+**Done when:** the hygiene result is in the report, and the user saw the week's closed items (or
+the quiet week stated) with a single list of candidate items, each with its source — or a
+package handoff was found here, and its contents are the agenda.
 
 ## 2. Verify against reality
 
