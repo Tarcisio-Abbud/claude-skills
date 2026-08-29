@@ -184,6 +184,8 @@ repo); a local skill overrides the global one of the same name.
 tk/
   .claude-plugin/plugin.json      the plugin manifest
   skills/<name>/SKILL.md          one directory per skill
+  skills/dispatch/LOOP.md         branch file: the `.claude/loop.md` contract, reached
+                                  from the palette row that dispatches a queue of slices
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   skills/kickoff/WINDOW.md        branch file: what the package does when it runs
                                   out of window rather than out of work — the

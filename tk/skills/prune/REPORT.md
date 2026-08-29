@@ -1,7 +1,6 @@
 # The pruning report
 
-One markdown file per pruning pass, named `prune-report.md`; its first line is the path it was
-written to. A pass that found nothing to prune writes that line, then `nothing to prune`.
+One markdown file per pruning pass, named `prune-report.md`, whose first line is its own path.
 
 1. **Numbers** — the bin's metrics for every file read, before and after.
 2. **Table** — KEEP / MOVE / DROP, one row per table unit, as step 4 of `SKILL.md` defines it.
@@ -27,4 +26,5 @@ The table carries four columns:
 | a new skill | the `SKILL-MECHANICS` criterion, read in step 2 |
 | `docs/` of the repo | inline evidence pulled out of an own skill |
 | the report itself | inline evidence pulled out of a third-party skill |
+| another section of the same file | the material stays in this skill, and the unit holding it is the wrong shape |
 | a ticket on the bin | contract the `--help` should carry — file it, the sentence stays KEEP |
