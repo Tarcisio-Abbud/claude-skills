@@ -9,8 +9,8 @@ arguments: skill_path out_dir
 **Pruning** is subtraction with a ruler beside it: the machine measures, the user decides. The
 target skill is never edited. The report and the pruned files go to the second argument, or to
 `./prune-out/<skill-name>/` under the cwd when absent. The directory stays flat, so the report
-lands at `<output-dir>/prune-report.md`. It is not committed: when it falls inside a repo, add it
-to that repo's `.gitignore`.
+lands at `<output-dir>/prune-report.md`. It is not committed: when it falls inside a repo, add
+it to that repo's `.gitignore`.
 
 ## Steps
 

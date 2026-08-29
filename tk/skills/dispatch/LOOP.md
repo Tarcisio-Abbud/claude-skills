@@ -1,8 +1,8 @@
 # The `loop.md` contract
 
 `.claude/loop.md` at the project root replaces plain `/loop`'s default prompt, turning `/loop`
-into the dispatcher of the `next-steps.md` queue. Create the file the first time a project's
-queue is dispatched this way, and on later runs check it still matches the contract:
+into the dispatcher of the `next-steps.md` queue. Create the file the first time you dispatch a
+project's queue this way, and check on every later dispatch that it still matches the contract:
 
 ```markdown
 Read the queue at ~/.claude/projects/<cwd-slug>/memory/next-steps.md. Execute ONLY the

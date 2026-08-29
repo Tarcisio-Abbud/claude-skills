@@ -70,7 +70,8 @@ kickoff verifies and dispatches it at open. The queue has four
 dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, `/loop` over the
 project's `loop.md`, and `/tk:fleet` across every project at once — spelled out in
 `tk/skills/dispatch/SKILL.md`, which also single-sources
-the dispatch palette, the `/goal` recipe and the `loop.md` contract.
+the dispatch palette and the `/goal` recipe; the `loop.md` contract sits beside it, in
+`tk/skills/dispatch/LOOP.md`.
 
 A **merge dossier** is written for every PR the versioning gate handles, before its menu
 opens — what is being merged, made readable where it is read, with every citation-by-number
