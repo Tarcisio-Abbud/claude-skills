@@ -159,10 +159,10 @@ and the user's selection is captured.
 ## 5. Dispatch
 
 The menu check IS the authorization — execute in sequence, without re-confirming. The
-task→mechanism matching (palette), the `/goal` recipe, the mechanism boundaries and the
-`loop.md` contract live in the `dispatch` skill: read `../dispatch/SKILL.md` (relative to
-this file) before the first dispatch. Dispatches that are user-native commands don't block
-the flow — they enter the final report as ready-to-paste lines.
+task→mechanism matching (palette), the `/goal` recipe and the mechanism boundaries live in the
+`dispatch` skill: read `../dispatch/SKILL.md` (relative to this file) before the first dispatch,
+and `../dispatch/LOOP.md` for the `loop.md` contract. Dispatches that are user-native commands
+don't block the flow — they enter the final report as ready-to-paste lines.
 Close with: (a) what is running/scheduled, (b) BLOCKED items with what's missing from the
 user, (c) EXTERNAL items with who to chase, (d) items bound to ANOTHER environment, each
 marked "runs on: X" and carrying its ready-to-paste line where one fits, (e) the

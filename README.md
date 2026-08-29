@@ -70,7 +70,8 @@ kickoff verifies and dispatches it at open. The queue has four
 dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, `/loop` over the
 project's `loop.md`, and `/tk:fleet` across every project at once — spelled out in
 `tk/skills/dispatch/SKILL.md`, which also single-sources
-the dispatch palette, the `/goal` recipe and the `loop.md` contract.
+the dispatch palette and the `/goal` recipe; the `loop.md` contract sits beside it, in
+`tk/skills/dispatch/LOOP.md`.
 
 A **merge dossier** is written for every PR the versioning gate handles, before its menu
 opens — what is being merged, made readable where it is read, with every citation-by-number
@@ -184,6 +185,8 @@ repo); a local skill overrides the global one of the same name.
 tk/
   .claude-plugin/plugin.json      the plugin manifest
   skills/<name>/SKILL.md          one directory per skill
+  skills/dispatch/LOOP.md         branch file: the `.claude/loop.md` contract, reached
+                                  from the palette row that dispatches a queue of slices
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   skills/kickoff/WINDOW.md        branch file: what the package does when it runs
                                   out of window rather than out of work — the
