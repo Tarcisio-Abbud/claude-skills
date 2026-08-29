@@ -36,10 +36,11 @@ On the first quota failure, in this order:
 1. **Stop dispatching.** The runs in flight are already dead; the ones not yet sent stay
    unsent.
 2. **Refresh one handoff** — `tk-queue handoff "<id>" --objective "..." --state "..."
-   --blockers "..."`, in the form `../verify/SKILL.md` prescribes. The id is the item in
-   flight; with nothing in flight, it is the head of what the package has left. One handoff,
-   not one per item: the package's remaining state has a single home, and a copy per item is a
-   copy to go stale.
+   --blockers "..."`, in the form `../verify/SKILL.md` prescribes, **then run the `edit` it
+   prints**, as that file asks. The command warns at exit 0, on stderr, and the wall is the
+   moment nobody is watching that stream. The id is the item in flight; with nothing in
+   flight, it is the head of what the package has left. One handoff, not one per item: the
+   package's remaining state has a single home, and a copy per item is a copy to go stale.
 3. **Say what is left, in `--state`.** Six contents, because each one is something the next
    generation otherwise rediscovers by doing the work twice:
    - the items still to dispatch, in order;
@@ -240,10 +241,11 @@ the statusline and nothing else. Over it:
 1. **Record the triage through `tk-queue`** — `add`, `edit`, `cancel` — so the verification
    against reality and the re-triage survive the session that paid for them.
 2. **Write one `tk-queue handoff` on the head item**, in the form `../verify/SKILL.md`
-   prescribes, as *The wall* asks. Its `--state` carries the seam this session stopped at —
-   which is what tells the successor where to enter (`AFK.md`, *A resumed generation starts
-   here*) — the cut's order, the context number just read, and whichever of *The wall*'s six
-   contents a package that dispatched nothing still has to say.
+   prescribes, and run the `edit` it prints, as *The wall* asks. Its `--state` carries the
+   seam this session stopped at — which is what tells the successor where to enter
+   (`AFK.md`, *A resumed generation starts here*) — the cut's order, the context number just
+   read, and whichever of *The wall*'s six contents a package that dispatched nothing still
+   has to say.
 3. **Leave the remote as it stands.** The lane's branch opens at `AFK.md` step 3; a branch
    pushed early takes its spec out of the next package's election (`AFK.md` step 1).
 4. **Hand back the line that resumes the package**, and stop. The successor opens on that

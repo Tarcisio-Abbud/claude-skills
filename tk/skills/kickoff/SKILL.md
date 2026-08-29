@@ -254,7 +254,9 @@ tk-queue release <id>                          # hand a claimed item back, WITHO
 tk-queue handoff <id> --objective "..." --state "..." --blockers "..." \
          [--skills "..."] [--pitfalls "..."]   # the item's full briefing, in handoff-T<id>.md
                                                # beside next-steps.md; DELETED when the item
-                                               # is closed (`tk-queue handoff --help`)
+                                               # is closed (`tk-queue handoff --help`).
+                                               # Then run the edit it prints, so the item
+                                               # points at the briefing (../verify/SKILL.md)
 tk-queue pack                                  # candidates for an unattended package:
                                                # eligible items in queue order with their LANE,
                                                # plus every exclusion with the value that caused it
