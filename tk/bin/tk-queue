@@ -2402,9 +2402,11 @@ def pack_lanes(candidates, under_way=frozenset()):
     table (#171, US 27), and it costs nothing against "one spec per package"
     (US 28): the package still has one branch, one campaign, one tail.
 
-    So a ticket leaves the package for its lane in exactly one case — its spec
-    would be a SECOND accumulated lane. A spec under the floor is never excluded,
-    whoever holds the lane: the floor is a lane, never a filter.
+    So a ticket leaves the package for its lane in two cases, and only the first
+    is the queue's: its spec would be a SECOND accumulated lane. A spec under the
+    floor is never excluded THAT way, whoever holds the lane: the floor is a lane,
+    never a filter. The second case is `under_way`, below, and the floor is no
+    shield there.
 
     Asked of the CANDIDATES only, after every other rule has run. An item already
     excluded for its class or its Risk is not in the package, so letting it take

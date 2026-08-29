@@ -406,11 +406,16 @@ re-triages; tracker tickets are referenced, not mirrored):
   tickets among the candidates — one ticket does not pay for a draft PR and a three-step
   tail, so a spec under the floor is dispatched in the solo lane — printed `avulso (<ref>)`,
   the spec named because the orchestrator's open-branch check has to know which spec to ask
-  about. A ticket leaves the package for its lane in exactly one case the SCRIPT decides, its
-  spec would be a SECOND accumulated lane, with a reason naming both references; it returns in
-  the next package. The orchestrator adds a second case on the same rung, from what only it can
-  see — the spec's branch already on the remote — and `AFK.md` step 1 owns that one. A spec under the
-  floor is never excluded, whoever holds the lane — the floor is a lane, never a filter.
+  about. A ticket leaves the package for its lane in two cases, both decided by the SCRIPT
+  and told apart by the reason's second half. `esta é <ref>` read the queue: this spec would
+  be a SECOND accumulated lane, and the reason names both references. `declarada em curso`
+  read the remote: `pack` opens no connection, so the orchestrator asks and hands every answer
+  back through `--spec-under-way <ref>` on a SECOND call, which skips those specs when it
+  elects the lane — `AFK.md` step 1 owns the asking. Either way the ticket returns in the next
+  package. A spec under the floor is never excluded by the first case, whoever holds the lane —
+  the floor is a lane, never a filter — and is always excluded by the second, since a lone
+  ticket dispatched `avulso` over an open branch opens the very pull request the check exists
+  to prevent.
   Every reference is stored and printed in ONE canonical spelling — repo lower-cased, issue
   number without leading zeros — decided when the value is written and re-decided when it is
   read: two spellings of one reference would be two lanes, two branches and two campaigns for
