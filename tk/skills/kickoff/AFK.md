@@ -9,15 +9,47 @@ closes, and implements nothing inline. Every run it dispatches takes its model, 
 venue from the role table in `../../reference/subagent-policy.md` — which also fixes the
 one-line format a departure from that table costs.
 
-**Read `WINDOW.md` beside this file before anything below runs**, the section under this one
-included: a resumed generation composes its very first command out of that file's contents. It
+**Read `WINDOW.md` beside this file before anything below runs**, *A resumed generation starts
+here* below included: a resumed generation composes its very first command out of that file's contents. It
 holds what the package does when it runs out of window rather than out of work: the checkpoint
 invariant, the handoff the quota wall demands and its six contents — plus the five an accumulated
 lane carries, four of them new — the scope a resumed package is held to, why auto-continue covers
 none of this, what the review lens costs the window and why its tail is what the wall cuts first,
 the two vehicles that can open a successor generation, and the `--budget N` generations that carry
-a package past the orchestrator's own context ceiling. Those rules fire at moments the steps below
+a package past the orchestrator's own context ceiling — with the seams that ceiling is read at,
+the cut and the `pack` confirm among them. Those rules fire at moments the steps below
 do not choose, which is why they are read up front rather than looked up under one.
+
+## What is read, and when
+
+Read this file **by section**, not end to end. Planning a package touches the spine, step 1 and
+step 2; a session that took step 4's body before dispatching anything paid 222 lines for a step
+it may never reach, and this file is ~87 KB read whole. Reading of that shape is what puts a
+`pack` over the planning threshold with nothing dispatched (`WINDOW.md`, *The two planning
+seams*). What a step defers is its BODY, never its
+existence: the steps still run in order, and none is skipped for not having been read.
+
+**The spine is this section and everything above it, plus `WINDOW.md` whole**, and it is read at package
+open whatever the session goes on to do. It carries the rules that fire at moments the steps do
+not choose: the quota wall and the handoff it demands, the checkpoint invariant, and the context
+threshold at every seam — planning seams included, which is why a session that reads no step body
+still holds the rule that stops it. Two more are this file's own: the orchestrator implements
+nothing inline, and **it alone writes the queue** while the package runs — step 3, *The vehicle,
+and who writes the queue*, carries the failure that rule prevents.
+
+Then one section per step, read where the step is reached:
+
+| At | What is read there |
+|---|---|
+| resuming a package | *A resumed generation starts here* — before step 1, and instead of it |
+| step 1 | *1. Build the package*, and `tk-queue pack --help` |
+| step 2 | *2. `pack` only: confirm* |
+| step 3 | *3. Claim, then dispatch*, plus `../../reference/subagent-policy.md` and the palette in `../dispatch/SKILL.md` |
+| step 4 | *4. Audit the spec and the tickets*, and the site's workflow mechanism in `~/.claude/tk/dispatch.md` |
+| step 5 | *5. Verify every delivery*, and `../verify/SKILL.md` before the first item closes |
+| step 6 | *6. Measure, and hand the package to the close* |
+| step 7 | *7. Chain the afk wrap-up*, executed from `../wrap-up/SKILL.md` |
+| a session finding, at any step | *A session finding, unattended* |
 
 **A generation resuming a package that already holds a lane starts at *A resumed generation
 starts here*, below, and not at step 1.** It builds no package: the one it inherits is already
@@ -32,6 +64,14 @@ claims it inherited are the whole of its work, by `WINDOW.md`'s scope rule. This
 first and once, and only where the handoff names an accumulated lane; a handoff naming solo items
 alone goes straight to step 3's dispatch — the dispatch alone, under the reading two paragraphs
 below.
+
+**A handoff a planning seam wrote is the third case, and this section is not its entry.** It
+carries a package composed and never claimed (`WINDOW.md`, *The two planning seams*): no claim,
+no branch, nothing in flight. Its successor runs step 3 **whole**, the claim included. Where it
+enters is decided by the seam that ended its predecessor, which that handoff's `--state` names: a
+`pack` stopped at the cut still owes its confirmation and enters at step 2; one stopped at the
+confirm was fixed there already and enters at step 3. `afk` has no step 2 and enters at step 3
+either way.
 
 The order is fixed — **reset, draft, close, re-dispatch** — because each one reads a tree the one
 before it settled. They are named rather than numbered: this file's own steps are numbered, and
@@ -1105,17 +1145,21 @@ gone, and the report says so instead of a criterion nobody could meet.
 
 ## 6. Measure, and hand the package to the close
 
-Three numbers on one line, emitted here, where the package hands back: **planned × completed
-× wall clock** — items claimed, items that reached an approved outcome, and the time from
-first dispatch to last verdict. They are what stops the cut in step 1 from staying a guess:
-this package's line is the next package's evidence. The deviation lines are emitted beside
+Four numbers on one line, emitted here, where the package hands back: **planned × completed ×
+wall clock × context at the cut** — items claimed, items that reached an approved outcome, the
+time from first dispatch to last verdict, and the context this session had spent when it reached
+the cut, read from the statusline at that seam (`WINDOW.md`, *The two planning seams*). They are what
+stops the cut in step 1 from staying a guess: this package's line is the next package's
+evidence. The fourth is what turns the ~100k planning threshold into a measured number rather
+than a bid, and a generation that ran no cut — one resumed from a handoff — writes there the number its
+predecessor left in `--state`, or `?` where the handoff carries none. The deviation lines are emitted beside
 them, one per departure from the role table, in that file's format — a deviation with no line
 is indistinguishable from a slip. The audit hands over its **block** here, whichever way it
-went, in the four states step 4 defines: having **run**, one line per finding under its
-outcome plus what the round cost in agents and wall clock; **skipped**, the judgement that
-skipped it; **partial**, how many findings were queued unverified; **failed**, the lens that
-could not be made to run. Those lines belong to the package and precede the close,
-whose own report follows a template this file does not extend.
+went, in the four states step 4 defines: having **run**, one line per finding under its outcome
+plus what the round cost in agents and wall clock; **skipped**, the judgement that skipped it;
+**partial**, how many findings were queued unverified; **failed**, the lens that could not be
+made to run. Those lines belong to the package and precede the close, whose own report follows
+a template this file does not extend.
 
 What the items the package did NOT close owe that template is their **reason**, since it
 groups by outcome and by nothing else. Read them in order and the first that applies is the

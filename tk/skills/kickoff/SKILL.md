@@ -47,14 +47,25 @@ item found there is stale doc, not queue.
 `tk-queue report --since <today minus 7 days>` (`../../bin/tk-queue`; the date is a literal
 `YYYY-MM-DD`) and show its lines as a short **"saiu da fila esta semana"** block. It is
 context, not agenda: it says what moved while the user was away and catches an item about to
-be re-opened by mistake. The report prints one `### <project>` heading per memory dir — add
-`--all` to sweep every project's log, which is how a session opening on one project still
-sees the week whole. No lines in the window → say the week was quiet, in one line, and move
+be re-opened by mistake. The report prints one `### <project>` heading per memory dir, and a
+session opened inside one project reads that project's own log and stops there. `--all` sweeps
+every memory dir and belongs to a session that opens over several: the sweep is a week of every
+project's done-log, paid in a window that has dispatched nothing yet and counted against the
+planning threshold (`WINDOW.md`, *The two planning seams*).
+No lines in the window → say the week was quiet, in one line, and move
 on.
 
-**Done when:** the hygiene result is in the report, the user saw the week's closed items (or
-the quiet week stated), and there is a single list of candidate items, each with its
-source.
+**A session opening on a handoff reads the handoff, and no queue.** A planning seam ends a
+package by writing the triage, the cut's order and what is left into one `tk-queue handoff`
+(`WINDOW.md`, *The two planning seams*), and that handoff IS this session's agenda:
+`tk-queue list` and `tk-queue report` would rebuild at full price what the predecessor already
+paid for and wrote down. Read it, then go where its `--state` sends you: *Verify against reality*
+and *Triage* below are done already, and an `afk` or `pack` package takes the entry `AFK.md`'s
+*A resumed generation starts here* assigns a planning-seam handoff.
+
+**Done when:** the hygiene result is in the report, and either the user saw the week's closed
+items (or the quiet week stated) with a single list of candidate items, each with its source —
+or the session opened on a handoff, and that handoff's contents are the agenda.
 
 ## 2. Verify against reality
 
@@ -247,7 +258,8 @@ tk-queue handoff <id> --objective "..." --state "..." --blockers "..." \
 tk-queue pack                                  # candidates for an unattended package:
                                                # eligible items in queue order with their LANE,
                                                # plus every exclusion with the value that caused it
-tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every project
+tk-queue report [--since YYYY-MM-DD] [--all]   # done-log entries grouped by project tag; --all sweeps every
+                                               # project, and a single-project session leaves it off (step 1)
 tk-queue migrate [--dry-run]                   # one-time: moves legacy [x] to the log, assigns IDs,
                                                # folds a field chain off the first line onto it,
                                                # backdates **Born:** from **Source:**, and reports
