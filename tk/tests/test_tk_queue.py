@@ -3474,6 +3474,180 @@ class TestPackLane(PackOutput):
                   + ticket_item(4, "quatro", spec="repo#180"))
         self.assertEqual(self.reason(self.pack(), "T002"), "Risk: apaga dado")
 
+# --- T249: the election has to know which spec is already being worked -----
+
+class TestPackLaneUnderWay(PackOutput):
+    """`pack` elects the lane from the queue alone, and the one fact the queue
+    cannot hold is whether a spec's branch is already pushed. Measured on the real
+    queue: `pack` elected the open spec, the orchestrator took that spec's tickets
+    out afterwards, and the second spec — two tickets ready — stayed excluded
+    behind a lane the package could not use, package after package. So the caller
+    asks the remote and calls `pack` a second time carrying the answer.
+
+    The fixture below is that measured case, item for item."""
+
+    #: the queue of the report the ticket was written from: two tickets of the spec
+    #: whose branch is open (#171), two of a second spec (#144), a lone ticket of a
+    #: third, an item of no spec, and three items the earlier rungs exclude
+    def seed_the_measured_queue(self):
+        self.seed(
+            ticket_item(7, "the first ticket of the spec", spec="ambiente#171",
+                        ticket="ambiente#172", repo="https://github.com/owner/code.git",
+                        effort="S (~20min)")
+            + ticket_item(8, "the second one", spec="ambiente#171",
+                          ticket="ambiente#173", effort="M (~1h)")
+            + ticket_item(9, "the item's text", repo="/workspace/projects/comercial")
+            + ticket_item(10, "a lone ticket, under the floor", spec="ambiente#159")
+            + item(12, "another item", klass="DECISION")
+            + ticket_item(21, "a ticket of a second spec", spec="ambiente#144")
+            + ticket_item(22, "and its sibling", spec="ambiente#144")
+            + item(31, "a legacy item").replace(" **Class:** AUTONOMOUS.", "")
+            + item(40, "a risky one", risk="toca producao"))
+
+    # --- the flag does its work ------------------------------------------
+    def test_the_named_spec_loses_the_lane_and_the_next_one_takes_it(self):
+        """The whole ticket in one assertion, byte for byte. #171 is skipped when
+        the lane is elected, its two tickets leave on the lane rung with the reason
+        naming the occupation, and #144 — excluded in the run before, behind a lane
+        nothing could use — comes back as the package's accumulated lane."""
+        self.seed_the_measured_queue()
+        r = self.run_tk("pack", "--spec-under-way", "ambiente#171")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, """eligible (4 of 9, in queue order):
+T009  S             avulso                the item's text  [repo: /workspace/projects/comercial]
+T010  S             avulso (ambiente#159)  a lone ticket, under the floor
+T021  S             spec ambiente#144     a ticket of a second spec
+T022  S             spec ambiente#144     and its sibling
+
+excluded (5):
+T007  the first ticket of the spec  — lane de spec ocupada por ambiente#171; declarada em curso por --spec-under-way
+T008  the second one  — lane de spec ocupada por ambiente#171; declarada em curso por --spec-under-way
+T012  another item  — class is DECISION
+T031  a legacy item  — no **Class:** field
+T040  a risky one  — Risk: toca producao
+
+repairs:
+- no **Class:** at all: `tk-queue edit <id> --class AUTONOMOUS`
+""")
+
+    def test_the_run_with_no_flag_is_what_it_has_always_been(self):
+        """The same queue, byte for byte, from the binary that predates the flag.
+        A flag whose default path rewrites one column silently rewrites what every
+        skill reading this output parses — and the pinned bytes are the only place
+        that shows up before a package is dispatched on them."""
+        self.seed_the_measured_queue()
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, """eligible (4 of 9, in queue order):
+T007  S (~20min)    spec ambiente#171     the first ticket of the spec  [ambiente#172]  [repo: https://github.com/owner/code.git]
+T008  M (~1h)       spec ambiente#171     the second one  [ambiente#173]
+T009  S             avulso                the item's text  [repo: /workspace/projects/comercial]
+T010  S             avulso (ambiente#159)  a lone ticket, under the floor
+
+excluded (5):
+T012  another item  — class is DECISION
+T021  a ticket of a second spec  — lane de spec ocupada por ambiente#171; esta é ambiente#144
+T022  and its sibling  — lane de spec ocupada por ambiente#171; esta é ambiente#144
+T031  a legacy item  — no **Class:** field
+T040  a risky one  — Risk: toca producao
+
+repairs:
+- no **Class:** at all: `tk-queue edit <id> --class AUTONOMOUS`
+""")
+
+    def test_a_spec_the_queue_never_names_changes_nothing(self):
+        """The caller asks the remote about every reference the report names, and
+        most answers are "free". A flag value nothing matches must be inert: a run
+        that shifted a lane on it would make the number of questions asked part of
+        the answer."""
+        self.seed_the_measured_queue()
+        plain = self.run_tk("pack").stdout
+        self.assertEqual(self.run_tk("pack", "--spec-under-way", "ambiente#999").stdout,
+                         plain)
+
+    # --- the floor is no shield here --------------------------------------
+    def test_a_lone_ticket_of_a_spec_under_way_leaves_TOO(self):
+        """Under the floor the ticket would go out `avulso (<ref>)` — its own pull
+        request, over the work the open branch is already carrying. That is the
+        second pull request per spec the check exists to prevent, so the floor
+        shields a ticket from the lane CONTEST and never from this rung."""
+        self.seed_the_measured_queue()
+        out = self.run_tk("pack", "--spec-under-way", "ambiente#159").stdout
+        self.assertNotIn("T010", "".join(self.blocks(out)["eligible"]))
+        self.assertEqual(self.reason(out, "T010"),
+                         "lane de spec ocupada por ambiente#159; declarada em curso "
+                         "por --spec-under-way")
+
+    def test_the_two_rungs_are_told_apart_by_their_value(self):
+        """One output, both exclusions. They are worded alike because they ARE one
+        rung, and the second half is what says which source decided it: `esta é
+        <ref>` read the queue's order, `declarada em curso` read the remote. A
+        report that collapsed them could not say which spec lost why."""
+        self.seed_the_measured_queue()
+        out = self.run_tk("pack", "--spec-under-way", "ambiente#159").stdout
+        self.assertEqual(self.reason(out, "T010"),
+                         "lane de spec ocupada por ambiente#159; declarada em curso "
+                         "por --spec-under-way")
+        self.assertEqual(self.reason(out, "T021"),
+                         "lane de spec ocupada por ambiente#171; esta é ambiente#144")
+
+    # --- no lane left to elect --------------------------------------------
+    def test_no_spec_reaching_the_floor_after_the_skip_runs_with_no_lane(self):
+        """#171 is skipped and #144 holds a single ticket, so nothing reaches the
+        floor: the package runs with no accumulated lane, and no ticket is excluded
+        by the lane contest. Turning "no lane" into an exclusion would take the
+        whole package with it."""
+        self.seed(ticket_item(7, "um", spec="ambiente#171")
+                  + ticket_item(8, "dois", spec="ambiente#171")
+                  + ticket_item(21, "tres", spec="ambiente#144")
+                  + item(9, "quatro"))
+        out = self.run_tk("pack", "--spec-under-way", "ambiente#171").stdout
+        self.assertEqual(self.lanes(out),
+                         {"T021": "avulso (ambiente#144)", "T009": "avulso"})
+        self.assertEqual(self.labels(self.blocks(out)["excluded"]), ["T007", "T008"])
+
+    def test_every_spec_under_way_leaves_a_package_of_avulsos(self):
+        """The flag is REPEATABLE, because the caller asks the remote once per
+        distinct reference and more than one answer can come back taken. Both specs
+        skipped, what is left is the items that never belonged to one."""
+        self.seed_the_measured_queue()
+        out = self.run_tk("pack", "--spec-under-way", "ambiente#171",
+                          "--spec-under-way", "ambiente#144").stdout
+        self.assertEqual(self.lanes(out),
+                         {"T009": "avulso", "T010": "avulso (ambiente#159)"})
+        for label in ("T007", "T008", "T021", "T022"):
+            self.assertIn("declarada em curso", self.reason(out, label))
+
+    # --- the value is gated exactly as `--spec` is ------------------------
+    def test_a_malformed_value_is_refused_the_way_spec_refuses_one(self):
+        """Same gate, same message, and a refusal rather than a warning: a value
+        that matched nothing would silently elect the very spec the caller called a
+        second time to skip — the blindness back, wearing a typo."""
+        self.seed_the_measured_queue()
+        for bad in ("nao-e-ref", "ambiente#", "#171", "ambiente#171 solto", ""):
+            with self.subTest(value=bad):
+                r = self.run_tk("pack", "--spec-under-way", bad)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("is not a forge reference", r.stderr)
+                self.assertEqual(r.stdout, "")
+
+    def test_the_value_is_read_in_the_ONE_canonical_spelling(self):
+        """`Ambiente#0171` and `ambiente#171` are one reference, and the queue only
+        ever stores the second. Comparing the flag raw would answer "no such spec"
+        to a caller who copied the reference out of a tracker that title-cases it."""
+        self.seed_the_measured_queue()
+        self.assertEqual(self.run_tk("pack", "--spec-under-way", "Ambiente#0171").stdout,
+                         self.run_tk("pack", "--spec-under-way", "ambiente#171").stdout)
+
+    def test_the_flag_is_documented_in_the_help_the_skill_reads(self):
+        """The output's shape is documented because a skill's prose parses it; the
+        flag that changes which lane is elected is documented for the same reason —
+        the orchestrator learns the second call exists from here."""
+        r = self.run_tk("pack", "--help")
+        self.assertIn("--spec-under-way", r.stdout)
+        self.assertIn("declarada em curso", r.stdout)
+
+
 # --- T198: the repository the item's code LANDS in -------------------------
 
 class TestRepoField(QueueTest):
