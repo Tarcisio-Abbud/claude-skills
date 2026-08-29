@@ -189,8 +189,10 @@ tk/
                                   out of window rather than out of work — the
                                   checkpoint invariant, the quota wall's handoff,
                                   the five contents an accumulated lane adds to
-                                  it, what the review lens costs the window, and
-                                  the --budget generations
+                                  it, what the review lens costs the window, the
+                                  --budget generations, and the seams the context
+                                  threshold fires at — the cut and the pack confirm
+                                  among them
   reference/subagent-policy.md    model, effort, venue, PR-authorship and the
                                   checkpoint invariant per subagent role; the role
                                   table is parseable, schema declared in the file

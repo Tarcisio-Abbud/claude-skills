@@ -174,17 +174,20 @@ parent being sharp — fine judgement goes to a fresh subagent at pinned effort,
 outside the session (the queue, the handoff, git), and the parent is **replaced before it
 degrades** rather than nursed.
 
-The rule, at every seam — an item closed, the wall, the end of the package:
+The rule, at every seam — **the cut, the `pack` confirm**, an item closed, the wall, the end of
+the package:
 
 - **Refresh the handoff.** Always, whatever the context reads.
-- **Read the context number on purpose**, at the close of every package item. It is in the
+- **Read the context number on purpose**, at each of those seams. It is in the
   statusline, and an orchestrator that never looks does not notice: the 372k session below
   learnt its own number from the user, because no step of the flow had asked for it.
-- **Above ~150–200k of context**, open the next generation and end this one.
+- **Above the threshold**, open the next generation and end this one. It is ~100k at the two
+  planning seams, for the reason the section below gives, and ~150–200k once the package has
+  begun dispatching.
 - **Below it**, carry on.
 
-**That threshold is a simple slice's ceiling, not a slice's.** One real slice — one `tk-queue`
-subcommand, 8 commits, five files — closed its session at **372k**, roughly twice the zone,
+**That ~150–200k threshold is a simple slice's ceiling, not a slice's.** One real slice — one
+`tk-queue` subcommand, 8 commits, five files — closed its session at **372k**, roughly twice the zone,
 with no overflow and no compaction, on six correction cycles. Why a slice costs what it does
 is the cut's question and has one home, in `AFK.md` step 1: correction cycles are the
 multiplier there, and the same rule sizes a generation here. So read the zone as the ceiling
@@ -206,3 +209,32 @@ orchestrator.
 summary of a long context; a fresh one carries a briefing its predecessor wrote on purpose,
 against a contract, with the queue and git behind it. The second is strictly better, and
 writing it is already step 2 of the wall.
+
+### The two planning seams
+
+The cut (`AFK.md` step 1) and the `pack` confirm (step 2) are the seams a package has before it
+dispatches anything, and a session that fattens while planning closes no item, so every other
+seam on the list is out of its reach. Measured 2026-08-28: a `pack` reached **~130k at the cut
+with zero items dispatched**, leaving 20–70k — about one item — for the whole package. `afk`
+has no step 2, so the cut is its only planning seam; the enumeration above covers both modes
+with no special case. The confirm earns its place on the `pack` path by being the **last seam
+before any claim**, and because the round of questions after the cut is not free: a checkpoint
+at the cut alone is blind to it.
+
+**The threshold here is the smart zone's edge, ~100k** — the number this file already declares,
+borrowed rather than recomputed. Reading ~150–200k at a planning seam would authorise exactly the
+session that failed. Like the cut's own sizes in `AFK.md` step 1, it is an **opening bid**: step
+6 measures what planning cost this package, and the next cut reads that line.
+
+**The action at a planning seam is not the wall's.** Nothing is claimed yet, so the wall's step 4
+— keep the claims — has nothing to keep, and claiming here would leave an orphan claim every
+later package refuses. Instead:
+
+1. **Record the triage through `tk-queue`** — `add`, `edit`, `cancel` — so the verification
+   against reality and the re-triage survive the session that paid for them.
+2. **Write one `tk-queue handoff` on the head item**, carrying the cut's order in `--state`,
+   along with whichever of the wall's six contents (step 3 above) a planning seam has to say.
+3. **Leave the remote as it stands.** The lane's branch opens at `AFK.md` step 3; a branch
+   pushed early takes its spec out of the next package's election (`AFK.md` step 1).
+4. **Hand back the line that resumes the package**, and stop. The successor opens on that
+   handoff and reads no queue (`SKILL.md` step 1).
