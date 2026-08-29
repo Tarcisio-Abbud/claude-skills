@@ -9,8 +9,8 @@ arguments: skill_path out_dir
 **Pruning** is subtraction with a ruler beside it: the machine measures, the user decides. The
 target skill is never edited. The report and the pruned files go to the second argument, or to
 `./prune-out/<skill-name>/` under the cwd when absent. The directory stays flat, so the report
-lands at `<output-dir>/prune-report.md`, and nothing else: the bin reads a stray file there as a
-sibling. It is not committed: when it falls inside a repo, add it to that repo's `.gitignore`.
+lands at `<output-dir>/prune-report.md`. It is not committed: when it falls inside a repo, add it
+to that repo's `.gitignore`.
 
 ## Steps
 
@@ -26,9 +26,9 @@ sibling. It is not committed: when it falls inside a repo, add it to that repo's
 5. **Write.** Save the report and every file the pass wrote — pruned copies, and destinations a
    MOVE created — side by side in the output directory, in the shape `REPORT.md` carries.
 
-Step 3 ends when every rule has a named run. Step 4 ends when every unit, in every
-file step 1 read, holds a row. Step 5 ends when the bin reads each file the pass wrote inside
-the targets, or the report names the ceiling it holds and why.
+Step 3 ends when every rule has a named run. Step 4 ends when every unit, in every file step 1
+read, holds a row. Step 5 ends when the bin reads each file the pass wrote inside the targets,
+measured where it lands and not beside the report, or names the ceiling it holds and why.
 
 ## The table
 

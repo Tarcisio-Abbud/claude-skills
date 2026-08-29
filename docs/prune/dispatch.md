@@ -26,16 +26,22 @@ dispatch twice. The row stayed.
 > Tickets published on the issue tracker are dispatched by the site's per-ticket flow, one
 > ticket per fresh session — the tracker is their source of truth.
 
-The research row named a fallback the file already states for every row ("If a mechanism doesn't
-exist in the session, use the nearest neighbour"), inside the row's own parentheses.
-
-> fallback: a background subagent with that same contract
-
 ## DROP — suspected no-op
 
 A claim about a sibling skill, changing no decision the reading agent makes.
 
 > `../fleet/SKILL.md` dispatches every one of its project runs on that route.
+
+## Clauses removed from a surviving sentence
+
+A table unit is a whole sentence, so none of these carries a verdict of its own — the sentence
+holding each one stayed. They are recorded here for the same reason a DROP is: one edit puts any
+of them back. The report's defect list says why the skill has no verdict for them.
+
+The research row named a fallback the file already states for every row ("If a mechanism doesn't
+exist in the session, use the nearest neighbour"), inside the row's own parentheses.
+
+> fallback: a background subagent with that same contract
 
 The reason behind the generation rule, where the rule itself and its pointer both survive.
 
