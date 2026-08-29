@@ -2129,9 +2129,11 @@ MUTATIONS = [
 
     ("T172 the lane's spec is the LAST ticket's instead of the first's",
      "    taken = next((ref for _, ref in specs\n"
-     "                  if ref is not None and tickets[ref] >= SPEC_LANE_FLOOR), None)",
+     "                  if ref is not None and ref not in under_way\n"
+     "                  and tickets[ref] >= SPEC_LANE_FLOOR), None)",
      "    taken = next((ref for _, ref in reversed(specs)\n"
-     "                  if ref is not None and tickets[ref] >= SPEC_LANE_FLOOR), None)",
+     "                  if ref is not None and ref not in under_way\n"
+     "                  and tickets[ref] >= SPEC_LANE_FLOOR), None)",
      ["TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order"]),
 
     ("T172 the floor goes, so a lone spec becomes a SECOND lane and is excluded",
@@ -2143,9 +2145,9 @@ MUTATIONS = [
     # the floor turned into a FILTER — the direction that drops the lone ticket
     # out of a package it belongs in, which is what "lane, not exclusion" names
     ("T172 no ticket ever reaches the accumulated lane",
-     "        if ref is not None and ref == taken:\n"
+     "        elif ref is not None and ref == taken:\n"
      "            lanes[n] = LANE_SPEC % taken",
-     "        if False:\n"
+     "        elif False:\n"
      "            lanes[n] = LANE_SPEC % taken",
      ["TestPackLane.test_two_tickets_of_one_spec_share_the_accumulated_lane",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
@@ -2159,14 +2161,73 @@ MUTATIONS = [
 
     ("T172 the lane goes to the first spec seen, floor or no floor",
      '    taken = next((ref for _, ref in specs\n'
-     '                  if ref is not None and tickets[ref] >= SPEC_LANE_FLOOR), None)',
-     "    taken = next((ref for _, ref in specs if ref is not None), None)",
+     '                  if ref is not None and ref not in under_way\n'
+     '                  and tickets[ref] >= SPEC_LANE_FLOOR), None)',
+     "    taken = next((ref for _, ref in specs\n"
+     "                  if ref is not None and ref not in under_way), None)",
      ["TestPackLane.test_a_spec_under_the_floor_does_not_take_the_lane_it_cannot_use"]),
 
     ("T172 the lane is decided over EVERY item, not the candidates only",
-     "    lanes, pushed = pack_lanes(candidates)",
-     "    lanes, pushed = pack_lanes([(l, t) for l, t, _ in rows])",
+     "    lanes, pushed = pack_lanes(candidates, under_way)",
+     "    lanes, pushed = pack_lanes([(l, t) for l, t, _ in rows], under_way)",
      ["TestPackLane.test_the_lane_is_decided_among_ELIGIBLE_items_only"]),
+
+    # --- T249: the election has to know which spec is already being worked ---
+    # Five guards, and each one measured a package that ran with no accumulated
+    # lane while a second spec sat ready. The rung they defend is the same one
+    # T172 wrote; what is new is the SOURCE of the fact — the caller's remote
+    # check, which this command cannot make for itself.
+    ("T249 the election ignores the specs the caller reported under way",
+     '    taken = next((ref for _, ref in specs\n'
+     '                  if ref is not None and ref not in under_way\n'
+     '                  and tickets[ref] >= SPEC_LANE_FLOOR), None)',
+     "    taken = next((ref for _, ref in specs\n"
+     "                  if ref is not None\n"
+     "                  and tickets[ref] >= SPEC_LANE_FLOOR), None)",
+     ["TestPackLaneUnderWay.test_the_named_spec_loses_the_lane_and_the_next_one_takes_it"]),
+
+    ("T249 a spec under way keeps its tickets in the package",
+     "        if ref is not None and ref in under_way:\n"
+     "            pushed[n] = LANE_UNDER_WAY % ref",
+     "        if False:\n"
+     "            pushed[n] = LANE_UNDER_WAY % ref",
+     ["TestPackLaneUnderWay.test_the_named_spec_loses_the_lane_and_the_next_one_takes_it",
+      "TestPackLaneUnderWay.test_a_lone_ticket_of_a_spec_under_way_leaves_TOO"]),
+
+    # the floor read as a shield: under it the ticket goes out `avulso (<ref>)`,
+    # which is the second pull request over the open branch's own work
+    ("T249 the floor shields a lone ticket of a spec under way",
+     "        if ref is not None and ref in under_way:",
+     "        if ref is not None and ref in under_way and tickets[ref] >= SPEC_LANE_FLOOR:",
+     ["TestPackLaneUnderWay.test_a_lone_ticket_of_a_spec_under_way_leaves_TOO",
+      "TestPackLaneUnderWay.test_the_two_rungs_are_told_apart_by_their_value"]),
+
+    ("T249 the rung stops saying WHICH source excluded the ticket",
+     "            pushed[n] = LANE_UNDER_WAY % ref",
+     "            pushed[n] = LANE_TAKEN % (ref, ref)",
+     ["TestPackLaneUnderWay.test_the_named_spec_loses_the_lane_and_the_next_one_takes_it",
+      "TestPackLaneUnderWay.test_the_two_rungs_are_told_apart_by_their_value"]),
+
+    ("T249 the flag never reaches the election",
+     "    lanes, pushed = pack_lanes(candidates, under_way)",
+     "    lanes, pushed = pack_lanes(candidates)",
+     ["TestPackLaneUnderWay.test_the_named_spec_loses_the_lane_and_the_next_one_takes_it",
+      "TestPackLaneUnderWay.test_a_lone_ticket_of_a_spec_under_way_leaves_TOO"]),
+
+    ("T249 the flag value is neither shape-checked nor canonicalised",
+     '    under_way = frozenset(validate_ref("spec-under-way", v)\n'
+     '                          for v in (args.spec_under_way or []))',
+     "    under_way = frozenset(v\n"
+     "                          for v in (args.spec_under_way or []))",
+     ["TestPackLaneUnderWay.test_a_malformed_value_is_refused_the_way_spec_refuses_one",
+      "TestPackLaneUnderWay.test_the_value_is_read_in_the_ONE_canonical_spelling"]),
+
+    ("T249 only the LAST --spec-under-way counts, so the flag stops repeating",
+     '    under_way = frozenset(validate_ref("spec-under-way", v)\n'
+     '                          for v in (args.spec_under_way or []))',
+     '    under_way = frozenset(validate_ref("spec-under-way", v)\n'
+     "                          for v in (args.spec_under_way or [])[-1:])",
+     ["TestPackLaneUnderWay.test_every_spec_under_way_leaves_a_package_of_avulsos"]),
 
     ("T172 a ticket the taken lane pushed out is listed as eligible TOO",
      "        if verdict is None and n not in pushed:",

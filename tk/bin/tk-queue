@@ -1926,7 +1926,8 @@ in the chain that ends the first line — never by searching the block:
              means unknown danger
   claimed    not held by a sibling session
   id         an item `migrate` never gave an ID to cannot be closed by ID
-  lane       not a ticket of a SECOND spec — see below
+  lane       not a ticket of a SECOND spec, nor of one `--spec-under-way`
+             names — see below
 
 LANE, the column an unattended orchestrator dispatches by, read from the queue
 and never from the forge (this command opens no network connection):
@@ -1950,12 +1951,30 @@ three-step tail for one item, so that ticket is dispatched `avulso` instead. Ask
 of the candidates only: an item excluded for its class or its Risk is not in the
 package and cannot take its lane with it.
 
-A ticket leaves the package for its lane in exactly ONE case — its spec would be a
-SECOND accumulated lane — and the reason names both references: the one holding the
-lane and this item's own, so the caller reads which spec lost without opening the
-queue. Those
-tickets are the next package's, not lost. A spec under the floor is never excluded,
-whoever holds the lane: the floor is a lane, never a filter.
+A ticket leaves the package for its lane in TWO cases, and the second half of the
+reason is what tells them apart — one read the queue, the other read the remote:
+
+  esta é <ref>          its spec would be a SECOND accumulated lane. The reason
+                        names both references, the one holding the lane and this
+                        item's own, so the caller reads which spec lost without
+                        opening the queue. A spec under the floor is never excluded
+                        this way, whoever holds the lane: the floor is a lane, never
+                        a filter
+  declarada em curso …  `--spec-under-way <ref>` named this spec, so the caller has
+                        already found its branch on the remote. The spec is skipped
+                        when the lane is elected and its tickets leave WHATEVER
+                        their count — under the floor they would go out `avulso`,
+                        which is a second pull request over that same branch's work
+
+Either way those tickets are the next package's, not lost.
+
+`--spec-under-way` is repeatable, and it is the one input this command cannot
+derive: it reads the queue and opens no network connection. So the caller runs
+`pack`, asks the remote about every Spec reference the report names — the lanes and
+the `esta é <ref>` rung alike, since either may be elected once a spec is skipped —
+and runs `pack` a second time carrying the answer. Without that second call the
+election is blind: it re-elects the spec whose branch is already open, and every
+other spec's tickets stay excluded behind a lane the package cannot use.
 
 A **Risk:** or **Env:** marker the position rule may not read excludes the item
 too, and is reported BEFORE any value: "there is a **Risk:** marker I am not
@@ -2169,6 +2188,22 @@ LANE_SPEC = "spec %s"
 # OWN number. The repo half is also the half `spec/<m>-<slug>` is built from, so
 # dropping it left the orchestrator unable to name the branch from this output.
 LANE_TAKEN = "lane de spec ocupada por %s; esta é %s"
+# The SAME rung, read from the other source. This command opens no network
+# connection, so whether a spec's branch is already pushed is the one input the
+# election cannot derive — and going blind on it was measured costing a whole
+# package: `pack` re-elected the spec whose branch was open, the caller took that
+# spec's tickets out afterwards, and the second spec stayed excluded behind a lane
+# nobody in the package could use. The caller asks the remote and hands the answer
+# back through `--spec-under-way`, so the election is made once, knowing.
+#
+# First half identical to LANE_TAKEN, because it is one rung and a skill's prose
+# reads it as one. Second half different, and that is what the report needs: the
+# two exclusions read different sources — the queue's order, and the remote — and a
+# reader that cannot tell them apart cannot tell which spec lost why. The flag is
+# NAMED in it for the reason every other reason here carries its value: the caller
+# supplied this one, and a reason that did not say so would read as a fact the
+# queue holds.
+LANE_UNDER_WAY = "lane de spec ocupada por %s; declarada em curso por --spec-under-way"
 # how many tickets of one spec earn the accumulated lane. Below it the ticket is
 # dispatched as an ordinary PR: a draft PR, a merge per item and a three-step
 # tail cost more than a single item is worth. A FLOOR, never a filter — the lone
@@ -2342,9 +2377,13 @@ def pack_repo(block):
     return f"  [repo: {value}]"
 
 
-def pack_lanes(candidates):
+def pack_lanes(candidates, under_way=frozenset()):
     """{label: lane} for the candidates that stay, and {label: reason} for the
     tickets the taken lane pushes out.
+
+    `under_way` is the set of specs the CALLER has found already being worked —
+    canonical references, from `--spec-under-way`. They are skipped when the lane
+    is elected and their tickets leave the package, whatever their count.
 
     ONE spec per package — one branch, one draft PR, one campaign, one tail — and
     it is the FIRST spec in QUEUE ORDER that reaches the floor. First in queue
@@ -2369,17 +2408,27 @@ def pack_lanes(candidates):
 
     Asked of the CANDIDATES only, after every other rule has run. An item already
     excluded for its class or its Risk is not in the package, so letting it take
-    the package's lane with it would refuse a lane nothing is using."""
+    the package's lane with it would refuse a lane nothing is using.
+
+    A spec `under_way` is asked FIRST, above the floor, and that order is the rule
+    rather than a detail of the writing. Under the floor its ticket would be
+    dispatched `avulso (<ref>)` — a pull request of its own, over the work the open
+    branch is already carrying, which is the second pull request per spec the whole
+    check exists to prevent. So the floor shields a ticket from the lane CONTEST and
+    never from this: the two rungs answer different questions."""
     specs = [(n, pack_ref(block, "Spec")) for n, block in candidates]
     tickets = {}
     for _, ref in specs:
         if ref is not None:
             tickets[ref] = tickets.get(ref, 0) + 1
     taken = next((ref for _, ref in specs
-                  if ref is not None and tickets[ref] >= SPEC_LANE_FLOOR), None)
+                  if ref is not None and ref not in under_way
+                  and tickets[ref] >= SPEC_LANE_FLOOR), None)
     lanes, pushed = {}, {}
     for n, ref in specs:
-        if ref is not None and ref == taken:
+        if ref is not None and ref in under_way:
+            pushed[n] = LANE_UNDER_WAY % ref
+        elif ref is not None and ref == taken:
             lanes[n] = LANE_SPEC % taken
         elif ref is not None and tickets[ref] >= SPEC_LANE_FLOOR:
             # the only exclusion here: this spec would be a SECOND accumulated
@@ -2391,6 +2440,13 @@ def pack_lanes(candidates):
 
 
 def cmd_pack(args):
+    # Refused BEFORE the queue is opened, the way argparse refuses a bad flag: a
+    # malformed reference is the caller's error whatever the queue holds, and the
+    # same gate `--spec` passes through on the way in. Silence here would elect the
+    # lane as though the caller had said nothing — the exact blindness the flag
+    # exists to end, wearing a typo instead of a missing call.
+    under_way = frozenset(validate_ref("spec-under-way", v)
+                          for v in (args.spec_under_way or []))
     memdir = memory_dir(args.dir)
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
@@ -2423,7 +2479,7 @@ def cmd_pack(args):
         rows.append((label, text, verdict))
         if verdict is None:
             candidates.append((len(rows) - 1, text))
-    lanes, pushed = pack_lanes(candidates)
+    lanes, pushed = pack_lanes(candidates, under_way)
 
     eligible, excluded, repairs = [], [], []
     for n, (label, text, verdict) in enumerate(rows):
@@ -3975,11 +4031,17 @@ def main():
     r.add_argument("--since", help="YYYY-MM-DD")
     r.add_argument("--all", action="store_true", help="sweeps every project")
 
-    sub.add_parser("pack", parents=[common],
-                   help="candidates for an unattended package: the eligible items in "
-                        "queue order, and every exclusion with the value that caused it",
-                   epilog=PACK_FORMAT,
-                   formatter_class=argparse.RawDescriptionHelpFormatter)
+    pk = sub.add_parser("pack", parents=[common],
+                        help="candidates for an unattended package: the eligible items in "
+                             "queue order, and every exclusion with the value that caused it",
+                        epilog=PACK_FORMAT,
+                        formatter_class=argparse.RawDescriptionHelpFormatter)
+    pk.add_argument("--spec-under-way", action="append", metavar="<repo>#<n>",
+                    help="a spec the caller has already found a branch for on the remote, "
+                         "`<repo>#<n>` — REPEATABLE. It is skipped when the accumulated "
+                         "lane is elected, and its tickets leave the package on the lane "
+                         "rung whatever their count. This command opens no network "
+                         "connection, so this flag is the only way it can know (see LANE)")
 
     mg = sub.add_parser("migrate", parents=[common],
                         help="move legacy [x] items to the done-log, assign IDs to open "
