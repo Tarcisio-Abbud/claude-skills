@@ -12,6 +12,12 @@ what the user checks. Execute the steps in order; each ends on a checkable crite
 step 3, switch to `AFK.md` in this skill's folder. `--budget N` (default 1) rides with either
 and is read in `WINDOW.md`: it is how many orchestrator generations the package may spend.
 
+**A session opening on a handoff reads the handoff, and no queue: switch to `AFK.md` before
+step 1.** The handoff a quota wall or a planning seam wrote IS this session's agenda
+(`WINDOW.md`, *The wall* and *The two planning seams*), and steps 1–3 below would rebuild at full
+price what the predecessor already paid for and wrote down. `AFK.md`'s *A resumed generation
+starts here* reads what the handoff names and decides where the package enters.
+
 **Site extensions:** read `~/.claude/tk/kickoff.md` and `.claude/tk/kickoff.md` (project
 root) if they exist — they add site-specific agenda sources and dispatch commands. (A
 project's own `.claude/skills/kickoff` overrides this skill entirely.)
@@ -55,17 +61,8 @@ planning threshold (`WINDOW.md`, *The two planning seams*).
 No lines in the window → say the week was quiet, in one line, and move
 on.
 
-**A session opening on a handoff reads the handoff, and no queue.** A planning seam ends a
-package by writing the triage, the cut's order and what is left into one `tk-queue handoff`
-(`WINDOW.md`, *The two planning seams*), and that handoff IS this session's agenda:
-`tk-queue list` and `tk-queue report` would rebuild at full price what the predecessor already
-paid for and wrote down. Read it, then go where its `--state` sends you: *Verify against reality*
-and *Triage* below are done already, and an `afk` or `pack` package takes the entry `AFK.md`'s
-*A resumed generation starts here* assigns a planning-seam handoff.
-
-**Done when:** the hygiene result is in the report, and either the user saw the week's closed
-items (or the quiet week stated) with a single list of candidate items, each with its source —
-or the session opened on a handoff, and that handoff's contents are the agenda.
+**Done when:** the hygiene result is in the report, the user saw the week's closed items (or the
+quiet week stated), and there is a single list of candidate items, each with its source.
 
 ## 2. Verify against reality
 
