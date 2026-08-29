@@ -249,7 +249,7 @@ tk-queue done <id> --how "PR #82 · [[slug]]"   [--summary "..."] [--note "..."]
 tk-queue cancel <id> --why "..."               [--summary "..."] [--note "..."] [--force]
 tk-queue edit <id> [--text ...] [--class ...] [--effort ...] [--risk ...|none] [--env ...|none] [--criterion ...] [--deferred ...] [--project slug] [--force]
 tk-queue bump <id>                             # move the item to the top of the global order
-tk-queue claim <id> --as <session-or-host label>  # take it, so a sibling session does not work it too
+tk-queue claim <id> --as <session-or-host-label>  # take it, so a sibling session does not work it too
 tk-queue release <id>                          # hand a claimed item back, WITHOUT closing it
 tk-queue handoff <id> --objective "..." --state "..." --blockers "..." \
          [--skills "..."] [--pitfalls "..."]   # the item's full briefing, in handoff-T<id>.md
