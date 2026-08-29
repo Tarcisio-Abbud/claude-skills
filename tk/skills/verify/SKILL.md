@@ -87,6 +87,20 @@ same for attempt 2. On the third failure, in this order:
 3. `tk-queue release <id>` when the item was claimed, so the dead package's ownership does
    not outlive it. The next session starts from the handoff.
 
+## The item points at the briefing
+
+Every caller of `tk-queue handoff` owes this step, and the five sites that prescribe a
+briefing route here for it.
+
+`tk-queue handoff` writes the file, then warns on stderr, at exit 0, that the item carries no
+`[[handoff-T00N]]`. It prints the `tk-queue edit` that repairs the link, quoted for the shell
+and carrying `--force` where the link would cross the item's size ceiling. **Run the `edit` it
+prints.** That pointer is the briefing's only discovery path, and a briefing no item names is
+one the next session never finds.
+
+The sequence above is the one exception: its step 2 writes the same pointer into `--deferred`,
+which answers the warning, so no second `edit` is due there.
+
 ## The caller re-runs it
 
 The evidence that carries a merge verdict is the criterion re-run **by the caller** — the
