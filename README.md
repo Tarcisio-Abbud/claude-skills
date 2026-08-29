@@ -256,6 +256,12 @@ tk/
                                   no fixture was adjusted to agree with the measurement
   tests/mutations_prune.py        entries only, through the same seam
   tests/test_afk_audit.py         audit of the afk contract against the skill files
+  tests/test_window_wall.py       step 2 of the wall, lifted out of WINDOW.md and run
+                                  against a throwaway queue: an ORDINARY item (no
+                                  DECISION, no --deferred) ends up pointing at its
+                                  briefing through the edit the handoff prints
+  tests/mutations_window_wall.py  entries only, through the same seam; three of them
+                                  mutate prose, since prose is what that suite audits
   tests/test_manifests.py         the two tk manifests against the skills on disk:
                                   every skill advertised, and nothing advertised that
                                   is not there
@@ -319,12 +325,14 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 tk/tests/mutations_vista.py`, the roster through
 `python3 tk/tests/mutations_roster.py`, `tk-hygiene` through
 `python3 tk/tests/mutations_hygiene.py`, `tk-prune-measure` through
-`python3 tk/tests/mutations_prune.py`, and the two manifests through
-`python3 tk/tests/mutations_manifests.py`. The harnesses are separate files sharing
-one shape; the oldest differs only in naming its test module inline, and the
-manifests one is the only that mutates DATA rather than a bin — its subject is the
+`python3 tk/tests/mutations_prune.py`, the two manifests through
+`python3 tk/tests/mutations_manifests.py`, and the wall's step 2 through
+`python3 tk/tests/mutations_window_wall.py`. The harnesses are separate files sharing
+one shape; the oldest differs only in naming its test module inline. Two of them mutate
+something other than a bin: the manifests one mutates DATA — its subject is the
 repository's own state, and `marketplace.json` sits at the repo root, outside the
-`tk/` the runner copies.
+`tk/` the runner copies — and the wall one mutates PROSE, an instruction removed from
+a skill file being exactly the defect its suite exists to catch.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`, then advertise it in BOTH
 manifests — a `<name> (…)` clause in `tk/.claude-plugin/plugin.json` and a `/tk:<name>`
