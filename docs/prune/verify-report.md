@@ -191,7 +191,84 @@ own skill. On this pass it holds one — see §6 on what the bin counted instead
 
 ## 5. Proof of the target skill
 
-_(filled in below)_
+A run of `verify` ends in an evidence block and in queue state, both of which a script can
+check, so the proof is a `skill-creator` eval pair with the original as the control arm.
+
+**Setup.** Two prompts, three arms, `n = 2` per real arm per prompt: 8 runs of the target skill,
+Sonnet, each handed its arm's file by absolute path, forbidden the Skill tool and forbidden
+`/root/.claude/`. Each arm is a copy of the whole `tk/skills/` tree, so every relative pointer
+resolves identically; the arms differ only in `verify/`.
+
+| prompt | what the run does | what the grader reads |
+|---|---|---|
+| P0 | a type-A criterion that fits a behaviour promise and passes; the caller accepts the delivery | `answer.md` — the six fields of the evidence block |
+| P1 | three attempts have failed at the hard gate, with the history given and no budget for a fourth | the run's own queue directory afterwards |
+
+P0 is the prompt the ticket asks for. P1 was added to attack what this pass actually moved:
+its assertions read the filesystem `tk-queue` left behind, never prose.
+
+**Grader.** Written by hand and before any run existed, exact: four literal-or-regex checks on
+P0's `answer.md`, six on P1's queue directory and briefing file. No model judgement anywhere.
+
+**Contamination.** `tk:verify` is installed on this machine and its installed copy is the
+original, so a pruned-arm run could reach it for free. All 10 runs logged the files they read;
+none names a path under `/root/.claude/`, and none invoked a skill.
+
+**The control arm, and the two grader defects it exposed.** The broken arm is the pruned file
+with the evidence-block section, its template and the third-failure route deleted. Its first
+build left the **Failed 3×** outcome row standing, and that one cell was enough: the control
+scored **6/6** on P1, which proves the assertion set and not the skill. It was broken again,
+that row removed with it, and rerun. The same first control run also exposed two false
+negatives in the grader, both repaired before any real arm ran: the briefing's heading is
+`## Blockers and notes`, which the pattern for `## Blockers` refused; and the first P1 fixture
+made an **equivalence** promise, so the fit check correctly returned *rotten criterion* rather
+than *failed 3×*, and an assertion demanding `release` graded a step that route does not owe.
+The fixture now makes a behaviour promise, and the ambiguity is gone.
+
+**Result: parity, 20/20 against 20/20.**
+
+| | original arm | pruned arm | control |
+|---|---|---|---|
+| P0, six-field evidence block | 8 / 8 | 8 / 8 | 1 / 4 |
+| P1, the queue after three failures | 12 / 12 | 12 / 12 | 4 / 6 |
+| tokens per run | 63 323 ± 4 098 | 59 349 ± 4 900 | — |
+| wall time per run | 69.3 s ± 13.0 s | 68.7 s ± 26.7 s | — |
+
+Both deltas favour the pruned arm and both sit well inside one standard deviation, so neither
+is a result. The eight real runs cost **490 688 tokens** and 554 s of wall clock; the three
+control runs (one of them the discarded first build) cost a further 207 622, for **698 310
+tokens** over the whole eval. `n = 2`, taken from here and not from any `benchmark.md`, whose
+aggregator writes `runs_per_configuration: 3` as a constant.
+
+**What the control could not break, and what that says.** On P1 the control still scored 4 of
+6: with the whole route deleted from the skill, a run still wrote the briefing with its three
+fields and still pointed the item at it. Those four assertions are satisfied by `tk-queue`
+itself — `--help` names the mandatory fields, and `handoff` warns on stderr and prints the
+`edit` that repairs the link. Only `--class DECISION` and `release` fell. So the moved sequence
+is, for four of its six graded effects, a **cache of the tool's own contract** rather than
+behaviour the prose supplies. That is an argument for the MOVE beyond the line count, and it is
+also the ceiling on what this prompt can measure.
+
+**The MOVE was taken, and cost one file read.** Both pruned P1 runs opened `HANDOFF.md` — 4
+files read against the original arm's 3 — and both then scored 6/6. The hop is made, not
+skipped.
+
+**What this eval does not show.** Every assertion passed in every run of both real arms, so the
+set proves the pruned file loses none of the ten graded behaviours and cannot show it is
+better. Three changes sit outside its reach, and the first is the riskiest in the diff:
+
+- **the rewritten `description`** — untestable in this harness by construction, since every
+  run was handed its arm's file by absolute path and none had to be triggered by the
+  description. For a model-invoked skill that pointer is the whole trigger surface;
+- **the fit check's rewritten sentence** — P0's criterion fits and P1's fits, so no run had to
+  reject one; the *rotten criterion* route was exercised only by the discarded first fixture;
+- **the twelve removed clauses**, none of which any assertion touches.
+
+**One difference between what was measured and what ships.** The arms were taken at commit
+`b5cde9a`. One sentence of `HANDOFF.md`'s opening was reworded afterwards; the pruned arm was
+re-synced to the shipped file before the P1 runs, so P1 measured exactly what ships, and the
+P0 runs — none of whose provenance names `HANDOFF.md` — ran against the earlier wording of a
+file they never opened.
 
 ## 6. The four open findings, and what this run did with each
 
