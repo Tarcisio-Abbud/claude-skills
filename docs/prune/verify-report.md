@@ -18,15 +18,15 @@ bin's default ceiling.
 
 | metric | ceiling | before | after | `HANDOFF.md` |
 |---|---|---|---|---|
-| lines | — | 143 | 112 | 17 |
-| body words | — | 1352 | 919 | 157 |
-| sentences | — | 77 | 69 | 15 |
+| lines | — | 143 | 115 | 17 |
+| body words | — | 1352 | 931 | 157 |
+| sentences | — | 77 | 70 | 15 |
 | mean words per sentence | 22 | 17.6 | 13.3 | 10.5 |
 | max words in a sentence | 25 | **48** | 25 | 21 |
 | sentences over 30 words | 4 | **12** | 0 | 0 |
 | description words | 30 | **56** | 30 | — |
 | inline evidence | 0 | **1** | 0 | 0 |
-| pointers to other files | — | 3 | 3 | 3 |
+| pointers to other files | — | 3 | 5 | 3 |
 | negations | — | 23 | 8 | 3 |
 | defined terms | — | 1 | 1 | 0 |
 | terms defined in a sibling too | 0 | 0 | 0 | 0 |
@@ -40,9 +40,10 @@ two skill files and no report, so the bin's sibling scan has nothing false to fi
 in `docs/prune/` would: this report quotes the skill's bolded `**Verifying**`, and the bin reads
 every markdown file of a directory as a sibling.
 
-**The 80-line target the ticket names was not reached, and this is the accounting.** 143 → 112
-is 31 lines, and the body lost a third of its words (1352 → 919). The remaining 32 lines are
-not slack. Reaching 80 would mean deleting, in whole: `Promoting the criterion to a test` (11
+**The 80-line target the ticket names was not reached, and this is the accounting.** 143 → 115
+is 28 lines, and the body lost 421 words of 1352 — a third — while gaining the three lines of
+the site-extensions pointer the ticket also asks for. The remaining 35 lines are not slack.
+Reaching 80 would mean deleting, in whole: `Promoting the criterion to a test` (11
 lines, the only route by which a criterion outlives its evidence block), `The caller re-runs it`
 (7 lines, the rule the whole `Approved` outcome rests on), and either the outcomes table or the
 two shapes of a rotten criterion (14 lines, both cited by name from `../kickoff/AFK.md`). Each
@@ -146,6 +147,12 @@ No row above claims an answer to it.
 
 ## 3. Splits and notes
 
+**One unit added, not removed.** The ticket asks the pruned skill for a single sentence of
+site extensions, and `verify` carried none — the only skill of the four that reads a per-site
+file without saying so. It now carries the two-line form `kickoff`, `wrap-up`, `dispatch` and
+`review` all use, pointing at the README rather than restating the contract. It has no row in
+§2, which rules on the original's units only.
+
 **No splitting suggestion.** `verify` is one skill: every branch ends in the same artefact, the
 evidence block, and the one branch heavy enough to leave the file left as a reference file
 beside it — `SKILL-MECHANICS` splits by invocation, and nothing needs to invoke the handoff
@@ -181,7 +188,7 @@ remaining eight are hard guardrails the ruler allows: "never by hand", "never a 
 
 | file | what it is |
 |---|---|
-| `tk/skills/verify/SKILL.md` | the pruned skill, 112 lines |
+| `tk/skills/verify/SKILL.md` | the pruned skill, 115 lines |
 | `tk/skills/verify/HANDOFF.md` | the destination of the third-failure MOVE, 17 lines |
 | `docs/prune/verify.md` | every sentence, clause and wording removed, verbatim, and the one piece of inline evidence |
 | `docs/prune/verify-report.md` | this file |

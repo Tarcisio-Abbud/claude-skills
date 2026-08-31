@@ -9,6 +9,9 @@ with: `A:` a deterministic check, `B:` the user's verdict (contract in `../kicko
 It is read-only here: a ruler bent to fit the delivery measures nothing, and one that has to
 change belongs to the user.
 
+**Site extensions:** read `~/.claude/tk/verify.md` and `.claude/tk/verify.md` if they exist
+(README, "Site extensions").
+
 ## Two positions
 
 | Position | What runs | What it produces |
