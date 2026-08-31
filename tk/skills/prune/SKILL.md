@@ -35,11 +35,14 @@ measured where it lands and not beside the report, or names the ceiling it holds
 - **KEEP** names the behaviour that changes against the model's default.
 - A sentence whose changed behaviour nobody can name is a **DROP**, reason "suspected no-op".
 - Write every DROP row so that the user reverses it in one edit.
-- **MOVE** names the destination from the `REPORT.md` table and the criterion that chose it.
+- **MOVE** names the destination from the `REPORT.md` table and the criterion that chose it. It
+  also lists, from a grep over the kit, every pointer to the moved content, with its rewritten
+  form.
 - **DROP** names its reason: duplicate, inline evidence, environment copy, unexercised run.
 - A verdict removes or relocates a whole sentence; a rewording is a note, never a verdict.
 - A verdict never deletes a file, so a file its DROPs emptied is a note too.
 - The `description` is rewritten rather than dropped: its row carries the wording replacing it.
+  It also names every trigger term the rewrite loses — the head word and the user-typed verbs.
 - An exposition range groups under the rule it explains, its `where` column naming the range.
 
 ## Ranking the marks
@@ -47,6 +50,8 @@ measured where it lands and not beside the report, or names the ceiling it holds
 - **KEEP outranks every ceiling.** A sentence that names a behaviour stays, however long.
 - A ceiling marks; alone it founds no verdict, and `max words in a sentence` founds none ever.
 - Negations and defined terms come with no ceiling: read the listed line before judging it.
+- A rewording that touches a defined term is read against the file that coins it, siblings
+  included.
 - One term defined in two files stays in the file that uses it, and is a DROP in the other.
 - Used in neither file, that term is a DROP in both.
 - A coined term costs its definition and recruits no prior: define it once, or replace it.
@@ -79,6 +84,9 @@ Name in the report the proof the target skill can carry:
 - a run of it ends in an artefact a script can check → a `skill-creator` eval pair, the
   original as the control arm;
 - a run of it ends in prose → the reviewed diff of rules.
+
+Before counting an eval's parity, run its assertions once against a deliberately broken arm.
+A set nothing fails on proves nothing: fix it, or say so in the report.
 
 Then hand the user the closing review: `/mattpocock-skills:code-review` over the branch that
 carries the pruned file. It reads a committed diff, so the file reaches its own repo first.
