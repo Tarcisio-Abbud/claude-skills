@@ -35,11 +35,16 @@ measured where it lands and not beside the report, or names the ceiling it holds
 - **KEEP** names the behaviour that changes against the model's default.
 - A sentence whose changed behaviour nobody can name is a **DROP**, reason "suspected no-op".
 - Write every DROP row so that the user reverses it in one edit.
-- **MOVE** names the destination from the `REPORT.md` table and the criterion that chose it.
+- **MOVE** names the destination from the `REPORT.md` table and the criterion that chose it. It
+  also lists, from a grep over the plugin that carries the target, every pointer to the moved
+  content, with its rewritten form.
 - **DROP** names its reason: duplicate, inline evidence, environment copy, unexercised run.
 - A verdict removes or relocates a whole sentence; a rewording is a note, never a verdict.
+- A rewording note that touches a defined term quotes the coining line, from any skill of the
+  plugin.
 - A verdict never deletes a file, so a file its DROPs emptied is a note too.
 - The `description` is rewritten rather than dropped: its row carries the wording replacing it.
+  It also names every leading word and branch the rewrite loses.
 - An exposition range groups under the rule it explains, its `where` column naming the range.
 
 ## Ranking the marks
@@ -80,11 +85,14 @@ Name in the report the proof the target skill can carry:
   original as the control arm;
 - a run of it ends in prose → the reviewed diff of rules.
 
+An eval's assertions run once against a deliberately broken arm before either real arm counts.
+A set the broken arm passes proves nothing: fix the assertions and rerun.
+
 Then hand the user the closing review: `/mattpocock-skills:code-review` over the branch that
 carries the pruned file. It reads a committed diff, so the file reaches its own repo first.
 That review finds none of its inputs here. Tell the user to give it three. The path of
 `writing-for-agents` goes among the Standards sources, and the table is what the Spec axis
 reads. The smell baseline is declared inapplicable, since the target is prose.
 
-**Done when:** the report sits at the path its first line names, every unit holds a row, and
-the target's proof is named.
+**Done when:** the report sits at the path its first line names, and every unit holds the row
+its verdict owes. The target's proof is named, and an eval proof names its broken arm.

@@ -16,7 +16,7 @@ The table carries four columns:
 | where | the file and the line the sentence sits at |
 | sentence | the sentence, quoted |
 | verdict | KEEP, MOVE or DROP |
-| why | the run the rule serves, the destination chosen, or the reason dropped |
+| why | what the verdict owes — the run served, the destination with its rewritten pointers, or the reason dropped |
 
 ## Where a MOVE goes
 
