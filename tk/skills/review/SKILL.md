@@ -1,6 +1,6 @@
 ---
 name: review
-description: "One lens over a delivered code or data slice: a single strong subagent attacks the diff from the angle the slice's class calls for, on top of the repo's mandatory review, with a severity ruler and an attack inventory. Use when a diff hits a trigger item in the site's CLAUDE.md, when the parent claims an exemption or fires by choice, when a handoff names a lens that never fired, or when another skill needs the ruler or the inventory. Prose gets the mandatory review only."
+description: "One lens over a delivered code or data slice: a single strong subagent attacks the diff from the angle the slice's class calls for, on top of the repo's mandatory review, with a severity ruler and an attack inventory. Use when a diff hits a trigger item in the site's CLAUDE.md, when the parent claims an exemption or fires by choice, when a handoff names a lens that never fired, or when another skill needs the ruler or the inventory. It owns the rule for prose an agent follows."
 ---
 
 A **lens** is a subagent that attacks the slice from one angle. The **parent** is the session
@@ -13,7 +13,15 @@ below. The **trigger items** live in the site's CLAUDE.md.
 ## 1. Decide whether it fires
 
 The lens covers code and the data that code writes. Prose an agent follows — a skill, a
-CLAUDE.md, a runbook — is reviewed by the mandatory review alone. A report or document a human
+CLAUDE.md, a runbook — is reviewed by the mandatory review alone, in one round, with one
+exception: when the changed paragraphs prescribe commands, one lens may fire. The trigger is
+judged per diff, not per file — a mixed file counts only what changed. The exception's brief
+adds two constraints to §2's block: report only findings proven by RUNNING a prescribed
+command, and refuse a finding whose fix is more prose about the prose. A firing that returns
+nothing runnable retires the exception: the parent says so in the PR body, and the retirement
+lands as an edit to this paragraph, through its own PR. Only a firing the trigger allowed
+counts as that evidence. Where the repo declares a size ceiling for the file, a correction
+batch that grows it past the ceiling owes a line in the PR body. A report or document a human
 reads gets no review: the reader is the review.
 
 Inside a code slice the same line holds, as a test rather than a list. Prose is what the
