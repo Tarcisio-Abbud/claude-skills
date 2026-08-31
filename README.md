@@ -187,6 +187,9 @@ tk/
   skills/<name>/SKILL.md          one directory per skill
   skills/dispatch/LOOP.md         branch file: the `.claude/loop.md` contract, reached
                                   from the palette row that dispatches a queue of slices
+  skills/verify/HANDOFF.md        branch file: the `tk-queue` sequence a third failed
+                                  attempt at the hard gate runs, and the form every
+                                  site that prescribes a briefing reads
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   skills/kickoff/WINDOW.md        branch file: what the package does when it runs
                                   out of window rather than out of work — the

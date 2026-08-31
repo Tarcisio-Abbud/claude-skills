@@ -18,16 +18,16 @@ bin's default ceiling.
 
 | metric | ceiling | before | after | `HANDOFF.md` |
 |---|---|---|---|---|
-| lines | — | 143 | 115 | 17 |
-| body words | — | 1352 | 931 | 157 |
-| sentences | — | 77 | 70 | 15 |
-| mean words per sentence | 22 | 17.6 | 13.3 | 10.5 |
+| lines | — | 143 | 115 | 18 |
+| body words | — | 1352 | 929 | 170 |
+| sentences | — | 77 | 70 | 16 |
+| mean words per sentence | 22 | 17.6 | 13.3 | 10.6 |
 | max words in a sentence | 25 | **48** | 25 | 21 |
 | sentences over 30 words | 4 | **12** | 0 | 0 |
-| description words | 30 | **56** | 30 | — |
+| description words | 30 | **56** | 29 | — |
 | inline evidence | 0 | **1** | 0 | 0 |
 | pointers to other files | — | 3 | 5 | 3 |
-| negations | — | 23 | 8 | 3 |
+| negations | — | 23 | 9 | 3 |
 | defined terms | — | 1 | 1 | 0 |
 | terms defined in a sibling too | 0 | 0 | 0 | 0 |
 
@@ -41,7 +41,7 @@ in `docs/prune/` would: this report quotes the skill's bolded `**Verifying**`, a
 every markdown file of a directory as a sibling.
 
 **The 80-line target the ticket names was not reached, and this is the accounting.** 143 → 115
-is 28 lines, and the body lost 421 words of 1352 — a third — while gaining the three lines of
+is 28 lines, and the body lost 423 words of 1352 — a third — while gaining the three lines of
 the site-extensions pointer the ticket also asks for. The remaining 35 lines are not slack.
 Reaching 80 would mean deleting, in whole: `Promoting the criterion to a test` (11
 lines, the only route by which a criterion outlives its evidence block), `The caller re-runs it`
@@ -52,13 +52,14 @@ The bin's own targets — the ones criterion 1 of the ticket names — are all m
 
 ## 2. Table — KEEP / MOVE / DROP
 
-One row per table unit of the original: every sentence that instructs, the `description`, and
-the fenced block. Line numbers are the original's. The `why` column is step 3's first half —
+One row per table unit of the original: every sentence that instructs, the `description`, the
+fenced block, and the one term the ticket sends here for a verdict. Line numbers are the
+original's. The `why` column is step 3's first half —
 the run each rule reaches; its second half is answered once, below the table.
 
 | where | sentence | verdict | why |
 |---|---|---|---|
-| frontmatter | `description`, 56 words | KEEP, rewritten | "Verify a delivery against the item's acceptance criterion and emit the evidence block. Use when an item is declared done, an unattended slice closes, or a skill needs the ruler." 30 words. Reached on every turn, so it pays the most per word. **It loses three things**: the leading words `north star` and `hard gate` (identity the body carries, not triggers); the branch "an implementer or an orchestrator", collapsed into "an unattended slice closes"; and "the next reader re-runs", which the body owns under *The caller re-runs it*. The leading word `Verify` is front-loaded, where the original opened on "Runs". |
+| frontmatter | `description`, 56 words | KEEP, rewritten | "Verify a delivery against the item's acceptance criterion, emitting the evidence block. Use when a slice lands, an item is declared done, or a skill needs the acceptance ruler." 29 words. Reached on every turn, so it pays the most per word. Its three branches are the skill's own: a slice lands (the north star position), an item is declared done (the hard gate), a skill needs the ruler. **It loses two things**: the leading words `north star` and `hard gate`, identity the body carries under *Two positions*, and "the next reader re-runs", which the body owns under *The caller re-runs it*. `acceptance` stays in the last branch on purpose — `../review/SKILL.md`'s description ends "needs the ruler or the inventory", and two always-loaded pointers claiming the bare token *the ruler* is a trigger collision. The leading word `Verify` is front-loaded, where the original opened on "Runs". |
 | L6–9 | "**Verifying** is running the item's **criterion** — the acceptance line the item was born with (`A:` a deterministic check, `B:` the user's verdict; contract in `../kickoff/SKILL.md`) — against the tree actually delivered, and emitting **evidence** someone else can re-run." | KEEP | Every run: the leading word, the two criterion types and the deliverable. Split in two at 37 words. |
 | L9–10 | "The criterion is read-only here: it is the ruler, and a ruler bent to fit the delivery measures nothing." | KEEP | Every run. It is the file's one anti-default: an agent whose criterion will not pass edits the criterion. |
 | L10 | "A criterion that has to change belongs to the user." | KEEP | The run that finds its ruler wrong; merged into the sentence above, which keeps both halves in one place. |
@@ -93,6 +94,7 @@ the run each rule reaches; its second half is answered once, below the table.
 | L76–82 | handoff step 1, `tk-queue handoff` | MOVE → `tk/skills/verify/HANDOFF.md` | One branch of many, reached only by a run out of attempts. Three of its clauses were environment copies of `tk-queue handoff --help` and went with the move (§4 of `verify.md`). |
 | L83–86 | handoff step 2, `tk-queue edit --class DECISION` | MOVE → `tk/skills/verify/HANDOFF.md` | Same branch, same file. |
 | L87–88 | handoff step 3, `tk-queue release` | MOVE → `tk/skills/verify/HANDOFF.md` | Same branch, same file. |
+| L81–82 | "It lives there rather than in the item because the queue item is size-capped." | DROP | Duplicate reason: the item's size cap is stated again two lines below, in step 2, where it changes what the reader types (`--force`). Dropped from step 1 rather than moved with it. |
 | L88 | "The next session starts from the handoff." | DROP | Suspected no-op: nothing in the run changes on it, and the briefing's whole purpose is stated where it is written. |
 | L92–93 | "Every caller of `tk-queue handoff` owes this step, and the five sites that prescribe a briefing route here for it." | KEEP | Every run that writes a briefing, from any route. The count of sites is a fact about the plugin's other files, not an instruction, and went; the sentence now reads "whatever brought it there", which is the same reach stated as a rule. |
 | L95–96 | "`tk-queue handoff` writes the file, then warns on stderr, at exit 0, that the item carries no `[[handoff-T00N]]`." | KEEP | The same run. `exit 0` is the gotcha: the warning rides on a success. |
@@ -111,16 +113,15 @@ the run each rule reaches; its second half is answered once, below the table.
 | L134–137 | "A criterion A already in the shape of the target repo's suite is **promoted**: commit it as an acceptance test named `acceptance_*`, and add one line to that repo's `CODING_STANDARDS.md` (or wherever it documents its standards) — "every delivered item carries its acceptance test; `acceptance_*` tests only get stronger"." | KEEP | A run whose criterion is already suite-shaped. 48 words, the file's longest; split at "Add one line". |
 | L137–138 | "From then on the Standards axis of any code review watches it for free." | DROP | Exposition: it is the payoff, and the decision is already gated by "already in the shape of the target repo's suite". |
 | L138–139 | "A criterion that is not in suite shape stays ephemeral, living in the evidence block." | KEEP | The other branch of the same run. |
+| the term `north star` | the vocabulary unit the ticket sends to the table | KEEP, unmerged | It recruits a pretraining prior in exactly the sense the row uses, two sibling files this pass does not touch use it the same way, and its definition costs one cell the `Two positions` table pays for anyway. The reasons are set out under the table. |
 | L141–143 | "**Done when:** exactly one outcome above is named for the item, its evidence block sits in the PR body (or the item's `--note`), and — for a 3× failure or a rotten criterion — the DECISION is already in the queue with its handoff." | KEEP | Every run: the completion criterion. Split at 42 words. |
 
-**42 KEEP, 4 MOVE, 8 DROP.**
+**43 KEEP, 4 MOVE, 9 DROP**, over 56 rows.
 
 ### The vocabulary decision the ticket asks for
 
-**`north star` stays, as a leading word, and is not merged.** It is the ticket's named
-candidate for fusion, and the table rules on it here rather than in prose.
-
-It survives on three counts. It recruits a pretraining prior — the fixed point you steer by —
+The table's `north star` row carries the verdict the ticket asks for — **it stays, as a
+leading word, and is not merged**. These are the three counts it survives on. It recruits a pretraining prior — the fixed point you steer by —
 and that prior is exactly the sense the row uses: the item's whole criterion, run after a slice
 that cannot yet satisfy it. It is used with the same sense by two sibling files that this pass
 does not touch, `../kickoff/AFK.md` and `../../reference/subagent-policy.md`, where a "north
@@ -147,6 +148,13 @@ No row above claims an answer to it.
 
 ## 3. Splits and notes
 
+**Why no sibling pointer moved with the sequence.** Three sites send a reader to
+`../verify/SKILL.md` "in the form it prescribes" and then add "(same file, *The item points at
+the briefing*)". Repointing the first half at `HANDOFF.md` makes the second half's *same file*
+false, so the pair moves together or neither does — and the briefing section is the one that
+cannot move. Every such caller therefore lands in `Three attempts, then the queue`, whose one
+sentence names the `tk-queue` sequence and the file holding it.
+
 **One unit added, not removed.** The ticket asks the pruned skill for a single sentence of
 site extensions, and `verify` carried none — the only skill of the four that reads a per-site
 file without saying so. It now carries the two-line form `kickoff`, `wrap-up`, `dispatch` and
@@ -160,10 +168,11 @@ sequence on its own.
 
 **The MOVE that was measured and refused.** *The item points at the briefing* is the natural
 second half of `HANDOFF.md`: five sites route to it by name, it is about the handoff rather
-than about verifying, and moving it would have taken the file to 103 lines. It stays in
+than about verifying, and moving it would have taken the file to 106 lines. It stays in
 `SKILL.md` because moving it costs more than it buys, in two ways that only appear when you
-try it. Seven pointers in four sibling skills cite it as a section of `../verify/SKILL.md`, and
-one of them, `../kickoff/WINDOW.md`, is read verbatim by `tk/tests/test_window_wall.py` — which
+try it. Seven pointers, in four files of two sibling skills, cite it as a section of
+`../verify/SKILL.md`, and one of those files, `../kickoff/WINDOW.md`, is read verbatim by
+`tk/tests/test_window_wall.py` — which
 resolves every section name the wall's step 2 cites against the files that step names. And
 `tk/tests/mutations_window_wall.py` anchors two mutations on the exact wording and line wrap of
 "**Run the `edit` it prints.**", inside that section. Moving it turns a prose pull request into
@@ -189,7 +198,7 @@ remaining eight are hard guardrails the ruler allows: "never by hand", "never a 
 | file | what it is |
 |---|---|
 | `tk/skills/verify/SKILL.md` | the pruned skill, 115 lines |
-| `tk/skills/verify/HANDOFF.md` | the destination of the third-failure MOVE, 17 lines |
+| `tk/skills/verify/HANDOFF.md` | the destination of the third-failure MOVE, 18 lines |
 | `docs/prune/verify.md` | every sentence, clause and wording removed, verbatim, and the one piece of inline evidence |
 | `docs/prune/verify-report.md` | this file |
 

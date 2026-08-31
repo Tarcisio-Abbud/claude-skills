@@ -1,6 +1,6 @@
 ---
 name: verify
-description: "Verify a delivery against the item's acceptance criterion and emit the evidence block. Use when an item is declared done, an unattended slice closes, or a skill needs the ruler."
+description: "Verify a delivery against the item's acceptance criterion, emitting the evidence block. Use when a slice lands, an item is declared done, or a skill needs the acceptance ruler."
 ---
 
 **Verifying** is running the item's **criterion** against the tree delivered, and emitting
@@ -26,8 +26,8 @@ One run yields one of three results: **passes** · **fails** · **does not execu
 A criterion A proves what the item promised, in the promise's own currency. A behaviour promise
 → the behaviour exercised. An **equivalence** promise (a refactor, a port, a rewrite) → an
 equivalence artefact. That is output byte-compared against real data, or dumps compared on a
-copy of the real database. A green suite there proves the suite still runs, which is a
-different thing from what the item promised.
+copy of the real database. A green suite there proves the suite still runs, which is not what
+the item promised.
 
 The fixture carries the same weight as the currency. Run the criterion against the shape the
 data really has, not the smallest one the wording accepts. When the item's subject has a real
@@ -67,7 +67,7 @@ Both are honest outcomes and count as a finished run.
 
 The ceiling of three applies at the hard gate. Attempt 1 fails → fix the delivery and rerun;
 same for attempt 2. On the third failure the item leaves the package as a DECISION, by the
-three-step sequence in `HANDOFF.md`.
+three-step `tk-queue` sequence in `HANDOFF.md`.
 
 ## The item points at the briefing
 

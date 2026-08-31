@@ -1,7 +1,8 @@
 # The handoff the third failure writes
 
 `SKILL.md` (*Three attempts, then the queue*) reaches this file on the third failed attempt at
-the hard gate. The sequence routes the item out of the package, in this order:
+the hard gate. Every other site that prescribes a briefing reaches it for the command's form.
+The sequence routes the item out of the package, in this order:
 
 1. Write the handoff with the script, never by hand: `tk-queue handoff <id> --objective "..."
    --state "..." --blockers "..." [--skills "..."] [--pitfalls "..."]`. It writes

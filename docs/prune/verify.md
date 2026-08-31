@@ -106,7 +106,6 @@ The paragraph that closed the moved sequence went with it, reworded to name its 
 | the opening | one 37-word sentence carrying the definition, the two types and the pointer | three sentences, the definition first |
 | the north star row | "it is expected to fail until the last slice, and the result is logged, not acted on" | "expected to fail until the last slice, and logged rather than acted on" |
 | the equivalence rule | "an equivalence artefact: output byte-compared…" | split in two at the colon |
-| the green suite | "which is not what the item promised" | "which is a different thing from what the item promised" |
 | the fit check | "runs FIRST: a criterion that does not fit the promise is **rotten**…, so a satisfiable-but-wrong criterion reaches neither "approved" nor "proof ready", of either type" | "runs FIRST. A criterion that fails it is **rotten** whatever its exit code." |
 | the retry rule | "is not an outcome — it is a retry" | "is a retry rather than an outcome" |
 | the **Proof ready** row | "…is assembled" | dropped, the row is a noun phrase |
@@ -125,5 +124,5 @@ The paragraph that closed the moved sequence went with it, reworded to name its 
 > session declares an item done, when an implementer or an orchestrator closes an unattended
 > slice, or when another skill needs the acceptance ruler.
 
-56 words, on every turn. What replaced it is in the report's table row, with the three things
-the rewrite loses named there.
+56 words, on every turn. What replaced it is in the report's table row, with the two things the
+rewrite loses named there.
