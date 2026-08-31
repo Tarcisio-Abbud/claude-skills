@@ -1122,9 +1122,11 @@ git -C "<path>/spec-<m>" merge origin/main
 once per item: the base is the pull request's, so what the review reads is everything the user is
 being asked to merge. The class of that diff picks the flow, under the site's CLAUDE.md:
 
-- **prose an agent follows** — a skill, a CLAUDE.md, a runbook — takes the two axes alone, in one
-  round: Standards against `writing-for-agents`, Spec against the package's own subset of tickets,
-  the lane's and no others, each one's body AND comments;
+- **prose an agent follows** — a skill, a CLAUDE.md, a runbook — takes the rule
+  `../review/SKILL.md` §1 owns: the two axes in one round, a lens only where that rule's
+  exception fires. The dispatch hands over the inputs of `../../reference/slice-rules.md`
+  "Before the PR"; Spec reads the package's own subset of tickets, the lane's and no others,
+  each one's body AND comments;
 - **code, or the data code writes**, takes the lens of `../review/SKILL.md` first, on the committed
   diff, and the two axes after — they read `base...HEAD`, so the lens's correction batch is already
   inside the diff they read.

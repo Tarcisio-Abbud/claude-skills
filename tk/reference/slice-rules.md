@@ -110,13 +110,15 @@ The `{owner}/{repo}` shorthand gh accepts resolves from the working directory's 
 ticket often lives in another repo. Say to read a long comment in chunks rather than truncate it,
 since an amendment that revokes the body's decision lives in one.
 
-**A prose slice's review dispatch hands over four inputs the reviewers cannot find.** The
-Standards axis discovers its sources in the repo, and a plugin cache is not the repo: give it
-the `writing-for-agents` path from the plugin cache, beside this file's "Prose an agent will
-read" section. Give the Spec axis the ticket's body and comments, per the rule above, and the
-file's previous version, to walk rule by rule — a retired rule hides in what the diff omits.
-Declare
-the smells baseline inapplicable, in those words — pasted by default, it grades prose against
-code smells. And give both axes the class question: for each step and each output, which
-command learns this fact? A step whose premise no command establishes is a finding even when
-the prose reads right — a fixer handed the class found four more instances alone.
+**A prose slice's review dispatch hands over the inputs the reviewers cannot find.** The
+Standards axis discovers its sources in the repo, and a plugin cache is not the repo: resolve
+the `writing-for-agents` path with
+`ls ~/.claude/plugins/cache/*/mattpocock-skills/*/skills/productivity/writing-for-agents/SKILL.md`
+— newest version when more than one — and hand it over, beside this file's "Prose an agent
+will read" section. Give the Spec axis the ticket's body and comments, per the rule above, and
+the file's previous version, to walk rule by rule — a retired rule hides in what the diff
+omits. Declare the smells baseline inapplicable, in those words — pasted by default, it grades
+prose against code smells. And give both axes the class question: for each step and each
+output, which command learns this fact? A step whose premise no command establishes is a
+finding even when the prose reads right — a fixer handed the class found four more instances
+alone.
