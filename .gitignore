@@ -37,6 +37,8 @@
 !/docs/prune/dispatch-report.md
 !/docs/prune/verify.md
 !/docs/prune/verify-report.md
+!/docs/prune/review.md
+!/docs/prune/review-report.md
 
 # The hookify stop rule that this repo's own sessions run under, versioned for the same
 # reason `docs/agents/` is (README, "Layout"): `git worktree add` materialises tracked files
