@@ -14,11 +14,11 @@ mandatory two-axis review.
 
 The lens covers code and the data that code writes. Prose an agent follows — a skill, a
 CLAUDE.md, a runbook — takes the mandatory review alone, in one round. One exception: where the
-changed paragraphs prescribe commands, one lens may fire. Its brief then adds two constraints to
-the block in `BRIEF.md`. Report only findings proven by RUNNING a prescribed command, and refuse
-a finding whose fix is more prose about the prose. A firing the trigger allowed that returns
-nothing runnable retires the exception, by an edit here. A report or document a human reads gets
-no review: the reader is the review.
+changed paragraphs prescribe commands, one lens may fire. The exception's brief adds two
+constraints to the block in `BRIEF.md`. Report only findings proven by RUNNING a prescribed
+command, and refuse a finding whose fix is more prose about the prose. A firing the trigger
+allowed that returns nothing runnable retires the exception: say so in the PR body, and edit this
+paragraph. A report or document a human reads gets no review: the reader is the review.
 
 Inside a code slice the same line holds. Prose is what the artifact says ABOUT ITSELF and no
 program reads: a comment, a docstring, a contract doc. A docstring a program consumes —
@@ -76,12 +76,12 @@ does and what its words say is graded by the **wrong side**. A wrong run is a co
 words are prose, fixed on the spot like a nit.
 
 Defects force a **correction batch**: fix each one, or reject it with a reason specific to the
-finding, recorded in the inventory. The correction batch goes to the repo's **mandatory two-axis
+finding, recorded in the inventory. **The correction batch goes to the repo's mandatory two-axis
 review, never to another lens**. Its brief carries the invariant each finding violated: the spec
 of a repair is the finding. Where the repo declares a size ceiling for the file, a batch that
 grows it past the ceiling owes a line in the PR body.
 
-A repeated mechanism is a **design signal**. Two findings violating the same guard, or a
+**A repeated mechanism is a design signal**. Two findings violating the same guard, or a
 correction that writes one statement in one more place, means the next instance is already
 written. An incomplete repair is a correction, not a signal.
 
@@ -111,8 +111,8 @@ briefing), and every finding appears in it.
 
 ## 5. Window and handoff
 
-The lens and the review of its correction batch may not cost more window together than the
-**implementation they review**. Where the lens alone would breach that ceiling, the slice takes
+**The lens and the review of its correction batch may not cost more window together than the
+implementation they review**. Where the lens alone would breach that ceiling, the slice takes
 the mandatory review alone, with the reason in the PR.
 
 Reviews serialize: the lens fires only when the remaining window fits it and every review
