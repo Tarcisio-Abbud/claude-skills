@@ -87,5 +87,8 @@ wording and the next conversation's opening sentence.
 conversation's opening sentence.
 
 ## Under /loop
-`/loop Whenever a documentation pass is needed, run /tk:docs-audit.`
-The steps above are the prompt, so the loop line only names the skill.
+`/loop Whenever a documentation pass is needed, audit every doc against the code. Inventory the
+claims and verify each against the codebase. Fix the stale ones, then run the project's tests.
+Audit the project's auto-memory, promoting what turned canonical. Open a documentation-only PR
+and recommend the next step.`
+The loop's model cannot invoke a user-invoked skill, so the line restates the steps.

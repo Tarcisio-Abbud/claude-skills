@@ -18,10 +18,10 @@ bin's default ceiling.
 
 | metric | ceiling | before | after |
 |---|---|---|---|
-| lines | — | 104 | 91 |
-| body words | — | 936 | 823 |
-| sentences | — | 54 | 65 |
-| mean words per sentence | 22 | 17.3 | 12.7 |
+| lines | — | 104 | 94 |
+| body words | — | 936 | 862 |
+| sentences | — | 54 | 69 |
+| mean words per sentence | 22 | 17.3 | 12.5 |
 | max words in a sentence | 25 | **56** | 23 |
 | sentences over 30 words | 4 | **9** | 0 |
 | description words | 30 | 23 | 21 |
@@ -40,16 +40,17 @@ and `terms defined in a sibling too` is one of the targets, so a file measured b
 itself reports its own words back as shared. The `review` pass recorded that trap; this pass did
 not re-discover it.
 
-**`sentences` rose from 54 to 65 while `body words` fell by 113.** Nine long sentences were split
+**`sentences` rose from 54 to 69 while `body words` fell by 74.** Nine long sentences were split
 where the original joined two instructions with a comma or a dash, which is the whole reason
 `max words in a sentence` reads 23 rather than 56. Each split is in `docs-audit.md` §7 with its
-original, and none of them changed a rule.
+original, and none of them changed a rule. The rewritten `/loop` prompt is five short sentences
+where the original was one of 39 words, which is the rest of the rise.
 
 **`negations` did not move, 16 before and 16 after.** Not a target, and the reason it held is
 plain: no dropped sentence carried a negation, and the two rewritings that touched one — §4's
-`detect the runner` and the `/loop` line — were checked against the count. An earlier draft of
-the `/loop` line read "with no prompt to write" and pushed the count to 17; it was rewritten
-positively ("the loop line only names the skill") before the commit.
+`detect the runner` and the `/loop` line — were checked against the count. The `/loop` note ends
+on `cannot invoke`, which the bin's regex does not read as a negation: it matches `no` only on a
+word boundary.
 
 **`pointers to other files` held at 13, and the set changed.** `../wrap-up/SKILL.md` survives at
 a new line, `../kickoff/SKILL.md` survives, and no pointer was added or removed. The bin counts
@@ -59,7 +60,7 @@ which is why an address the pass never touched contributes three.
 **The two `docs/prune/` files are outside the targets, deliberately.** Step 5 of
 `prune/SKILL.md` ends when the bin reads each written file inside the targets *or* the pass
 names the ceiling it holds and why. Measured at their landing address, `docs-audit-report.md`
-breaches five (mean 22.9, max 77, 54 sentences over 30 words, 9 inline evidence, 2 terms
+breaches five (mean 23.1, max 77, 54 sentences over 30 words, 10 inline evidence, 2 terms
 defined in a sibling) and `docs-audit.md` breaches two (max 57, 18 over 30 words). Both are
 held rather than fixed, for reasons that are the files' purpose. They are read by a human and
 by the closing review, never followed by an agent, so `writing-for-agents` is not their ruler.
@@ -70,10 +71,12 @@ exists for. And both sit in `docs/prune/` beside four earlier reports, which is 
 
 ### There is no line ceiling, and the skill kept every step
 
-The bin reports `lines` with no target, so 91 is not measured against anything. It is worth
-saying what the 13 lines were: two are the project-override note, three are §7's merge sentence,
-three are the `/loop` prompt, and the remaining five are clauses cut from sentences that stayed.
-No step, no completion criterion and no bullet of §5 left the file.
+The bin reports `lines` with no target, so 94 is not measured against anything. It is worth
+saying where the ten net lines went: the project-override note and §7's merge sentence left
+whole, the clauses cut from sentences that stayed took the rest, and the rewrapping the splits
+allowed moved the boundaries. Against that, `## Under /loop` grew by two lines: its prompt is a
+restatement of the steps, and it is longer than the line that only named the skill. No step, no
+completion criterion and no bullet of §5 left the file.
 
 ## 2. Table — KEEP / MOVE / DROP
 
@@ -129,7 +132,7 @@ is answered once, below the table.
 | L95–96 | "Follow the same criteria as step 6 of the wrap-up skill (`../wrap-up/SKILL.md`, relative to this file)." | KEEP, rewritten | Every run: the pointer that makes the two DROPs above safe. Rewritten from "Follow the same criteria as" — a label — into an instruction naming what that step decides: the recommendation's wording and the next conversation's opening sentence. The pointer was checked: `wrap-up/SKILL.md` L309 is `## 6. Close: the report, the handoff, and the next step`, and its `### The next step` subsection at L408 is the material. |
 | L97–98 | "**Done when:** the user received ONE clear recommendation with justification and the next conversation's opening sentence." | KEEP | Every run: step 7's criterion, and `ONE` is what stops the step ending in a neutral menu. |
 | L101 | "For a periodic autonomous pass:" | DROP | Suspected no-op: a label with no verb, under the heading `## Under /loop`, which says it. |
-| L102–104 | the four-line `/loop` prompt | KEEP, rewritten | A user setting up a periodic pass. The prompt restated steps 1 to 6 in prose and had already gone stale — it named neither step 5's promotion into the canonical store nor step 7 — which is what a restatement of a document inside that document does. The built-in `/loop` skill takes "a prompt or slash command", so the line is now `/loop Whenever a documentation pass is needed, run /tk:docs-audit.`: the condition verbatim, the restatement replaced by the skill's own name. 39 words to 11, and the steps above become the single source of truth. |
+| L102–104 | the four-line `/loop` prompt | KEEP, rewritten | A user setting up a periodic pass. The prompt restated steps 1 to 6 in prose and had gone stale — it named neither step 5's promotion into the canonical store nor step 7. **The restatement is what makes the line run, so it stays.** This skill is `disable-model-invocation: true`, so the loop's model can never invoke it, and a slash command written mid-prose expands nowhere: a line reading "run `/tk:docs-audit`" is a loop that does nothing. The rewrite refreshes the restatement instead of replacing it — five short sentences covering steps 1 to 7, where the original was one sentence of 39 words covering 1 to 6. The condition that opens the line is kept verbatim. 39 words to 48, and the note under it says why the line cannot simply name the skill. |
 | CLAUSE, opening | "done from time to time," | CLAUSE | Suspected no-op: nothing in a run turns on it, and the sentence already says the audit is heavier than the session pass. |
 | CLAUSE, opening | "and good to run under `/loop`" | CLAUSE | Duplicate: `## Under /loop` is the section that says so and carries the line to paste. |
 | CLAUSE, §2 | "— none unchecked" | CLAUSE | Duplicate within one sentence: `EVERY` in capitals is the same bar, said first. |
@@ -202,7 +205,7 @@ before column's 54 sentences and the after column's 65 both split where the pros
 
 | file | what it is |
 |---|---|
-| `tk/skills/docs-audit/SKILL.md` | the pruned skill, 91 lines |
+| `tk/skills/docs-audit/SKILL.md` | the pruned skill, 94 lines |
 | `docs/prune/docs-audit.md` | every sentence, clause and wording removed, verbatim |
 | `docs/prune/docs-audit-report.md` | this file |
 
@@ -228,10 +231,11 @@ diff.
 
 Two things go unmeasured by construction, and both are named here rather than discovered later:
 
-- **the `/loop` line**, which now names the skill instead of restating it. The claim that
-  `/loop` accepts a slash command comes from the built-in `/loop` skill's own description — "Run
-  a prompt or slash command on a recurring interval (e.g. `/loop 5m /foo`)" — and not from a run
-  of it. That is an official source, not a measurement;
+- **the `/loop` prompt**, rewritten to restate steps 1 to 7 where the original restated 1 to 6.
+  No pass can show that a loop reading the new prompt reaches the same seven steps a run of the
+  skill would. What it can show is that the alternative was broken: the loop's model cannot
+  invoke a `disable-model-invocation: true` skill, and a slash command inside prose expands
+  nowhere;
 - **whether the shortened §7 still reaches `wrap-up` step 6.** The pointer was verified to
   resolve — `wrap-up/SKILL.md` L309 is step 6 and L408 is its next-step subsection — but three
   sentences that restated that step's content are gone, and no pass can show that a future run

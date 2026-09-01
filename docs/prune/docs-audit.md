@@ -43,10 +43,13 @@ session is the wrap-up versioning gate's decision, not this step's.
 
 ## 4. Rewritten — the `/loop` prompt
 
-The four-line prompt restated steps 1 to 6 of the skill in prose, and had already gone stale:
-it named neither step 5's promotion into the canonical store nor step 7. The built-in `/loop`
-skill takes "a prompt or slash command", so the skill's own steps can be the prompt. The
-condition that opens the line is kept verbatim; what left is the restatement after it.
+The four-line prompt restated steps 1 to 6 of the skill in prose, and had gone stale: it named
+neither step 5's promotion into the canonical store nor step 7. The restatement itself is not
+optional. This skill is `disable-model-invocation: true`, so the loop's model can never invoke
+it, and a slash command written inside prose expands nowhere — a line reading "run
+`/tk:docs-audit`" is a loop that does nothing. So the prompt stays self-sufficient: the
+condition that opens it is kept verbatim, and the restatement after it is refreshed to cover
+steps 1 to 7.
 
 > `/loop Whenever a documentation pass is needed, run the docs-audit skill: review the whole
 > codebase, ensure every doc reflects the current implementation, fix stale docs, verify,
@@ -54,8 +57,11 @@ condition that opens the line is kept verbatim; what left is the restatement aft
 
 It reads now:
 
-> `/loop Whenever a documentation pass is needed, run /tk:docs-audit.`
-> The steps above are the prompt, so the loop line only names the skill.
+> `/loop Whenever a documentation pass is needed, audit every doc against the code. Inventory
+> the claims and verify each against the codebase. Fix the stale ones, then run the project's
+> tests. Audit the project's auto-memory, promoting what turned canonical. Open a
+> documentation-only PR and recommend the next step.`
+> The loop's model cannot invoke a user-invoked skill, so the line restates the steps.
 
 ## 5. Rewritten — the `description`
 
