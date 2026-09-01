@@ -102,7 +102,12 @@ and the user's selection is captured.
 
 The menu check IS the authorization — execute in sequence, without re-confirming; read the
 palette in `../dispatch/SKILL.md` before the first dispatch, and `../dispatch/LOOP.md` for
-the `loop.md` contract. Close with: (a) what is
+the `loop.md` contract. Each run carries the contract block from `../../bin/tk-contract
+--role <row>`. When its item names a ticket, it also carries the closing line from
+`../../bin/tk-ticket-ref <id> --closing-line`, composed there and never here — it reads the
+owner from the clone the item's **Repo:** field names, so pass `--repo <clone>` when the item
+names none; exit 3 says the item names no ticket, and the run is dispatched saying so.
+Close with: (a) what is
 running/scheduled, (b) BLOCKED items and what is missing, (c) EXTERNAL items and who to
 chase, (d) items bound to ANOTHER environment, each "runs on: X" with its ready-to-paste
 line — nothing here can run those, so the user is the only path, (e) the **session

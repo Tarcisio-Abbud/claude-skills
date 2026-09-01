@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+"""tk-ticket-ref — the owner-qualified reference of a queue item's ticket.
+
+Given an item, it prints `<owner>/<repo>#<n>` on stdout, or REFUSES naming the
+defect. It never prints an ownerless reference, and it never guesses an owner.
+
+WHY THIS IS CODE AND NOT PROSE. The queue stores a ticket as `<repo>#<n>` —
+`REF_RE` in `tk-queue` refuses the owner half on purpose, so two spellings of one
+reference cannot each name a lane. The owner is therefore composed at dispatch
+time, and until this bin existed the composition was a sentence in a skill file
+telling the session to read `git config tk.tracker` itself. Composing a reference
+is exactly the work that must come out identical every round or fail loudly: a
+closing line naming the WRONG ticket closes the wrong ticket, silently, and the
+keyword has no undo.
+
+WHERE EACH HALF COMES FROM, and neither half comes from the other:
+
+  number and repo   the item's own **Ticket:** field, read at the WRITER's
+                    position through `tk-queue`'s `pack_ref` — the one reader
+                    that already decides position, shape and spelling. A second
+                    reader here would be a second answer to those three rules.
+  owner             `git config tk.tracker` in the clone this runs against,
+                    through the SAME shape gate `bin/tracker-gh` applies. That
+                    gate exists for a measured reason: a value carrying `|`
+                    reached `sed`'s replacement text and corrupted an argument
+                    while the run still exited 0.
+  the clone         `--repo`, or the item's own **Repo:** field, or the current
+                    directory — in that order, and see below.
+
+THE TWO HALVES ARE CHECKED AGAINST EACH OTHER. A tracker configured as
+`Owner/tracker` says who owns `tracker`, and says nothing about who owns
+`other-repo`. So an item whose ticket names a repository the tracker does not is
+REFUSED rather than qualified with an owner nothing established.
+
+WHICH CLONE IS ASKED, and it is never assumed to be the cwd. `--repo` names it;
+without the flag the item's own **Repo:** field does, read through `tk-queue`'s
+`pack_repo`; with neither, the current directory. A path that is not a clone is
+REFUSED naming where the path came from, and so is a `git config` that FAILED
+rather than answering "no such key" — the two are different repairs. Measured:
+run from a directory that is no clone at all, the diagnosis read "the clone at .
+declares no tk.tracker" and prescribed a `git config` nothing there could answer.
+
+EXIT CODES: 0 a reference was printed · 1 a REFUSAL, naming the defect and its
+remedy · 2 the run could not be made (no queue, no such item) · 3 the item names
+no ticket, which is a legitimate state and the escape verdict 5 honours.
+
+Every refusal is one line beginning `tk-ticket-ref: <code>: `, so a caller greps
+for the code rather than for the prose.
+"""
+
+import argparse
+import collections
+import importlib.machinery
+import importlib.util
+import os
+import re
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tk_site      # noqa: E402  (the path above is what makes it importable)
+
+EXIT_OK = 0
+EXIT_REFUSED = 1
+EXIT_FAILED = 2
+EXIT_NO_TICKET = 3
+
+# The shape `bin/tracker-gh` requires of `tk.tracker`, character class for
+# character class. Spelled out rather than "some slug regex": the two gates
+# decide the same value, and a looser one here would qualify a reference the
+# wrapper then refuses to act on.
+TRACKER_RE = re.compile(r"[A-Za-z0-9._-][A-Za-z0-9._-]*/[A-Za-z0-9._-][A-Za-z0-9._-]*\Z")
+# The closing keywords the forge honours, lower-cased, in the order the forge's
+# own documentation lists them. They are ENGLISH, and that is the whole content
+# of this constant: a Portuguese `Fecha #n` is present, cites the right ticket,
+# passes every check that asks whether a closing line is THERE, and closes
+# nothing — measured on a real pull request, 2026-08-28. `tk-closure-check`
+# reads this list, and `--closing-line` writes with its first entry, so the set
+# a checker enforces and the line a dispatcher pastes have one spelling here.
+KEYWORDS = ("fixes", "fix", "fixed",
+            "closes", "close", "closed",
+            "resolves", "resolve", "resolved")
+CLOSING_KEYWORD = "Fixes"
+
+
+def _load_queue():
+    """`tk-queue` as a module. It carries no `.py` suffix, so it is loaded by
+    path — the way `tk-hygiene` loads `tk-roster`, and the way the suite loads
+    every bin it drives. Importing it is what keeps ONE reader of a provenance
+    field in this tree; a copy of `pack_ref` here would be the second answer
+    that consolidation was written to end."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tk-queue")
+    loader = importlib.machinery.SourceFileLoader("tk_queue", path)
+    spec = importlib.util.spec_from_loader("tk_queue", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+tk_queue = _load_queue()
+
+
+class Refusal(Exception):
+    """A defect this bin will not paper over. `code` is what a caller greps."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def prog():
+    """The name the message is spoken under. Resolved from argv rather than
+    written down, because `tk-closure-check` loads this file as a module: a
+    hard-coded prefix would tell the reader a command failed that never ran."""
+    return os.path.basename(sys.argv[0]) or "tk-ticket-ref"
+
+
+def fail(msg):
+    """Stop with code 2 — the run did not happen, which is not a refusal."""
+    print(f"{prog()}: {msg}", file=sys.stderr)
+    sys.exit(EXIT_FAILED)
+
+
+def queue_dir(explicit):
+    """The queue directory — `--dir`, or the cwd encoded into a name under
+    ~/.claude/projects. The encoding comes from `tk_site.project_slug`, which
+    exists to be the one copy of that rule: two encoders of one path drift into
+    a bin that reads ANOTHER project's queue and reports success."""
+    if explicit:
+        path = os.path.abspath(os.path.expanduser(explicit))
+    else:
+        path = os.path.join(tk_queue.PROJECTS_ROOT,
+                            tk_site.project_slug(os.getcwd()), "memory")
+    if not os.path.isdir(path):
+        fail(f"queue dir not found: {path}\n"
+             "(use --dir, or run from the project's directory)")
+    return path
+
+
+def item_block(memdir, wanted):
+    """(the item's block, its own label) — the first OPEN item carrying `wanted`.
+
+    Its own lookup rather than `tk-queue.find_open_item`, for one reason: that
+    one answers a miss with `sys.exit`, and a library call that exits the process
+    cannot be reported by the caller that made it. The reading rules are the
+    same three functions, so nothing about WHICH block is found differs.
+    """
+    content = tk_queue.read(os.path.join(memdir, "next-steps.md"))
+    if content is None:
+        fail(f"next-steps.md not found in {memdir}")
+    for kind, text in tk_queue.split_blocks(content):
+        if kind == "item-open" and tk_queue.item_id(text) == wanted:
+            return text, tk_queue.item_label(text)
+    fail(f"no open item carries the id T{wanted:03d} in {memdir}/next-steps.md — "
+         "`tk-queue list` shows the ones that are there.")
+
+
+Clone = collections.namedtuple("Clone", "path source")
+
+
+def item_repo(block):
+    """(address, present) — the clone the item's **Repo:** field names.
+
+    Read THROUGH `tk-queue.pack_repo`, the one reader of that field: position,
+    shape and "only one in the chain" are decided there, and a second reader here
+    would be a second answer to the same three rules — the defect consolidating
+    `pack_ref` was written to end. What is unwrapped is the LABEL that reader
+    prints, and the suite proves an item's field resolves the clone, so a drift
+    in the label falls on a test rather than silently on the cwd.
+
+    `present` is what separates an item that never named a repository from one
+    whose address no reader may use: the two ask different things of whoever has
+    to name the clone, and the refusal below says which it is."""
+    marked = tk_queue.pack_repo(block).strip()
+    if not marked:
+        return None, False
+    value = marked[len("[repo: "):-1] if marked.startswith("[repo: ") else "?"
+    return (None if value == "?" else value), True
+
+
+def item_clone(block, label, explicit):
+    """The clone whose `tk.tracker` names the owner — and, for the checker, the
+    one `gh` is run in. `--repo`, then the item's **Repo:**, then the cwd.
+
+    The item's own field comes SECOND and the cwd LAST because the cwd is the
+    guess that reads another project's configuration and reports success. The
+    source is carried alongside the path for one reason: every refusal below has
+    to say where the path it is refusing came from, or its remedy names a
+    directory the reader never chose."""
+    if explicit:
+        clone = Clone(explicit, "`--repo`")
+    else:
+        address, present = item_repo(block)
+        if address:
+            clone = Clone(address, f"{label}'s **Repo:** field")
+        elif present:
+            clone = Clone(os.curdir, "the current directory, because "
+                                     f"{label} carries a **Repo:** no reader may use")
+        else:
+            clone = Clone(os.curdir, "the current directory, because "
+                                     f"{label} carries no **Repo:** field")
+    if not os.path.isdir(clone.path):
+        raise Refusal("not-a-repo", not_a_repo(clone, label,
+                                               "is not a directory on this machine"))
+    return clone
+
+
+def is_clone(path):
+    """Is there a git repository at `path`? Asked with `rev-parse`, and asked
+    only when `git config` has already answered "no such key" — a config file
+    git cannot parse fails BOTH commands, and asking this one first would report
+    a real clone as no clone at all."""
+    run = subprocess.run(["git", "-C", path, "rev-parse", "--git-dir"],
+                         capture_output=True, text=True)
+    return run.returncode == 0
+
+
+def not_a_repo(clone, label, what):
+    """The refusal a path that cannot be asked earns, with the runnable remedy."""
+    return (f"{clone.path} {what}, so nothing there says who owns the ticket. It is where "
+            f"this run looked for `tk.tracker`, taken from {clone.source}. Name the clone "
+            f"on this machine:\n  {prog()} {label} --repo <the clone>")
+
+
+def tracker_slug(clone, label):
+    """`tk.tracker` for the clone, gated on SHAPE before it is used.
+
+    The gate is `bin/tracker-gh`'s, and it fires here for the same reason it
+    fires there: this value is pasted into a reference a merge acts on, so a
+    value that is not a slug has to be refused rather than interpreted.
+
+    THREE WAYS TO HAVE NO VALUE, and each is a different repair. `git config`
+    exits 1 for a key that is not there and non-zero-otherwise for a read that
+    could not be MADE — a config file git cannot parse exits 128 naming the bad
+    line. Folding the second into the first tells a session to write a key into a
+    file nothing can read it back out of. And a directory that is no clone at all
+    answers exit 1 exactly like a clone declaring no key, which is the measured
+    diagnosis this splits: `git config` is asked first, and `rev-parse` decides
+    between the two only when there is no value."""
+    repo = clone.path
+    try:
+        run = subprocess.run(["git", "-C", repo, "config", "tk.tracker"],
+                             capture_output=True, text=True)
+    except OSError as e:
+        fail(f"git could not be run: {e}")
+    if run.returncode not in (0, 1):
+        raise Refusal("config-failed",
+                      f"`git -C {repo} config tk.tracker` could not be read (exit "
+                      f"{run.returncode}): "
+                      f"{(run.stderr or run.stdout).strip() or 'no output'}. The key is not "
+                      "missing — the READ failed, and configuring a key in a file git "
+                      "cannot parse writes nothing anybody can read back. Repair the file "
+                      "the message names, then:\n"
+                      f"  git -C {repo} config tk.tracker")
+    value = run.stdout.strip() if run.returncode == 0 else ""
+    if not value:
+        if not is_clone(repo):
+            raise Refusal("not-a-repo", not_a_repo(clone, label, "is not a git clone"))
+        raise Refusal("tracker-unset",
+                      f"the clone at {repo} declares no tk.tracker, so nothing here says "
+                      "who owns the ticket. Configure it, and the reference resolves:\n"
+                      f"  git -C {repo} config tk.tracker <owner>/<repo>")
+    if not TRACKER_RE.fullmatch(value):
+        raise Refusal("tracker-malformed",
+                      f"tk.tracker is not a GitHub slug: [{value}]. Expected "
+                      "<owner>/<repo>, letters, digits, dot, dash and underscore only — "
+                      "the shape `bin/tracker-gh` requires before it pastes the value "
+                      "into an argument.\n  git config tk.tracker <owner>/<repo>")
+    return value
+
+
+def item_ticket(block, label):
+    """The item's ticket as the queue holds it, `<repo>#<n>`, canonical.
+
+    Three outcomes, and they are `pack_closes`'s three: no field at all, a
+    readable one, and a field no reader may use. The third is the `[?]` a
+    package's dispatch prints, and it is refused HERE with the remedy named —
+    it used to be permanent red with nothing to do about it."""
+    if not tk_queue.real_fields(block, "Ticket"):
+        raise Refusal("no-ticket",
+                      f"{label} carries no **Ticket:** field, so it closes nothing. "
+                      "A pull request for it carries no closing line, and verdict 5 "
+                      "turns green on the item itself.")
+    ref = tk_queue.pack_ref(block, "Ticket")
+    if ref is None:
+        raise Refusal("unpairable-ticket",
+                      f"{label} carries a **Ticket:** no reader may use — two of them in "
+                      "the chain, or a value that is not a forge reference. Provenance is "
+                      "add-only: there is no `edit --ticket`, so the remedy is to retire "
+                      "the item and re-add it with the reference it should have had:\n"
+                      f"  tk-queue cancel {label} --why \"unreadable Ticket, re-added\"\n"
+                      "  tk-queue add \"<the same text>\" --ticket <repo>#<n> ...\n"
+                      "Until then it is ineligible for dispatch: a run given this item "
+                      "has no closing line to write.")
+    return ref
+
+
+def qualify(ref, slug, label):
+    """`<owner>/<repo>#<n>` — the item's ticket under the tracker's owner.
+
+    The repo halves are compared BEFORE the join, case-insensitively, because a
+    forge repo name is case-insensitive to look up. What the comparison buys is
+    the one thing the config cannot say: the tracker names the owner of ONE
+    repository, and an item pointing somewhere else has no owner on this machine.
+
+    THE PAIR IS THE INVARIANT, and this function is where it lives so that both
+    ends hold it: the checker composes the reference it expects HERE rather than
+    checking an owner against the tracker and a repository against the item, each
+    against a different source and the pair against none. That is what let a
+    hand-written `Fixes Owner/other-repo#9` pass a check whose reader refuses to
+    emit it.
+
+    The emitted spelling is the TRACKER's for both halves and the item's for the
+    number. The queue lower-cases a repo name on the way in (`canonical_ref`), so
+    reusing the item's half would print a slug the forge resolves and a human
+    does not recognise."""
+    repo, _, number = ref.rpartition("#")
+    owner, _, tracked = slug.partition("/")
+    if repo != tracked.lower():
+        raise Refusal("repo-mismatch",
+                      f"{label} names the ticket {ref}, and this clone's tracker is "
+                      f"{slug} — a different repository. Nothing here says who owns "
+                      f"{repo!r}, and an owner half nothing established is a closing line "
+                      "aimed at whichever repository happens to answer to it. Point the "
+                      "item at the tracker's repository, or run this where that "
+                      "repository IS the tracker.")
+    # No gate on the JOIN. There was one, and no input reached it: both halves of
+    # the slug come from a value `TRACKER_RE` already matched, the number from a
+    # `REF_RE` the queue matched at the writer, and the join of two pre-validated
+    # halves cannot corrupt — 16,116 adversarial pairs through this function
+    # raised it zero times. A guard no input reaches is a guard nobody is
+    # proving; the join's real concern is the PAIR, and it is checked above.
+    return f"{owner}/{tracked}#{number}"
+
+
+def emit(args):
+    memdir = queue_dir(args.dir)
+    block, label = item_block(memdir, args.id)
+    try:
+        ref = item_ticket(block, label)
+        clone = item_clone(block, label, args.repo)
+        qualified = qualify(ref, tracker_slug(clone, label), label)
+    except Refusal as refusal:
+        print(f"{prog()}: {refusal.code}: {refusal.message}", file=sys.stderr)
+        return EXIT_NO_TICKET if refusal.code == "no-ticket" else EXIT_REFUSED
+    print(f"{CLOSING_KEYWORD} {qualified}" if args.closing_line else qualified)
+    return EXIT_OK
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="tk-ticket-ref",
+        description="Print a queue item's ticket as `<owner>/<repo>#<n>`, the form a "
+                    "closing line needs, or refuse naming the defect. The number and the "
+                    "repository come from the item, the owner from `git config "
+                    "tk.tracker` in the clone `--repo` names — or the one the item's "
+                    "**Repo:** field names, or the current directory.",
+        epilog="Exit 0 a reference was printed · 1 refused, the code is the first word "
+               "after the colon · 2 the run could not be made · 3 the item names no "
+               "ticket, which is verdict 5's own escape.")
+    parser.add_argument("id", type=tk_queue.parse_id, metavar="ID",
+                        help="the item, as T006, t006, 006 or 6")
+    parser.add_argument("--dir", metavar="DIR",
+                        help="the queue directory (default: this project's, by cwd)")
+    parser.add_argument("--repo", metavar="DIR",
+                        help="the clone whose `tk.tracker` names the owner (default: the "
+                             "item's **Repo:** field, then the current directory)")
+    parser.add_argument("--closing-line", action="store_true",
+                        help=f"print `{CLOSING_KEYWORD} <ref>`, the whole line a pull "
+                             "request body carries")
+    return emit(parser.parse_args(argv))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

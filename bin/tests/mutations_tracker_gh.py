@@ -6,6 +6,19 @@ for it to FAIL. Same shape and same two honesty checks as
 test no mutation names is reported UNPROVED, because a green score counts only the mutants
 someone wrote.
 
+AN ENTRY MAY NAME ITS OWN FILE. The fifth element is the path to mutate, relative to the
+repository root and defaulting to the wrapper. It exists because one of the defects this suite
+guards against does not live in the wrapper at all: `docs/agents/issue-tracker.md` prescribed a
+command the wrapper refuses, and the test that proves the two agree can only be falsified by
+putting that prescription back.
+
+EVERY MUTATION IS APPLIED TO A COPY of the repository, and the tests run from the copy's own
+`bin/tests` — the suite resolves the wrapper and the doc from its own directory, so the copy
+is what it reads. The defect this ends was measured: the run used to write the mutant into the
+LIVE tree and restore it afterwards, so a run interrupted between the two left a wrapper
+carrying a deliberate defect on disk — in a file every session on this machine executes. Its
+sibling `tk/tests/mutations_closure.py` mutates a copy for the same reason.
+
 Run: python3 bin/tests/mutations_tracker_gh.py
 """
 
@@ -17,8 +30,12 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TARGET = os.path.abspath(os.path.join(HERE, os.pardir, "tracker-gh"))
+ROOT = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir))
+TARGET = os.path.join("bin", "tracker-gh")
+DOC = os.path.join("docs", "agents", "issue-tracker.md")
 
+# (label, needle, replacement, [tests that must fail], path to mutate — default TARGET,
+#  relative to the repository root)
 MUTATIONS = [
     (
         'an unset tracker is not checked, so gh runs with an empty -R',
@@ -112,6 +129,7 @@ MUTATIONS = [
         '    :\n',
         [
             'test_a_url_to_another_repo_is_refused',
+            'test_a_pull_request_url_in_the_body_is_refused_which_is_why_the_doc_yields',
         ],
     ),
     (
@@ -148,6 +166,16 @@ MUTATIONS = [
             'test_the_target_is_compared_case_insensitively',
         ],
     ),
+    (
+        'the doc goes back to prescribing the PR URL, which the wrapper refuses',
+        '''bin/tracker-gh issue comment <n> -R '{tracker}' --body "<owner>/<repo>#<pr>"''',
+        '''bin/tracker-gh issue comment <n> -R '{tracker}' '''
+        '''--body "https://github.com/<owner>/<repo>/pull/<pr>"''',
+        [
+            'test_the_cross_link_the_doc_prescribes_is_accepted_by_the_wrapper',
+        ],
+        DOC,
+    ),
 ]
 
 
@@ -168,66 +196,81 @@ def suite_test_ids():
     return ids
 
 
-def run_tests(names, ids):
+def run_tests(names, ids, tests_dir):
+    """The named tests, run from a tree's own `bin/tests` — the live one for the
+    baseline, the mutated COPY for every entry."""
     result = subprocess.run(
         [sys.executable, "-m", "unittest", "-q"] + [ids[n] for n in names],
-        cwd=HERE,
+        cwd=tests_dir,
         capture_output=True,
         text=True,
     )
     return result.returncode == 0, result.stdout + result.stderr
 
 
+def entry_path(entry):
+    """The file an entry mutates, relative to the repository root — its fifth element,
+    or the wrapper."""
+    return entry[4] if len(entry) > 4 else TARGET
+
+
 def main():
-    with open(TARGET, encoding="utf-8") as fh:
-        original = fh.read()
+    original = {}
+    for rel in sorted({entry_path(entry) for entry in MUTATIONS}):
+        with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+            original[rel] = fh.read()
 
     ids = suite_test_ids()
     available = set(ids)
     named = set()
     problems = []
 
-    ok, output = run_tests(sorted(available), ids)
+    ok, output = run_tests(sorted(available), ids, HERE)
     if not ok:
         print("the suite is not green before mutating; fix that first\n%s" % output)
         return 1
 
-    backup = tempfile.mkstemp(prefix="tracker-gh-backup-")[1]
-    shutil.copy(TARGET, backup)
-    original_mode = os.stat(TARGET).st_mode
-    try:
-        for label, needle, replacement, targets in MUTATIONS:
-            named.update(targets)
+    for entry in MUTATIONS:
+        label, needle, replacement, targets = entry[:4]
+        rel = entry_path(entry)
+        named.update(targets)
 
-            missing = [t for t in targets if t not in available]
-            if missing:
-                problems.append("%s: names a test that does not exist: %s" % (label, missing))
-                continue
+        missing = [t for t in targets if t not in available]
+        if missing:
+            problems.append("%s: names a test that does not exist: %s" % (label, missing))
+            continue
 
-            if original.count(needle) != 1:
-                problems.append(
-                    "%s: its anchor matches %d times, so the mutation is not the one described"
-                    % (label, original.count(needle))
-                )
-                continue
+        if original[rel].count(needle) != 1:
+            problems.append(
+                "%s: its anchor matches %d times, so the mutation is not the one described"
+                % (label, original[rel].count(needle))
+            )
+            continue
 
-            with open(TARGET, "w", encoding="utf-8") as fh:
-                fh.write(original.replace(needle, replacement))
-
+        tmp = tempfile.mkdtemp(prefix="tracker-gh-mutation.")
+        try:
+            # NOT the bytecode, and not `.git`: a copied __pycache__ can validate against
+            # the copied source and hand Python the pre-mutation module, which reports a
+            # mutant as surviving that was never applied.
+            dst = os.path.join(tmp, "repo")
+            shutil.copytree(ROOT, dst,
+                            ignore=shutil.ignore_patterns(".git", "__pycache__"))
+            with open(os.path.join(dst, rel), "w", encoding="utf-8") as fh:
+                fh.write(original[rel].replace(needle, replacement, 1))
             # One at a time. Running the named tests together lets a survivor hide behind a
             # sibling that failed: the batch reports non-zero either way, and the mutation
             # books a kill it did not earn.
-            survivors = [t for t in targets if run_tests([t], ids)[0]]
-            if survivors:
-                problems.append(
-                    "%s: SURVIVED — %s still pass with the defect back" % (label, survivors)
-                )
-            else:
-                print("killed: %s" % label)
-    finally:
-        shutil.copy(backup, TARGET)
-        os.chmod(TARGET, original_mode)
-        os.unlink(backup)
+            tests = os.path.join(dst, "bin", "tests")
+            survivors = [t for t in targets if run_tests([t], ids, tests)[0]]
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        if survivors:
+            problems.append(
+                "%s: SURVIVED — %s still pass with the defect back" % (label, survivors)
+            )
+        else:
+            print("killed: %s" % label)
 
     for name in sorted(available - named):
         print("UNPROVED: %s — no mutation names it" % name)

@@ -1,0 +1,416 @@
+#!/usr/bin/env python3
+"""tk-closure-check — verdict 5 of the merge gate, asked of the pull request.
+
+Given a pull request and the queue item it belongs to, it says whether merging
+that pull request will close THAT ticket, and exits non-zero naming WHICH
+condition failed.
+
+WHY THIS IS CODE AND NOT PROSE. `../skills/wrap-up/MERGE-GATE.md` states the
+verdict, and a session reading it checked the body by eye. Every eye-check
+measured so far asked PRESENCE where the rule asks IDENTITY: a body copy-pasted
+from the previous slice carries a well-formed closing line for the wrong ticket
+and passes; a Portuguese `Fecha #n` carries the right number under a word the
+forge does not honour and passes; an owner half naming another account is
+present, well-formed and wrong. All three merge green and close nothing, or
+close somebody else's issue. The keyword has no undo.
+
+FIVE CONDITIONS, each named in the output and each reported by itself:
+
+  keyword   the word in front of the reference is one the forge honours. The set
+            is `tk-ticket-ref.KEYWORDS`, and it is ENGLISH — that is the whole
+            content of the check.
+  number    a closing line in the body names the item's OWN ticket, repository
+            half and number both.
+  owner     the owner half is present, well-formed under the gate
+            `bin/tracker-gh` applies, and is the tracker's own owner. Present
+            and wrong is a failure, not a pass.
+  extras    NOTHING ELSE in the body closes anything. The forge honours EVERY
+            keyword-and-reference in a body, not the first one, so a second
+            closing line closes a second ticket on merge — silently, with no
+            undo, and the same two lines in the other order used to give the
+            opposite verdict.
+  base      the pull request targets its own repository's default branch. That
+            is the condition under which the forge fires the keyword at all: a
+            stacked pull request merged into its parent closes nothing, silently.
+
+THE REFERENCE IS COMPOSED, NEVER RE-DERIVED. What the body is compared against is
+the string `tk-ticket-ref` would PRINT for this item — owner and repository from
+the tracker pair, number from the item — so this checker cannot greenlight a
+reference the reader refuses to emit. Measured: an item naming `other-repo#9`
+under the tracker `Owner/tracker-repo` is refused by the reader, because nothing
+says who owns `other-repo`; a hand-written `Fixes Owner/other-repo#9` passed
+every condition, since owner and repository were each checked against a different
+source and the PAIR against none.
+
+ROW NAMES, so that a caller greps for one rather than for prose: the five above,
+plus `ticket` — the pre-condition, that the item's own reference could be
+composed at all — and `item`, the line the escape quotes. Every row reads
+`<name>  <state>  <detail>`, and a detail spanning lines is indented under its
+own column.
+
+THE ITEM DECIDES WHAT COUNTS, NEVER THE BODY ALONE. An item naming no ticket is
+green only when the body closes nothing either — a body that closes something is
+then closing a ticket this item never claimed. An item whose **Ticket:** no
+reader may use is red with the remedy named, which is the exit verdict 5 owed
+that state and did not have.
+
+NO NETWORK IN THE OFFLINE MODE. `--pr` asks `gh` through PATH; `--body-file`
+with `--base` and `--default-branch` answers the same five conditions from
+values on hand, which is what makes the check runnable BEFORE the pull request
+exists — the moment when rewriting the body costs nothing.
+
+EXIT CODES: 0 verdict 5 is green · 1 red, and the failing conditions are named ·
+2 the run could not be made.
+"""
+
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+
+EXIT_GREEN = 0
+EXIT_RED = 1
+EXIT_FAILED = 2
+
+
+def _load_reader():
+    """`tk-ticket-ref` as a module, loaded by path like every suffix-less bin in
+    this directory. It owns the item's ticket, the tracker's owner, the shape
+    gates, the keyword set and the composition of the reference; this file asks
+    it rather than keeping a second copy of any of the five."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tk-ticket-ref")
+    loader = importlib.machinery.SourceFileLoader("tk_ticket_ref", path)
+    spec = importlib.util.spec_from_loader("tk_ticket_ref", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+reader = _load_reader()
+
+# A word followed by a forge reference, anywhere in the body. The slug half is
+# `\S*` rather than the slug alphabet on purpose: a MALFORMED owner half has to
+# reach the checks to be reported as malformed, and a pattern that only matches
+# well-formed slugs would read `Fixes owner|x/repo#1` as a bare `#1` and report
+# the wrong defect.
+#
+# The colon is OPTIONAL and not absent: the forge's own documentation says a
+# keyword may be followed by one, so `Fixes: #7` closes the ticket and a pattern
+# demanding whitespace right after the word reads it as no closing line at all.
+#
+# The lookbehind excludes `-` as well as the word characters, because the forge
+# honours a keyword and not a word ENDING in one: `Not-fixes owner/repo#7` closes
+# nothing, and reading it as a closing line is a green verdict on a body that
+# closes nothing.
+MENTION_RE = re.compile(r"(?<![A-Za-z0-9_-])([A-Za-z]+):?[ \t]+(\S*)#([0-9]{1,9})(?![0-9])")
+
+OK, FAILED = "ok", "FAILED"
+
+
+def fail(msg):
+    """Stop with code 2 — the run did not happen, which is not a red verdict."""
+    print(f"tk-closure-check: {msg}", file=sys.stderr)
+    sys.exit(EXIT_FAILED)
+
+
+def gh(repo, *argv):
+    """One `gh` call against the pull request's own repository. Resolved through
+    PATH, never by an absolute path: that is what lets the suite put a fake `gh`
+    in front of it and prove the run never reached the network."""
+    try:
+        run = subprocess.run(["gh", *argv], cwd=repo, capture_output=True, text=True)
+    except OSError as e:
+        fail(f"gh could not be run: {e}")
+    if run.returncode != 0:
+        fail(f"`gh {' '.join(argv)}` failed: "
+             f"{(run.stderr or run.stdout).strip() or 'no output'}")
+    try:
+        return json.loads(run.stdout)
+    except ValueError:
+        fail(f"`gh {' '.join(argv)}` answered something that is not JSON: "
+             f"{run.stdout.strip()[:200] or 'nothing'}")
+
+
+def pull_request(args, clone):
+    """(body, base, default branch) — from the forge, or from the flags.
+
+    `--json` on the read is not a preference: `gh pr view <n>` without it walks
+    the classic-Projects GraphQL path and dies on its deprecation notice, which
+    `docs/agents/issue-tracker.md` records for this account's `gh`."""
+    if args.pr is not None:
+        pr = gh(clone.path, "pr", "view", str(args.pr), "--json", "body,baseRefName")
+        repo = gh(clone.path, "repo", "view", "--json", "defaultBranchRef")
+        default = (repo.get("defaultBranchRef") or {}).get("name") or ""
+        if not default:
+            fail("the forge named no default branch for this repository, so condition "
+                 "`base` cannot be answered. It is not assumed to be `main`.")
+        return pr.get("body") or "", pr.get("baseRefName") or "", default
+    try:
+        with open(args.body_file, encoding="utf-8") as f:
+            body = f.read()
+    except OSError as e:
+        fail(f"{args.body_file} cannot be read: {e.strerror}")
+    return body, args.base, args.default_branch
+
+
+def mentions(body):
+    """Every `<word> <slug>#<n>` in the body, as (word, slug, number)."""
+    return [(m.group(1), m.group(2), m.group(3)) for m in MENTION_RE.finditer(body)]
+
+
+def spell(mention):
+    """One mention, as the body spells it — for a message that names a line."""
+    word, slug, cited = mention
+    return f"`{word} {slug}#{cited}`" if slug else f"`{word} #{cited}`"
+
+
+def aims_at(slug, cited, repo, number):
+    """Does a body's `<slug>#<cited>` aim at the expected `<repo>#<number>`?
+
+    The repository halves are compared case-insensitively, because a forge repo
+    name is case-insensitive to look up — two casings ARE one repository, which
+    is what `tk-queue.canonical_ref` says of the same value.
+
+    The NUMBER is compared as text, against the canonical spelling the reader
+    emits. `#0007` is not a form the forge's own `#N` syntax resolves — the queue
+    says so in as many words where it drops the leading zeros — so a body
+    spelling it that way closes nothing, and reading it as this ticket is a green
+    verdict on a line that fires at nothing.
+
+    An ABSENT repository half aims here too: it is wrong for another reason, and
+    the `owner` row is the one that says which."""
+    half = slug.rpartition("/")[2]
+    return cited == number and (not half or half.lower() == repo.lower())
+
+
+def owner_verdict(slug, wanted):
+    """(state, detail) for the owner half of a closing reference.
+
+    Four states, and the fourth is the one a presence check cannot see: absent,
+    malformed, PRESENT AND WRONG, right. An owner naming another account is a
+    closing line the forge resolves — against that account's repository.
+
+    `wanted` is the owner of the reference `tk-ticket-ref` composed, and the
+    comparison is case-insensitive because a forge account name is
+    case-insensitive to look up: a re-cased owner resolves to the same account,
+    so refusing it would be a red verdict on a line that closes the ticket."""
+    owner, sep, _ = slug.partition("/")
+    if not sep:
+        return "absent", (f"the reference is `{slug}#…`, with no owner half. Resolved "
+                          "against the repository the pull request sits on, it closes an "
+                          "unrelated issue of that repository, or nothing.")
+    if not reader.TRACKER_RE.fullmatch(slug):
+        return "malformed", (f"the owner-qualified half `{slug}` is not a GitHub slug — "
+                             "letters, digits, dot, dash and underscore only, one slash.")
+    if owner.lower() != wanted.lower():
+        return "wrong", (f"the owner half is `{owner}`, and the ticket is owned by "
+                         f"`{wanted}`. It is present and well-formed, which is exactly "
+                         "why a presence check passes it: the forge resolves it, against "
+                         "somebody else's repository.")
+    return "right", owner
+
+
+def conditions(body, base, default, expected, label):
+    """[(name, state, detail)] — the five conditions, in a fixed order.
+
+    Every one of them is reported, green or red, and that is deliberate: a gate
+    that prints only its failures cannot be told from a gate that skipped a
+    check. It holds in the keyword-red path too, which used to return one row and
+    stop: `Fecha <the right reference>` is wrong in exactly ONE way, and a report
+    that answered only the keyword left a session unable to tell that from a body
+    whose reference is wrong as well.
+
+    ALL the honoured mentions are read, never the first one. The forge fires on
+    every keyword it finds, so the question is two questions — is the right line
+    THERE, and is any OTHER closing line there — and reading `honoured[0]` asked
+    a third one that has no answer: the same two lines in the other order gave
+    the opposite verdict."""
+    line = f"{reader.CLOSING_KEYWORD} {expected}"
+    _, repo, number = split(expected)
+    found = mentions(body)
+    honoured = [m for m in found if m[0].lower() in reader.KEYWORDS]
+    # the rows below read the HONOURED lines when there are any and the found
+    # ones when there are none, so that a body under a word the forge does not
+    # honour still gets its number and owner answered: one defect, one repair
+    candidates = honoured or found
+    aimed = [m for m in candidates if aims_at(m[1], m[2], repo, number)]
+    right = [m for m in aimed if owner_verdict(m[1], split(expected)[0])[0] == "right"]
+    subject = (right or aimed or candidates or [None])[0]
+    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)]
+
+    out = []
+    if honoured:
+        out.append(("keyword", OK, subject[0]))
+    elif subject is not None:
+        out.append(("keyword", FAILED,
+                    f"the body says {spell(subject)}, and `{subject[0]}` is not a keyword "
+                    "the forge honours. The set is English and closed: "
+                    f"{', '.join(reader.KEYWORDS)}. The line cites a ticket, reads like a "
+                    "closing line, and closes nothing."))
+    else:
+        out.append(("keyword", FAILED,
+                    f"no closing line in the body: nothing reads `<keyword> <ref>` for "
+                    f"{label}'s ticket. The keywords are {', '.join(reader.KEYWORDS)}. "
+                    f"The line to paste is `{line}`."))
+
+    if aimed:
+        out.append(("number", OK, expected))
+    else:
+        closes = f"; the body closes {', '.join(spell(m) for m in strays)}" if strays else ""
+        out.append(("number", FAILED,
+                    f"no closing line in the body names {label}'s ticket `{expected}`"
+                    f"{closes}. A body copy-pasted from another slice closes that slice's "
+                    f"ticket, and the merge looks exactly like a successful one. The line "
+                    f"to paste is `{line}`."))
+
+    if subject is None:
+        out.append(("owner", FAILED,
+                    "the body carries no reference at all, so there is no owner half to "
+                    f"read. `{line}` is the whole line."))
+    else:
+        state, detail = owner_verdict(subject[1], split(expected)[0])
+        out.append(("owner", OK, detail) if state == "right" else ("owner", FAILED, detail))
+
+    if strays:
+        out.append(("extras", FAILED,
+                    f"the body also closes {', '.join(spell(m) for m in strays)}, which is "
+                    f"not {label}'s ticket. The forge honours EVERY keyword and reference "
+                    "in a body, not the first one, so merging this pull request closes "
+                    "that ticket too — silently, and there is no undo."))
+    else:
+        out.append(("extras", OK, "no other closing line in the body"))
+
+    if base != default:
+        out.append(("base", FAILED,
+                    f"the pull request targets `{base}`, and the repository's default "
+                    f"branch is `{default}`. The forge fires the keyword only into the "
+                    "default branch: merged anywhere else it closes nothing, silently."))
+    else:
+        out.append(("base", OK, base))
+    return out
+
+
+def split(qualified):
+    """`<owner>/<repo>#<n>` taken apart — the three halves the rows compare."""
+    owner, _, rest = qualified.partition("/")
+    repo, _, number = rest.partition("#")
+    return owner, repo, number
+
+
+def report(rows, label):
+    """The rows, one per line, and the verdict. A detail spanning lines is
+    indented under its own column, so a row is one row to whoever reads it."""
+    width = max(len(name) for name, _, _ in rows)
+    for name, state, detail in rows:
+        head = f"{name.ljust(width)}  {state}  "
+        print(head + detail.replace("\n", "\n" + " " * len(head)))
+    red = [name for name, state, _ in rows if state == FAILED]
+    if red:
+        print(f"verdict-5: RED for {label} — {', '.join(red)}")
+        return EXIT_RED
+    print(f"verdict-5: GREEN for {label}")
+    return EXIT_GREEN
+
+
+def refused(refusal, label):
+    """A refusal from the reader, as the pre-condition row. The `[?]` item, the
+    unconfigured clone, the path that is no clone and the ticket in another
+    repository all reach verdict 5 the same way: red, with the defect and its
+    remedy named. Verdict 5 had no exit for any of them, which left them
+    permanently red and unactionable."""
+    return report([("ticket", FAILED, f"{refusal.code}: {refusal.message}")], label)
+
+
+def escape(block, body, label):
+    """Verdict 5 for an item that names no ticket — MERGE-GATE's own escape, and
+    it is the ITEM that gives it. Every closing line is named, not the first: a
+    body carrying two of them closes two tickets this item never claimed."""
+    closing = [m for m in mentions(body) if m[0].lower() in reader.KEYWORDS]
+    if closing:
+        return report([("ticket", FAILED,
+                        f"{label} names no ticket, and the body says "
+                        f"{', '.join(spell(m) for m in closing)} — a closing line for a "
+                        "ticket this item never claimed. Drop it, or point the item at "
+                        "that ticket.")], label)
+    # the row below is the quotation the digest is required to show
+    return report([("ticket", OK, f"{label} names no ticket, and the body closes nothing"),
+                   ("item", OK, block.splitlines()[0].strip())], label)
+
+
+def check(args):
+    memdir = reader.queue_dir(args.dir)
+    block, label = reader.item_block(memdir, args.id)
+
+    try:
+        ticket = reader.item_ticket(block, label)
+    except reader.Refusal as refusal:
+        if refusal.code != "no-ticket":
+            return refused(refusal, label)
+        ticket = None
+
+    # the clone is what `gh` is run in and what declares the owner, so it is
+    # resolved before either is needed — and NOT resolved for an item with no
+    # ticket read from a body on disk, where no clone is asked anything
+    clone = None
+    if ticket is not None or args.pr is not None:
+        try:
+            clone = reader.item_clone(block, label, args.repo)
+        except reader.Refusal as refusal:
+            return refused(refusal, label)
+
+    if ticket is None:
+        return escape(block, pull_request(args, clone)[0], label)
+
+    try:
+        expected = reader.qualify(ticket, reader.tracker_slug(clone, label), label)
+    except reader.Refusal as refusal:
+        return refused(refusal, label)
+
+    body, base, default = pull_request(args, clone)
+    return report(conditions(body, base, default, expected, label), label)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="tk-closure-check",
+        description="Verdict 5 of the merge gate: will merging this pull request close "
+                    "THIS item's ticket? Checks the keyword, the ticket's identity, the "
+                    "owner half, any OTHER closing line and the base branch, and names "
+                    "the ones that failed.",
+        epilog="Exit 0 green · 1 red, the failing conditions named · 2 the run could not "
+               "be made.")
+    parser.add_argument("id", type=reader.tk_queue.parse_id, metavar="ID",
+                        help="the item, as T006, t006, 006 or 6")
+    parser.add_argument("--dir", metavar="DIR",
+                        help="the queue directory (default: this project's, by cwd)")
+    parser.add_argument("--repo", metavar="DIR",
+                        help="the clone the pull request lives on and whose `tk.tracker` "
+                             "names the owner (default: the item's **Repo:** field, then "
+                             "the current directory)")
+    parser.add_argument("--pr", type=int, metavar="N",
+                        help="the pull request number, read through `gh`")
+    parser.add_argument("--body-file", metavar="PATH",
+                        help="the body on disk, for a check made before the pull request "
+                             "exists; needs --base and --default-branch")
+    parser.add_argument("--base", metavar="BRANCH",
+                        help="the branch the pull request targets, with --body-file")
+    parser.add_argument("--default-branch", metavar="BRANCH",
+                        help="the repository's default branch, with --body-file")
+    args = parser.parse_args(argv)
+    if (args.pr is None) == (args.body_file is None):
+        parser.error("give exactly one of --pr and --body-file")
+    if args.body_file is not None and not (args.base and args.default_branch):
+        # a condition that quietly goes unasked is the defect this bin exists to
+        # end, so the offline mode refuses rather than skipping `base`
+        parser.error("--body-file needs --base and --default-branch: without them "
+                     "condition `base` would go unasked, and an unasked condition "
+                     "reads as a green one")
+    return check(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
