@@ -22,13 +22,13 @@ private skill's report never enters a public repo's `docs/` — its `.gitignore`
 2. **Read the ruler.** Invoke `/mattpocock-skills:writing-for-agents`. Read its
    `SKILL-MECHANICS.md` when frontmatter, invocation or splitting is in play.
 3. **Subtract.** For every rule the skill carries, name the run that reaches it. For an own
-   skill, date the file against its newest `docs/` report — `git log -1 --format=%cs` on each.
-   A file younger than the report carries rules with no run on record.
+   skill, run `git log -1 --format=%cs -- <path>` on the skill file and on its committed
+   report. A rule edited after the report was never graded by a pass.
 4. **Tabulate.** A **table unit** is a sentence that instructs, defines a criterion or carries
    inline evidence. So are the `description`, a fenced block a verdict relocates, and an
    **exposition range**: consecutive sentences explaining a rule stated elsewhere. One row each.
 5. **Write.** Save the report and every file the pass wrote — pruned copies, and destinations a
-   MOVE created — side by side in the output directory, in the shape `REPORT.md` carries.
+   MOVE created — side by side in the flat output directory, in the shape `REPORT.md` carries.
 
 Step 3 ends when every rule has a named run and the own skill's file is dated. Step 4 ends when
 every unit, in every file step 1 read, holds a row. Step 5 ends when the bin reads each written
