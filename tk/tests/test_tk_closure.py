@@ -423,6 +423,10 @@ class TestTheDispatchProseNamesTheCommands(unittest.TestCase):
         with open(os.path.join(SKILLS, *parts), encoding="utf-8") as f:
             return f.read()
 
+    def reference(self, name):
+        with open(os.path.join(SKILLS, os.pardir, "reference", name), encoding="utf-8") as f:
+            return f.read()
+
     def test_the_attended_dispatch_names_the_contract_block_and_the_reference(self):
         text = self.prose("kickoff", "SKILL.md")
         self.assertIn("tk-contract", text)
@@ -434,9 +438,11 @@ class TestTheDispatchProseNamesTheCommands(unittest.TestCase):
         self.assertNotIn("git config tk.tracker", text)
 
     def test_every_bin_the_dispatch_prose_names_is_on_disk(self):
+        texts = [self.prose("kickoff", "SKILL.md"), self.prose("kickoff", "AFK.md"),
+                 self.reference("subagent-policy.md")]
         named = set()
-        for parts in (("kickoff", "SKILL.md"), ("kickoff", "AFK.md")):
-            named.update(re.findall(r"\.\./\.\./bin/(tk-[a-z-]+)", self.prose(*parts)))
+        for text in texts:
+            named.update(re.findall(r"(?:\.\./)+bin/(tk-[a-z-]+)", text))
         self.assertTrue(named, "the dispatch prose names no bin at all")
         for name in sorted(named):
             with self.subTest(bin=name):
