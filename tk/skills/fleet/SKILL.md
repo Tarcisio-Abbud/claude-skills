@@ -240,9 +240,9 @@ fleet, and no section rests on a run's self-report alone.
 ## 6. The consolidated vista
 
 The close has two artefacts. The **textual report** is the close itself — the one step 4 has been
-appending to since the first return, on the template in `../wrap-up/SKILL.md`, *The closing
-template*, which is also where block 1's four counts come from. The **vista** is its companion,
-and `../../reference/vista.md` is that page's whole contract: the five blocks, the closed
+appending to since the first return, on the template in `../wrap-up/REPORT.md`, which is also
+where block 1's four counts come from. Its companion is the vista,
+whose coinage and whole contract are `../../reference/vista.md`: the five blocks, the closed
 outcome vocabulary, the outbox it lands in, the gate `tk-vista-check` and that gate's four
 states. **Read it and follow it.** It is the consolidated reporter's contract as much as the
 package close's, which is why it already answers what "consolidated" changes in blocks 1, 2

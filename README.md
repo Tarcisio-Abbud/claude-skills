@@ -18,7 +18,7 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | Skill | What it does |
 |---|---|
 | `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens with the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality, triaged and dispatched via menu. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort |
-| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a merge dossier, and merges by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
+| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a **digest** — what is being merged, and whether it may be), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
 | `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal that sends a repeated mechanism to the user; and the attack inventory it ships whether or not it found anything — model-invoked. Prose gets the mandatory review only. The site names the trigger items and the provenance of every threshold in `~/.claude/tk/review.md` |
@@ -27,55 +27,22 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
 | `/tk:prune` | Prunes a skill against the `writing-for-agents` ruler with a bias to subtraction: `tk/bin/tk-prune-measure` supplies the numbers and the ceilings, and the run leaves a report — metrics before and after, a KEEP / MOVE / DROP table with one row per sentence that instructs, splitting suggestions, and the named proof — in `./prune-out/<skill>/`, never in place. User-invoked; args: `<skill-path> [<output-dir>]` |
 
-The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (defined in
-`tk/skills/kickoff/SKILL.md`): two files per project in auto-memory — `next-steps.md`
-(open items only) and `done-log.md` (what left the queue, when, and how) — written ONLY
-through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / bump /
-claim / release / list / pack / report / migrate), which moves a resolved item to the log in one command and enforces a
-two size ceilings whose scope follows each flag's nature: the whole ITEM is measured
-whenever a prose flag (`--text`, `--criterion`, `--risk`, `--deferred`) grows it, while the
-short fields (`--class`, `--effort`, `--project`) answer only to a small per-VALUE ceiling — that
-exemption is what keeps a legacy oversized item taggable without `--force`, and the
-per-value ceiling is what keeps the exemption from becoming a bypass. `edit` also locates
-the field it changes by the item's field CHAIN, refusing to guess when a legacy item quotes
-the marker shape in prose. Every mutating command prints the
-memory dir it resolved on **stderr** before acting, since that target is inferred from
-`--dir` or the cwd and an unseen inference is an unchecked one. Each item carries an ID
-(T001…), **Class** (AUTONOMOUS / DECISION / BLOCKED / EXTERNAL / RECURRING) — the DECISION
-class parks the queue until the user is back, so it is never reached by omission: `add` and
-any `edit` that sets it demand `--deferred <justification>`, kept in the item as a
-**Deferred** field, and the default path is asking the decision at birth so the item is born
-AUTONOMOUS —, **Effort**
-(S/M/L + rough wall-clock time), an optional **Risk** line naming what unsupervised
-execution could damage — an item with a Risk line never enters an afk package, and
-`--risk none` DELETES the field, which is how an obsolete Risk gets re-triaged —, an
-optional **Env** naming WHERE the item runs when that is not here (orthogonal to the class:
-the class says what the item waits for, Env says which machine can execute it; absent = the
-machine that owns the queue, and `--env none` deletes it). Its value is matched by exact
-equality against the roster in the SITE FILE `~/.claude/tk/env`, and a value outside it is
-refused rather than warned — an environment nothing validated is one no machine ever picks
-up. Without that file there is no `--env` at all: the plugin ships no machine name of its
-own, the way git ships no `user.name`. The same file carries this machine's identity and its
-two subagent ceilings, local and cloud; its format lives in `tk/bin/tk_site.py`, which reads
-it. Then a
-required **Criterion** (acceptance: `A:` a
-deterministic check, `B:` the user's verdict; required on `add`, still optional on `edit`
-for legacy items), and an optional **Project** slug tagging which project an item belongs
-to, for a workspace-root queue that mixes several projects — `add` warns (not errors) when
-a tag is unprecedented in the queue, naming the tags already in use, and `list` groups by
-tag once any item carries one, else it stays flat. Priority is the file's own order — `add`
-puts a new item at the end, `bump <id>` moves one to the top, `list`'s groups follow the
-file, and the afk package takes the filtered top. Wrap-up settles the queue at close;
-kickoff verifies and dispatches it at open. The queue has four
-dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, `/loop` over the
-project's `loop.md`, and `/tk:fleet` across every project at once — spelled out in
-`tk/skills/dispatch/SKILL.md`, which also single-sources
-the dispatch palette and the `/goal` recipe; the `loop.md` contract sits beside it, in
-`tk/skills/dispatch/LOOP.md`.
+The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract, defined in
+`tk/reference/queue.md`: two files per project in auto-memory — `next-steps.md` (open
+items only) and `done-log.md` (what left the queue, when, and how) — written ONLY through
+the deterministic CLI **`tk/bin/tk-queue`**. Commands, flags and field shapes live in the
+CLI's own `--help`s; the reference file carries the contract the helps do not confess (the
+two size ceilings, ID allocation, the stderr lines, the field chain, the done-log pointer
+rule). Wrap-up settles the queue at close; kickoff verifies and dispatches it at open. The
+queue has four dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, `/loop`
+over the project's `loop.md`, and `/tk:fleet` across every project at once — spelled out in
+`tk/skills/dispatch/SKILL.md`, which also single-sources the dispatch palette and the
+`/goal` recipe; the `loop.md` contract sits beside it, in `tk/skills/dispatch/LOOP.md`.
 
-A **merge dossier** is written for every PR the versioning gate handles, before its menu
-opens — what is being merged, made readable where it is read, with every citation-by-number
-resolved to the sentence it names. The wrap-up skill says how to write it.
+A **digest** is written for every PR the versioning gate handles, before its menu
+opens — what is being merged and whether it may be, made readable where it is read, with
+every citation-by-number resolved to the sentence it names. The wrap-up skill's
+`MERGE-GATE.md` says how to write it.
 **`tk/bin/tk-collisions`** supplies the one section prose cannot: it merges every pair of open
 branches for real, because the forge's `mergeable` field is blind between two PRs.
 
