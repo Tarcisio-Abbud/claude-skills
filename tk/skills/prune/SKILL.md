@@ -68,7 +68,7 @@ markdown in the measured file's directory, so a report beside the file counts as
 - A plugin cache is read-only. The destination is an upstream PR, or a fork of the marketplace.
 - A copy under `.claude/skills/` takes the bare name while the plugin skill stays reachable
   namespaced: a second skill, not a shadow.
-- Own-skill inline evidence goes one file per skill.
+- Own-skill removed material goes one file per skill.
 
 ## Suggest, never execute
 

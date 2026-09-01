@@ -4,11 +4,11 @@ Every sentence, clause and wording the first real `/tk:prune` pass took out of
 `tk/skills/dispatch/SKILL.md`, verbatim, so that any one of them is put back in one edit. The
 verdicts, their reasons and the numbers are in `dispatch-report.md` beside this file.
 
-`tk-prune-measure` reported **inline evidence: 0** on the original. `prune/REPORT.md` defines
-this file as the `docs/` file of inline evidence, so with nothing of that kind to hold it is
-used here for the prose the pass removed instead — outside the contract, and filed as a ticket
-on the tracker rather than patched. `dispatch-report.md` §6 carries the ticket; this paragraph
-is the only place the argument is written.
+`tk-prune-measure` reported **inline evidence: 0** on the original. `prune/REPORT.md` then
+defined this file as holding inline evidence only, so its use for the removed prose was outside
+the contract, and the gap was filed as a ticket — `dispatch-report.md` §6 carries it. That
+ticket landed the redefinition: `REPORT.md` now defines the file by removed material, and this
+use is the rule.
 
 Three kinds of removal are recorded, and they are not equal. A **DROP** is a verdict on a whole
 sentence. A **clause** is an instruction or a reason taken out of a sentence that stayed, which
