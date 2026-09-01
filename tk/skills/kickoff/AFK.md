@@ -147,6 +147,12 @@ git -C "<the lane's repo address>" worktree add "<path>/spec-<m>" -b "spec/<m>-<
 git -C "<path>/spec-<m>" push -u origin "spec/<m>-<slug>"
 ```
 
+**One lane, one address**: the `Repo:` field is stored as typed, so two spellings of one repo
+are two addresses — where a lane's tickets disagree, the lane has no address and its tickets
+leave on the no-address rung. The address names a repository, not a working tree: a URL runs in
+its clone on this machine, and an item whose repository has no clone here leaves the package
+undispatched, named with the reason.
+
 The lane is serial: each ticket dispatches into a worktree of its own on `spec/<m>/T<id>`, cut
 from `origin/spec/<m>-<slug>` fetched at that moment, only after the previous ticket's cycle
 ends. Solo items dispatch beside it, in series within one repository; neither lane passes the

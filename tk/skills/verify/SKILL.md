@@ -5,7 +5,7 @@ description: "Verify a delivery against the item's acceptance criterion, emittin
 
 **Verifying** is running the item's **criterion** against the tree delivered, and emitting
 **evidence** someone else can re-run. The criterion is the acceptance line the item was born
-with: `A:` a deterministic check, `B:` the user's verdict (contract in `../kickoff/SKILL.md`).
+with: `A:` a deterministic check, `B:` the user's verdict (contract in `../../reference/queue.md`).
 It is read-only here: a ruler bent to fit the delivery measures nothing, and one that has to
 change belongs to the user.
 

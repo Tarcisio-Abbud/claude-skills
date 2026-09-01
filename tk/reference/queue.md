@@ -66,10 +66,9 @@ The short fields are the only ones exempt from the block ceiling, deliberately: 
 meant a legacy oversized item needed `--force` merely to gain a project tag, which trains
 the caller to type `--force` and disarms the guard where it matters. It is safe only
 because those fields are small AND replaced rather than appended. Neither ceiling holds
-alone, and both gaps were measured: with only the block ceiling one field edit took a
-100-char item to 1014 chars; with only the field ceiling three prose fields in one call
-took an item to 709, past a 700 ceiling, with no `--force`. `--force` raises both, for the
-rare exception.
+alone: with only the block ceiling, one exempt field edit took a 100-char item to 1014
+chars; with only the field ceiling, three prose fields in one call took an item past a 700
+block ceiling with no `--force`. `--force` raises both, for the rare exception.
 
 ## The field chain
 
