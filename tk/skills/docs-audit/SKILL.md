@@ -55,7 +55,7 @@ each one exactly ONE outcome:
 - **Live → keep**, and check its index line below.
 
 `next-steps.md` and `done-log.md` are NOT ordinary memory: they are written only by
-`tk-queue`, whose contract is in `../kickoff/SKILL.md`. They never enter the pruning
+`tk-queue`, whose contract is in `../../reference/queue.md`. They never enter the pruning
 proposal, and they are never hand-edited. A queue item this audit finds already resolved
 leaves through `tk-queue done`, one that no longer makes sense through `tk-queue cancel`.
 

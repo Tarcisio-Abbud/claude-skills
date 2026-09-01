@@ -47,7 +47,7 @@ every project of a fleet dispatch (`../fleet/SKILL.md`). What no subagent can op
 **generation** (`../kickoff/WINDOW.md`): a scheduled fire or the user's own first line opens
 one. There the dispatch delivers the line the user types, rather than a subagent.
 
-The `next-steps.md` queue (contract: `../kickoff/SKILL.md`) has four dispatchers:
+The `next-steps.md` queue (contract: `../../reference/queue.md`) has four dispatchers:
 
 - **interactive kickoff menu** — the user is present and chooses;
 - **`/tk:kickoff afk` / `pack`** — one orchestrator plus background subagents, each
