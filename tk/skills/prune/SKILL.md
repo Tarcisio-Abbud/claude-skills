@@ -38,12 +38,14 @@ markdown in the measured file's directory, so a report beside the file counts as
 
 - **KEEP** names the behaviour that changes against the model's default.
 - A sentence whose changed behaviour nobody can name is a **DROP**, reason "suspected no-op".
-- Write every DROP row so that the user reverses it in one edit.
+- Write every DROP and every CLAUSE row so that the user reverses it in one edit.
 - **MOVE** names the destination from the `REPORT.md` table and the criterion that chose it. It
   also lists, from a grep over the plugin that carries the target, every pointer to the moved
   content, with its rewritten form.
 - **DROP** names its reason: duplicate, inline evidence, environment copy, unexercised run.
 - A verdict removes or relocates a whole sentence; a rewording is a note, never a verdict.
+- A clause cut from a sentence that stays — an instruction or a reason — is neither: it always
+  takes a CLAUSE row in the table, whose shape `REPORT.md` sets.
 - A rewording note that touches a defined term quotes the coining line, from any skill of the
   plugin.
 - A verdict never deletes a file, so a file its DROPs emptied is a note too.

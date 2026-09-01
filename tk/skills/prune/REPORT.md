@@ -3,7 +3,7 @@
 One markdown file per pruning pass, named `prune-report.md`, whose first line is its own path.
 
 1. **Numbers** — the bin's metrics for every file read, before and after.
-2. **Table** — KEEP / MOVE / DROP, one row per table unit, as step 4 of `SKILL.md` defines it.
+2. **Table** — one row per table unit (step 4 of `SKILL.md`), plus a CLAUSE row per cut clause.
 3. **Splits and notes** — each splitting suggestion with its `SKILL-MECHANICS` criterion and
    the consumer that would reach it, then every rewording, marked as carrying no verdict.
 4. **Paths** — the pruned files, and for an own skill the `docs/` file of removed material.
@@ -14,9 +14,9 @@ The table carries four columns:
 | column | what it holds |
 |---|---|
 | where | the file and the line the sentence sits at |
-| sentence | the sentence, quoted |
-| verdict | KEEP, MOVE or DROP |
-| why | what the verdict owes — the run served, the destination with its rewritten pointers, or the reason dropped |
+| sentence | the sentence, quoted; on a CLAUSE row, the clause alone |
+| verdict | KEEP, MOVE or DROP; or CLAUSE — an instruction or reason cut from a sentence that stays |
+| why | what the row owes — the run served, the destination with its rewritten pointers, or the reason dropped or cut |
 
 ## Where a MOVE goes
 
