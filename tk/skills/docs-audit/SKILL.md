@@ -82,7 +82,8 @@ After the audit the state is externalized by definition — docs match code, tes
 the default recommendation is **`/clear`**. Recommend **`/compact`** only when the audit ran
 in the MIDDLE of another still-incomplete task. The audit's PR crosses the session boundary.
 Step 6 of `../wrap-up/SKILL.md`, relative to this file, then decides the recommendation's
-wording and the next conversation's opening sentence.
+wording; the opening sentences take the shapes of `../wrap-up/REPORT.md`, *The opening
+sentences*.
 **Done when:** the user received ONE clear recommendation with justification and the next
 conversation's opening sentence.
 
