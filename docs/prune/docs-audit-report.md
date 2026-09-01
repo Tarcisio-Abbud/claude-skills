@@ -56,6 +56,18 @@ a new line, `../kickoff/SKILL.md` survives, and no pointer was added or removed.
 `~/.claude/projects/`, `/memory/` and `MEMORY.md` as three separate pointers on the same line,
 which is why an address the pass never touched contributes three.
 
+**The two `docs/prune/` files are outside the targets, deliberately.** Step 5 of
+`prune/SKILL.md` ends when the bin reads each written file inside the targets *or* the pass
+names the ceiling it holds and why. Measured at their landing address, `docs-audit-report.md`
+breaches five (mean 22.9, max 77, 54 sentences over 30 words, 9 inline evidence, 2 terms
+defined in a sibling) and `docs-audit.md` breaches two (max 57, 18 over 30 words). Both are
+held rather than fixed, for reasons that are the files' purpose. They are read by a human and
+by the closing review, never followed by an agent, so `writing-for-agents` is not their ruler.
+`docs-audit.md` quotes the originals verbatim, so its max of 57 **is** the 56-word sentence this
+pass split, plus its quotation marks — trimming it would destroy the one property the file
+exists for. And both sit in `docs/prune/` beside four earlier reports, which is what
+`terms defined in a sibling too` is reading: the sibling is `review-report.md`, not a skill.
+
 ### There is no line ceiling, and the skill kept every step
 
 The bin reports `lines` with no target, so 91 is not measured against anything. It is worth
