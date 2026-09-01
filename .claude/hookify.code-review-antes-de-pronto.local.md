@@ -60,7 +60,7 @@ This rule lives in more than one place ON PURPOSE. Two reasons, both measured:
 
        - `...\Code\.claude\` on the Windows desktop;
        - `.claude/` in the config repo itself;
-       - `.claude/` in the public skills repo (`Tarcisio-Abbud/claude-skills`), where it is
+       - `.claude/` in the skills repo (`Tarcisio-Abbud/claude-skills`), where it is
          versioned so that repo's worktrees inherit the guard.
 
      Nothing copies them automatically -- `sync-desktop.ps1` deliberately does not -- so the

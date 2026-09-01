@@ -156,7 +156,7 @@ Two design points carry the plugin. Parakeet transcribes a whole clip in one pas
 that over, which is what makes `.opus` work with no system ffmpeg.
 
 Machine-specific addresses — which interpreter, where the weights live, how they are
-provisioned — stay out of this public repo and live in the extension file below.
+provisioned — stay out of this repo and live in the extension file below.
 
 ## Site extensions
 
@@ -296,7 +296,7 @@ docs/prune/                       pruning baselines: what the skills of this plu
                                   in `tk/bin`
   baseline-<date>.md              one run. Named file by file in `.gitignore`, like the
                                   block above: a pruning report on a PRIVATE skill must not
-                                  reach this public repo
+                                  reach this repo
 .claude/                          this repo's own agent config; versioned for the reason
                                   given below, and named file by file in `.gitignore` like
                                   the two blocks above
@@ -356,7 +356,9 @@ that config reached the primary tree and nowhere else, so every dispatched agent
 `/mattpocock-skills:code-review` ran with no tracker config at all, and every worktree ran with
 no stop rule holding it to that review.
 
-This repo being public, the private half stays out of it — out of the FILES, that is. One
+This repo is written AS IF PUBLIC — private since 2026-09-01, but the flip back is one
+command and everything it published before that date is already indexed. The private half
+stays out of it — out of the FILES, that is. One
 line of one surface names the tracker deliberately: the `Fixes <owner>/<repo>#<n>` closing
 line in a PR body, which is what makes a merge close its ticket. PR bodies are not committed,
 so nothing about the rule below moves; `docs/agents/issue-tracker.md` sets out which surface

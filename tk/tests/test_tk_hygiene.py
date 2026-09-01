@@ -13,8 +13,9 @@ from a table on disk and records the calls it received. A test asserting that
 record is what proves the shadowing works: if the real `gh` were reached, the
 record would be empty and the test would fall rather than quietly go to GitHub.
 
-REPOSITORY NAMES ARE FICTIONAL. This repo is public and the bin carries no repo
-name of its own, so the fixtures must not smuggle one back in through the tests.
+REPOSITORY NAMES ARE FICTIONAL. This repo is written as if public and the bin
+carries no repo name of its own, so the fixtures must not smuggle one back in
+through the tests.
 
 THE REPORT NAMES A REPO BY ITS PATH, never by its `owner/repo` slug — one of the
 repos the roster reaches is the private tracker's own clone. So the tests below

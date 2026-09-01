@@ -15,8 +15,8 @@ red here; the one test that does read the real file asserts only that the
 default path finds it.
 
 The roster in the fixtures is INVENTED (`alpha`, `bravo`, `charlie-2`). This
-repo is public and the site file is the one place a deployment's proper names
-live, which is exactly why they are not in it.
+repo is written as if public and the site file is the one place a deployment's
+proper names live, which is exactly why they are not in it.
 """
 
 import io
