@@ -263,8 +263,8 @@ its branch stays until the lane's pull request merges.
 ### The lane's tail
 
 Runs once per package, where an accumulated lane survived, in the lane's worktree. Every exit
-ends in one place — the pull request out of draft, carrying `../wrap-up/SKILL.md`'s per-item
-digest; that file's gate decides the merge, and nothing here reopens an item, reverts a merge or
+ends in one place — the pull request out of draft, carrying `../wrap-up/MERGE-GATE.md`'s per-item
+digest; that gate decides the merge, and nothing here reopens an item, reverts a merge or
 rewrites anything pushed. In order:
 
 1. **Merge `origin/main`** — the lane's one expected conflict site. A marker in a file a tool
