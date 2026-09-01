@@ -154,5 +154,7 @@ the package's tail (smell baseline declared inapplicable, the `writing-for-agent
 and this table handed to the axes). No `tk/tests` file anchors on wrap-up prose (the one
 mention, `test_window_wall.py:21`, is a docstring naming it as a non-prescribing site),
 so the executable arm is the whole suite unchanged: 771 tests plus 411 subtests green on
-the pruned tree. The mutation harnesses (`tk/tests/mutations*.py`) remain the suite's
+the pruned tree. (The kickoff report's 409 subtests were true when measured: this pass adds
+`MERGE-GATE.md` and `REPORT.md`, and the shipped-skills sweep in `test_tk_prune_measure.py`
+counts one subtest per `.md` file under `tk/skills/` — hence +2.) The mutation harnesses (`tk/tests/mutations*.py`) remain the suite's
 broken-arm proof.

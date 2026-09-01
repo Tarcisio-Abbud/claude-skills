@@ -18,7 +18,7 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | Skill | What it does |
 |---|---|
 | `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens with the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality, triaged and dispatched via menu. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort |
-| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a merge dossier, and merges by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
+| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a **digest** — what is being merged, and whether it may be), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
 | `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal that sends a repeated mechanism to the user; and the attack inventory it ships whether or not it found anything — model-invoked. Prose gets the mandatory review only. The site names the trigger items and the provenance of every threshold in `~/.claude/tk/review.md` |
@@ -39,9 +39,10 @@ over the project's `loop.md`, and `/tk:fleet` across every project at once — s
 `tk/skills/dispatch/SKILL.md`, which also single-sources the dispatch palette and the
 `/goal` recipe; the `loop.md` contract sits beside it, in `tk/skills/dispatch/LOOP.md`.
 
-A **merge dossier** is written for every PR the versioning gate handles, before its menu
-opens — what is being merged, made readable where it is read, with every citation-by-number
-resolved to the sentence it names. The wrap-up skill says how to write it.
+A **digest** is written for every PR the versioning gate handles, before its menu
+opens — what is being merged and whether it may be, made readable where it is read, with
+every citation-by-number resolved to the sentence it names. The wrap-up skill's
+`MERGE-GATE.md` says how to write it.
 **`tk/bin/tk-collisions`** supplies the one section prose cannot: it merges every pair of open
 branches for real, because the forge's `mergeable` field is blind between two PRs.
 
