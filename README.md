@@ -1,6 +1,6 @@
 # claude-skills
 
-Own-authored skills for Claude Code, shipped as the **`tk`** (v2), **`tk-cowork`**, **`asr`**
+Own-authored skills for Claude Code, shipped as the **`tk`** (v3), **`tk-cowork`**, **`asr`**
 and **`plugin-drift`** plugins, served by the marketplace defined in
 `.claude-plugin/marketplace.json`.
 
@@ -17,8 +17,8 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 
 | Skill | What it does |
 |---|---|
-| `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens with the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality, triaged and dispatched via menu. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort |
-| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a **digest** — what is being merged, and whether it may be), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
+| `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens on `tk-hygiene` and the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality and triaged — **Effort, Risk and Env** on every item, and an item half here and half elsewhere SLICED, one item per machine. Each DECISION is **briefed in prose before the menu**, retransmitting what the item already carries (its text, its `Criterion`, the memory behind a `[[slug]]` at one hop, its handoff) rather than summarising it. The close reports (a) what is running or scheduled, (b) BLOCKED, (c) EXTERNAL, (d) items bound to ANOTHER environment with their ready-to-paste line, (e) the **session findings** discarded here and (f) the age of what is left standing. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort; `--budget N` — the orchestrator generations either mode may spend |
+| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a **digest** — what is being merged, and whether it may be, then the five verdicts of **safe-to-merge**), and one explicit recommendation (/clear, /compact, /tk:docs-audit). An item survives into the queue only under one of three **survival gates** — decision · effort · dependency — and records which one; what passes none is resolved in the session. The close follows a **fixed template** (`tk/skills/wrap-up/REPORT.md`), which wins over any response-style preference. Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
 | `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal that sends a repeated mechanism to the user; and the attack inventory it ships whether or not it found anything — model-invoked. Prose gets the mandatory review only. The site names the trigger items and the provenance of every threshold in `~/.claude/tk/review.md` |
@@ -157,6 +157,15 @@ tk/
   skills/verify/HANDOFF.md        branch file: the `tk-queue` sequence a third failed
                                   attempt at the hard gate runs, and the form every
                                   site that prescribes a briefing reads
+  skills/review/BRIEF.md          branch file: the block the lens is handed, and the
+                                  one line per angle that fills its `Attack:` field
+  skills/prune/REPORT.md          branch file: the five parts of a pruning report
+  skills/wrap-up/MERGE-GATE.md    branch file: the gate's whole procedure — the digest,
+                                  the five verdicts of safe-to-merge, the triple check
+                                  of the closing line, the action menu, and the strict
+                                  form the unattended close runs
+  skills/wrap-up/REPORT.md        branch file: the fixed closing template, read by every
+                                  skill that closes on it
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   skills/kickoff/WINDOW.md        branch file: what the package does when it runs
                                   out of window rather than out of work — the
@@ -166,6 +175,11 @@ tk/
                                   --budget generations, and the seams the context
                                   threshold fires at — the cut and the pack confirm
                                   among them
+  reference/queue.md              the queue contract `/tk:kickoff` and `/tk:wrap-up`
+                                  share: the two files, the field chain, ID allocation
+                                  and the gotchas the CLI's `--help`s do not confess
+  reference/session-finding.md    what a session finding is, and the three-rung ladder
+                                  that triages one — attended and unattended
   reference/subagent-policy.md    model, effort, venue, PR-authorship and the
                                   checkpoint invariant per subagent role; the role
                                   table is parseable, schema declared in the file
@@ -175,7 +189,8 @@ tk/
   reference/vista.md              the vista: the digest's visual companion — what it is,
                                   when it is written, where it lands, and the five blocks
                                   it fixes; the contract the consolidated reporter reads.
-                                  Nothing writes one on its own yet
+                                  A fleet run writes one by default; every other close
+                                  writes one only when the user asks
   reference/vista-template.html   that page in its smallest form: the five markers, both
                                   themes, and nothing the browser fetches
   bin/tk-queue                    deterministic CLI: only writer of the queue files
@@ -313,7 +328,7 @@ skill file being exactly the defect its suite exists to catch.
 New own-authored skill: create `tk/skills/<name>/SKILL.md`, then advertise it in BOTH
 manifests — a `<name> (…)` clause in `tk/.claude-plugin/plugin.json` and a `/tk:<name>`
 mention in `.claude-plugin/marketplace.json` — and bump the plugin version.
-`tests/test_manifests.py` fails until both descriptions name it; the version is on you.
+`tk/tests/test_manifests.py` fails until both descriptions name it; the version is on you.
 No `.gitignore` change needed — the whole `tk/` tree is versioned.
 
 `docs/agents/` and `.claude/` are versioned, which is unusual for repo-local agent config and
