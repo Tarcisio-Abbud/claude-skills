@@ -8,7 +8,9 @@ that acts on the findings. The lens fires **once**, on the committed slice, befo
 mandatory two-axis review.
 
 **Site extensions:** read `~/.claude/tk/review.md` and `.claude/tk/review.md` if they exist
-(README, "Site extensions") — they name the trigger items, the tier and every rule's proof.
+(README, "Site extensions") — they name the tier and every rule's proof. Read the trigger items
+in the site's CLAUDE.md, or wherever the extension points; where neither carries a list, §1's
+site-list line decides.
 
 ## 1. Decide whether it fires
 
@@ -17,8 +19,9 @@ CLAUDE.md, a runbook — takes the mandatory review alone, in one round. One exc
 changed paragraphs prescribe commands, one lens may fire. The exception's brief adds two
 constraints to the block in `BRIEF.md`. Report only findings proven by RUNNING a prescribed
 command, and refuse a finding whose fix is more prose about the prose. A firing the trigger
-allowed that returns nothing runnable retires the exception: say so in the PR body, and edit this
-paragraph. A report or document a human reads gets no review: the reader is the review.
+allowed that returns nothing runnable retires the exception. Say so in the PR body, and edit this
+paragraph through its own PR. A report or document a human reads gets no review: the reader is
+the review.
 
 Inside a code slice the same line holds. Prose is what the artifact says ABOUT ITSELF and no
 program reads: a comment, a docstring, a contract doc. A docstring a program consumes —

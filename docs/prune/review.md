@@ -43,12 +43,6 @@ reason, and §1 already carries the fact it rests on (three dots exclude the wor
 
 ## 3. DROP — environment copy
 
-**Where the trigger items live.** The site extension file is the source for what a site adds,
-and it names the file its own items live in. A site with no extension file is already answered
-by §1's last line — "No site list at all: the parent decides on its own judgement".
-
-> The **trigger items** live in the site's CLAUDE.md.
-
 **The deviation log.** A site that names a tier different from the parent's own is the site that
 says to log the deviation; the tier and the log belong in one place, and the extension file is
 it.
@@ -95,8 +89,7 @@ Each clause is quoted with the sentence it left and what it carried.
 |---|---|---|
 | `as a test rather than a list` | "Inside a code slice the same line holds, as a test rather than a list." | the form of the rule below it, not the rule |
 | `(project root)` | "read `~/.claude/tk/review.md` and `.claude/tk/review.md` (project root) if they exist" | where the second file sits — the README section the line now cites says it |
-| `the user-data directories` | "They name the lens tier, the user-data directories, and the measurement behind every rule below." | one of the trigger items, which the rewritten line names as a class |
-| `, through its own PR` | "the retirement lands as an edit to this paragraph, through its own PR" | that an edit to a skill is a commit; no run turns on it |
+| `the user-data directories` | "They name the lens tier, the user-data directories, and the measurement behind every rule below." | one of the trigger items; the sentence beside it now sends the reader to the whole list at its source |
 | `Only a firing the trigger allowed counts as that evidence.` | its own sentence, folded into the one before it as "A firing **the trigger allowed** that returns nothing runnable" | nothing: the same guard, in the sentence it guards |
 | `, who reviews the receipt` | "the wrap-up gate shows it to the user, who reviews the receipt" | what a reader does with what they are shown |
 | `— the binary, the fixture, the file —` | "Run the artifact — the binary, the fixture, the file — on inputs you build from the real population it will meet." | three instances of *artifact*, in a brief whose every other line names none |
@@ -111,7 +104,7 @@ bring a unit under the 25-word ceiling:
 |---|---|
 | "is reviewed by the mandatory review alone, in one round, with one exception: when the changed paragraphs prescribe commands, one lens may fire" | "takes the mandatory review alone, in one round. One exception: where the changed paragraphs prescribe commands, one lens may fire." |
 | "The exception's brief adds two constraints to §2's block: report only findings…" | "The exception's brief adds two constraints to the block in `BRIEF.md`. Report only findings…" |
-| "A firing that returns nothing runnable retires the exception: the parent says so in the PR body, and the retirement lands as an edit to this paragraph" | "A firing the trigger allowed that returns nothing runnable retires the exception: say so in the PR body, and edit this paragraph." |
+| "A firing that returns nothing runnable retires the exception: the parent says so in the PR body, and the retirement lands as an edit to this paragraph, through its own PR." | "A firing the trigger allowed that returns nothing runnable retires the exception. Say so in the PR body, and edit this paragraph through its own PR." |
 | "Everything else the slice carries is the lens's… A docstring some program consumes (generated help, a parser) is read by a program, so it is the lens's too." | "A docstring a program consumes — generated help, a parser — is the lens's. So is everything else the slice carries, its identifiers and the strings a run emits alike." |
 | "at the slice's **base**: the branch point of the work item, so a rewrite split across PRs measures as one rewrite" | "at the slice's **base**: the branch point of the work item. A rewrite split across PRs then measures as one rewrite." |
 | "confirm `<base>` resolves before anything else" | "confirm `<base>` resolves first" |
@@ -130,7 +123,9 @@ stop outside the bold separates them without changing a word or the emphasis.
 
 ## 9. One unit added, not removed
 
-`SKILL.md`'s site-extensions line was three sentences and now is one, in the form `verify`,
-`dispatch`, `kickoff` and `wrap-up` all carry — a pointer at the README's own section rather
-than a restatement of the contract. It has no row in the report's table, which rules on the
-original's units.
+`SKILL.md`'s site-extensions line was three sentences and now is two. The first is the form
+`verify`, `dispatch`, `kickoff` and `wrap-up` all carry — a pointer at the README's own section
+rather than a restatement of the contract — and it has no row in the report's table, which rules
+on the original's units. The second routes the reader to the site's trigger items, and it is the
+report's L11 row: the pass had DROPped that sentence as an environment copy, and the two-axis
+review reversed it.

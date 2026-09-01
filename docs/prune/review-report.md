@@ -15,22 +15,24 @@ Throughout, **run** means one execution of the target skill, and the pruning exe
 `tk-prune-measure <file> --targets`, on the file before and after. **Bold** is a mark over the
 bin's default ceiling.
 
-| metric | ceiling | before | after | `BRIEF.md` |
-|---|---|---|---|---|
-| lines | — | 167 | 124 | 32 |
-| body words | — | 1369 | 1149 | 90 |
-| sentences | — | 97 | 86 | 7 |
-| mean words per sentence | 22 | 14.1 | 13.4 | 12.9 |
-| max words in a sentence | 25 | **33** | 25 | 24 |
-| sentences over 30 words | 4 | 3 | 0 | 0 |
-| description words | 30 | **89** | 30 | — |
-| inline evidence | 0 | 0 | 0 | 0 |
-| pointers to other files | — | 4 | 5 | 1 |
-| negations | — | 17 | 17 | 0 |
-| defined terms | — | 7 | 3 | 3 |
-| terms defined in a sibling too | 0 | 0 | 0 | 0 |
+| metric | ceiling | before | after | `BRIEF.md` | why the mark stands |
+|---|---|---|---|---|---|
+| lines | 120 (ticket #189) | 167 | **127** | 32 | Reaching 120 means deleting, in whole, one of three KEEPs: §1's **retirement rule** (2 lines), the only route by which the prose exception can ever be taken back out; §3's **size-ceiling line** (2), what a correction batch owes the PR when it grows a file past a ceiling the repo declared; §5's **`Reviews serialize`** (2), the rule that stops a second review being fired into a window already holding one. Each is live behaviour a run reaches, so each is a KEEP, and **KEEP outranks every ceiling**. Three of the seven lines over target are the two-axis review's own corrections: the restored `through its own PR` clause, and the sentence sending the reader to the site's trigger items. |
+| body words | — | 1369 | 1172 | 90 | — |
+| sentences | — | 97 | 88 | 7 | — |
+| mean words per sentence | 22 | 14.1 | 13.3 | 12.9 | — |
+| max words in a sentence | 25 | **33** | 25 | 24 | — |
+| sentences over 30 words | 4 | 3 | 0 | 0 | — |
+| description words | 30 | **89** | 30 | — | — |
+| inline evidence | 0 | 0 | 0 | 0 | — |
+| pointers to other files | — | 4 | 6 | 1 | — |
+| negations | — | 17 | 17 | 0 | — |
+| defined terms | — | 7 | 3 | 3 | — |
+| terms defined in a sibling too | 0 | 0 | 0 | 0 | — |
 
-Two marks over a ceiling before, none after, on either file.
+Two of the bin's ceilings were marked before and none after, on either file. The one mark that
+stands is `lines`, and it is against the ceiling the ticket names rather than one of the bin's —
+the bin reports `lines` with no target at all. The last column is where the table says why.
 
 **Where they were measured.** Both files were measured in `tk/skills/review/`, where they land,
 never in `docs/prune/` beside this report. That distinction is not cosmetic: the bin reads every
@@ -46,25 +48,33 @@ and `branch point` stayed. The two files share none, which is what the last row 
 
 **`negations` did not move, 17 before and 17 after**, with the same distribution by word (`not`
 9, `no` 5, `No` 2, `never` 1). It was not a target, and the reason it did not move is plain: not
-one of the ten dropped sentences carried a negation, and no rewriting introduced or removed one.
+one of the nine dropped sentences carried a negation, and no rewriting introduced or removed one.
 The seventeen that stay are the hard guardrails the ruler allows — "not per file", "no vacuous
 kill", "never to another lens", "not approval".
 
-### The 120-line target the ticket names was missed by four lines
+**The two `docs/prune/` files are outside the targets, deliberately.** Step 5 of
+`prune/SKILL.md` ends when the bin reads each written file inside the targets *or* the pass
+names the ceiling it holds and why. Measured at their landing address, each breaches four:
+`review-report.md` on max 77, 64 sentences over 30 words, 11 inline evidence and 3 terms defined
+in a sibling; `review.md` on max 43, 18 sentences over 30 words, 1 inline evidence and 2 terms
+defined in a sibling. Both are held rather than fixed, for reasons that are the files' purpose.
+They are read by a human and by the closing review, never followed by an agent, so
+`writing-for-agents` is not their ruler. `review.md` quotes the originals verbatim, and its
+longest quotation is the 33-word sentence this pass split; its own 43-word maximum is the
+opening paragraph that says why the file carries no inline evidence. What the bin calls
+`inline evidence` in both files is the word *measured* in prose about measuring — one hit in
+`review.md`, eleven in this report. And both sit in `docs/prune/` beside the other pruning
+reports, which is what `terms defined in a sibling too` is reading: `run` and `Bold` are shared
+with `docs-audit-report.md` and `verify-report.md`, and `system` with `review.md`. The sibling
+is another report of the same pass, never a skill.
 
-167 → 124 in `SKILL.md`, with a further 32 in `BRIEF.md`. The skill file's body lost 220 words of
-1369; 90 of those moved to `BRIEF.md` and 130 left the plugin. The four remaining lines are not
-slack. Reaching 120 means deleting, in whole, one of:
+### The 120-line target the ticket names, and the seven lines over it
 
-- **the retirement rule** in §1 (2 lines) — the only route by which the prose exception can ever
-  be taken back out, and the reason a firing under it is worth logging;
-- **the size-ceiling line** in §3 (2 lines) — what a correction batch owes the PR when it grows
-  a file past a ceiling the repo declared;
-- **`Reviews serialize`** in §5 (2 lines) — the rule that stops a second review being fired into
-  a window already holding one.
-
-Each is live behaviour reached by a run, so each is a KEEP, and **KEEP outranks every ceiling**.
-The bin's own targets — the ones criterion 1 of the ticket names — are all met, on both files.
+167 → 127 in `SKILL.md`, with a further 32 in `BRIEF.md`. The skill file's body lost 197 words of
+1369; 90 of those moved to `BRIEF.md` and 107 left the plugin. Those seven lines are not slack:
+the `why` cell of the `lines` row above names them, rule by rule. That cell is what answers the
+ticket's own wording — "≤120 linhas ou a tabela diz por que não". The bin's own targets — the
+ones criterion 1 of the ticket names — are all met, on both files.
 
 ## 2. Table — KEEP / MOVE / DROP
 
@@ -80,13 +90,13 @@ once, below the table.
 | L6–7 | "The **parent** is the session that acts on the findings." | KEEP | Every run: it is what §2's "the parent fires it directly" and §3's whole grading section address. |
 | L7 | "The lens fires **once**, on the committed slice, before the repo's mandatory two-axis review." | KEEP | Every run: the ordering rule, and the one the site's own flow is built on. |
 | L9–10 | "**Site extensions:** read `~/.claude/tk/review.md` and `.claude/tk/review.md` (project root) if they exist." | KEEP, rewritten | Every run. It now cites the README section that says where each file sits, in the two-line form the plugin's four other skills carry. |
-| L10–11 | "They name the lens tier, the user-data directories, and the measurement behind every rule below." | KEEP, rewritten | Every run: it is what makes the thresholds in the body reachable without restating them. `the user-data directories` went — it is one trigger item, and the rewrite names the items as a class. |
-| L11 | "The **trigger items** live in the site's CLAUDE.md." | DROP | Environment copy: the extension file is what a site writes to add its own material, and it names the file its items live in. A site with no extension file is already answered by §1's last line. |
+| L10–11 | "They name the lens tier, the user-data directories, and the measurement behind every rule below." | KEEP, rewritten, CLAUSE cut | Every run: it is what makes the thresholds in the body reachable without restating them. It now claims only what an extension file actually carries — the tier and every rule's proof. `the user-data directories` went: it is one trigger item, and the row below hands the reader the whole list at its source. |
+| L11 | "The **trigger items** live in the site's CLAUDE.md." | KEEP, rewritten | Every run. It was first DROPped as an environment copy, on the reading that the extension file names where its own items live. The two-axis review showed the reference extension does the opposite — "the pointer is the source, this file only adds what the plugin cannot name" — so the DROP left the reader with no address for the items at all. It returns as a requirement on the reader rather than a fact about the site: "Read the trigger items in the site's CLAUDE.md, or wherever the extension points; where neither carries a list, §1's site-list line decides." The last clause is new, and it answers the site that has an extension file and no item list. |
 | L15 | "The lens covers code and the data that code writes." | KEEP | Every run: the scope, and the first half of the test §1 exists to apply. |
 | L15–17 | "Prose an agent follows — a skill, a CLAUDE.md, a runbook — is reviewed by the mandatory review alone, in one round, with one exception: when the changed paragraphs prescribe commands, one lens may fire." | KEEP, rewritten | Every run over a diff carrying prose. 33 words, the file's longest; split in two at "One exception". |
 | L17–18 | "The trigger is judged per diff, not per file — a mixed file counts only what changed." | MOVE → the base paragraph, same file | The rule is about measuring the diff, not about prose, and it sat inside the prose paragraph. It now opens the paragraph that measures. |
 | L18–20 | "The exception's brief adds two constraints to §2's block: report only findings proven by RUNNING a prescribed command, and refuse a finding whose fix is more prose about the prose." | KEEP, split | A run that fires under the prose exception. 30 words; split where the colon was, and its pointer repointed at `BRIEF.md`. |
-| L20–22 | "A firing that returns nothing runnable retires the exception: the parent says so in the PR body, and the retirement lands as an edit to this paragraph, through its own PR." | KEEP, rewritten | The same run, after its report. 31 words → 22. Both duties survive — announce in the PR body, edit the paragraph — and `through its own PR` went (§7 of `review.md`). |
+| L20–22 | "A firing that returns nothing runnable retires the exception: the parent says so in the PR body, and the retirement lands as an edit to this paragraph, through its own PR." | KEEP, rewritten, split | The same run, after its report. 31 words in one sentence became 26 in two, split where the colon was. **All three duties survive**: announce in the PR body, edit the paragraph, and do it through its own PR. That last clause was first cut as a fact no run turns on. The two-axis review showed it decides something a run does turn on — whether the pull request firing under the exception may amend the paragraph it fired under — so it is restored verbatim and carries no CLAUSE row. |
 | L22–23 | "Only a firing the trigger allowed counts as that evidence." | CLAUSE | Folded into the sentence it guards, which now opens "A firing **the trigger allowed** that returns nothing runnable". Same guard, one sentence fewer. |
 | L23–24 | "Where the repo declares a size ceiling for the file, a correction batch that grows it past the ceiling owes a line in the PR body." | MOVE → §3, same file | It is a duty of the correction batch, and §3 is where the correction batch is defined. Co-location: the rule now sits under the paragraph that creates the thing it binds. |
 | L24–25 | "A report or document a human reads gets no review: the reader is the review." | KEEP | A run over a diff carrying a report — the third class, and the one nothing else in the file decides. |
@@ -160,11 +170,18 @@ once, below the table.
 | L165–166 | "A lens is **dead** when the window ended, the subagent failed or the wall killed it before its report arrived." | KEEP | A run whose lens never reported — three causes, and `../kickoff/WINDOW.md` writes the handoff this defines. |
 | L166 | "A handoff then names the slice, the base and the angle." | KEEP | The same run: the three fields, which is what lets the next session fire it without re-deciding. |
 | L166–167 | "The lens has not run: the next session fires it whole." | KEEP | The same run. It is what stops a dead lens being reported as a firing that found nothing. |
+| CLAUSE, opening | "`(project root)`" | CLAUSE | Environment copy: where the second file sits is what the README section the line now cites says. |
+| CLAUSE, opening | "`the user-data directories`" | CLAUSE | Duplicate: it is one of the trigger items, and the sentence beside it now sends the reader to the whole list at its source. |
+| CLAUSE, §1 | "`as a test rather than a list`" | CLAUSE | Exposition: it describes the form of the rule below it, not the rule. |
+| CLAUSE, §1 | "`, who reviews the receipt`" | CLAUSE | Exposition: it says what a reader does with what they are shown. |
+| CLAUSE, §2 brief | "`— the binary, the fixture, the file —`" | CLAUSE | Exposition: three instances of *artifact*, in a brief whose every other line names none. It left inside the block the MOVE carried. |
+| CLAUSE, §5 | "`; the slice stays implemented, unreviewed, unmerged`" | CLAUSE | Exposition: the consequence of *waits whole*, which the sentence has just said. |
 
-**69 KEEP, 5 MOVE, 10 DROP and 1 CLAUSE row**, over 85 rows. Three of the KEEPs carry a clause
-cut, named in the row itself. Eight clauses in all came out of sentences that stayed, and
-`review.md` §7 tabulates every one with the sentence it left: the four that do not appear above
-sit inside units whose row already carries a KEEP-rewritten or a MOVE.
+**70 KEEP, 5 MOVE, 9 DROP and 7 CLAUSE rows**, over 91 rows. Seven clauses came out of sentences
+that stayed and each holds its own row: six sit together at the foot of the table, and the
+seventh is the folded sentence at L22–23, which keeps its place in the original's line order.
+Four of the KEEPs also carry the `CLAUSE cut` annotation, naming the cut in the row itself.
+`review.md` §7 tabulates every one with the sentence it left.
 
 ### The half of step 3 this pass could not answer, and the one it could
 
@@ -221,15 +238,16 @@ sentence` reads 25 rather than 41 on a draft whose longest real sentence is unch
 **Fourteen rewordings, carrying no verdict**, tabulated in `review.md` §8. Nine are one sentence
 split in two to bring a unit under the 25-word ceiling.
 
-**One unit added, not removed.** The site-extensions block was three sentences and is now the
-single sentence the plugin's four other skills carry, pointing at the README's own section. It
-has no row in §2, which rules on the original's units.
+**One unit added, not removed.** The site-extensions block was three sentences and is now two:
+the pointer at the README's own section that the plugin's four other skills carry, and the line
+routing the reader to the site's trigger items. The first has no row in §2, which rules on the
+original's units; the second is L11's row, kept and rewritten rather than dropped.
 
 ## 4. Paths
 
 | file | what it is |
 |---|---|
-| `tk/skills/review/SKILL.md` | the pruned skill, 124 lines |
+| `tk/skills/review/SKILL.md` | the pruned skill, 127 lines |
 | `tk/skills/review/BRIEF.md` | the destination of the brief MOVE, 32 lines |
 | `docs/prune/review.md` | every sentence, clause and wording removed, verbatim |
 | `docs/prune/review-report.md` | this file |
