@@ -34,6 +34,10 @@ ceiling — the bin's, or the ticket's line ceiling, which the bin does not carr
 | defined terms | 3 | 0 | 7 | 1 | 3 |
 | terms defined in a sibling too (0) | **1** | 0 | **1** | 0 | 0 |
 
+SKILL.md's 120 later became 121: line 121 is the review-restored Env clause ("runs on: X"
+read off the item itself, since `tk-queue list` does not print Env) — a KEEP mandated by
+the lane's Standards review (commit ba9d086), and KEEP outranks the ceiling.
+
 The two destinations, measured at their landing address (`tk/reference/`, beside
 `slice-rules.md` and `subagent-policy.md`, the repo's existing convention for material more
 than one skill reaches — the placement decision this row records): `queue.md` 114 lines,
