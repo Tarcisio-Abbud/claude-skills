@@ -92,7 +92,8 @@ Then one multiSelect `AskUserQuestion` with the actionable items (AUTONOMOUS + R
 in the queue's own order — that order IS the priority — recommendation first. DECISION
 items become their own questions, the options the choices themselves. Tool limit: 4
 questions × 4 options; the overflow becomes report lines. BLOCKED, EXTERNAL and items
-bound to another environment ("runs on: X", from **Env**) are never options — the last go
+bound to another environment ("runs on: X", from **Env** — read off the item itself, since
+`tk-queue list` does not print it) are never options — the last go
 to block (d), though their DECISIONs stay in the menu: deciding is machine-agnostic.
 **Done when:** the whole agenda was shown, every DECISION was briefed before its question,
 and the user's selection is captured.
