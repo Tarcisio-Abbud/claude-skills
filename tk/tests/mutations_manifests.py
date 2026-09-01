@@ -40,22 +40,23 @@ SUITE = os.path.join("tests", "test_manifests.py")
 MUTATIONS = [
     # -- a shipped skill falls out of a description -------------------------
     ("a skill's clause leaves plugin.json, the word surviving in the prose next door",
-     "verify (the item's acceptance criterion as the ruler of the delivery), "
-     "review (lens campaign: the second pair of eyes on a delivered code or data slice), ",
+     "verify (the item's acceptance criterion as the ruler of the delivery, with "
+     "the evidence block the caller re-runs), review (one lens over a committed "
+     "slice \u2014 the second pair of eyes before the mandatory two-axis review), ",
      "verify (the item's acceptance criterion, applied before review and after it), ",
      ["TestPluginManifest.test_every_skill_is_named"],
      PLUGIN),
 
     ("a skill's mention leaves marketplace.json — the real #48/#49 defect",
-     "/tk:review puts one lens over a delivered slice, ",
+     "/tk:review puts one lens over a committed slice, ",
      "",
      ["TestMarketplaceManifest.test_every_skill_is_named"],
      MARKETPLACE),
 
     # -- a description outlives the skill it names ---------------------------
     ("plugin.json keeps a clause for a skill that is not on disk",
-     "prune (prunes a skill",
-     "ghost (haunts nothing), prune (prunes a skill",
+     "prune (measures a skill",
+     "ghost (haunts nothing), prune (measures a skill",
      ["TestPluginManifest.test_names_no_skill_that_does_not_exist"],
      PLUGIN),
 

@@ -35,8 +35,8 @@ report.
 | `## roster` | dispatches it: the name, then the directory to open the run in |
 | `## not dispatchable` | reports it; never dispatches it |
 | `## excluded by the site file` | reports it, naming which list excluded each |
-| `` ## `fleet-allow` names no queue on this machine `` | reports it as a **finding**, below |
-| `` ## `fleet-deny` names no queue on this machine `` | reports it as a **finding**, below |
+| `` ## `fleet-allow` names no queue on this machine `` | reports it as a **stray entry**, below |
+| `` ## `fleet-deny` names no queue on this machine `` | reports it as a **stray entry**, below |
 
 **Do not build a project's path from its queue name.** The name is the cwd encoded, and the
 encoding is one-way: `/w/p/x-y` and `/w/p/x/y` produce the same name. That is why the second
@@ -51,7 +51,7 @@ allow) are read by the bin.
 The fleet accepts no list of its own by flag and reimplements no filter: a second answer to
 "what does the fleet touch" is a second source of truth, and the one the user edits is the file.
 
-**Both `names no queue` sections are findings, not noise.** The bin emits one per list, so a
+**Both `names no queue` sections are stray entries, not noise.** The bin emits one per list, so a
 stray `fleet-allow` entry surfaces exactly as a stray `fleet-deny` one does. An unknown key in
 the site file is ignored on purpose, so `fleet-denny` reads as an absent list and sweeps
 everything. An entry that matched no queue is the only signal that a line exists and is doing

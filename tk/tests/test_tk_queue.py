@@ -2304,7 +2304,7 @@ class TestClaim(QueueTest):
     def test_an_ordinary_session_label_is_still_accepted(self):
         """The over-refusal direction: a gate that only ever refuses would make the
         command unusable, and the refusal tests above cannot see it."""
-        for good in ("alpha", "alpha.local", "sess-3", "Tarcisio_2"):
+        for good in ("alpha", "alpha.local", "sess-3", "Sessao_2"):
             with self.subTest(good=good):
                 self.seed(item(1, "um"))
                 r = self.run_tk("claim", "T001", "--as", good)
@@ -2760,7 +2760,7 @@ class TestPack(PackOutput):
                   + ticket_item(8, "the second one", spec="ambiente#171",
                                 ticket="ambiente#173", effort="M (~1h)")
                   + ticket_item(9, "the item's text",
-                                repo="/workspace/projects/comercial")
+                                repo="/srv/projects/exemplo")
                   + ticket_item(10, "a lone ticket, under the floor", spec="ambiente#159")
                   + decision_item(12, "another item")
                   + ticket_item(21, "a ticket of a second spec", spec="ambiente#144")
@@ -3062,10 +3062,10 @@ class TestProvenanceFields(QueueTest):
         field at. Written anywhere else the value is there and no reader may use
         it, which is worse than absent: absent is visible."""
         self.seed()
-        r = self.add("--ticket", "homeserver-ambiente#172", "--spec", "homeserver-ambiente#171")
+        r = self.add("--ticket", "ambiente#172", "--spec", "ambiente#171")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("**Ticket:** homeserver-ambiente#172. "
-                      "**Spec:** homeserver-ambiente#171. **Born:**", self.body())
+        self.assertIn("**Ticket:** ambiente#172. "
+                      "**Spec:** ambiente#171. **Born:**", self.body())
 
     def test_the_values_round_trip_byte_for_byte(self):
         """The ticket's criterion, through the readers that exist: `pack` prints
@@ -3075,13 +3075,13 @@ class TestProvenanceFields(QueueTest):
         its OUTPUT would show."""
         self.seed()
         self.assertEqual(self.add("--ticket", "claude-skills#26",
-                                  "--spec", "homeserver-ambiente#171").returncode, 0)
+                                  "--spec", "ambiente#171").returncode, 0)
         before = self.body()
         self.assertEqual(self.run_tk("list").returncode, 0)
         self.assertEqual(self.run_tk("pack").returncode, 0)
         self.assertEqual(self.body(), before)
         self.assertIn("**Ticket:** claude-skills#26.", before)
-        self.assertIn("**Spec:** homeserver-ambiente#171.", before)
+        self.assertIn("**Spec:** ambiente#171.", before)
 
     def test_an_add_without_the_flags_writes_the_item_of_today(self):
         """The whole file, byte for byte, against the same add on the version
@@ -3113,7 +3113,7 @@ class TestProvenanceFields(QueueTest):
                     self.assertNotIn("- [ ] ", self.body(), "the item was written anyway")
 
     def test_a_well_formed_ref_is_accepted_in_the_shapes_that_occur(self):
-        for ref in ("repo#1", "homeserver-ambiente#172", "claude-skills#26",
+        for ref in ("repo#1", "ambiente#172", "claude-skills#26",
                     "a.b_c-d#999999", "repo#123456789", "r" * 100 + "#1"):
             with self.subTest(ref=ref):
                 self.seed()
@@ -3496,7 +3496,7 @@ class TestPackLaneUnderWay(PackOutput):
                         effort="S (~20min)")
             + ticket_item(8, "the second one", spec="ambiente#171",
                           ticket="ambiente#173", effort="M (~1h)")
-            + ticket_item(9, "the item's text", repo="/workspace/projects/comercial")
+            + ticket_item(9, "the item's text", repo="/srv/projects/exemplo")
             + ticket_item(10, "a lone ticket, under the floor", spec="ambiente#159")
             + item(12, "another item", klass="DECISION")
             + ticket_item(21, "a ticket of a second spec", spec="ambiente#144")
@@ -3514,7 +3514,7 @@ class TestPackLaneUnderWay(PackOutput):
         r = self.run_tk("pack", "--spec-under-way", "ambiente#171")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout, """eligible (4 of 9, in queue order):
-T009  S             avulso                the item's text  [repo: /workspace/projects/comercial]
+T009  S             avulso                the item's text  [repo: /srv/projects/exemplo]
 T010  S             avulso (ambiente#159)  a lone ticket, under the floor
 T021  S             spec ambiente#144     a ticket of a second spec
 T022  S             spec ambiente#144     and its sibling
@@ -3541,7 +3541,7 @@ repairs:
         self.assertEqual(r.stdout, """eligible (4 of 9, in queue order):
 T007  S (~20min)    spec ambiente#171     the first ticket of the spec  [ambiente#172]  [repo: https://github.com/owner/code.git]
 T008  M (~1h)       spec ambiente#171     the second one  [ambiente#173]
-T009  S             avulso                the item's text  [repo: /workspace/projects/comercial]
+T009  S             avulso                the item's text  [repo: /srv/projects/exemplo]
 T010  S             avulso (ambiente#159)  a lone ticket, under the floor
 
 excluded (5):
@@ -3674,13 +3674,13 @@ class TestRepoField(QueueTest):
         anywhere else the value is there and no reader may use it, which is worse
         than absent: absent is visible."""
         self.seed()
-        r = self.add("--ticket", "homeserver-ambiente#198",
-                     "--spec", "homeserver-ambiente#171",
+        r = self.add("--ticket", "ambiente#198",
+                     "--spec", "ambiente#171",
                      "--repo", "https://github.com/Tarcisio-Abbud/claude-skills.git")
         self.assertEqual(r.returncode, 0, r.stderr)
         # up to **Born:**, which compose_item stamps between this field and Source
-        self.assertIn("**Ticket:** homeserver-ambiente#198. "
-                      "**Spec:** homeserver-ambiente#171. "
+        self.assertIn("**Ticket:** ambiente#198. "
+                      "**Spec:** ambiente#171. "
                       "**Repo:** https://github.com/Tarcisio-Abbud/claude-skills.git. "
                       "**Born:**", self.body())
 
@@ -3832,8 +3832,8 @@ class TestRepoField(QueueTest):
                       "ssh://git@github.com/Tarcisio-Abbud/claude-skills.git",
                       "git@github.com:Tarcisio-Abbud/claude-skills.git",
                       "file:///srv/git/claude-skills.git",
-                      "/workspace/projects/.ambiente", "/root/.claude/skills",
-                      "C:/Users/Oraci/.ambiente", "C:\\Users\\Oraci\\.ambiente",
+                      "/srv/projects/config", "/root/.claude/skills",
+                      "C:/Users/dev/config", "C:\\Users\\dev\\config",
                       # a user with NO password is the ordinary git address, and a
                       # port after it is legal: it is the COLON BEFORE the `@` that
                       # makes a secret, and only that is refused
@@ -3841,7 +3841,7 @@ class TestRepoField(QueueTest):
                       "http://gitea.lan:3000/t/r.git",
                       # a non-ASCII path is not refused: banning it would refuse the
                       # accented paths this machine really has (see REPO_BAD)
-                      "/workspace/projects/projeção",
+                      "/srv/projects/projeção",
                       # a LOCAL path may carry a colon: the first `/` comes before
                       # it, so git reads a path and not an scp-like `host:path`
                       "/srv/repo:v2", "git@host:/srv/r.git",
@@ -3871,9 +3871,9 @@ class TestRepoField(QueueTest):
         imported from a tracker may have no address recorded yet: coupling the
         three would refuse a real case to enforce a rule nothing needs."""
         self.seed()
-        self.assertEqual(self.add("--repo", "/workspace/projects/.ambiente").returncode, 0)
+        self.assertEqual(self.add("--repo", "/srv/projects/config").returncode, 0)
         body = self.body()
-        self.assertIn("**Repo:** /workspace/projects/.ambiente.", body)
+        self.assertIn("**Repo:** /srv/projects/config.", body)
         self.assertNotIn("**Ticket:**", body)
         self.assertNotIn("**Spec:**", body)
 
@@ -4682,13 +4682,13 @@ class TestAmbiguousId(QueueTest):
 # marker passes just as happily against one this command truncated — that exact
 # vacuity was measured on `--risk none` in this script, with the suite green.
 
-FOLD_LEGACY = ("- [ ] **T007** — **#9 Ingestao automatica do extrato BTG** (e-mail/OneDrive) —\n"
+FOLD_LEGACY = ("- [ ] **T007** — **#9 Ingestao automatica do extrato bancario** (e-mail/OneDrive) —\n"
                "  `ready-for-agent`.\n"
                "  **Class:** AUTONOMOUS. **Effort:** L. **Source:** tracker "
-               "**Project:** automacao-financeira.\n")
-FOLD_CANONICAL = ("- [ ] **T007** — **#9 Ingestao automatica do extrato BTG** "
+               "**Project:** projeto-exemplo.\n")
+FOLD_CANONICAL = ("- [ ] **T007** — **#9 Ingestao automatica do extrato bancario** "
                   "(e-mail/OneDrive) — `ready-for-agent`. **Class:** AUTONOMOUS. "
-                  "**Effort:** L. **Source:** tracker **Project:** automacao-financeira.\n")
+                  "**Effort:** L. **Source:** tracker **Project:** projeto-exemplo.\n")
 
 
 class TestMigrateFold(QueueTest):
@@ -5753,7 +5753,7 @@ class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
         would otherwise take, which is what the rule costs when it is wrong. The
         width condition is what tells the line from a metadata line, which is short
         because its author ended it."""
-        middle = ("  wiki: `_wiki/casa-nostra/planejamento-financeiro-2025-10.md`. E a frase "
+        middle = ("  wiki: `_wiki/organizacao/planejamento-financeiro-2025-10.md`. E a frase "
                   "segue ate a coluna de wrap\n")
         self.seed(R4_HEAD.rstrip("\n") + "\n" + middle + R4_CHAIN)
         r = self.migrate()

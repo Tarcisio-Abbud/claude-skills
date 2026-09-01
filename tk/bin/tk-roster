@@ -17,8 +17,8 @@ their projects are — and hands `tk-queue` the directory to answer the rest.
 
 THE PROJECT'S PATH is not stored anywhere: `tk-queue` derives the queue's
 directory NAME from the working directory, by replacing every character outside
-`[A-Za-z0-9-]` with `-`, and that encoding is one-way (`/workspace/projects/x-y`
-and `/workspace/projects/x/y` both encode to `-workspace-projects-x-y`). So the
+`[A-Za-z0-9-]` with `-`, and that encoding is one-way (`/srv/projects/x-y`
+and `/srv/projects/x/y` both encode to `-srv-projects-x-y`). So the
 path is recovered by walking the filesystem for directories that encode to the
 name — exact when one directory matches, and reported as NOT DISPATCHABLE when
 none or several do, which is the honest answer: a fleet that guesses opens a
