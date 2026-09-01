@@ -7,10 +7,13 @@ arguments: skill_path out_dir
 ---
 
 **Pruning** is subtraction with a ruler beside it: the machine measures, the user decides. The
-target skill is never edited. The report and the pruned files go to the second argument, or to
-`./prune-out/<skill-name>/` under the cwd when absent. The directory stays flat, so the report
-lands at `<output-dir>/prune-report.md`. It is not committed: when it falls inside a repo, add
-it to that repo's `.gitignore`.
+target skill is never edited. The pass writes to the second argument, or to
+`./prune-out/<skill-name>/` under the cwd when absent. That directory is flat scratch: the
+report drafts at `<output-dir>/prune-report.md`, and nothing there is committed — inside a
+repo, the repo's `.gitignore` covers it. The report's home is `docs/` of the repo that
+carries the skill, committed in the pruning PR: that is the diff the closing review reads. A
+private skill's report never enters a public repo's `docs/` — the public repo's `.gitignore`
+allowlists `docs/prune/*` file by file, the first line; the pre-commit guard is the second.
 
 ## Steps
 
@@ -27,8 +30,9 @@ it to that repo's `.gitignore`.
    MOVE created — side by side in the output directory, in the shape `REPORT.md` carries.
 
 Step 3 ends when every rule has a named run. Step 4 ends when every unit, in every file step 1
-read, holds a row. Step 5 ends when the bin reads each file the pass wrote inside the targets,
-measured where it lands and not beside the report, or names the ceiling it holds and why.
+read, holds a row. Step 5 ends when the bin reads each file the pass wrote inside the targets
+at its landing address, or names the ceiling it holds and why. The sibling scan reads every
+markdown in the measured file's directory, so a report beside the file counts as a sibling.
 
 ## The table
 
@@ -64,8 +68,7 @@ measured where it lands and not beside the report, or names the ceiling it holds
 - A plugin cache is read-only. The destination is an upstream PR, or a fork of the marketplace.
 - A copy under `.claude/skills/` takes the bare name while the plugin skill stays reachable
   namespaced: a second skill, not a shadow.
-- Own-skill inline evidence goes one file per skill, and a private skill's report stays out
-  of a public repo.
+- Own-skill inline evidence goes one file per skill.
 
 ## Suggest, never execute
 
@@ -89,7 +92,7 @@ An eval's assertions run once against a deliberately broken arm before either re
 A set the broken arm passes proves nothing: fix the assertions and rerun.
 
 Then hand the user the closing review: `/mattpocock-skills:code-review` over the branch that
-carries the pruned file. It reads a committed diff, so the file reaches its own repo first.
+carries the pruned file and the report. It reads a committed diff, so both reach the repo first.
 That review finds none of its inputs here. Tell the user to give it three. The path of
 `writing-for-agents` goes among the Standards sources, and the table is what the Spec axis
 reads. The smell baseline is declared inapplicable, since the target is prose.
