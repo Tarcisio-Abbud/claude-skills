@@ -24,7 +24,7 @@ The table carries four columns:
 |---|---|
 | reference file beside the skill | only the skill and its siblings reach the material |
 | a new skill | the `SKILL-MECHANICS` criterion, read in step 2 |
-| `docs/` of the repo | removed material of an own skill — dropped sentences, removed clauses, inline evidence pulled out — verbatim, so one edit puts a removal back |
+| `docs/` of the repo | inline evidence pulled out of an own skill — verbatim, so one edit puts it back |
 | the report itself | inline evidence pulled out of a third-party skill |
 | another section of the same file | the material stays in this skill, and the unit holding it is the wrong shape |
 | a ticket on the bin | contract the `--help` should carry — file it, the sentence stays KEEP |

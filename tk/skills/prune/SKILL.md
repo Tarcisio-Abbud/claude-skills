@@ -8,11 +8,12 @@ arguments: skill_path out_dir
 
 **Pruning** is subtraction with a ruler beside it: the machine measures, the user decides. The
 target skill is never edited. The pass writes to the second argument or, absent, to
-`./prune-out/<skill-name>/`; nothing there is committed — the repo's `.gitignore` covers it.
-The report's home is `docs/` of the skill's repo, committed in the pruning PR: the diff the
-closing review reads. A private skill's report never enters a public repo's `docs/` — its
-`.gitignore` allowlists `docs/prune/*` file by file, the first line. The pre-commit guard is
-the second.
+`./prune-out/<skill-name>/`; nothing there is committed — add it to that repo's `.gitignore`.
+The committed home is `docs/prune/<skill-name>-report.md`, and `docs/prune/<skill-name>.md` for
+an own skill's removed material — the pass writes every DROPped sentence and CLAUSE cut there.
+The pruning PR copies both from the output directory — the diff the closing review reads. A
+private skill's report never enters a public repo's `docs/` — its `.gitignore` allowlists
+`docs/prune/*` file by file, the first line of defence. The pre-commit guard is the second.
 
 ## Steps
 
@@ -72,7 +73,6 @@ sibling scan reads every markdown beside the measured file: a report there is a 
 - A plugin cache is read-only. The destination is an upstream PR, or a fork of the marketplace.
 - A copy under `.claude/skills/` takes the bare name while the plugin skill stays reachable
   namespaced: a second skill, not a shadow.
-- Own-skill removed material goes one file per skill.
 
 ## The target's proof comes from outside
 
@@ -86,5 +86,5 @@ carrying the pruned file and the report. It finds none of its inputs here; tell 
 give it three. Standards gets the `writing-for-agents` path; Spec reads the table. The smell
 baseline is declared inapplicable: the target is prose.
 
-**Done when:** the report sits at the path its first line names, and every unit holds the row
-its verdict owes. The target's proof is named, and an eval proof names its broken arm.
+**Done when:** the report sits at its committed home, and every unit holds the row its verdict
+owes. The target's proof is named, and an eval proof names its broken arm.
