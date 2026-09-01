@@ -1,0 +1,146 @@
+{
+  "generated": "2026-09-01",
+  "baseline": "docs/prune/baseline-2026-09-01.md",
+  "generator": "docs/prune/lock.py",
+  "slack": 0.1,
+  "ceilings": {
+    "mean_sentence_words": 22,
+    "max_sentence_words": 25,
+    "sentences_over_30": 4,
+    "description_words": 30,
+    "inline_evidence": 0,
+    "terms_defined_in_sibling": 0
+  },
+  "files": {
+    "tk/skills/dispatch/SKILL.md": {
+      "role": "pruned",
+      "report": "dispatch-report.md",
+      "lines": 60,
+      "body_words": 541,
+      "over": []
+    },
+    "tk/skills/docs-audit/SKILL.md": {
+      "role": "pruned",
+      "report": "docs-audit-report.md",
+      "lines": 95,
+      "body_words": 867,
+      "over": []
+    },
+    "tk/skills/kickoff/SKILL.md": {
+      "role": "pruned",
+      "report": "kickoff-report.md",
+      "lines": 121,
+      "body_words": 1108,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/skills/kickoff/AFK.md": {
+      "role": "pruned",
+      "report": "kickoff-report.md",
+      "lines": 327,
+      "body_words": 3436,
+      "over": [
+        "mean_sentence_words",
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/skills/review/SKILL.md": {
+      "role": "pruned",
+      "report": "review-report.md",
+      "lines": 127,
+      "body_words": 1172,
+      "over": []
+    },
+    "tk/skills/second-opinion/SKILL.md": {
+      "role": "pruned",
+      "report": "second-opinion-report.md",
+      "lines": 49,
+      "body_words": 423,
+      "over": [
+        "max_sentence_words"
+      ]
+    },
+    "tk/skills/verify/SKILL.md": {
+      "role": "pruned",
+      "report": "verify-report.md",
+      "lines": 115,
+      "body_words": 929,
+      "over": []
+    },
+    "tk/skills/wrap-up/SKILL.md": {
+      "role": "pruned",
+      "report": "wrap-up-report.md",
+      "lines": 172,
+      "body_words": 1696,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/skills/dispatch/LOOP.md": {
+      "role": "moved",
+      "report": "dispatch-report.md",
+      "lines": 15,
+      "body_words": 70,
+      "over": []
+    },
+    "tk/skills/review/BRIEF.md": {
+      "role": "moved",
+      "report": "review-report.md",
+      "lines": 32,
+      "body_words": 90,
+      "over": []
+    },
+    "tk/skills/verify/HANDOFF.md": {
+      "role": "moved",
+      "report": "verify-report.md",
+      "lines": 18,
+      "body_words": 170,
+      "over": []
+    },
+    "tk/skills/wrap-up/MERGE-GATE.md": {
+      "role": "moved",
+      "report": "wrap-up-report.md",
+      "lines": 205,
+      "body_words": 2225,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/skills/wrap-up/REPORT.md": {
+      "role": "moved",
+      "report": "wrap-up-report.md",
+      "lines": 88,
+      "body_words": 706,
+      "over": [
+        "mean_sentence_words",
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/reference/queue.md": {
+      "role": "moved",
+      "report": "kickoff-report.md",
+      "lines": 113,
+      "body_words": 1130,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/reference/session-finding.md": {
+      "role": "moved",
+      "report": "kickoff-report.md",
+      "lines": 44,
+      "body_words": 439,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    }
+  }
+}
