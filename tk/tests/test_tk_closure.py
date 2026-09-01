@@ -466,10 +466,13 @@ class TestTheMergeGateStatesTheRuleTheCheckerEnforces(unittest.TestCase):
     def test_the_file_does_not_say_a_closing_keyword_the_forge_honours_counts(self):
         """The retraction applies at every site of the claim: 'any keyword the
         forge honours' is what invited the Portuguese guess in the first place."""
-        self.assertNotIn("Any closing keyword the forge honours counts", self.text)
+        flat = " ".join(self.text.split()).lower()
+        self.assertNotIn("any closing keyword the forge honours counts", flat)
 
-    def test_the_checker_is_named_where_the_verdict_is_read_off_the_body(self):
-        self.assertIn("tk-closure-check", self.text)
+    def test_the_verdict_row_names_the_checker_that_asks_the_four_conditions(self):
+        """The row is where a reader looks up what green means, so the command
+        that answers it belongs there and not only in the section below."""
+        self.assertIn("tk-closure-check", self.row)
 
 
 if __name__ == "__main__":

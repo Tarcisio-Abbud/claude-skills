@@ -201,6 +201,15 @@ tk/
                                   defined terms, with `--targets` marking each against the
                                   ceilings it carries as defaults. It measures and does not
                                   judge, so every measurement exits 0
+  bin/tk-ticket-ref               a queue item's ticket as `<owner>/<repo>#<n>`, the form a
+                                  closing line needs — number and repository from the item,
+                                  owner from the clone's tracker config through the shape
+                                  gate `bin/tracker-gh` applies. It refuses rather than
+                                  emit an ownerless or guessed reference
+  bin/tk-closure-check            verdict 5 of the merge gate, asked of the pull request:
+                                  the closing keyword, the ticket's identity, the owner
+                                  half and the base branch, each reported by name. Exit 1
+                                  names the ones that failed
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
@@ -243,6 +252,12 @@ tk/
                                   is not there
   tests/mutations_manifests.py    entries only, through the same seam; it mutates the
                                   manifests themselves, one of them at the repo root
+  tests/test_tk_closure.py        the two closure bins against a throwaway queue, a
+                                  throwaway clone carrying `tk.tracker`, and a fake forge
+                                  CLI on PATH — plus the dispatch prose and the verdict-5
+                                  row, which have to state the rule the checker enforces
+  tests/mutations_closure.py      entries only, through the same seam; five sources, since
+                                  two of the defects live in skill files rather than in a bin
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
@@ -302,8 +317,9 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 tk/tests/mutations_roster.py`, `tk-hygiene` through
 `python3 tk/tests/mutations_hygiene.py`, `tk-prune-measure` through
 `python3 tk/tests/mutations_prune.py`, the two manifests through
-`python3 tk/tests/mutations_manifests.py`, and the wall's step 2 through
-`python3 tk/tests/mutations_window_wall.py`. The harnesses are separate files sharing
+`python3 tk/tests/mutations_manifests.py`, the wall's step 2 through
+`python3 tk/tests/mutations_window_wall.py`, and the two closure bins through
+`python3 tk/tests/mutations_closure.py`. The harnesses are separate files sharing
 one shape; the oldest differs only in naming its test module inline. Two of them mutate
 more than a bin: the manifests one mutates DATA only — its subject is the repository's
 own state, and `marketplace.json` sits at the repo root, outside the `tk/` the runner

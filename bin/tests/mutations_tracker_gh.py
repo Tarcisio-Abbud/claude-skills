@@ -6,6 +6,12 @@ for it to FAIL. Same shape and same two honesty checks as
 test no mutation names is reported UNPROVED, because a green score counts only the mutants
 someone wrote.
 
+AN ENTRY MAY NAME ITS OWN FILE. The fifth element is the path to mutate, defaulting to the
+wrapper. It exists because one of the defects this suite guards against does not live in the
+wrapper at all: `docs/agents/issue-tracker.md` prescribed a command the wrapper refuses, and
+the test that proves the two agree can only be falsified by putting that prescription back.
+Every file an entry names is backed up before the run and restored after it.
+
 Run: python3 bin/tests/mutations_tracker_gh.py
 """
 
@@ -18,7 +24,10 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TARGET = os.path.abspath(os.path.join(HERE, os.pardir, "tracker-gh"))
+DOC = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir, "docs", "agents",
+                                   "issue-tracker.md"))
 
+# (label, needle, replacement, [tests that must fail], path to mutate — default TARGET)
 MUTATIONS = [
     (
         'an unset tracker is not checked, so gh runs with an empty -R',
@@ -112,6 +121,7 @@ MUTATIONS = [
         '    :\n',
         [
             'test_a_url_to_another_repo_is_refused',
+            'test_a_pull_request_url_in_the_body_is_refused_which_is_why_the_doc_yields',
         ],
     ),
     (
@@ -148,6 +158,16 @@ MUTATIONS = [
             'test_the_target_is_compared_case_insensitively',
         ],
     ),
+    (
+        'the doc goes back to prescribing the PR URL, which the wrapper refuses',
+        '''bin/tracker-gh issue comment <n> -R '{tracker}' --body "<owner>/<repo>#<pr>"''',
+        '''bin/tracker-gh issue comment <n> -R '{tracker}' '''
+        '''--body "https://github.com/<owner>/<repo>/pull/<pr>"''',
+        [
+            'test_the_cross_link_the_doc_prescribes_is_accepted_by_the_wrapper',
+        ],
+        DOC,
+    ),
 ]
 
 
@@ -178,9 +198,17 @@ def run_tests(names, ids):
     return result.returncode == 0, result.stdout + result.stderr
 
 
+def entry_path(entry):
+    """The file an entry mutates — its fifth element, or the wrapper."""
+    return entry[4] if len(entry) > 4 else TARGET
+
+
 def main():
-    with open(TARGET, encoding="utf-8") as fh:
-        original = fh.read()
+    paths = sorted({entry_path(entry) for entry in MUTATIONS})
+    original = {}
+    for path in paths:
+        with open(path, encoding="utf-8") as fh:
+            original[path] = fh.read()
 
     ids = suite_test_ids()
     available = set(ids)
@@ -192,11 +220,15 @@ def main():
         print("the suite is not green before mutating; fix that first\n%s" % output)
         return 1
 
-    backup = tempfile.mkstemp(prefix="tracker-gh-backup-")[1]
-    shutil.copy(TARGET, backup)
-    original_mode = os.stat(TARGET).st_mode
+    backups = {}
+    for path in paths:
+        backups[path] = (tempfile.mkstemp(prefix="tracker-gh-backup-")[1],
+                         os.stat(path).st_mode)
+        shutil.copy(path, backups[path][0])
     try:
-        for label, needle, replacement, targets in MUTATIONS:
+        for entry in MUTATIONS:
+            label, needle, replacement, targets = entry[:4]
+            path = entry_path(entry)
             named.update(targets)
 
             missing = [t for t in targets if t not in available]
@@ -204,20 +236,22 @@ def main():
                 problems.append("%s: names a test that does not exist: %s" % (label, missing))
                 continue
 
-            if original.count(needle) != 1:
+            if original[path].count(needle) != 1:
                 problems.append(
                     "%s: its anchor matches %d times, so the mutation is not the one described"
-                    % (label, original.count(needle))
+                    % (label, original[path].count(needle))
                 )
                 continue
 
-            with open(TARGET, "w", encoding="utf-8") as fh:
-                fh.write(original.replace(needle, replacement))
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(original[path].replace(needle, replacement))
 
             # One at a time. Running the named tests together lets a survivor hide behind a
             # sibling that failed: the batch reports non-zero either way, and the mutation
             # books a kill it did not earn.
             survivors = [t for t in targets if run_tests([t], ids)[0]]
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(original[path])
             if survivors:
                 problems.append(
                     "%s: SURVIVED — %s still pass with the defect back" % (label, survivors)
@@ -225,9 +259,10 @@ def main():
             else:
                 print("killed: %s" % label)
     finally:
-        shutil.copy(backup, TARGET)
-        os.chmod(TARGET, original_mode)
-        os.unlink(backup)
+        for path, (backup, mode) in backups.items():
+            shutil.copy(backup, path)
+            os.chmod(path, mode)
+            os.unlink(backup)
 
     for name in sorted(available - named):
         print("UNPROVED: %s — no mutation names it" % name)
