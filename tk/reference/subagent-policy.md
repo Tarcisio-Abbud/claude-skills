@@ -77,8 +77,9 @@ Fixes <owner>/<repo>#<n>
 
 naming the tracker the ticket lives in and the ticket's own number. Whoever dispatches the
 role composes that line with `../bin/tk-ticket-ref <id> --closing-line` and hands it over
-finished — the owner half comes from the clone's tracker config through a shape gate, never
-from a config read written into a prompt. `Fixes` is the forge's native keyword, so the merge
+finished — the owner half comes from the tracker config of the clone the item's **Repo:**
+field names (`--repo <clone>` when it names none), through a shape gate, never from a config
+read written into a prompt. `Fixes` is the forge's native keyword, so the merge
 itself closes the ticket: the closure becomes a mechanism instead of prose somebody has to
 read and act on. It works across repositories when the PR targets its
 own repository's default branch and the author can write to the tracker.
@@ -92,9 +93,9 @@ left open too long gets its work done twice.
 leaves its ticket closed — reopening is by hand. A reference missing its owner half resolves
 against the repository the PR sits on rather than the tracker, and a PR targeting anything
 other than its own repository's default branch fires the keyword at nothing at all. Both fail
-silently, which is why the wrap-up gate checks the keyword, the number, the owner half and
-the base rather than the presence of a line — `../bin/tk-closure-check <id> --pr <n>` asks
-the four.
+silently, which is why the wrap-up gate checks the keyword, the number, the owner half, any
+OTHER closing line and the base rather than the presence of a line — `../bin/tk-closure-check
+<id> --pr <n>` asks the five.
 
 **The tracker may be private, and the line names it anyway.** That is the deliberate cost of
 the keyword — the repository's name and the ticket's number become public in the PR body.

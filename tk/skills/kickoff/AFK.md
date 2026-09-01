@@ -165,10 +165,12 @@ lane, whose `pr = none` cell is what keeps the run from opening the per-ticket p
 the **item's distilled contract**: the item, the memory file behind its `[[slug]]` at one hop,
 its handoff; context in none of the three is a missing handoff, named in its own line. A solo run
 also gets its ticket reference for its PR's closing line, composed HERE by
-`../../bin/tk-ticket-ref <id> --closing-line` — exit 3 is the item that has none, and any
-other non-zero is a refusal naming the defect, never a run dispatched without a reference. Count each run by the venue signature
-it returns, never by the flag you passed. On a wave, step 4 stands between the claim and the
-first run.
+`../../bin/tk-ticket-ref <id> --closing-line`, which reads the owner from the clone the item's
+**Repo:** field names — pass `--repo <clone>` when the item names none. Exit 3 is the item
+that HAS no ticket; exit 1 is a refusal naming the defect and its remedy; exit 2 is a run that
+could not be made at all. None of the three is a run dispatched without a reference. Count
+each run by the venue signature it returns, never by the flag you passed. On a wave, step 4
+stands between the claim and the first run.
 
 **Done when:** every item is claimed or reported held elsewhere, the lane branch exists and is
 pushed before its first ticket goes out, and every run carries a generated contract block and a

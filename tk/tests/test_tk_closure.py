@@ -152,6 +152,14 @@ class Fixture(unittest.TestCase):
              "--default-branch", default, *extra],
             capture_output=True, text=True, env=self.env(), cwd=self.tmp)
 
+    def check_here(self, item, body, base="main", default="main"):
+        """The checker with no `--repo`, for the same reason as `read_here`."""
+        return subprocess.run(
+            [sys.executable, CHECKER, item, "--dir", self.mem,
+             "--body-file", self.body_file(body), "--base", base,
+             "--default-branch", default],
+            capture_output=True, text=True, env=self.env(), cwd=self.tmp)
+
     def stage_gh(self, body, base="main", default="main"):
         with open(os.path.join(self.table, "pr.json"), "w", encoding="utf-8") as f:
             json.dump({"body": body, "baseRefName": base}, f)
@@ -164,6 +172,21 @@ class Fixture(unittest.TestCase):
             return []
         with open(path, encoding="utf-8") as f:
             return [line for line in f.read().splitlines() if line.strip()]
+
+    def read_here(self, *argv):
+        """The reader with NO `--repo` — the invocation the dispatch prose
+        prescribes. The clone is then whatever the item and the cwd say it is,
+        and `cwd` here is a directory that is no clone at all: the position the
+        real workspace root is in, and the one the diagnosis used to misread."""
+        return subprocess.run([sys.executable, READER, *argv, "--dir", self.mem],
+                              capture_output=True, text=True, env=self.env(), cwd=self.tmp)
+
+    def unreadable_repo(self, item):
+        """A **Repo:** field no reader may use — `origin`, which resolves against
+        whoever's cwd reads it. Written by hand because the writer refuses it."""
+        self.write_queue(self.queue_text().replace(
+            "**Born:**", "**Repo:** origin. **Born:**"))
+        return item
 
     def unpairable(self, item):
         """The `[?]` state: a second **Ticket:** in the item's own field chain.
@@ -224,7 +247,7 @@ class TestTheReferenceReader(Fixture):
         self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
         self.assertEqual(run.stdout, "")
         self.assertIn("tracker-unset:", run.stderr)
-        self.assertIn("git config tk.tracker <owner>/<repo>", run.stderr)
+        self.assertIn(f"git -C {self.clone} config tk.tracker <owner>/<repo>", run.stderr)
 
     def test_a_tracker_outside_the_slug_shape_is_refused_not_pasted(self):
         """F4. The value goes through the gate `bin/tracker-gh` applies before
@@ -258,6 +281,71 @@ class TestTheReferenceReader(Fixture):
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(run.stdout, f"{OWNER}/{REPO}#7\n")
 
+    def test_a_path_that_is_not_a_directory_is_refused_before_git_is_asked(self):
+        """D4. `--repo` naming nothing is a defect of the invocation, and the
+        refusal has to say so — `git` answers it with `cannot change to`, which
+        reads as a broken git rather than as a path nobody chose."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = subprocess.run(
+            [sys.executable, READER, item, "--dir", self.mem,
+             "--repo", os.path.join(self.tmp, "no-such-clone")],
+            capture_output=True, text=True, env=self.env(), cwd=self.tmp)
+        self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+        self.assertIn("not-a-repo:", run.stderr)
+        self.assertIn("`--repo`", run.stderr)
+
+    def test_a_directory_that_is_no_clone_is_not_reported_as_a_clone_with_no_key(self):
+        """D4, measured: run where there is no clone at all, the diagnosis read
+        `the clone at . declares no tk.tracker` and prescribed a `git config`
+        nothing there could answer. `git config` cannot tell the two apart — it
+        exits 1 for both — so `rev-parse` is asked once there is no value."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = subprocess.run(
+            [sys.executable, READER, item, "--dir", self.mem, "--repo", self.tmp],
+            capture_output=True, text=True, env=self.env(), cwd=self.tmp)
+        self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+        self.assertIn("not-a-repo:", run.stderr)
+        self.assertNotIn("tracker-unset:", run.stderr)
+
+    def test_a_config_that_could_not_be_read_is_not_an_unset_key(self):
+        """D4's other half. `git config` exits 1 for a key that is not there and
+        128 for a file it cannot parse; configuring a key in a file nothing can
+        read back writes nothing, so the two carry different repairs."""
+        with open(os.path.join(self.clone, ".git", "config"), "a", encoding="utf-8") as f:
+            f.write("this is not a config line\n")
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.read(item)
+        self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+        self.assertIn("config-failed:", run.stderr)
+        self.assertIn("bad config line", run.stderr)
+        self.assertNotIn("tracker-unset:", run.stderr)
+
+    def test_the_clone_comes_from_the_items_own_repo_field_when_no_flag_names_one(self):
+        """D4. The prescribed invocation is bare — `tk-ticket-ref <id>` — and the
+        item is the only thing in it that knows which clone its code lands in."""
+        item = self.add(ticket=f"{REPO}#7", extra=("--repo", self.clone))
+        run = self.read_here(item)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertEqual(run.stdout, f"{OWNER}/{REPO}#7\n")
+
+    def test_an_item_naming_no_clone_and_a_cwd_that_is_none_is_refused_naming_the_gap(self):
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.read_here(item)
+        self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+        self.assertIn("not-a-repo:", run.stderr)
+        self.assertIn("carries no **Repo:** field", run.stderr)
+
+    def test_an_item_whose_repo_field_no_reader_may_use_is_told_apart_from_one_with_none(self):
+        """`origin` resolves against whoever's cwd reads it, so the queue's own
+        reader refuses it — and an item whose address cannot be read is not an
+        item that never named one. The two ask different things of whoever has
+        to name the clone."""
+        item = self.unreadable_repo(self.add(ticket=f"{REPO}#7"))
+        run = self.read_here(item)
+        self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+        self.assertIn("not-a-repo:", run.stderr)
+        self.assertIn("carries a **Repo:** no reader may use", run.stderr)
+
     def test_an_id_no_open_item_carries_is_a_failed_run_not_a_refusal(self):
         self.add(ticket=f"{REPO}#7")
         run = self.read("T404")
@@ -281,7 +369,7 @@ class TestTheClosureChecker(Fixture):
         skipped a check."""
         item = self.add(ticket=f"{REPO}#7")
         run = self.check(item, self.body())
-        for name in ("keyword", "number", "owner", "base"):
+        for name in ("keyword", "number", "owner", "extras", "base"):
             self.assertRegex(run.stdout, rf"(?m)^{name}\s+ok\s")
 
     def test_a_body_closing_another_ticket_is_red_on_number(self):
@@ -345,6 +433,137 @@ class TestTheClosureChecker(Fixture):
                          base="spec/144-lane", default="main")
         self.assertEqual(run.returncode, 1, run.stdout)
         self.assertIn(f"verdict-5: RED for {item} — owner, base", run.stdout)
+
+    def test_a_cited_repository_the_tracker_does_not_name_is_red(self):
+        """D1. The reader REFUSES this item — `Fictional-Owner/tracker-repo` says
+        who owns `tracker-repo` and nothing about who owns `other-repo` — while a
+        hand-written `Fixes Fictional-Owner/other-repo#9` passed every condition,
+        because the owner was checked against the tracker, the repository against
+        the item, and the PAIR against nothing at all."""
+        item = self.add(ticket="other-repo#9")
+        run = self.check(item, self.body(f"{OWNER}/other-repo#9"))
+        self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+        self.assertIn("repo-mismatch:", run.stdout)
+        self.assertIn(f"verdict-5: RED for {item} — ticket", run.stdout)
+
+    def test_a_closing_line_for_another_repository_does_not_count_as_this_ticket(self):
+        """The same pair, read from the body's end: the number matches and the
+        repository does not, so the line closes an issue of somebody else's
+        repository — and it is the repository half that says so."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.check(item, self.body(f"{OWNER}/other-repo#7"))
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, r"(?m)^number\s+FAILED\s")
+        self.assertRegex(run.stdout, r"(?m)^extras\s+FAILED\s")
+
+    def test_a_second_closing_line_closes_a_second_ticket_and_is_red(self):
+        """D2. The forge honours EVERY keyword and reference in a body, not the
+        first one, so an extra closing line closes an extra ticket on merge."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.check(item, f"Fixes {OWNER}/{REPO}#7\n\nCloses Other-Owner/other-repo#8\n")
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, r"(?m)^extras\s+FAILED\s")
+        self.assertIn("Other-Owner/other-repo#8", run.stdout)
+        self.assertIn(f"verdict-5: RED for {item} — extras", run.stdout)
+
+    def test_the_same_two_closing_lines_give_the_same_verdict_in_either_order(self):
+        """D2, measured: reading `honoured[0]` asked which line came FIRST, so
+        one order was green on the owner and the other red — of one body."""
+        item = self.add(ticket=f"{REPO}#7")
+        right = f"Fixes {OWNER}/{REPO}#7"
+        stray = "Closes Other-Owner/other-repo#8"
+        first = self.check(item, f"{right}\n\n{stray}\n")
+        second = self.check(item, f"{stray}\n\n{right}\n")
+        self.assertEqual(first.returncode, second.returncode, first.stdout + second.stdout)
+        self.assertEqual(
+            [line.split()[:2] for line in first.stdout.splitlines() if line[:1].isalpha()],
+            [line.split()[:2] for line in second.stdout.splitlines() if line[:1].isalpha()],
+            first.stdout + "\n---\n" + second.stdout)
+        self.assertIn(f"verdict-5: RED for {item} — extras", first.stdout)
+
+    def test_a_word_the_forge_ignores_still_gets_the_other_conditions_answered(self):
+        """D3. `Fecha <the right reference>` is wrong in exactly ONE way, and the
+        keyword-red path used to return that one row and stop — against the
+        file's own rule that every condition is reported, green or red."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.check(item, self.body(keyword="Fecha"))
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, r"(?m)^keyword\s+FAILED\s")
+        for name in ("number", "owner", "extras", "base"):
+            with self.subTest(row=name):
+                self.assertRegex(run.stdout, rf"(?m)^{name}\s+ok\s")
+        self.assertIn(f"verdict-5: RED for {item} — keyword", run.stdout)
+
+    def test_a_colon_after_the_keyword_is_a_form_the_forge_honours(self):
+        """The forge's own documentation says a keyword may be followed by a
+        colon, so `Fixes: <ref>` closes the ticket — and a pattern demanding
+        whitespace right after the word reports it as no closing line at all."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.check(item, f"What this slice does.\n\nFixes: {OWNER}/{REPO}#7\n")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn(f"verdict-5: GREEN for {item}", run.stdout)
+
+    def test_a_word_merely_ending_in_a_keyword_is_not_one(self):
+        """`Not-fixes <ref>` closes nothing: the forge honours the keyword, not a
+        word that ends in it. Read as a closing line it is a GREEN verdict on a
+        body that closes nothing at all."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.check(item, f"What this slice does.\n\nNot-fixes {OWNER}/{REPO}#7\n")
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, r"(?m)^keyword\s+FAILED\s")
+        self.assertIn("no closing line in the body", run.stdout)
+
+    def test_a_number_spelled_with_leading_zeros_is_not_the_form_that_resolves(self):
+        """`#0007` is not a form the forge's `#N` syntax resolves — the queue says
+        so where it drops the zeros on the way in — so a body spelling it that
+        way fires at nothing, and a comparison through int() calls it the right
+        ticket."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.check(item, self.body(f"{OWNER}/{REPO}#0007"))
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, r"(?m)^number\s+FAILED\s")
+
+    def test_a_re_cased_slug_resolves_to_the_same_repository_and_is_green(self):
+        """Owner and repository are case-insensitive to look up on the forge, so
+        two casings ARE one reference: refusing one would be a red verdict on a
+        line that closes the ticket."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.check(item, f"What this slice does.\n\nfixes fictional-owner/TRACKER-REPO#7\n")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn(f"verdict-5: GREEN for {item}", run.stdout)
+
+    def test_a_bare_reference_is_red_on_owner_and_not_on_the_number(self):
+        """`Fixes #7` names this item's number, and it is the OWNER half that is
+        missing: reporting the number wrong as well would hand a session two
+        repairs for one defect."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = self.check(item, "What this slice does.\n\nFixes #7\n")
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, r"(?m)^number\s+ok\s")
+        self.assertRegex(run.stdout, r"(?m)^owner\s+FAILED\s")
+        self.assertIn("no owner half", run.stdout)
+
+    def test_the_clone_comes_from_the_items_repo_field_here_too(self):
+        """The checker resolves the clone the same way the reader does, through
+        the same function: `--repo`, then the item's **Repo:**, then the cwd."""
+        item = self.add(ticket=f"{REPO}#7", extra=("--repo", self.clone))
+        run = self.check_here(item, self.body())
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn(f"verdict-5: GREEN for {item}", run.stdout)
+
+    def test_a_failed_run_is_spoken_under_the_command_that_made_it(self):
+        """The checker loads the reader as a MODULE, so a message the reader
+        writes down as its own name would tell a session that a command failed
+        which never ran."""
+        item = self.add(ticket=f"{REPO}#7")
+        run = subprocess.run(
+            [sys.executable, CHECKER, item, "--dir", os.path.join(self.tmp, "no-queue"),
+             "--repo", self.clone, "--body-file", self.body_file(self.body()),
+             "--base", "main", "--default-branch", "main"],
+            capture_output=True, text=True, env=self.env(), cwd=self.tmp)
+        self.assertEqual(run.returncode, 2, run.stdout + run.stderr)
+        self.assertIn("tk-closure-check: queue dir not found", run.stderr)
+        self.assertNotIn("tk-ticket-ref:", run.stderr)
 
     def test_an_item_with_no_ticket_is_green_and_the_item_is_quoted(self):
         """The escape verdict 5 honours, and it is the ITEM that gives it: the
@@ -475,10 +694,17 @@ class TestTheMergeGateStatesTheRuleTheCheckerEnforces(unittest.TestCase):
         flat = " ".join(self.text.split()).lower()
         self.assertNotIn("any closing keyword the forge honours counts", flat)
 
-    def test_the_verdict_row_names_the_checker_that_asks_the_four_conditions(self):
+    def test_the_verdict_row_names_the_checker_that_asks_the_conditions(self):
         """The row is where a reader looks up what green means, so the command
         that answers it belongs there and not only in the section below."""
         self.assertIn("tk-closure-check", self.row)
+
+    def test_the_verdict_row_states_the_other_closing_line_condition(self):
+        """The forge honours every keyword in a body, so a second closing line
+        closes a second ticket. The row is what a session reads instead of the
+        checker's help, and a row silent on that condition proves the older,
+        four-condition rule the checker has already left behind."""
+        self.assertIn("OTHER closing line", self.row)
 
 
 if __name__ == "__main__":

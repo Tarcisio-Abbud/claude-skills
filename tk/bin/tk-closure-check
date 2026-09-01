@@ -14,19 +14,39 @@ forge does not honour and passes; an owner half naming another account is
 present, well-formed and wrong. All three merge green and close nothing, or
 close somebody else's issue. The keyword has no undo.
 
-FOUR CONDITIONS, each named in the output and each reported by itself:
+FIVE CONDITIONS, each named in the output and each reported by itself:
 
   keyword   the word in front of the reference is one the forge honours. The set
             is `tk-ticket-ref.KEYWORDS`, and it is ENGLISH — that is the whole
             content of the check.
-  number    the reference is the item's OWN ticket: repository half and number,
-            compared against the item's **Ticket:** field.
+  number    a closing line in the body names the item's OWN ticket, repository
+            half and number both.
   owner     the owner half is present, well-formed under the gate
             `bin/tracker-gh` applies, and is the tracker's own owner. Present
             and wrong is a failure, not a pass.
+  extras    NOTHING ELSE in the body closes anything. The forge honours EVERY
+            keyword-and-reference in a body, not the first one, so a second
+            closing line closes a second ticket on merge — silently, with no
+            undo, and the same two lines in the other order used to give the
+            opposite verdict.
   base      the pull request targets its own repository's default branch. That
             is the condition under which the forge fires the keyword at all: a
             stacked pull request merged into its parent closes nothing, silently.
+
+THE REFERENCE IS COMPOSED, NEVER RE-DERIVED. What the body is compared against is
+the string `tk-ticket-ref` would PRINT for this item — owner and repository from
+the tracker pair, number from the item — so this checker cannot greenlight a
+reference the reader refuses to emit. Measured: an item naming `other-repo#9`
+under the tracker `Owner/tracker-repo` is refused by the reader, because nothing
+says who owns `other-repo`; a hand-written `Fixes Owner/other-repo#9` passed
+every condition, since owner and repository were each checked against a different
+source and the PAIR against none.
+
+ROW NAMES, so that a caller greps for one rather than for prose: the five above,
+plus `ticket` — the pre-condition, that the item's own reference could be
+composed at all — and `item`, the line the escape quotes. Every row reads
+`<name>  <state>  <detail>`, and a detail spanning lines is indented under its
+own column.
 
 THE ITEM DECIDES WHAT COUNTS, NEVER THE BODY ALONE. An item naming no ticket is
 green only when the body closes nothing either — a body that closes something is
@@ -35,7 +55,7 @@ reader may use is red with the remedy named, which is the exit verdict 5 owed
 that state and did not have.
 
 NO NETWORK IN THE OFFLINE MODE. `--pr` asks `gh` through PATH; `--body-file`
-with `--base` and `--default-branch` answers the same four conditions from
+with `--base` and `--default-branch` answers the same five conditions from
 values on hand, which is what makes the check runnable BEFORE the pull request
 exists — the moment when rewriting the body costs nothing.
 
@@ -60,8 +80,8 @@ EXIT_FAILED = 2
 def _load_reader():
     """`tk-ticket-ref` as a module, loaded by path like every suffix-less bin in
     this directory. It owns the item's ticket, the tracker's owner, the shape
-    gates and the keyword set; this file asks it rather than keeping a second
-    copy of any of the four."""
+    gates, the keyword set and the composition of the reference; this file asks
+    it rather than keeping a second copy of any of the five."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tk-ticket-ref")
     loader = importlib.machinery.SourceFileLoader("tk_ticket_ref", path)
     spec = importlib.util.spec_from_loader("tk_ticket_ref", loader)
@@ -77,7 +97,16 @@ reader = _load_reader()
 # reach the checks to be reported as malformed, and a pattern that only matches
 # well-formed slugs would read `Fixes owner|x/repo#1` as a bare `#1` and report
 # the wrong defect.
-MENTION_RE = re.compile(r"(?<![A-Za-z0-9_])([A-Za-z]+)[ \t]+(\S*)#([0-9]{1,9})(?![0-9])")
+#
+# The colon is OPTIONAL and not absent: the forge's own documentation says a
+# keyword may be followed by one, so `Fixes: #7` closes the ticket and a pattern
+# demanding whitespace right after the word reads it as no closing line at all.
+#
+# The lookbehind excludes `-` as well as the word characters, because the forge
+# honours a keyword and not a word ENDING in one: `Not-fixes owner/repo#7` closes
+# nothing, and reading it as a closing line is a green verdict on a body that
+# closes nothing.
+MENTION_RE = re.compile(r"(?<![A-Za-z0-9_-])([A-Za-z]+):?[ \t]+(\S*)#([0-9]{1,9})(?![0-9])")
 
 OK, FAILED = "ok", "FAILED"
 
@@ -106,15 +135,15 @@ def gh(repo, *argv):
              f"{run.stdout.strip()[:200] or 'nothing'}")
 
 
-def pull_request(args):
+def pull_request(args, clone):
     """(body, base, default branch) — from the forge, or from the flags.
 
     `--json` on the read is not a preference: `gh pr view <n>` without it walks
     the classic-Projects GraphQL path and dies on its deprecation notice, which
     `docs/agents/issue-tracker.md` records for this account's `gh`."""
     if args.pr is not None:
-        pr = gh(args.repo, "pr", "view", str(args.pr), "--json", "body,baseRefName")
-        repo = gh(args.repo, "repo", "view", "--json", "defaultBranchRef")
+        pr = gh(clone.path, "pr", "view", str(args.pr), "--json", "body,baseRefName")
+        repo = gh(clone.path, "repo", "view", "--json", "defaultBranchRef")
         default = (repo.get("defaultBranchRef") or {}).get("name") or ""
         if not default:
             fail("the forge named no default branch for this repository, so condition "
@@ -133,12 +162,42 @@ def mentions(body):
     return [(m.group(1), m.group(2), m.group(3)) for m in MENTION_RE.finditer(body)]
 
 
-def owner_verdict(slug, tracker):
+def spell(mention):
+    """One mention, as the body spells it — for a message that names a line."""
+    word, slug, cited = mention
+    return f"`{word} {slug}#{cited}`" if slug else f"`{word} #{cited}`"
+
+
+def aims_at(slug, cited, repo, number):
+    """Does a body's `<slug>#<cited>` aim at the expected `<repo>#<number>`?
+
+    The repository halves are compared case-insensitively, because a forge repo
+    name is case-insensitive to look up — two casings ARE one repository, which
+    is what `tk-queue.canonical_ref` says of the same value.
+
+    The NUMBER is compared as text, against the canonical spelling the reader
+    emits. `#0007` is not a form the forge's own `#N` syntax resolves — the queue
+    says so in as many words where it drops the leading zeros — so a body
+    spelling it that way closes nothing, and reading it as this ticket is a green
+    verdict on a line that fires at nothing.
+
+    An ABSENT repository half aims here too: it is wrong for another reason, and
+    the `owner` row is the one that says which."""
+    half = slug.rpartition("/")[2]
+    return cited == number and (not half or half.lower() == repo.lower())
+
+
+def owner_verdict(slug, wanted):
     """(state, detail) for the owner half of a closing reference.
 
     Four states, and the fourth is the one a presence check cannot see: absent,
     malformed, PRESENT AND WRONG, right. An owner naming another account is a
-    closing line the forge resolves — against that account's repository."""
+    closing line the forge resolves — against that account's repository.
+
+    `wanted` is the owner of the reference `tk-ticket-ref` composed, and the
+    comparison is case-insensitive because a forge account name is
+    case-insensitive to look up: a re-cased owner resolves to the same account,
+    so refusing it would be a red verdict on a line that closes the ticket."""
     owner, sep, _ = slug.partition("/")
     if not sep:
         return "absent", (f"the reference is `{slug}#…`, with no owner half. Resolved "
@@ -147,54 +206,83 @@ def owner_verdict(slug, tracker):
     if not reader.TRACKER_RE.fullmatch(slug):
         return "malformed", (f"the owner-qualified half `{slug}` is not a GitHub slug — "
                              "letters, digits, dot, dash and underscore only, one slash.")
-    wanted = tracker.partition("/")[0]
     if owner.lower() != wanted.lower():
-        return "wrong", (f"the owner half is `{owner}`, and this clone's tracker is owned "
-                         f"by `{wanted}`. It is present and well-formed, which is exactly "
+        return "wrong", (f"the owner half is `{owner}`, and the ticket is owned by "
+                         f"`{wanted}`. It is present and well-formed, which is exactly "
                          "why a presence check passes it: the forge resolves it, against "
                          "somebody else's repository.")
     return "right", owner
 
 
-def conditions(body, base, default, ticket, tracker, label):
-    """[(name, state, detail)] — the four conditions, in a fixed order.
+def conditions(body, base, default, expected, label):
+    """[(name, state, detail)] — the five conditions, in a fixed order.
 
     Every one of them is reported, green or red, and that is deliberate: a gate
     that prints only its failures cannot be told from a gate that skipped a
-    check."""
+    check. It holds in the keyword-red path too, which used to return one row and
+    stop: `Fecha <the right reference>` is wrong in exactly ONE way, and a report
+    that answered only the keyword left a session unable to tell that from a body
+    whose reference is wrong as well.
+
+    ALL the honoured mentions are read, never the first one. The forge fires on
+    every keyword it finds, so the question is two questions — is the right line
+    THERE, and is any OTHER closing line there — and reading `honoured[0]` asked
+    a third one that has no answer: the same two lines in the other order gave
+    the opposite verdict."""
+    line = f"{reader.CLOSING_KEYWORD} {expected}"
+    _, repo, number = split(expected)
     found = mentions(body)
     honoured = [m for m in found if m[0].lower() in reader.KEYWORDS]
-    number = ticket.rpartition("#")[2]
+    # the rows below read the HONOURED lines when there are any and the found
+    # ones when there are none, so that a body under a word the forge does not
+    # honour still gets its number and owner answered: one defect, one repair
+    candidates = honoured or found
+    aimed = [m for m in candidates if aims_at(m[1], m[2], repo, number)]
+    right = [m for m in aimed if owner_verdict(m[1], split(expected)[0])[0] == "right"]
+    subject = (right or aimed or candidates or [None])[0]
+    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)]
 
-    if not honoured:
-        near = [m for m in found if m[2] == number]
-        if near:
-            word = near[0][0]
-            return [("keyword", FAILED,
-                     f"the body says `{word} {near[0][1]}#{near[0][2]}`, and `{word}` is "
-                     "not a keyword the forge honours. The set is English and closed: "
-                     f"{', '.join(reader.KEYWORDS)}. The line cites the right ticket, "
-                     "reads like a closing line, and closes nothing.")]
-        return [("keyword", FAILED,
-                 f"no closing line in the body: nothing reads `<keyword> <ref>` for "
-                 f"{label}'s ticket. The keywords are {', '.join(reader.KEYWORDS)}.")]
-
-    word, slug, cited = honoured[0]
-    out = [("keyword", OK, word)]
-
-    named = f"{slug}#{cited}" if slug else f"#{cited}"
-    repo_half = slug.rpartition("/")[2].lower()
-    wanted_repo = ticket.rpartition("#")[0]
-    if int(cited) != int(number) or (repo_half and repo_half != wanted_repo):
-        out.append(("number", FAILED,
-                    f"the body closes `{named}`; {label} names the ticket `{ticket}`. "
-                    "A body copy-pasted from another slice closes that slice's ticket, "
-                    "and the merge looks exactly like a successful one."))
+    out = []
+    if honoured:
+        out.append(("keyword", OK, subject[0]))
+    elif subject is not None:
+        out.append(("keyword", FAILED,
+                    f"the body says {spell(subject)}, and `{subject[0]}` is not a keyword "
+                    "the forge honours. The set is English and closed: "
+                    f"{', '.join(reader.KEYWORDS)}. The line cites a ticket, reads like a "
+                    "closing line, and closes nothing."))
     else:
-        out.append(("number", OK, f"{wanted_repo}#{number}"))
+        out.append(("keyword", FAILED,
+                    f"no closing line in the body: nothing reads `<keyword> <ref>` for "
+                    f"{label}'s ticket. The keywords are {', '.join(reader.KEYWORDS)}. "
+                    f"The line to paste is `{line}`."))
 
-    state, detail = owner_verdict(slug, tracker)
-    out.append(("owner", OK, detail) if state == "right" else ("owner", FAILED, detail))
+    if aimed:
+        out.append(("number", OK, expected))
+    else:
+        closes = f"; the body closes {', '.join(spell(m) for m in strays)}" if strays else ""
+        out.append(("number", FAILED,
+                    f"no closing line in the body names {label}'s ticket `{expected}`"
+                    f"{closes}. A body copy-pasted from another slice closes that slice's "
+                    f"ticket, and the merge looks exactly like a successful one. The line "
+                    f"to paste is `{line}`."))
+
+    if subject is None:
+        out.append(("owner", FAILED,
+                    "the body carries no reference at all, so there is no owner half to "
+                    f"read. `{line}` is the whole line."))
+    else:
+        state, detail = owner_verdict(subject[1], split(expected)[0])
+        out.append(("owner", OK, detail) if state == "right" else ("owner", FAILED, detail))
+
+    if strays:
+        out.append(("extras", FAILED,
+                    f"the body also closes {', '.join(spell(m) for m in strays)}, which is "
+                    f"not {label}'s ticket. The forge honours EVERY keyword and reference "
+                    "in a body, not the first one, so merging this pull request closes "
+                    "that ticket too — silently, and there is no undo."))
+    else:
+        out.append(("extras", OK, "no other closing line in the body"))
 
     if base != default:
         out.append(("base", FAILED,
@@ -206,10 +294,20 @@ def conditions(body, base, default, ticket, tracker, label):
     return out
 
 
+def split(qualified):
+    """`<owner>/<repo>#<n>` taken apart — the three halves the rows compare."""
+    owner, _, rest = qualified.partition("/")
+    repo, _, number = rest.partition("#")
+    return owner, repo, number
+
+
 def report(rows, label):
+    """The rows, one per line, and the verdict. A detail spanning lines is
+    indented under its own column, so a row is one row to whoever reads it."""
     width = max(len(name) for name, _, _ in rows)
     for name, state, detail in rows:
-        print(f"{name.ljust(width)}  {state}  {detail}")
+        head = f"{name.ljust(width)}  {state}  "
+        print(head + detail.replace("\n", "\n" + " " * len(head)))
     red = [name for name, state, _ in rows if state == FAILED]
     if red:
         print(f"verdict-5: RED for {label} — {', '.join(red)}")
@@ -218,38 +316,62 @@ def report(rows, label):
     return EXIT_GREEN
 
 
+def refused(refusal, label):
+    """A refusal from the reader, as the pre-condition row. The `[?]` item, the
+    unconfigured clone, the path that is no clone and the ticket in another
+    repository all reach verdict 5 the same way: red, with the defect and its
+    remedy named. Verdict 5 had no exit for any of them, which left them
+    permanently red and unactionable."""
+    return report([("ticket", FAILED, f"{refusal.code}: {refusal.message}")], label)
+
+
+def escape(block, body, label):
+    """Verdict 5 for an item that names no ticket — MERGE-GATE's own escape, and
+    it is the ITEM that gives it. Every closing line is named, not the first: a
+    body carrying two of them closes two tickets this item never claimed."""
+    closing = [m for m in mentions(body) if m[0].lower() in reader.KEYWORDS]
+    if closing:
+        return report([("ticket", FAILED,
+                        f"{label} names no ticket, and the body says "
+                        f"{', '.join(spell(m) for m in closing)} — a closing line for a "
+                        "ticket this item never claimed. Drop it, or point the item at "
+                        "that ticket.")], label)
+    # the row below is the quotation the digest is required to show
+    return report([("ticket", OK, f"{label} names no ticket, and the body closes nothing"),
+                   ("item", OK, block.splitlines()[0].strip())], label)
+
+
 def check(args):
     memdir = reader.queue_dir(args.dir)
     block, label = reader.item_block(memdir, args.id)
-    body, base, default = pull_request(args)
 
     try:
         ticket = reader.item_ticket(block, label)
-        tracker = reader.tracker_slug(args.repo)
     except reader.Refusal as refusal:
         if refusal.code != "no-ticket":
-            # the `[?]` item and the unconfigured clone reach verdict 5 the same
-            # way: red, with the defect and its remedy named. Verdict 5 had no
-            # exit for either, which left them permanently red and unactionable
-            print(f"ticket  {FAILED}  {refusal.code}: {refusal.message}")
-            print(f"verdict-5: RED for {label} — ticket")
-            return EXIT_RED
-        closing = [m for m in mentions(body) if m[0].lower() in reader.KEYWORDS]
-        if closing:
-            word, slug, cited = closing[0]
-            print(f"ticket  {FAILED}  {label} names no ticket, and the body says "
-                  f"`{word} {slug}#{cited}` — a closing line for a ticket this item "
-                  "never claimed. Drop it, or point the item at that ticket.")
-            print(f"verdict-5: RED for {label} — ticket")
-            return EXIT_RED
-        # MERGE-GATE's escape, and it is the ITEM that gives it: the line below
-        # is the quotation the digest is required to show
-        print(f"ticket  {OK}  {label} names no ticket, and the body closes nothing")
-        print(f"item    {OK}  {block.splitlines()[0].strip()}")
-        print(f"verdict-5: GREEN for {label}")
-        return EXIT_GREEN
+            return refused(refusal, label)
+        ticket = None
 
-    return report(conditions(body, base, default, ticket, tracker, label), label)
+    # the clone is what `gh` is run in and what declares the owner, so it is
+    # resolved before either is needed — and NOT resolved for an item with no
+    # ticket read from a body on disk, where no clone is asked anything
+    clone = None
+    if ticket is not None or args.pr is not None:
+        try:
+            clone = reader.item_clone(block, label, args.repo)
+        except reader.Refusal as refusal:
+            return refused(refusal, label)
+
+    if ticket is None:
+        return escape(block, pull_request(args, clone)[0], label)
+
+    try:
+        expected = reader.qualify(ticket, reader.tracker_slug(clone, label), label)
+    except reader.Refusal as refusal:
+        return refused(refusal, label)
+
+    body, base, default = pull_request(args, clone)
+    return report(conditions(body, base, default, expected, label), label)
 
 
 def main(argv=None):
@@ -257,15 +379,18 @@ def main(argv=None):
         prog="tk-closure-check",
         description="Verdict 5 of the merge gate: will merging this pull request close "
                     "THIS item's ticket? Checks the keyword, the ticket's identity, the "
-                    "owner half and the base branch, and names the ones that failed.",
+                    "owner half, any OTHER closing line and the base branch, and names "
+                    "the ones that failed.",
         epilog="Exit 0 green · 1 red, the failing conditions named · 2 the run could not "
                "be made.")
     parser.add_argument("id", type=reader.tk_queue.parse_id, metavar="ID",
                         help="the item, as T006, t006, 006 or 6")
     parser.add_argument("--dir", metavar="DIR",
                         help="the queue directory (default: this project's, by cwd)")
-    parser.add_argument("--repo", default=".", metavar="DIR",
-                        help="the clone the pull request lives on (default: .)")
+    parser.add_argument("--repo", metavar="DIR",
+                        help="the clone the pull request lives on and whose `tk.tracker` "
+                             "names the owner (default: the item's **Repo:** field, then "
+                             "the current directory)")
     parser.add_argument("--pr", type=int, metavar="N",
                         help="the pull request number, read through `gh`")
     parser.add_argument("--body-file", metavar="PATH",

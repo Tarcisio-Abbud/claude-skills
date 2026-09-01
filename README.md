@@ -202,14 +202,18 @@ tk/
                                   ceilings it carries as defaults. It measures and does not
                                   judge, so every measurement exits 0
   bin/tk-ticket-ref               a queue item's ticket as `<owner>/<repo>#<n>`, the form a
-                                  closing line needs — number and repository from the item,
-                                  owner from the clone's tracker config through the shape
-                                  gate `bin/tracker-gh` applies. It refuses rather than
-                                  emit an ownerless or guessed reference
+                                  closing line needs — number from the item, owner and
+                                  repository from the tracker config of the clone `--repo`
+                                  names, or the item's own **Repo:** field, through the
+                                  shape gate `bin/tracker-gh` applies. It refuses rather
+                                  than emit an ownerless or guessed reference
   bin/tk-closure-check            verdict 5 of the merge gate, asked of the pull request:
                                   the closing keyword, the ticket's identity, the owner
-                                  half and the base branch, each reported by name. Exit 1
-                                  names the ones that failed
+                                  half, any OTHER closing line in the body and the base
+                                  branch, each reported by name. It compares against the
+                                  reference the reader composes, so it cannot greenlight
+                                  what the reader refuses to emit. Exit 1 names the ones
+                                  that failed
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
