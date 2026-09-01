@@ -53,8 +53,8 @@ sibling scan reads every markdown beside the measured file: a report there is a 
 - An exposition range groups under the rule it explains, its `where` column naming the range.
 - A skill inside a skill earns a splitting suggestion, carrying the `SKILL-MECHANICS` criterion
   that decided it and the consumer that would reach it. The split is a slice of its own.
-- Every target met, and no DROP or MOVE in the table: under its path line the report carries
-  one line, `nothing to prune`. The pruning pass stops there.
+- Every target met, and no DROP, MOVE or CLAUSE in the table: under its path line the report
+  carries one line, `nothing to prune`. The pruning pass stops there.
 
 ## Ranking the marks
 

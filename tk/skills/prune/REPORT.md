@@ -15,7 +15,7 @@ The table carries four columns:
 |---|---|
 | where | the file and the line the sentence sits at |
 | sentence | the sentence, quoted; on a CLAUSE row, the clause alone |
-| verdict | KEEP, MOVE or DROP; or CLAUSE — an instruction or reason cut from a sentence that stays |
+| verdict | KEEP, MOVE, DROP or CLAUSE |
 | why | what the row owes — the run served, the destination with its rewritten pointers, or the reason dropped or cut |
 
 ## Where a MOVE goes
