@@ -49,36 +49,33 @@ terminal and a large one gets the link, but the diff is a courtesy: what authori
 merge is the five verdicts.
 
 **Verdict 3 has a second shape: a type-B criterion** ends at proof ready, because the
-verdict is the user's, and it is GIVEN rather than inferred. The digest displays the proof
-and the one-line claim it carries; the menu then offers the verdict as an option worded to
+verdict is the user's, GIVEN rather than inferred. The digest displays the proof and the
+one-line claim it carries; the menu then offers the verdict as an option worded to
 say what checking it means — "the proof settles it; merge" — never a bare "merge" that
 would read a verdict out of a checkbox. Verdict 3 stays amber until that option is
-checked, so it is never the recommended-first one. The unattended path has nobody to check
-it, which is why it defers.
+checked, so it is never the recommended-first one.
 
 ## Verdict 5, read off the PR body alone
 
 The closing keyword is what makes the merge close the ticket, and it lives in the body
 alone — a ticket linked any other way stays open behind a merged PR. **Run
-`../../bin/tk-closure-check <id> --pr <n>`**, which asks the five below of the fetched body
-and prints one line per condition. Read them here, because the reds are what the digest
-reports; a line that is merely PRESENT proves none of the five. The command reads the clone
-from the item's own **Repo:** field, so pass `--repo <clone>` when the item names none:
+`../../bin/tk-closure-check <id> --pr <n>`**, which asks the five below of the fetched
+body. Read them here, because the reds are what the digest reports; a line that is merely
+PRESENT proves none of the five. It reads the clone from the item's own **Repo:** field,
+so pass `--repo <clone>` when the item names none:
 
 1. **The keyword is one the forge honours.** The set is ENGLISH and closed —
    `close`/`closes`/`closed`, `fix`/`fixes`/`fixed`, `resolve`/`resolves`/`resolved`. A
-   Portuguese `Fecha #n` is present, cites the right ticket, satisfies every check that
-   asks whether a closing line is there, and closes NOTHING.
+   Portuguese `Fecha #n` is present, cites the right ticket, and closes NOTHING.
 2. **The reference is this item's ticket.** Compare it against the one
    `../../bin/tk-ticket-ref <id>` composes — number from the item's own `Ticket:` field,
    repository and owner from the tracker, which is the PAIR and not two halves checked
    apart. A body copy-pasted from the previous slice carries a well-formed closing line
-   for the WRONG ticket: it passes any check that only asks whether a line is there, and
-   the merge then closes a ticket nobody worked on.
+   for the WRONG ticket, and the merge then closes a ticket nobody worked on.
 3. **The owner half is there, and it is the tracker's.** `<repo>#<n>` with no owner
    resolves against the repository the PR sits on, not the tracker — so it closes an
    unrelated issue of that repo, or nothing. An owner naming another account is present,
-   well-formed and wrong, which is the case only an identity check sees.
+   well-formed and wrong — the case only an identity check sees.
 4. **No OTHER closing line is in the body.** The forge honours EVERY keyword and
    reference it finds, not the first one, so a second closing line closes a second ticket
    on merge — silently, and with no undo. An example line quoted in the body counts: the
@@ -91,9 +88,7 @@ from the item's own **Repo:** field, so pass `--repo <clone>` when the item name
 
 **Owner-qualified, the keyword crosses repositories** — a merge here closes a private
 tracker's ticket, by merge commit and by squash alike. The owner half is what makes it
-fire, so condition 3 is the mechanism and not a formality. The pair is what the checker
-compares against: owner AND repository from the tracker, number from the item, so a
-reference the reader would refuse to compose cannot pass the reader's own checker.
+fire, so condition 3 is the mechanism and not a formality.
 
 The escape is **the item, not the session's word for it**: a change that answers to no
 ticket turns verdict 5 green only when the digest quotes the item showing no `Ticket:`
@@ -101,14 +96,12 @@ field. A verdict an agent can satisfy by asserting it is not a verdict.
 
 **An item whose `Ticket:` no reader may use is RED, with its remedy named.** `pack` prints
 `[?]` where the ticket goes. Provenance is add-only — no `edit --ticket` exists — so the
-repair is `tk-queue cancel <id>` and a fresh `add` carrying the right reference.
-`../../bin/tk-ticket-ref <id>` prints it, and until that runs clean the item has no
-closing line to dispatch with.
+repair is `tk-queue cancel <id>` and a fresh `add` carrying the right reference. Until
+`../../bin/tk-ticket-ref <id>` runs clean the item has no closing line to dispatch with.
 
 Verdict 5 is the one red whose remedy costs less than reporting it — rewrite the body and
 it is green in the same breath. Found after the merge instead, it costs a manual close on
-a ticket nobody is looking at any more, and a merge already reverted still leaves its
-ticket closed: the keyword has no undo.
+a ticket nobody is looking at any more, and reverting the merge does not reopen it.
 
 ## The menu, and what stays behind
 
@@ -128,8 +121,7 @@ tk-queue add "<the action>" --class DECISION --deferred "<why it waits for the u
 ```
 
 A merge carries its digest reference (forge link + review status); any other action
-carries the branch/paths involved. It is deferred by choice, not by omission, and the
-script demands that choice in writing.
+carries the branch/paths involved. It is deferred by choice, not by omission.
 
 **Merging a stack, in this order:** retarget each child PR onto the new base BEFORE
 deleting the base branch — deleting it first CLOSES the child — and
@@ -167,8 +159,7 @@ merges by hand, deleting the branch is part of the merge, and the digest says so
 
 **Merge this pull request before the package's solo ones.** `tk-collisions` measures the
 pair — this branch against each solo branch of the same package — because all were cut
-from the same `origin/main` and the forge is blind between two pull requests. Order
-matters beyond the collision: verdict 1 ran on a tree carrying `origin/main` as
+from the same `origin/main`. Order matters beyond the collision: verdict 1 ran on a tree carrying `origin/main` as
 it stood at the tail, so anything merged to main ahead of it leaves that measurement
 stale, and the remedy is to re-run the tail's merge and its step 3 rather than to merge on
 a green line that has aged.
@@ -187,8 +178,8 @@ reverted.** Each keeps something different in the digest:
 **The three acts that follow are the user's, and the digest names them as the user's**:
 revert the item by the name of its merge commit, drop that item's closing line from the
 body so the merge does not close a ticket the revert emptied, and `tk-queue add` the item
-back into the queue. The package performs none of them, and re-running the tail is an
-interactive request of the user's too.
+back into the queue. Re-running the tail is an interactive request of the user's
+too.
 
 ## The strict form (unattended)
 
