@@ -22,17 +22,19 @@ allowlists `docs/prune/*` file by file, the first line; the pre-commit guard is 
 2. **Read the ruler.** Invoke `/mattpocock-skills:writing-for-agents`. Read its
    `SKILL-MECHANICS.md` when frontmatter, invocation or splitting is in play.
 3. **Subtract.** For every rule the skill carries, name the run that reaches it. For an own
-   skill, say also whether such a run has happened since the rule was written.
+   skill, date the file against its newest `docs/` report — `git log -1 --format=%cs` on each.
+   A file younger than the report carries rules with no run on record.
 4. **Tabulate.** A **table unit** is a sentence that instructs, defines a criterion or carries
    inline evidence. So are the `description`, a fenced block a verdict relocates, and an
    **exposition range**: consecutive sentences explaining a rule stated elsewhere. One row each.
 5. **Write.** Save the report and every file the pass wrote — pruned copies, and destinations a
    MOVE created — side by side in the output directory, in the shape `REPORT.md` carries.
 
-Step 3 ends when every rule has a named run. Step 4 ends when every unit, in every file step 1
-read, holds a row. Step 5 ends when the bin reads each file the pass wrote inside the targets
-at its landing address, or names the ceiling it holds and why. The sibling scan reads every
-markdown in the measured file's directory, so a report beside the file counts as a sibling.
+Step 3 ends when every rule has a named run, and an own skill's file is dated against its
+report. Step 4 ends when every unit, in every file step 1 read, holds a row. Step 5 ends when
+the bin reads each file the pass wrote inside the targets at its landing address, or names the
+ceiling it holds and why. The sibling scan reads every markdown in the measured file's
+directory, so a report beside the file counts as a sibling.
 
 ## The table
 
