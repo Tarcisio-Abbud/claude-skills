@@ -43,6 +43,8 @@
 !/docs/prune/docs-audit-report.md
 !/docs/prune/kickoff.md
 !/docs/prune/kickoff-report.md
+!/docs/prune/wrap-up.md
+!/docs/prune/wrap-up-report.md
 
 # The hookify stop rule that this repo's own sessions run under, versioned for the same
 # reason `docs/agents/` is (README, "Layout"): `git worktree add` materialises tracked files
