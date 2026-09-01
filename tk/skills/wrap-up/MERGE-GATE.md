@@ -41,7 +41,7 @@ line each:
 | 2 | **Review** | the review flow ran, and every finding is fixed, or accepted with its justification written down |
 | 3 | **Criterion** | the item's criterion was re-run here and passed |
 | 4 | **Reversal** | the way back is named in one line (revert, flag, restore) |
-| 5 | **Closure** | the PR body carries a closing line whose `<n>` is **the ticket this item names**, owner half and all, and the PR targets its own repository's default branch — or the item names no ticket, and the digest quotes the item to show it |
+| 5 | **Closure** | the PR body carries a closing line under an English keyword the forge honours — `Fixes`, `Closes`, `Resolves` and their `fix`/`fixed` forms, that set and no other — naming **the ticket this item names**, owner half and all, and the PR targets its own repository's default branch. Owner-qualified, the keyword closes ACROSS repositories. `../../bin/tk-closure-check <id> --pr <n>` asks all four and names the ones that failed. The escape is the item naming no ticket, with the digest quoting it to show that |
 
 Five green → merge is the recommended action. Any red → the digest says which one, and the
 merge is not offered. A small diff (guidance: ≲150 lines) is still shown whole in the
@@ -59,27 +59,42 @@ it, which is why it defers.
 ## Verdict 5, read off the PR body alone
 
 The closing keyword is what makes the merge close the ticket, and it lives in the body
-alone — a ticket linked any other way stays open behind a merged PR. So fetch the body,
-and check three things, because a line that is merely PRESENT proves none of them:
+alone — a ticket linked any other way stays open behind a merged PR. **Run
+`../../bin/tk-closure-check <id> --pr <n>`**, which asks the four below of the fetched body
+and prints one line per condition. Read them here, because the reds are what the digest
+reports; a line that is merely PRESENT proves none of the four:
 
-1. **The number is this item's ticket.** Compare it against the item's own `Ticket:`
+1. **The keyword is one the forge honours.** The set is ENGLISH and closed —
+   `close`/`closes`/`closed`, `fix`/`fixes`/`fixed`, `resolve`/`resolves`/`resolved`. A
+   Portuguese `Fecha #n` is present, cites the right ticket, satisfies every check that
+   asks whether a closing line is there, and closes NOTHING.
+2. **The number is this item's ticket.** Compare it against the item's own `Ticket:`
    field, character by character. A body copy-pasted from the previous slice carries a
    well-formed closing line for the WRONG ticket: it passes any check that only asks
    whether a line is there, and the merge then closes a ticket nobody worked on.
-2. **The owner half is there.** `<repo>#<n>` with no owner resolves against the repository
-   the PR sits on, not the tracker — so it closes an unrelated issue of that repo, or
-   nothing.
-3. **The PR targets its own repository's default branch.** That is the condition under
+3. **The owner half is there, and it is the tracker's.** `<repo>#<n>` with no owner
+   resolves against the repository the PR sits on, not the tracker — so it closes an
+   unrelated issue of that repo, or nothing. An owner naming another account is present,
+   well-formed and wrong, which is the case only an identity check sees.
+4. **The PR targets its own repository's default branch.** That is the condition under
    which the forge fires the keyword at all. A stacked PR merged into its parent branch
    closes nothing, silently, and the merge looks exactly like a successful one. Re-check
    after any retarget: retargeting a child onto the new base is a step this gate already
    performs, and it can turn verdict 5 from green to red without touching the body.
 
+**Owner-qualified, the keyword crosses repositories** — a merge here closes a private
+tracker's ticket, by merge commit and by squash alike. The owner half is what makes it
+fire, so condition 3 is the mechanism and not a formality.
+
 The escape is **the item, not the session's word for it**: a change that answers to no
 ticket turns verdict 5 green only when the digest quotes the item showing no `Ticket:`
-field. A verdict an agent can satisfy by asserting it is not a verdict. Any closing
-keyword the forge honours counts — `Fixes`, `Closes`, `Resolves` — since they are the same
-mechanism; reject a line for its ticket or its shape, never for which word it used.
+field. A verdict an agent can satisfy by asserting it is not a verdict.
+
+**An item whose `Ticket:` no reader may use is RED, with its remedy named.** `pack` prints
+`[?]` where the ticket goes. Provenance is add-only — no `edit --ticket` exists — so the
+repair is `tk-queue cancel <id>` and a fresh `add` carrying the right reference.
+`../../bin/tk-ticket-ref <id>` prints it, and until that runs clean the item has no
+closing line to dispatch with.
 
 Verdict 5 is the one red whose remedy costs less than reporting it — rewrite the body and
 it is green in the same breath. Found after the merge instead, it costs a manual close on
@@ -126,7 +141,7 @@ per item.
 | 2 | **Review** | the package | the one review of the tail's step 2, over the accumulated diff against this pull request's base |
 | 3 | **Criterion** | the item | that item's own criterion, re-run on the final tree at the tail's step 3 |
 | 4 | **Reversal** | the item | that item's `T<id>` merge commit, by sha and title: `git revert -m 1 <sha>` is the way back |
-| 5 | **Closure** | the item | the closing line naming that item's ticket, under the three checks above — one line per ticket |
+| 5 | **Closure** | the item | the closing line naming that item's ticket, under the four checks above — one line per ticket, one `tk-closure-check` run per item |
 
 **Verdict 1 names the tree it ran on and where main stood.** The two shas are what let the
 user tell a measurement of what the merge will produce from a measurement of something

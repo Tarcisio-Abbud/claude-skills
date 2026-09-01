@@ -164,8 +164,9 @@ verbatim from `../../bin/tk-contract --role <row>` — `implementer`, or `implem
 lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull request — and
 the **item's distilled contract**: the item, the memory file behind its `[[slug]]` at one hop,
 its handoff; context in none of the three is a missing handoff, named in its own line. A solo run
-also gets its ticket reference with the owner half resolved HERE (`git config tk.tracker`) for
-its PR's closing line, or is dispatched saying it has none. Count each run by the venue signature
+also gets its ticket reference for its PR's closing line, composed HERE by
+`../../bin/tk-ticket-ref <id> --closing-line` — exit 3 is the item that has none, and any
+other non-zero is a refusal naming the defect, never a run dispatched without a reference. Count each run by the venue signature
 it returns, never by the flag you passed. On a wave, step 4 stands between the claim and the
 first run.
 
