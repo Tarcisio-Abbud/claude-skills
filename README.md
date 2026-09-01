@@ -21,7 +21,7 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a **digest** — what is being merged, and whether it may be, then the five verdicts of **safe-to-merge**), and one explicit recommendation (/clear, /compact, /tk:docs-audit). An item survives into the queue only under one of three **survival gates** — decision · effort · dependency — and records which one; what passes none is resolved in the session. The close follows a **fixed template** (`tk/skills/wrap-up/REPORT.md`), which wins over any response-style preference. Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
-| `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal that sends a repeated mechanism to the user; and the attack inventory it ships whether or not it found anything — model-invoked. Prose gets the mandatory review only. The site names the trigger items and the provenance of every threshold in `~/.claude/tk/review.md` |
+| `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal that sends a repeated mechanism to the user; and the attack inventory it ships whether or not it found anything — model-invoked. Prose an agent follows takes the mandatory review alone, with ONE exception — where the changed paragraphs prescribe commands, a lens may fire, and it reports only what RUNNING a prescribed command proved. The site names the trigger items and the provenance of every threshold in `~/.claude/tk/review.md` |
 | `/tk:second-opinion` | A fresh Fable subagent judges what the session is discussing right now, from a prompt written for a cold reader. Args: `once` (default) — one verdict; `consensus [turns]` — argued through `SendMessage` until no disputed point remains or the turn budget is spent (default in the skill); a spent budget hands the open points to the user. User-invoked; every run logs the Fable deviation line |
 | `/tk:fleet` | Runs the unattended package of EVERY project on this machine from one command: the roster comes from `tk-roster` and the site file's `fleet-allow`/`fleet-deny`, the machine's local subagent ceiling is divided across the runs by the generated contract block, and one full orchestrator per project runs at `--budget 1`. Largest project first; a slot refills the moment a run returns, with no wait for the wave; a project that fails fails alone. Closes on one consolidated vista in the outbox, gated by `tk-vista-check`. The load is a parameter — `afk` by default, `docs-audit` for a documentation sweep. User-invoked |
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
@@ -271,14 +271,22 @@ docs/agents/                      what the mattpocock engineering skills read; v
   issue-tracker.md                where the issues live and how to reach them, with the
                                   private half resolved from local git config
   triage-labels.md                the five triage roles, mapped to label strings
-docs/prune/                       pruning baselines: what the skills of this plugin and of
-                                  `mattpocock-skills` measure, and the gap between them
+docs/prune/                       the pruning track's committed output: the baselines —
+                                  what the skills of this plugin and of `mattpocock-skills`
+                                  measure, and the gap between them — and one pair of files
+                                  per skill already pruned
   baseline.py                     lays a baseline out from the bin's `--json --targets`; it
                                   measures nothing itself, which is why it is here and not
                                   in `tk/bin`
   baseline-<date>.md              one run. Named file by file in `.gitignore`, like the
                                   block above: a pruning report on a PRIVATE skill must not
                                   reach this public repo
+  <skill>-report.md               one pruning pass over an own skill: the metrics before and
+                                  after, the KEEP / MOVE / DROP table, the splitting
+                                  suggestions and the named proof
+  <skill>.md                      what that pass removed from that skill — every DROPped
+                                  sentence and every cut clause, kept where a reader looking
+                                  for a retired rule can still find it
 .claude/                          this repo's own agent config; versioned for the reason
                                   given below, and named file by file in `.gitignore` like
                                   the two blocks above
