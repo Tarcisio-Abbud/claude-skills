@@ -35,7 +35,8 @@ A consumer that copies the values into itself has forked the policy — read the
 - Columns, in this order: **role**, **model**, **effort**, **venue**, **pr**, **checkpoint**,
   **note**.
   - `role` — the lookup key. Lowercase kebab, stable: renaming one is a breaking change.
-  - `model` — `sonnet`, `haiku`, or `parent` (the orchestrator's own model).
+  - `model` — `sonnet`, `haiku`, `opus`, or `parent` (the orchestrator's own model; no row uses
+    it today — a role that must follow the session's model says so here first).
   - `effort` — `session` (inherits the session's effort) or `high` (pinned, overrides it).
   - `venue` — `local` or `cloud`.
   - `pr` — `opens` when the role's own work lands as a pull request it authors, `none` when
@@ -56,15 +57,15 @@ A consumer that copies the values into itself has forked the policy — read the
 |---|---|---|---|---|---|---|
 | audit-finder | sonnet | session | local | none | none | Adversarial lens over the work; dispatch one agent per lens. |
 | verifier-1 | sonnet | session | local | none | none | Refutes a finding. A finding that would edit a spec or a ticket goes on to verifier-2. |
-| verifier-2 | parent | high | local | none | none | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
-| tiebreak | parent | high | local | none | none | Settles a split verdict. Effort is pinned. |
-| implementer | parent | session | local | opens | required | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
-| implementer-spec | parent | session | local | none | required | A package item on a spec's accumulated lane. The orchestrator owns that branch's pull request and writes its body, so this role opens none and hands back its pushed branch. Same downgrade as implementer. |
-| fixer | parent | session | local | none | required | Applies a correction cycle's confirmed findings, and resolves a conflict marker the tail's merge of `origin/main` left, with both sides as context. Commits into a branch someone else opened the pull request on; where the correction belongs to one item, `T<id>:` leads the commit title, so the user's revert of that item carries it. No mechanical downgrade: a marker is the one thing here that is never fully specified. |
-| research | sonnet | session | cloud | none | none | Rises to parent when the question turns on fine judgement. Log the rise. |
+| verifier-2 | opus | high | local | none | none | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
+| tiebreak | opus | high | local | none | none | Settles a split verdict. Effort is pinned. |
+| implementer | opus | session | local | opens | required | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
+| implementer-spec | opus | session | local | none | required | A package item on a spec's accumulated lane. The orchestrator owns that branch's pull request and writes its body, so this role opens none and hands back its pushed branch. Same downgrade as implementer. |
+| fixer | opus | session | local | none | required | Applies a correction cycle's confirmed findings, and resolves a conflict marker the tail's merge of `origin/main` left, with both sides as context. Commits into a branch someone else opened the pull request on; where the correction belongs to one item, `T<id>:` leads the commit title, so the user's revert of that item carries it. No mechanical downgrade: a marker is the one thing here that is never fully specified. |
+| research | sonnet | session | cloud | none | none | Rises to opus when the question turns on fine judgement. Log the rise. |
 | review | sonnet | session | cloud | none | none | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
 | explore | haiku | session | local | none | none | Pure search and file location, no verdict. |
-| fleet-orchestrator | parent | session | local | opens | required | One project's whole package, dispatched by the fleet at `--budget 1`. Its wrap-up versioning gate opens that package's pull requests, so the closing line rides with it wherever the item names a tracker ticket. Local by construction: its queue is auto-memory, which no pushed repo carries. |
+| fleet-orchestrator | opus | session | local | opens | required | One project's whole package, dispatched by the fleet at `--budget 1`. Its wrap-up versioning gate opens that package's pull requests, so the closing line rides with it wherever the item names a tracker ticket. Local by construction: its queue is auto-memory, which no pushed repo carries. |
 <!-- /tk:roles -->
 
 ## The closing line
@@ -160,7 +161,9 @@ remotes that never left the machine.
 ## Fable is a session choice
 
 Fable stays out of the table: it is the model a human picks for their own session, not a tier an
-orchestrator assigns. One exception, and it holds only with all three locks closed:
+orchestrator assigns. Since 2026-09-02 no row resolves to `parent`, so a session opened on
+Fable does not carry its model into a package: implementer, fixer and verdict roles are pinned
+to `opus`. One exception, and it holds only with all three locks closed:
 
 1. The question is a **high-level design decision within the agent's own authority** — a verdict
    or a spec decision reserved to the human stays with the human.
