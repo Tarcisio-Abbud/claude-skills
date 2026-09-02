@@ -162,8 +162,9 @@ remotes that never left the machine.
 
 Fable stays out of the table: it is the model a human picks for their own session, not a tier an
 orchestrator assigns. Since 2026-09-02 no row resolves to `parent`, so a session opened on
-Fable does not carry its model into a package: implementer, fixer and verdict roles are pinned
-to `opus`. One exception, and it holds only with all three locks closed:
+Fable does not carry its model into a package: implementer, implementer-spec, fixer, verifier-2,
+tiebreak and fleet-orchestrator are pinned to `opus`. One exception, and it holds only with all
+three locks closed:
 
 1. The question is a **high-level design decision within the agent's own authority** — a verdict
    or a spec decision reserved to the human stays with the human.
