@@ -2,6 +2,7 @@
 name: kickoff
 description: "Session opening — mirror of /tk:wrap-up: gathers the project's pending items, verifies each against reality, triages and dispatches what the user checks. Args: afk, pack (unattended package), --budget N (orchestrator generations)"
 disable-model-invocation: true
+argument-hint: "[afk|pack] [--budget N]"
 ---
 
 A **kickoff** opens the session that `/tk:wrap-up` closed: it builds the **agenda** of the

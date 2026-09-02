@@ -1,8 +1,8 @@
 ---
 name: second-opinion
-description: "Second opinion from a fresh Fable subagent on what the session is discussing right now — once, or argued to consensus within a turn budget."
+description: "Second opinion from a fresh Fable subagent on what the session is discussing right now — argued to consensus within a turn budget, or a single verdict."
 disable-model-invocation: true
-argument-hint: "[once|consensus] [turns]"
+argument-hint: "[consensus|once] [turns]"
 arguments: mode turns
 ---
 
@@ -11,7 +11,7 @@ the evidence, not the hours the session spent arriving at its position. That is 
 it is why the opinion comes from a **fresh** subagent on `fable` — a fork would inherit this
 context and its blind spots.
 
-Arguments: `$mode` is `once` (empty defaults to it) or `consensus`; any other value, stop and
+Arguments: `$mode` is `consensus` (empty defaults to it) or `once`; any other value, stop and
 show the hint. `$turns` is the **turn budget** for `consensus`: the number of subagent replies,
 the first opinion included; empty defaults to 3.
 

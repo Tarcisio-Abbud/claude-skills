@@ -2,6 +2,7 @@
 name: wrap-up
 description: "Session close before /compact or /clear: resolves pendings, updates memory and docs, runs tests, settles every commit/push/merge in one gate, reports on a fixed template. Arg: afk (unattended, strict merge)"
 disable-model-invocation: true
+argument-hint: "[afk]"
 ---
 
 A **wrap-up** leaves the external state (memory + docs + tests + version control)
