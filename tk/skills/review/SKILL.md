@@ -52,8 +52,8 @@ Where the slice has no PR, the item's note carries it.
 
 Check that the window fits (§5). Announce the **firing receipt**: the item hit, the base, the
 estimated cost. Fire **one** subagent, on the tier the site extension names, at
-`effort: "high"`; where no site names one, the parent's own model is the tier. Findings live in
-the parent's context, so the parent fires it directly. Pick the angle from the slice's class,
+`effort: "high"`; where no site names one, the tier is `opus`. Findings live in the
+parent's context, so the parent fires it directly. Pick the angle from the slice's class,
 `system` by default: a slice matching two rows, or none of them cleanly, takes it.
 
 | Slice class | Angle |
