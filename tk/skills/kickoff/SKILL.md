@@ -30,20 +30,20 @@ commit of their own; safe to run twice, and it asks nothing. Report it in one or
 could not audit and carry on. Exit 2: the run did not happen — the audit is unread, not clean.
 
 Sources, in this order: **`next-steps.md`** in the project's auto-memory — the canonical
-queue (contract: `../../reference/queue.md`); absent it (first kickoff), the memory files
+queue (`../../reference/queue.md`); absent it (first kickoff), the memory files
 the index flags as having pending items. Then **open issues and PRs** (`gh issue list`,
 `gh pr list`) when there is a tracker, then the site extensions' sources. Wiki and repo
 docs are NOT agenda sources — a pending item found there is stale doc, not queue.
 
-**Every `tk-queue` call carries `--dir "<queue dir>"`.** Without it the script resolves from the
-cwd, which an earlier `cd` retargets to another project's queue. A `--help` call takes no
-`--dir`.
+**Every `tk-queue` call carries `--dir "<queue dir>"`** — the queue dir
+`../../reference/queue.md` addresses. Without it the script resolves from the cwd, which an
+earlier `cd` retargets to another project's queue. A `--help` call takes no `--dir`.
 
 **Open with what left the queue this week:**
 `tk-queue report --dir "<queue dir>" --since <today minus 7 days>` (`../../bin/tk-queue`; a
 literal `YYYY-MM-DD`), shown as a short block — context, not agenda: it catches an item about
 to be re-opened by mistake. A single-project session leaves `--all` off; the sweep is for a
-session opened over several projects, paid against the planning threshold (`WINDOW.md`, *The
+session over several projects, paid against the planning threshold (`WINDOW.md`, *The
 two planning seams*). No lines → the week was quiet, one line.
 
 **Done when:** the hygiene result is in the report, and the user saw the week's closed items

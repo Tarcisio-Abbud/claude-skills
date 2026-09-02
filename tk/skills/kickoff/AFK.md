@@ -6,10 +6,9 @@ session running a package is an **orchestrator**: it claims, dispatches, verifie
 implements nothing inline. Every run takes its model, effort and venue from the role table in
 `../../reference/subagent-policy.md`, which also fixes the one-line format a departure costs.
 While the package runs the orchestrator ALONE writes the queue, and **every `tk-queue` call
-below names its queue**: `--dir "<queue dir>"`. Without the flag the script resolves its target
-from the cwd. An earlier `cd` in this session moves that cwd, and the write then lands in
-another project's memory dir reporting success. A `--help` call reads no queue and takes no
-`--dir`.
+below carries `--dir "<queue dir>"`** — the queue dir `../../reference/queue.md` addresses.
+Without it the script resolves from the cwd, which an earlier `cd` retargets to another
+project's queue. A `--help` call takes no `--dir`.
 
 **Read `WINDOW.md` beside this file before anything below runs** — the quota wall and the handoff
 it demands, the checkpoint invariant, the context threshold at every seam, the five `--state`

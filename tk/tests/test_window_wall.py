@@ -38,7 +38,15 @@ sibling sites that prescribe the same procedure; those are held by review. And i
 whether the prose is USEFUL: a step whose wording is faithful and unreadable passes.
 
 The only edits made to the prescribed command before running it: the metavariables the step
-writes as `"<id>"` and `"..."`, and the `--dir` the fixture attaches (`queue_fixture.py`).
+writes as `"<id>"`, `"<queue dir>"` and `"..."`.
+
+WHY THE QUEUE FLAG IS ASSERTED ON THE ARGV AND NOT ON THE RUN. The step now writes
+`--dir "<queue dir>"` itself, and the fixture attaches a `--dir` of its own to every
+invocation (`queue_fixture.py`). So the run SUCCEEDS whether or not the prose names the
+queue, and no assertion downstream of the fixture can tell the two apart — a suite asserting
+only that the command runs would stay green with the flag deleted, which is the defect this
+file's `--dir` entry in `mutations_window_wall.py` puts back. The flag is therefore asserted
+on the argv the prose produced, before the fixture is reached.
 """
 
 import os
@@ -212,6 +220,21 @@ class WallStep2Test(QueueFixture):
             with self.subTest(wording=faithful):
                 self.assertTrue(instructs_the_printed_edit(faithful),
                                 "a faithful rewrite of the instruction reads as absent")
+
+    def test_the_prescribed_command_names_the_queue_it_writes(self):
+        """Which project's queue the wall writes is decided by `--dir`, not by the cwd.
+
+        Without the flag `tk-queue` resolves its target from the cwd, and an earlier `cd`
+        in the session retargets it to another project's queue while reporting success.
+        """
+        argv = self.prescribed_handoff()
+        self.assertIn("--dir", argv,
+                      "the wall's step 2 prescribes a handoff that does not name its queue "
+                      "— without `--dir` the script resolves from the cwd, and a run whose "
+                      "cwd moved writes the briefing into another project's queue")
+        self.assertEqual(argv[argv.index("--dir") + 1], "<queue dir>",
+                         "`--dir` is prescribed with no metavariable to fill — the reader "
+                         "is given a path that is not theirs, or none at all")
 
     def test_the_prescribed_command_carries_the_mandatory_fields_in_rendered_order(self):
         """A reader fills three identical `"..."` left to right."""
