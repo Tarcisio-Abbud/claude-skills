@@ -113,5 +113,5 @@ lines, no rule dropped and the lock untouched. `G:` cites
 | G:209 | "exactly as a type-B item defers it" — the type-B case is the bullet above it |
 
 **Note — no verdict:** G:213–220, the 101-word "Done when", was split into four sentences
-with its clauses intact. G:47–49, G:18–20, G:133–136, G:152–158 and G:190–194 were
-reworded around the cuts above.
+with its clauses intact. G:18–20, G:47–49, G:152–158 and G:190–194 were reworded around
+the cuts above.
