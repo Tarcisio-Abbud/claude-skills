@@ -15,6 +15,7 @@ contents of an accumulated lane, the two vehicles that open a successor generati
 Those rules fire at moments the steps below do not choose. Read this file by section, never end
 to end: what a step defers is its BODY, not its existence. A session finding, at any step, takes
 *A session finding, unattended* below.
+A solo item's pull request and the lane's alike take *The fixer cap* below.
 
 ## A resumed generation starts here
 
@@ -279,13 +280,8 @@ rewrites anything pushed. In order:
    `../../reference/slice-rules.md` "Before the PR", Spec reading the lane's own tickets, body
    AND comments; code takes the lens first, the two axes after. A `fixer` applies confirmed
    findings and pushes, `T<id>` leading a fix that belongs to one item; a finding nobody here can
-   close goes to the digest, and the pull request waits on it. **A tooling repo — one whose code
-   handles no business data — gets ONE correction cycle per pull request**: whatever a re-review
-   finds after that cycle enters the queue by `tk-queue add`, class per the finding's nature, as
-   *A session finding, unattended* prescribes, and no second correction cycle runs in this
-   package. The close's verdict 2 counts a finding queued this way as handled, never as one no
-   fixer could close, so the pull request does not wait on it. A repository handling business
-   data is uncapped.
+   close goes to the digest, and the pull request waits on it. *The fixer cap* decides how many
+   correction cycles this review runs.
 3. **The whole suite and every lane criterion, on the final tree**, tip and `origin/main` shas
    recorded for the digest's Tests line. A red criterion is reported with the merges that landed
    after its item, never repaired by reverting; the closed items stay closed.
@@ -323,6 +319,14 @@ close owns committing and pushing before any review, the five verdicts of safe-t
 items merge unattended, and the closing template.
 **Done when:** the wrap-up reached its own "Done when" — or it did not run, and the report names
 the step that stopped the package and the state the tree was left in.
+
+## The fixer cap
+
+**A tooling repo — one whose code handles no business data — gets ONE correction cycle per pull
+request.** Whatever a re-review finds after that cycle enters the queue by `tk-queue add`, class
+per the finding's nature, as *A session finding, unattended* prescribes. The close's verdict 2
+counts a finding queued this way as handled, never as one no fixer could close, so the pull
+request does not wait on it. A repository handling business data is uncapped.
 
 ## A session finding, unattended
 
