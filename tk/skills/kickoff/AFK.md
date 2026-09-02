@@ -5,9 +5,11 @@ Both build the same **package** — the largest set of queue items this session 
 session running a package is an **orchestrator**: it claims, dispatches, verifies and closes, and
 implements nothing inline. Every run takes its model, effort and venue from the role table in
 `../../reference/subagent-policy.md`, which also fixes the one-line format a departure costs.
-While the package runs the orchestrator ALONE writes the queue: `tk-queue` resolves its target
-from the cwd, and a run calling `done` from a worktree writes into another project's memory dir
-whenever that cwd collides with one.
+While the package runs the orchestrator ALONE writes the queue, and **every `tk-queue` call
+below names its queue**: `--dir "<queue dir>"`. Without the flag the script resolves its target
+from the cwd. An earlier `cd` in this session moves that cwd, and the write then lands in
+another project's memory dir reporting success. A `--help` call reads no queue and takes no
+`--dir`.
 
 **Read `WINDOW.md` beside this file before anything below runs** — the quota wall and the handoff
 it demands, the checkpoint invariant, the context threshold at every seam, the five `--state`
@@ -28,9 +30,9 @@ alone: it does not claim (a second claim of an inherited item is refused, even u
 label), does not re-run the `git ls-remote` check (the branch it would find is this package's own
 lane), and creates no branch.
 
-**Read the handoff whole before anything else** — `tk-queue done "<id>"` deletes the briefing of
-the item it closes, and nothing below re-reads the file. Then four beats in order, each reading a
-tree the one before it settled:
+**Read the handoff whole before anything else** — `tk-queue done "<id>" --dir "<queue dir>"`
+deletes the briefing of the item it closes, and nothing below re-reads the file. Then four beats
+in order, each reading a tree the one before it settled:
 
 **Reset.** Where the lane's worktree is gone, recreate it: `git worktree prune`, then
 `git worktree add --track -B "spec/<m>-<slug>" "<path>/spec-<m>" "origin/spec/<m>-<slug>"` —
@@ -52,20 +54,22 @@ is load-bearing — unbounded, the list carries `main`'s own history) against
 predecessor died before its `gh pr create` — open it with step 5 stage 6's command and body.
 
 **Close** every item whose merge is on the tip: the leading `T<id>` of each merge title (a title
-with none — the tail's merge of `origin/main` — closes nothing), then `tk-queue list` per id. An
-item still open AND under an inherited claim closes with `tk-queue done "<id>" --how "PR #<n>"` —
-the claim is half the test, since `done` on an item claimed by another owner succeeds silently,
-and that item is a sibling's. The tip decides over the handoff's item→merge map wherever they
-disagree. Then write a fresh handoff — the closes just deleted the old briefing — and run the
-`edit` it prints (`../verify/SKILL.md`, *The item points at the briefing*).
+with none — the tail's merge of `origin/main` — closes nothing), then
+`tk-queue list --dir "<queue dir>"` per id. An item still open AND under an inherited claim
+closes with `tk-queue done "<id>" --dir "<queue dir>" --how "PR #<n>"` — the claim is half the
+test, since `done` on an item claimed by another owner succeeds silently, and that item is a
+sibling's. The tip decides over the handoff's item→merge map wherever they disagree. Then write
+a fresh handoff — the closes just deleted the old briefing — and run the `edit` it prints
+(`../verify/SKILL.md`, *The item points at the briefing*).
 
 **Re-dispatch** the item in flight from its pushed WIP branch, into its surviving worktree, else
 `git worktree add --track -B "spec/<m>/T<id>" "<path>/T<id>" "origin/spec/<m>/T<id>"` — never
 `git worktree remove --force`, which discards exactly what the invariant keeps. Never re-dispatch
-an id the close just closed or `tk-queue list` no longer shows open: on a stale name the lane
-ends with two merges of one item, and `git revert -m 1` on either leaves the other's copy in. An
-item the handoff shows green owes no run — it enters step 5's cycle at stage 1. A branch never
-pushed, or with no commits past the lane's tip, is dispatched fresh, as step 3 does a ticket.
+an id the close just closed or `tk-queue list --dir "<queue dir>"` no longer shows open: on a
+stale name the lane ends with two merges of one item, and `git revert -m 1` on either leaves the
+other's copy in. An item the handoff shows green owes no run — it enters step 5's cycle at stage
+1. A branch never pushed, or with no commits past the lane's tip, is dispatched fresh, as step 3
+does a ticket.
 
 Then the package carries on: step 3's dispatch sends what the claims still hold, and step 5's
 tail runs after the last of them — budget both as work remaining. A death during the tail is
@@ -83,12 +87,13 @@ here reopens an item, reverts a merge or rewrites anything pushed.
 
 ## 1. Build the package
 
-`tk-queue pack` (`../../bin/tk-queue`) hands over the candidates: eligible items in queue order,
-every exclusion with the value that caused it, each item's LANE, Ticket and `[repo: …]` — filter
-and line shape in `tk-queue pack --help`. What it does not decide is the cut. Re-triage before
-accepting an exclusion: clear an obsolete Risk or Env on the spot
-(`tk-queue edit "<id>" --risk none`), release a dead session's claim (`tk-queue release "<id>"`),
-rewrite a legacy class (`tk-queue edit "<id>" --class AUTONOMOUS` — it replaces the whole class
+`tk-queue pack --dir "<queue dir>"` (`../../bin/tk-queue`) hands over the candidates: eligible
+items in queue order, every exclusion with the value that caused it, each item's LANE, Ticket and
+`[repo: …]` — filter and line shape in `tk-queue pack --help`. What it does not decide is the
+cut. Re-triage before accepting an exclusion: clear an obsolete Risk or Env on the spot
+(`tk-queue edit "<id>" --dir "<queue dir>" --risk none`), release a dead session's claim
+(`tk-queue release "<id>" --dir "<queue dir>"`), rewrite a legacy class
+(`tk-queue edit "<id>" --dir "<queue dir>" --class AUTONOMOUS` — it replaces the whole class
 VALUE, annotations included); re-run `pack` after any of these.
 
 **The lane is elected twice, and the remote decides between the calls.** `pack` reads the queue,
@@ -106,8 +111,8 @@ a clean false negative), and read the exit code, not only the output — an unre
 128, and captured output turns it into "free". A branch that survived its merge still holds the
 lane; the report names it, deletion as the repair. An item printed `[repo: ?]`, or with no address
 you can supply, leaves the package saying so. Then call `pack` again with every hit —
-`tk-queue pack --spec-under-way "<repo>#<n>"`, repeatable — and cut from the SECOND call's list:
-the lane passes to the next spec at the floor of two tickets.
+`tk-queue pack --dir "<queue dir>" --spec-under-way "<repo>#<n>"`, repeatable — and cut from the
+SECOND call's list: the lane passes to the next spec at the floor of two tickets.
 
 **Cut** from the top of that list until the package fits one session — around 3–6 items or ~2h of
 summed Effort, an opening bid step 6's measurement corrects; what multiplies a lane is the number
@@ -129,12 +134,13 @@ check IS the authorization. (`afk` skips this step: invoking it IS the authoriza
 
 ## 3. Claim, then dispatch
 
-**Claim every item before dispatching the first** — `tk-queue claim "<id>" --as afk-host`. A
-second claim is REFUSED naming the owner, and that refusal IS the concurrent-session guard: the
-item enters the report as held elsewhere. The claim leads because tree signals are blind to a
-sibling in the shared main tree; the worktree per run below is the second line — a defence, not a
-check. A package that dies holding claims leaves them behind: `tk-queue release "<id>"` hands one
-back without closing it, printing whose claim it drops.
+**Claim every item before dispatching the first** —
+`tk-queue claim "<id>" --dir "<queue dir>" --as afk-host`. A second claim is REFUSED naming the
+owner, and that refusal IS the concurrent-session guard: the item enters the report as held
+elsewhere. The claim leads because tree signals are blind to a sibling in the shared main tree;
+the worktree per run below is the second line — a defence, not a check. A package that dies
+holding claims leaves them behind: `tk-queue release "<id>" --dir "<queue dir>"` hands one back
+without closing it, printing whose claim it drops.
 
 Recount the floor against the CLAIMED items (demote only), then ask the remote once more — step
 1's `git ls-remote`, for the lane's spec and every `avulso (<ref>)` alike — BEFORE creating
@@ -199,18 +205,19 @@ the fixture its criterion runs against?
 
 Exactly one outcome per surviving finding: **resolve here** — the correction fits the spec or the
 tickets, the orchestrator edits them recording what the text said before (correcting the audited
-documents, not the resolving the session-finding ladder forbids); **backlog** — `tk-queue add`
-with the gate named, as *A session finding, unattended* prescribes; **refuted** — one line naming
-the verifier and how; **REGRILL** — the spec's own premise is hit, and the package halts with no
-run fired. A **rotten criterion** (term: `../verify/SKILL.md`) routes by which document is wrong:
-the criterion alone misses the promise → resolve here, through `verifier-2` before it is applied;
-criterion and spec agree and together miss → REGRILL.
+documents, not the resolving the session-finding ladder forbids); **backlog** —
+`tk-queue add --dir "<queue dir>"` with the gate named, as *A session finding, unattended*
+prescribes; **refuted** — one line naming the verifier and how; **REGRILL** — the spec's own
+premise is hit, and the package halts with no run fired. A **rotten criterion** (term:
+`../verify/SKILL.md`) routes by which document is wrong: the criterion alone misses the promise →
+resolve here, through `verifier-2` before it is applied; criterion and spec agree and together
+miss → REGRILL.
 
 ```sh
 tk-queue add "REGRILL: <the promise the audit could not close> — package halted before the first implement" \
-  --class DECISION --deferred afk --effort "M (~40min)" \
+  --dir "<queue dir>" --class DECISION --deferred afk --effort "M (~40min)" \
   --criterion "B: the user re-grills the promise, and the wave is re-sliced from the spec that grill leaves"
-tk-queue handoff "<id>" --objective "<what the re-grill has to settle>" \
+tk-queue handoff "<id>" --dir "<queue dir>" --objective "<what the re-grill has to settle>" \
   --state "<the finding, its verifier's verdict, and where the spec and the tickets stand>" \
   --blockers "<what the package stopped holding, and every claim it released>"
 ```
@@ -233,8 +240,9 @@ the wave is unaudited.
 The ruler is the item's own criterion and the rite is `../verify/SKILL.md` — read it before the
 first item closes. The caller re-runs the proof on the final tree, never taking the run's account
 for it; an empty return is a failed attempt; the three attempts and four outcomes are verify's
-own. An approved solo item leaves the queue here — `tk-queue done "<id>" --how "<pointer>"` — and
-an item verify turned into a DECISION stays, carrying its handoff.
+own. An approved solo item leaves the queue here —
+`tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>"` — and an item verify turned into a
+DECISION stays, carrying its handoff.
 
 A lane item is verified BEFORE it reaches the shared branch — one cycle per item, every stage the
 orchestrator's own work, in order:
@@ -255,9 +263,9 @@ orchestrator's own work, in order:
    (`gh pr create --draft --base main`). The body is the orchestrator's and nobody else writes
    it: per closed item it gains `Fixes <owner>/<repo>#<n>`, one line per ticket; the spec is
    named WITHOUT a keyword, so only the user closes it.
-7. **Close the item last** — `tk-queue done "<id>" --how "PR #<n>"`, after the push and after the
-   pull request exists: the push before the `done` is what lets a resumed generation recover
-   either death shape without losing work or merging an item twice.
+7. **Close the item last** — `tk-queue done "<id>" --dir "<queue dir>" --how "PR #<n>"`, after
+   the push and after the pull request exists: the push before the `done` is what lets a resumed
+   generation recover either death shape without losing work or merging an item twice.
 
 A red item never reaches the lane's branch and the lane does not halt for it: its DECISION names
 its pushed branch, later tickets cut from the unchanged tip, and the report names it beside them.
@@ -326,17 +334,18 @@ the step that stopped the package and the state the tree was left in.
 request.** The cap counts per firing of the review, never for the life of the pull request. No
 second cycle runs against the same firing, and a review re-fired whole by *A resumed generation
 starts here* carries its own. Whatever a re-review finds after that cycle enters the queue by
-`tk-queue add`, class per the finding's nature, as *A session finding, unattended* prescribes.
-The close's verdict 2 counts a finding queued this way as handled, never as one no fixer could
-close, so the pull request does not wait on it. A repository handling business data is uncapped.
+`tk-queue add --dir "<queue dir>"`, class per the finding's nature, as *A session finding,
+unattended* prescribes. The close's verdict 2 counts a finding queued this way as handled, never
+as one no fixer could close, so the pull request does not wait on it. A repository handling
+business data is uncapped.
 
 ## A session finding, unattended
 
 The ladder is `../../reference/session-finding.md`, and unattended it has one rung: **queue with
-a gate** — `tk-queue add` at the moment of discovery, the gate in the item's own text, a finding
-only the user can judge entering as a DECISION with `--deferred afk`. No discards and no
-resolving on the spot — the two rungs that need a human, the second being the hydra's own fuel.
-Every finding queued is listed in the close under its gate for the user's veto,
-`tk-queue cancel "<id>" --why "<the veto>"`.
+a gate** — `tk-queue add --dir "<queue dir>"` at the moment of discovery, the gate in the item's
+own text, a finding only the user can judge entering as a DECISION with `--deferred afk`. No
+discards and no resolving on the spot — the two rungs that need a human, the second being the
+hydra's own fuel. Every finding queued is listed in the close under its gate for the user's veto,
+`tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"`.
 **Done when:** the close carries one line per session finding, each matching a queued item with
 its gate named — none discarded, none resolved on the spot.

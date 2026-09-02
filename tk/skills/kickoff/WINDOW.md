@@ -35,10 +35,10 @@ On the first quota failure, in this order:
 
 1. **Stop dispatching.** The runs in flight are already dead; the ones not yet sent stay
    unsent.
-2. **Refresh one handoff** — `tk-queue handoff "<id>" --objective "..." --state "..."
-   --blockers "..."`, in the form `../verify/SKILL.md` prescribes (*Three attempts, then the
-   queue*), **then run the `edit` it prints** (same file, *The item points at the
-   briefing*). That warning goes to stderr at exit 0, and the wall is the moment nobody is
+2. **Refresh one handoff** — `tk-queue handoff "<id>" --dir "<queue dir>" --objective "..."
+   --state "..." --blockers "..."`, in the form `../verify/SKILL.md` prescribes (*Three
+   attempts, then the queue*), **then run the `edit` it prints** (same file, *The item points
+   at the briefing*). That warning goes to stderr at exit 0, and the wall is the moment nobody is
    watching that stream. The id is the item in flight; with nothing in flight, it is the head
    of what the package has left. One handoff, not one per item: the package's remaining state
    has a single home, and a copy per item is a copy to go stale.

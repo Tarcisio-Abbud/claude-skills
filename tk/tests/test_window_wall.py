@@ -141,19 +141,25 @@ def briefing_field(text, heading):
     return (section(text, heading) or "").strip()
 
 
-def fill(argv, iid):
+def fill(argv, iid, memdir):
     """The prescribed argv with its metavariables substituted, BY FLAG.
 
     Positionally would be the bug this suite exists to refuse: three identical
     `"..."` filled left to right land wherever the prose happens to list the flags,
     and nothing downstream would notice. Filled by name, the briefing can then be
     asked whether each value arrived under its own heading.
+
+    `<queue dir>` is filled too: the prose names the queue on every `tk-queue`
+    line, and a literal metavariable left standing would send the run at a
+    directory nothing made.
     """
     out, i = [], 0
     while i < len(argv):
         token = argv[i]
         if token == "<id>":
             out.append(iid)
+        elif token == "<queue dir>":
+            out.append(memdir)
         elif token in VALUE_OF and i + 1 < len(argv) and argv[i + 1] == "...":
             out += [token, VALUE_OF[token]]
             i += 2
@@ -244,7 +250,7 @@ class WallStep2Test(QueueFixture):
     def test_an_ordinary_item_points_at_its_briefing_after_the_prescribed_steps(self):
         """Execute step 2 as written, then ask the queue and the briefing what is there."""
         iid = self.add_ordinary_item()
-        argv = fill(self.prescribed_handoff(), iid)
+        argv = fill(self.prescribed_handoff(), iid, self.mem)
         self.assertNotIn("...", argv, "a placeholder the filler does not know was added")
         self.assertFalse([t for t in argv if re.fullmatch(r"<.+>", t)],
                          "an unfilled metavariable survived the filler")
