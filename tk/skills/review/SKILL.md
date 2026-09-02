@@ -75,8 +75,9 @@ the spot and list them.
 
 A finding that reproduces at the **branch point** is the repo's backlog, not this slice's. Where
 the slice has a ticket, it goes there. Where it has none, ONE item holds every branch-point
-finding of the firing, later ones reaching it by `tk-queue edit --text`. One `tk-queue add` per
-finding is the hydra of `../../reference/session-finding.md`.
+finding of the firing. `tk-queue edit --text` REPLACES the item's text: a later finding reads it
+and writes the union. One `tk-queue add` per finding is the hydra of
+`../../reference/session-finding.md`.
 
 A mismatch between what the program does and what its words say is graded by the **wrong side**.
 A wrong run is a code defect; stale words are prose, fixed on the spot like a nit.
@@ -85,8 +86,7 @@ Defects force a **correction batch**: fix each one, or reject it with a reason s
 finding, recorded in the inventory. A defect has a fourth exit: a `fixer` dispatched on the spot
 (`../../reference/subagent-policy.md`), committing into the slice's branch, its work joining the
 batch. Two conditions hold together: the defect is in THIS session's diff, and it carries a
-criterion a run can check. One dispatch carries every eligible defect of the firing, keeping it
-inside the fixer cap (`../kickoff/AFK.md`).
+criterion a run can check. One dispatch carries every eligible defect of the firing.
 
 That takes the end-of-session tautology out of the effort gate. Late in a session every fix reads
 as too big for the window left. A `fixer` opens a window of its own.
