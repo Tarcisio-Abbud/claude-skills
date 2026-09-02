@@ -110,8 +110,13 @@ branches, PRs to open, PRs awaiting merge. **The gate's whole procedure is
 `MERGE-GATE.md` beside this file — read it whenever that list is non-empty**: the digest,
 its five verdicts of safe-to-merge, the triple check of the closing line, the action
 menu, stack order, and the accumulated lane's per-item form.
+
+**What this session DELIVERED arrives here as an action, never as a new item**. Merging its
+own PR is one line of the list above, and the menu is the authorization. Reclassifying to
+`DECISION` is for an item the session did NOT deliver.
 **Done when:** `MERGE-GATE.md`'s own "Done when" holds — every action executed or an
-explicit DECISION, none merely implied — or the list was empty and that was said.
+explicit DECISION, none merely implied — or the list was empty and that was said. Nothing
+this session delivered sits in the queue.
 
 ## 6. Close: the report, the handoff, and the next step
 
