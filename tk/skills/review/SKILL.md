@@ -69,14 +69,14 @@ Hand the lens the block in `BRIEF.md`, filled in, carrying its angle's attack li
 ## 3. Grade and correct
 
 Reproduce each finding first: lens grades err in both directions. Then grade it by **impact**
-against the base; the size of the fix is not a grade. A **nit** changes nothing a reader or a
-run depends on. Everything else is a **defect**, a one-character boundary bug included. Fix nits
-on the spot and list them.
+against the base; the size of the fix is not a grade. A **nit** changes nothing a reader or a run
+depends on. Everything else is a **defect**, a one-character boundary bug included. Fix nits on
+the spot and list them.
 
-A finding that reproduces at the **branch point** is the repo's backlog, not this slice's. It
-goes to the slice's ticket, or, where there is none, to ONE campaign item holding every
-branch-point finding of this firing. One `tk-queue add` per finding is the hydra of
-`../../reference/session-finding.md`. The inventory names the destination.
+A finding that reproduces at the **branch point** is the repo's backlog, not this slice's. Where
+the slice has a ticket, it goes there. Where it has none, ONE item holds every branch-point
+finding of the firing, later ones reaching it by `tk-queue edit --text`. One `tk-queue add` per
+finding is the hydra of `../../reference/session-finding.md`.
 
 A mismatch between what the program does and what its words say is graded by the **wrong side**.
 A wrong run is a code defect; stale words are prose, fixed on the spot like a nit.
@@ -85,13 +85,16 @@ Defects force a **correction batch**: fix each one, or reject it with a reason s
 finding, recorded in the inventory. A defect has a fourth exit: a `fixer` dispatched on the spot
 (`../../reference/subagent-policy.md`), committing into the slice's branch, its work joining the
 batch. Two conditions hold together: the defect is in THIS session's diff, and it carries a
-criterion a run can check. A defect failing either takes the other exits. That takes the
-end-of-session tautology out of the effort gate. Late in a session every fix reads as too big
-for the window left, however small. A `fixer` brings the window the parent spent.
+criterion a run can check. One dispatch carries every eligible defect of the firing, keeping it
+inside the fixer cap (`../kickoff/AFK.md`).
 
-**The correction batch goes to the repo's mandatory two-axis review, never to another lens**.
-Its brief carries the invariant each finding violated: the spec of a repair is the finding. Where the repo declares a size ceiling for the file, a batch that
-grows it past the ceiling owes a line in the PR body.
+That takes the end-of-session tautology out of the effort gate. Late in a session every fix reads
+as too big for the window left. A `fixer` opens a window of its own.
+
+**The correction batch goes to the repo's mandatory two-axis review, never to another lens**. Its
+brief carries the invariant each finding violated: the spec of a repair is the finding. Where the
+repo declares a size ceiling for the file, a batch that grows it past the ceiling owes a line in
+the PR body.
 
 **A repeated mechanism is a design signal**. Two findings violating the same guard, or a
 correction that writes one statement in one more place, means the next instance is already
@@ -100,8 +103,8 @@ written. An incomplete repair is a correction, not a signal.
 A design signal blocks the merge. The parent takes one question to the user with the findings:
 should the artifact exist as built? Code earns its form where the answer must be identical every
 run or fail loudly; everywhere else the form is prose. The repair that follows the user's call
-consolidates the mechanism into a single source. Unattended, the
-slice is **blocked**: a queue item carrying the findings, through the queue's one writer.
+consolidates the mechanism into a single source. Unattended, the slice is **blocked**: a queue
+item carrying the findings, through the queue's one writer.
 
 **Done when:** every finding carries a grade the parent reproduced, and a fix, a dispatched
 `fixer`, a rejection or a carried-over item naming its destination.
