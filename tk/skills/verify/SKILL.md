@@ -37,10 +37,10 @@ fixture.
 ## The anchor outlives the tree
 
 **A criterion anchors on content, never on a line number or an absolute count** — a reformat
-moves the line, a sibling slice moves the count. Anchor by a grep of the sentence, and write an
-unavoidable count as relative to the tree it runs against. One criterion passed only because a
-reflow refilled line 55, an accident and not a property. Two lane tickets named a fixed 100/122
-while their lane already stood higher, corrected by hand at dispatch.
+moves the line, a sibling slice moves the count. Anchor by a grep of the sentence. Write an
+unavoidable count paired with the sha of the tree it ran on, the shape
+`../wrap-up/MERGE-GATE.md` gives a green suite. A criterion passed only because a reflow
+refilled its line, and two lane tickets named a count their lane had already passed.
 
 ## Prove it can fail
 
