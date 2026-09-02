@@ -323,10 +323,12 @@ the step that stopped the package and the state the tree was left in.
 ## The fixer cap
 
 **A tooling repo — one whose code handles no business data — gets ONE correction cycle per pull
-request.** Whatever a re-review finds after that cycle enters the queue by `tk-queue add`, class
-per the finding's nature, as *A session finding, unattended* prescribes. The close's verdict 2
-counts a finding queued this way as handled, never as one no fixer could close, so the pull
-request does not wait on it. A repository handling business data is uncapped.
+request.** The cap counts per firing of the review, never for the life of the pull request. No
+second cycle runs against the same firing, and a review re-fired whole by *A resumed generation
+starts here* carries its own. Whatever a re-review finds after that cycle enters the queue by
+`tk-queue add`, class per the finding's nature, as *A session finding, unattended* prescribes.
+The close's verdict 2 counts a finding queued this way as handled, never as one no fixer could
+close, so the pull request does not wait on it. A repository handling business data is uncapped.
 
 ## A session finding, unattended
 
