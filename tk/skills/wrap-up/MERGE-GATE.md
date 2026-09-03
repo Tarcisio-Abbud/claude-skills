@@ -15,8 +15,8 @@ comments — in five sections:
 
 1. **Pointers resolved.** Every citation by number arrives with the sentence it names. A
    verdict citing "recommendation 2" is undecidable while the statements live in another
-   artefact, so open that artefact and quote the statement inline. A number whose list
-   stays ambiguous is reported as unresolved, by its number.
+   artefact: open it and quote the statement inline. A number whose list stays ambiguous
+   is reported as unresolved, by its number.
 2. **Proposal → verdict → why**, one row per decision, naming where the field contradicted
    the proposal and which side won.
 3. **Before/after in practice** — what the rule or the code did, and what it does now.
@@ -28,8 +28,7 @@ comments — in five sections:
 **A PR with no trail gets a DEGRADED digest, and says so in its first line** — a commit
 straight to main, an issue nobody opened. Sections 1 and 2 have no source, so they are
 named absent; sections 3 to 5 read off the diff and the repo, which are sources of their
-own. An invented section reads exactly like a sourced one, which is why the absence is
-written down.
+own.
 
 For any PR offered as "merge", the digest adds a per-file summary of the change, the forge
 link, the evidence block from step 4 — and the five verdicts of **safe-to-merge**, one
@@ -45,24 +44,22 @@ line each:
 
 Five green → merge is the recommended action. Any red → the digest says which one, and the
 merge is not offered. A small diff (guidance: ≲150 lines) is still shown whole in the
-terminal and a large one gets the link, but the diff is a courtesy: what authorizes the
-merge is the five verdicts.
+terminal and a large one gets the link, but the diff is a courtesy: the five verdicts are
+what authorize the merge.
 
 **Verdict 3 has a second shape: a type-B criterion** ends at proof ready, because the
 verdict is the user's, GIVEN rather than inferred. The digest displays the proof and the
-one-line claim it carries; the menu then offers the verdict as an option worded to
-say what checking it means — "the proof settles it; merge" — never a bare "merge" that
-would read a verdict out of a checkbox. Verdict 3 stays amber until that option is
-checked, so it is never the recommended-first one.
+one-line claim it carries. The menu then offers the verdict as an option worded to say
+what checking it means — "the proof settles it; merge", never a bare "merge". Verdict 3
+stays amber until that option is checked, so it is never the recommended-first one.
 
 ## Verdict 5, read off the PR body alone
 
-The closing keyword is what makes the merge close the ticket, and it lives in the body
-alone — a ticket linked any other way stays open behind a merged PR. **Run
-`../../bin/tk-closure-check <id> --pr <n>`**, which asks the five below of the fetched
-body. Read them here, because the reds are what the digest reports; a line that is merely
-PRESENT proves none of the five. It reads the clone from the item's own **Repo:** field,
-so pass `--repo <clone>` when the item names none:
+The closing keyword lives in the body alone: a ticket linked any other way stays open
+behind a merged PR. **Run `../../bin/tk-closure-check <id> --pr <n>`**, which asks the
+five below of the fetched body. Read them here, because the reds are what the digest
+reports, and a line that is merely PRESENT proves none of the five. It reads the clone
+from the item's own **Repo:** field, so pass `--repo <clone>` when the item names none:
 
 1. **The keyword is one the forge honours.** The set is ENGLISH and closed —
    `close`/`closes`/`closed`, `fix`/`fixes`/`fixed`, `resolve`/`resolves`/`resolved`. A
@@ -71,24 +68,20 @@ so pass `--repo <clone>` when the item names none:
    `../../bin/tk-ticket-ref <id>` composes — number from the item's own `Ticket:` field,
    repository and owner from the tracker, which is the PAIR and not two halves checked
    apart. A body copy-pasted from the previous slice carries a well-formed closing line
-   for the WRONG ticket, and the merge then closes a ticket nobody worked on.
+   for the WRONG ticket.
 3. **The owner half is there, and it is the tracker's.** `<repo>#<n>` with no owner
    resolves against the repository the PR sits on, not the tracker — so it closes an
    unrelated issue of that repo, or nothing. An owner naming another account is present,
-   well-formed and wrong — the case only an identity check sees.
+   well-formed and wrong — the case only an identity check sees. Owner-qualified, the
+   keyword crosses repositories, by merge commit and by squash alike.
 4. **No OTHER closing line is in the body.** The forge honours EVERY keyword and
    reference it finds, not the first one, so a second closing line closes a second ticket
    on merge — silently, and with no undo. An example line quoted in the body counts: the
    forge does not know it was an example.
 5. **The PR targets its own repository's default branch.** That is the condition under
-   which the forge fires the keyword at all. A stacked PR merged into its parent branch
-   closes nothing, silently, and the merge looks exactly like a successful one. Re-check
-   after any retarget: retargeting a child onto the new base is a step this gate already
-   performs, and it can turn verdict 5 from green to red without touching the body.
-
-**Owner-qualified, the keyword crosses repositories** — a merge here closes a private
-tracker's ticket, by merge commit and by squash alike. The owner half is what makes it
-fire, so condition 3 is the mechanism and not a formality.
+   which the forge fires the keyword at all: a stacked PR merged into its parent branch
+   closes nothing, silently. Re-check after any retarget, a step this gate itself
+   performs — it turns verdict 5 from green to red without touching the body.
 
 The escape is **the item, not the session's word for it**: a change that answers to no
 ticket turns verdict 5 green only when the digest quotes the item showing no `Ticket:`
@@ -99,20 +92,18 @@ field. A verdict an agent can satisfy by asserting it is not a verdict.
 repair is `tk-queue cancel <id>` and a fresh `add` carrying the right reference. Until
 `../../bin/tk-ticket-ref <id>` runs clean the item has no closing line to dispatch with.
 
-Verdict 5 is the one red whose remedy costs less than reporting it — rewrite the body and
-it is green in the same breath. Found after the merge instead, it costs a manual close on
-a ticket nobody is looking at any more, and reverting the merge does not reopen it.
+Verdict 5 is the one red whose remedy costs less than reporting it: rewrite the body and
+it is green. Found after the merge, it costs a manual close, and reverting the merge does
+not reopen the ticket.
 
 ## The menu, and what stays behind
 
-**Review fixes rewrite the PR body.** A PR whose body still describes the version before
-the fixes tells the reviewer something the branch no longer does, so the body is rewritten
-in the same breath as the fix commit.
+**Review fixes rewrite the PR body**, in the same breath as the fix commit: a body still
+describing the version before the fixes tells the reviewer what the branch no longer does.
 
 Then ONE multiSelect `AskUserQuestion` with the actions, recommended first — the check IS
-the authorization (this is how "commit/push only when the user asks" is satisfied).
-Execute what was checked, following the project's conventions (required trailer lines; on
-the default branch, branch first). Every unchecked action enters the queue as a DECISION
+the authorization. Execute what was checked, following the project's conventions
+(required trailer lines; on the default branch, branch first). Every unchecked action enters the queue as a DECISION
 item via the full `add` line, since `--effort` and `--criterion` are required:
 
 ```
@@ -124,9 +115,9 @@ A merge carries its digest reference (forge link + review status); any other act
 carries the branch/paths involved. It is deferred by choice, not by omission.
 
 **Merging a stack, in this order:** retarget each child PR onto the new base BEFORE
-deleting the base branch — deleting it first CLOSES the child — and
-remove the worktrees of the branches in play before the merge round, since
-`--delete-branch` fails on a branch that is still checked out somewhere.
+deleting the base branch — deleting it first CLOSES the child — and remove the worktrees
+of the branches in play before the merge round, since `--delete-branch` fails on a branch
+that is still checked out somewhere.
 
 ## A package's accumulated lane: one pull request, one digest per item
 
@@ -144,25 +135,23 @@ per item.
 | 4 | **Reversal** | the item | that item's `T<id>` merge commit, by sha and title: `git revert -m 1 <sha>` is the way back |
 | 5 | **Closure** | the item | the closing line naming that item's ticket, under the five checks above — one line per ticket, one `tk-closure-check` run per item |
 
-**Verdict 1 names the tree it ran on and where main stood.** The two shas are what let the
-user tell a measurement of what the merge will produce from a measurement of something
-older: the tail merged `origin/main` before it ran anything, and where it left that merge
-outstanding, the tree it read is behind main — which the digest says first, not last.
+**Verdict 1 names the tree it ran on and where main stood.** The two shas separate a
+measurement of what the merge will produce from an older one: the tail merged
+`origin/main` before it ran anything, and where it left that merge outstanding, the tree
+it read is behind main — which the digest says first, not last.
 
 **`gh pr merge --merge` is a precondition of this merge, and the digest states it as
 one.** A squash or a rebase collapses the N merge commits into one, and verdict 4 dies
-with them — the per-item way back exists only while each item is a merge commit of its
-own. `--delete-branch` rides with it: step 1 of `../kickoff/AFK.md` asks the remote
-whether a spec's branch exists to decide whether that lane is free, so a branch left
-behind takes its spec out of every later package until somebody deletes it. Where the user
-merges by hand, deleting the branch is part of the merge, and the digest says so.
+with them. `--delete-branch` rides with it: step 1 of `../kickoff/AFK.md` reads the remote
+for a spec's branch to decide whether that lane is free, so a branch left behind takes its
+spec out of every later package. Where the user merges by hand, deleting the branch is
+part of the merge, and the digest says so.
 
 **Merge this pull request before the package's solo ones.** `tk-collisions` measures the
 pair — this branch against each solo branch of the same package — because all were cut
-from the same `origin/main`. Order matters beyond the collision: verdict 1 ran on a tree carrying `origin/main` as
-it stood at the tail, so anything merged to main ahead of it leaves that measurement
-stale, and the remedy is to re-run the tail's merge and its step 3 rather than to merge on
-a green line that has aged.
+from the same `origin/main`. Order matters beyond the collision: verdict 1 ran on a tree carrying `origin/main` as it
+stood at the tail, so anything merged to main ahead of it leaves that measurement stale.
+The remedy is to re-run the tail's merge and its step 3.
 
 **Three shapes end at the same place: this pull request waits for the user, and nothing is
 reverted.** Each keeps something different in the digest:
@@ -187,9 +176,9 @@ too.
 
 - **Commit and push before the review; merge after it.** Commit the work to a branch —
   never the default one — and push BEFORE dispatching any review, so a death on the quota
-  wall leaves nothing uncommitted and nothing unpushed. Fix the findings in a follow-up
-  commit, push again, and open the PR — or rewrite the body of the one already open — so
-  the body describes the branch as it now stands and carries the evidence block.
+  wall leaves nothing uncommitted. Fix the findings in a follow-up commit, push again, and
+  open the PR — or rewrite the body of the one already open — so the body describes the
+  branch as it now stands and carries the evidence block.
 - **The digest goes into the PR body**, because an unattended session has nobody at the
   gate to read the terminal. A PR the strict verdicts keep from merging carries it there
   too, and its DECISION item points at it as the digest reference.
@@ -206,15 +195,15 @@ too.
   - **A package's accumulated lane** merges as a merge commit or not at all —
     `gh pr merge --merge --delete-branch`, under the precondition its section states. A
     criterion red at the tail's step 3, or a finding no fixer could close, defers the
-    whole pull request with its per-item digest, exactly as a type-B item defers it;
-    nothing is reverted here, and closed items stay closed until the user puts one back.
+    whole pull request with its per-item digest; nothing is reverted here, and closed
+    items stay closed until the user puts one back.
 - Whatever is not merged enters the queue as a DECISION with its digest reference ready.
 
 **Done when:** every pending version-control action was executed or recorded as an
-explicit DECISION — none merely implied — every PR in the gate had its digest before the
-menu, its five trail sections present or named absent and each citation-by-number
-resolved or named unresolved, and the collision with the other open PRs run for real
-rather than read off the forge; a package's accumulated lane carried one digest per item, its
-verdicts split package/item and its `--merge --delete-branch` precondition stated; every
-merged PR's body describes what it merged; and the user has the summary — what changed,
-what was verified, what was deferred.
+explicit DECISION — none merely implied. Every PR in the gate had its digest before the
+menu, its five trail sections present or named absent, each citation-by-number resolved
+or named unresolved, and its collision with the other open PRs run for real rather than
+read off the forge. A package's accumulated lane carried one digest per item, its verdicts
+split package/item and its `--merge --delete-branch` precondition stated. Every merged
+PR's body describes what it merged, and the user has the summary — what changed, what was
+verified, what was deferred.

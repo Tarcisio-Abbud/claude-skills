@@ -77,3 +77,41 @@ below is only what no destination carries.
 | W:79–80 | "The contract has no `Gate` field, so" — the record-in-the-item's-text rule stays without the schema rationale |
 | W:401–407 | "and a prompt that says 'read the parent and six neighbours' bills that price on every run" and "say the ticket is self-sufficient" — the CONCLUSIONS rule and the subagent-brief rule stay |
 | W:459–461 | "— the flag that separates a decision nobody could ask from one nobody bothered to ask" → "the flag for a decision nobody could ask, against one nobody bothered to ask" |
+
+## 7. Second pass over `MERGE-GATE.md` (T320) — what came out
+
+Not part of prune 8/8: a later pass, run when the file had drifted to 2445 body words and
+sat 2 words under the lock's ceiling (2225 + 10% = 2447). 2445 → 2271 words, 220 → 209
+lines, no rule dropped and the lock untouched. `G:` cites
+`git show 54da98e:tk/skills/wrap-up/MERGE-GATE.md` line numbers.
+
+**DROP — exposition (verbatim)**
+
+- G:31–32 "An invented section reads exactly like a sourced one, which is why the absence
+  is written down." — the rule it explains ("they are named absent") stays at G:29–30.
+- G:89–91 "**Owner-qualified, the keyword crosses repositories** — a merge here closes a
+  private tracker's ticket, by merge commit and by squash alike. The owner half is what
+  makes it fire, so condition 3 is the mechanism and not a formality." — the paragraph
+  restated the verdict-5 row; its one fact the row did not carry ("by merge commit and by
+  squash alike") moved into condition 3, which is where the owner half is checked.
+
+**CLAUSE — clauses cut from sentences that stay**
+
+| where | clause cut |
+|---|---|
+| G:52–55 | "that would read a verdict out of a checkbox" — the rule ("never a bare 'merge'") stays |
+| G:61–62 | "The closing keyword is what makes the merge close the ticket, and it" → "The closing keyword" — the verdict-5 row already says what the keyword does |
+| G:73–74 | "and the merge then closes a ticket nobody worked on" — the WRONG-ticket condition stays; condition 3 states the same harm |
+| G:85–87 | "and the merge looks exactly like a successful one" and "retargeting a child onto the new base is a step this gate already performs" → "a step this gate itself performs" |
+| G:102–104 | "in the same breath", "on a ticket nobody is looking at any more" — the two costs stay named |
+| G:108–110 | "tells the reviewer something the branch no longer does" → "tells the reviewer what the branch no longer does", with the rule pulled to the front of the sentence |
+| G:112–113 | "(this is how 'commit/push only when the user asks' is satisfied)" — "the check IS the authorization" stays |
+| G:147–148 | "are what let the user tell a measurement ... from a measurement of something older" → "separate a measurement ... from an older one" |
+| G:153–155 | "— the per-item way back exists only while each item is a merge commit of its own" — verdict 4's row states it; "until somebody deletes it" |
+| G:164–166 | "rather than to merge on a green line that has aged" — the remedy stays |
+| G:191 | "and nothing unpushed" — the same sentence commits AND pushes before the review |
+| G:209 | "exactly as a type-B item defers it" — the type-B case is the bullet above it |
+
+**Note — no verdict:** G:213–220, the 101-word "Done when", was split into four sentences
+with its clauses intact. G:18–20, G:47–49, G:152–158 and G:190–194 were reworded around
+the cuts above.
