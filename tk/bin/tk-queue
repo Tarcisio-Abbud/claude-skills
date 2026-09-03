@@ -2656,6 +2656,16 @@ def open_items(memdir):
     A queue file that is not there counts zero rather than failing: `tk-roster`
     answered that the queue existed a moment ago, and one that vanished between
     that answer and this read holds nothing.
+
+    Only the TARGET queue's lock is held while this runs, and taking every
+    queue's would need a locking order across projects — two sessions on two
+    queues would deadlock on the day they took them in opposite orders. The
+    reads are not torn: the queue files are published by rename, so a count is
+    of one committed state or the next. What the missing locks cost is a sibling
+    session adding to ANOTHER queue between this count and our write, which can
+    put the machine one item over the cap; the next `add` on either queue then
+    refuses. A cap held to the item by cross-project locking is not worth a
+    deadlock in the command every session runs.
     """
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
