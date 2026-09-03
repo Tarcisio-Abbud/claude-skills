@@ -26,10 +26,10 @@ the first opinion included; empty defaults to 3.
    evidence it rests on, then what the session should change. Done when someone with no session
    context could answer the question from the prompt alone.
 
-2. **Dispatch** `Agent` with `subagent_type: general-purpose`, `model: "fable"`,
-   `effort: "high"` (a verdict's depth must not depend on the session's effort setting). In
-   `consensus` mode, record the agent name the result returns: `SendMessage` continues that
-   agent by it. Done when the reply is in hand — turn 1.
+2. **Dispatch** `Agent` with `subagent_type: "tk:second-opinion"`. That agent's definition
+   pins `model: fable` and `effort: high`, so the verdict's depth comes from the definition
+   whatever this session's effort is. In `consensus` mode, record the agent name the result
+   returns: `SendMessage` continues that agent by it. Done when the reply is in hand — turn 1.
 
 3. **Argue** (`consensus` only). Before each send, compare replies received with `$turns`;
    equal means the budget is spent, stop. Otherwise reply through `SendMessage` with one move per
