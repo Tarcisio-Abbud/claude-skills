@@ -32,12 +32,19 @@ render time and are written to no transcript (measured 2026-09-03 across 302 fil
 occurrences). A package whose remaining items cost more than the window has left is a package
 planning its own wall, and the cheapest moment to know that is the cut.
 
-It **exits 2 rather than report a figure it cannot vouch for**. The sidecar it reads is written
-only while a session renders a statusline, so a window nobody sat through leaves the file
-holding the PREVIOUS window's percentage — which looks current and is a whole window wrong.
-Refused, the seam owes what *Generations* owes without a context number: judgement, said aloud
-as judgement. Asking the user for the statusline's limits line is the other way, where there is
-a user to ask.
+It **exits 2 rather than report a figure it cannot vouch for**, and two independent things can
+make it unvouchable. The window may have RESET, its `resets_at` now past. Or the reading may be
+STALE inside a window still open — the sidecar is written only while a session renders a
+statusline, so a stretch nobody sat through leaves a previous window's reading in place, and
+the weekly window stays open for seven days, which is how long a wrong figure can look current.
+
+**Exit 0 can still be a partial answer: it prints one window where it can only vouch for one.**
+The line carries what survived and stderr names what did not, with the reason. A seam reading
+stdout alone sees a shorter line and no error — so read what it refused before treating the
+line as the whole picture. Where the window it refused is the one the decision needed, the seam
+owes what *Generations* owes without a context number: judgement, said aloud as judgement.
+Asking the user for the statusline's limits line is the other way, where there is a user to ask.
+Exit 64 is a mistyped flag, never a missing number.
 
 The wall announces itself twice — a dispatched run comes back a **terminal failure**, and the
 error text names the moment the window resets. Both matter. A run the wall killed delivered
