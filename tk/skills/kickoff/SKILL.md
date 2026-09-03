@@ -30,16 +30,21 @@ commit of their own; safe to run twice, and it asks nothing. Report it in one or
 could not audit and carry on. Exit 2: the run did not happen — the audit is unread, not clean.
 
 Sources, in this order: **`next-steps.md`** in the project's auto-memory — the canonical
-queue (contract: `../../reference/queue.md`); absent it (first kickoff), the memory files
+queue (`../../reference/queue.md`); absent it (first kickoff), the memory files
 the index flags as having pending items. Then **open issues and PRs** (`gh issue list`,
 `gh pr list`) when there is a tracker, then the site extensions' sources. Wiki and repo
 docs are NOT agenda sources — a pending item found there is stale doc, not queue.
 
-**Open with what left the queue this week:** `tk-queue report --since <today minus 7 days>`
-(`../../bin/tk-queue`; a literal `YYYY-MM-DD`), shown as a short block — context, not
-agenda: it catches an item about to be re-opened by mistake. A single-project session
-leaves `--all` off; the sweep is for a session opened over several projects, paid against
-the planning threshold (`WINDOW.md`, *The two planning seams*). No lines → the week was quiet, one line.
+**Every `tk-queue` call carries `--dir "<queue dir>"`** — the queue dir
+`../../reference/queue.md` addresses. Without it the script resolves from the cwd, which an
+earlier `cd` retargets to another project's queue. A `--help` call takes no `--dir`.
+
+**Open with what left the queue this week:**
+`tk-queue report --dir "<queue dir>" --since <today minus 7 days>` (`../../bin/tk-queue`; a
+literal `YYYY-MM-DD`), shown as a short block — context, not agenda: it catches an item about
+to be re-opened by mistake. A single-project session leaves `--all` off; the sweep is for a
+session over several projects, paid against the planning threshold (`WINDOW.md`, *The
+two planning seams*). No lines → the week was quiet, one line.
 
 **Done when:** the hygiene result is in the report, and the user saw the week's closed items
 with a single list of candidate items, each with its source — or a package handoff was found
@@ -48,9 +53,10 @@ here, and its contents are the agenda.
 ## 2. Verify against reality
 
 Memory reflects the moment it was written. Before any item enters the agenda, check the
-current state (`gh pr list`, `gh issue view`, `git log`, read the code). An
-already-resolved item leaves via `tk-queue done "<id>" --how "<what resolved it>"` ON THE
-SPOT, and the memory citing it is fixed in the same breath.
+current state (`gh pr list`, `gh issue view`, `git log`, read the code). An already-resolved
+item leaves ON THE SPOT via
+`tk-queue done "<id>" --dir "<queue dir>" --how "<what resolved it>"`, and the memory citing
+it is fixed in the same breath.
 **Done when:** every remaining item is confirmed genuinely open and no known-stale memory is
 left uncorrected.
 
@@ -94,8 +100,8 @@ in the queue's own order — that order IS the priority — recommendation first
 items become their own questions, the options the choices themselves. Tool limit: 4
 questions × 4 options; the overflow becomes report lines. BLOCKED, EXTERNAL and items
 bound to another environment ("runs on: X", from **Env** — read off the item itself, since
-`tk-queue list` does not print it) are never options — the last go
-to block (d), though their DECISIONs stay in the menu: deciding is machine-agnostic.
+`tk-queue list --dir "<queue dir>"` does not print it) are never options — the last go to
+block (d), though their DECISIONs stay in the menu: deciding is machine-agnostic.
 **Done when:** the whole agenda was shown, every DECISION was briefed before its question,
 and the user's selection is captured.
 
@@ -107,15 +113,14 @@ the `loop.md` contract. Each run carries the contract block from `../../bin/tk-c
 --role <row>`. When its item names a ticket, it also carries the closing line from
 `../../bin/tk-ticket-ref <id> --closing-line`, composed there and never here — it reads the
 owner from the clone the item's **Repo:** field names, so pass `--repo <clone>` when the item
-names none; exit 3 says the item names no ticket, and the run is dispatched saying so.
-Close with: (a) what is
-running/scheduled, (b) BLOCKED items and what is missing, (c) EXTERNAL items and who to
-chase, (d) items bound to ANOTHER environment, each "runs on: X" with its ready-to-paste
-line — nothing here can run those, so the user is the only path, (e) the **session
-findings** discarded here, one line each — the only trace a discard leaves — and (f) the
-**age** of the items left standing: the oldest get one line each naming what they wait
-for, the cut read off `list`'s own distribution and named in the report. Age is shown,
-never asked; name a DECISION's written deferral beside its age — work the user parked on purpose.
+names none; exit 3 says the item names no ticket, and the run is dispatched saying so. Close
+with: (a) what is running/scheduled, (b) BLOCKED items and what is missing, (c) EXTERNAL items
+and who to chase, (d) items bound to ANOTHER environment, each "runs on: X" with its
+ready-to-paste line — nothing here can run those, so the user is the only path, (e) the
+**session findings** discarded here, one line each — the only trace a discard leaves — and (f)
+the **age** of the items left standing: the oldest get one line each naming what they wait for,
+the cut read off `list`'s own distribution and named in the report. Age is shown, never asked;
+name a DECISION's written deferral beside its age — work the user parked on purpose.
 **Done when:** every checked item is running or scheduled, the report covers (b)–(f), and
 `next-steps.md` reflects the post-kickoff queue.
 

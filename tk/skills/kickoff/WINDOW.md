@@ -35,14 +35,14 @@ On the first quota failure, in this order:
 
 1. **Stop dispatching.** The runs in flight are already dead; the ones not yet sent stay
    unsent.
-2. **Refresh one handoff** — `tk-queue handoff "<id>" --objective "..." --state "..."
-   --blockers "..."`, in the form `../verify/SKILL.md` prescribes (*Three attempts, then the
-   queue*), **then run the `edit` it prints** (same file, *The item points at the
-   briefing*). That warning goes to stderr at exit 0, and the wall is the moment nobody is
-   watching that stream. The id is the item in flight; with nothing in flight, it is the head
-   of what the package has left. One handoff, not one per item: the package's remaining state
-   has a single home, and a copy per item is a copy to go stale.
-3. **Say what is left, in `--state`.** Six contents, because each one is something the next
+2. **Refresh one handoff** — `tk-queue handoff "<id>" --dir "<queue dir>" --objective "..."
+   --state "..." --blockers "..."`, in the form `../verify/SKILL.md` prescribes (*Three
+   attempts, then the queue*), **then run the `edit` it prints** (same file, *The item
+   points at the briefing*). That warning goes to stderr at exit 0, and the wall is the
+   moment nobody is watching that stream. The id is the item in flight; with nothing in
+   flight, it is the head of what the package has left. One handoff, not one per item: the
+   package's remaining state has a single home, and a copy per item is a copy to go stale.
+3. **Say what is left, in `--state`.** Seven contents, because each one is something the next
    generation otherwise rediscovers by doing the work twice:
    - the items still to dispatch, in order;
    - the item in flight, and the branch its work is pushed to;
@@ -53,10 +53,12 @@ On the first quota failure, in this order:
      lens never ran waits implemented, unreviewed and unmerged, and says so;
    - **the large files already read, and the verdict on each.** A successor that knows a
      source is 1,500 lines and what it holds takes it distilled from a subagent; one that
-     knows only "we were at 200k" reads it again at full price.
+     knows only "we were at 200k" reads it again at full price;
+   - **the queue dir** — every `tk-queue` call the successor runs names it
+     (`AFK.md`, its opening paragraph), and the successor's cwd is no evidence of it.
 
    **A package holding an accumulated lane owes five contents in the same field** — four of them
-   new, and the fifth one of the six above doing a second job there. The section below names them.
+   new, and the fifth one of the seven above doing a second job there. The section below names them.
    A lane package's `--state` is not written until they are in it, and the successor's very first
    command cannot be composed without the first of them.
 4. **Keep the claims.** They are how the next generation knows which items are its own, and
@@ -64,14 +66,14 @@ On the first quota failure, in this order:
    one place the release rule of `AFK.md` step 3 does not apply.
 5. **Stop.** Report the wall, the reset time and the handoff's path.
 
-**Done when:** the tree is pushed, one handoff carries the six contents of step 3 — and, where
+**Done when:** the tree is pushed, one handoff carries the seven contents of step 3 — and, where
 the package holds an accumulated lane, the five contents the section below names for it — the
 claims are intact, and the report names the reset time.
 
 ## An accumulated lane: the five contents `--state` carries for it
 
 A package holding a spec's accumulated lane (`AFK.md` step 3) writes five things into `--state`
-for that lane. Four are additions to the six above and the fifth is one of the six, doing a
+for that lane. Four are additions to the seven above and the fifth is one of the seven, doing a
 second job here. **`--state` gains no flag for any of them** — it is one field of prose, and the
 additions are four more paragraphs inside it.
 
@@ -101,7 +103,7 @@ additions are four more paragraphs inside it.
   successor told only that the tail had started re-runs all three. What the review returned is the
   fifth content above read at lane scope, so a review that never reported is re-fired whole here
   too.
-- **The claims** — the fourth of the six above, written exactly as they are there and gaining
+- **The claims** — the fourth of the seven above, written exactly as they are there and gaining
   nothing on this lane. What they gain is a second reader: they are what tells the successor that
   the branch it finds on the remote belongs to its own package rather than to a sibling, which no
   question put to the remote can answer (`AFK.md` step 3).
@@ -245,7 +247,7 @@ the statusline and nothing else. Over it:
    prescribes, and run the `edit` it prints (same file, *The item points at the
    briefing*). Its `--state` carries the seam this session stopped at — which is what tells
    the successor where to enter (`AFK.md`, *A resumed generation starts here*) — the cut's
-   order, the context number just read, and whichever of *The wall*'s six contents a package
+   order, the context number just read, and whichever of *The wall*'s seven contents a package
    that dispatched nothing still has to say.
 3. **Leave the remote as it stands.** The lane's branch opens at `AFK.md` step 3; a branch
    pushed early takes its spec out of the next package's election (`AFK.md` step 1).
