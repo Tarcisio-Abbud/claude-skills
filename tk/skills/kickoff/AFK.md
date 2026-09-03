@@ -304,8 +304,9 @@ the worktree removed, and every claim left with its item or was released.
 ## 6. Measure, and hand the package to the close
 
 Four numbers on one line — **planned × completed × wall clock × context at the cut**, the last
-read from the statusline at that seam (a generation that ran no cut writes its predecessor's
-number from `--state`, or `?`). Beside them, the deviation lines — one per departure from the
+from `../../bin/tk-context` at that seam (a generation that ran no cut writes its predecessor's
+number from `--state`; where the command gave none, `?` — and the line says the cut was
+judged rather than read, `WINDOW.md`'s rule for a seam with no number). Beside them, the deviation lines — one per departure from the
 role table; a deviation with no line is indistinguishable from a slip — and the audit's block.
 Items the package did not close carry the first reason that applies: **blocked** (bound to
 another environment, "runs on: X"); **carried** under the dependency gate (a sibling's claim,
