@@ -124,6 +124,12 @@ The lens is one agent and it fires once, so the line is one agent's window; meas
 2026-08-28, that was 144k subagent tokens against a 1,534-line slice. Where the lens would
 cost more window than the implementation did, the slice takes the mandatory review alone.
 
+**The slope decides whether the next review fits, and the height alone cannot say.**
+`../../bin/tk-context --curve` prints the occupancy at intervals across the session, so a
+seam can read 15k a step apart from 40k a step. Measured on one orchestrator: 59k at the
+open — a kickoff is born carrying the CLAUDE.md and the memory index — 113k at the cut,
+154k at the first lens, 210-232k while the handoff was written.
+
 **Reviews serialize** — one at a time per orchestrating session. So review time is a **sum**
 over the package's slices, not a maximum across them, and that serialized tail is the part of
 a package the wall reaches first. A package planned as though review rode along inside
@@ -188,7 +194,7 @@ the package:
 - **Refresh the handoff.** Always, whatever the context reads — from the first dispatch on. At
   the two planning seams nothing is dispatched yet and there is nothing to refresh: the handoff
   is written there only when the threshold is crossed, and it is what crossing it buys.
-- **Read the context number on purpose**, at each of those seams: `tk-context` prints it,
+- **Read the context number on purpose**, at each of those seams: `../../bin/tk-context` prints it,
   from this session's own transcript. It is not in the statusline — that is rendered to the
   user's terminal and never enters an orchestrator's context, and three generations in a row
   reported the number as estimated, unread or `n/m` while this rule asked for it. Between one API
@@ -198,8 +204,10 @@ the package:
 - **Where there is no number, the judgement says so.** `tk-context` exits 2 when it cannot
   read one. Deciding by judgement is allowed there; presenting that judgement as this rule is
   not, and the report names it as judgement. Measured 2026-09-03: a generation stopped a
-  lane's tail citing this threshold two lines after writing "context at the cut: unread" —
-  and it was, in fact, over. A right answer wearing a rule's clothes is still the defect.
+  lane's tail citing this threshold two lines after writing "context at the cut: unread".
+  Read afterwards from that session's own transcript, it had been at ~210-232k against a
+  ceiling of ~150-200k: the call was RIGHT. A right answer wearing a rule's clothes is
+  still the defect, and that is why this bullet exists rather than a ban on estimating.
 - **Compare absolutes, never a fraction.** The threshold is the smart zone's edge — judgement
   degrading — and not the window running out, so it does not scale with the window's capacity.
   That is why `tk-context` prints tokens and no percentage: on a 1M-context model a measured

@@ -26,6 +26,9 @@ a seam: no test here can watch a session. That half is held by the prose the las
 test reads, and by the review.
 """
 
+import importlib.machinery
+import importlib.util
+import inspect
 import json
 import os
 import re
@@ -179,12 +182,17 @@ class AfterACompaction(TranscriptFixture):
                    usage_line(stamp="2026-09-03T14:00:00Z", cache_read_input_tokens=41000))
         self.assertIn("41000", self.run_it().stdout)
 
-    def test_a_boundary_with_no_usable_count_is_not_an_occupancy(self):
-        # Refusing to invent beats guessing: the older response still stands.
-        self.write(usage_line(cache_read_input_tokens=8000), boundary_line(post=None))
+    def test_a_boundary_with_no_usable_count_refuses_and_does_not_fall_back(self):
+        # The malformed case walks the closed defect back in if it falls through:
+        # the pre-compaction row would win, at exit 0, over a window that was
+        # emptied. What is known is that it was emptied; what is not known is to
+        # what. `response_tokens` refuses on the analogous malformed counter and
+        # the two classes must not disagree about that.
+        self.write(usage_line(cache_read_input_tokens=263729), boundary_line(post=None))
         run = self.run_it()
-        self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertIn("8000", run.stdout)
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertNotIn("263729", run.stdout)
+        self.assertIn("judgement", run.stderr)
 
 
 class RecordsThatLookLikeAnOccupancyAndAreNot(TranscriptFixture):
@@ -270,6 +278,34 @@ class TheExitCodes(TranscriptFixture):
         self.assertEqual(run.returncode, 64, run.stderr)
 
 
+class WhatComesFromOutsideThisProcess(TranscriptFixture):
+    """Four printed values are read from somewhere else. None may reprogram a
+    terminal — the sibling case in this house was a directory NAME carrying the
+    escape, on a channel whose second output had been added without the gate."""
+
+    ESCAPE = "\x1b]0;pwned\x07"
+
+    def test_a_session_id_carrying_an_escape_is_printed_flat(self):
+        run = self.run_it(session=f"nope{self.ESCAPE}")
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertNotIn("\x1b", run.stderr)
+
+    def test_a_boundary_timestamp_from_the_file_is_printed_flat(self):
+        self.write(usage_line(cache_read_input_tokens=8000),
+                   boundary_line(stamp=f"2026{self.ESCAPE}-09-03T13:00:00Z"))
+        run = self.run_it()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertNotIn("\x1b", run.stderr)
+
+    def test_a_record_uuid_from_the_file_is_printed_flat(self):
+        record = json.loads(usage_line(input_tokens="lots"))
+        record["uuid"] = f"abc{self.ESCAPE}"
+        self.write(json.dumps(record))
+        run = self.run_it()
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertNotIn("\x1b", run.stderr)
+
+
 class TheCurve(TranscriptFixture):
 
     def test_the_curve_goes_to_stderr_and_leaves_stdout_the_bare_number(self):
@@ -351,6 +387,21 @@ class TheProseThatCallsIt(unittest.TestCase):
         # file — the assertion was green with the whole licence deleted.
         window = re.sub(r"\s+", " ", self.read("WINDOW.md"))
         self.assertRegex(window, r"no number.{0,400}?names it as judgement")
+
+
+class TheSiblingSeam(TranscriptFixture):
+
+    def test_main_takes_its_argv_like_every_sibling_bin(self):
+        # `tk-collisions`, `tk-vista-check` and `tk-closure-check` all declare
+        # `main(argv=None)`. It is what lets a caller drive the parser without a
+        # subprocess, and it is asserted rather than assumed.
+        self.write(usage_line(cache_read_input_tokens=8000))
+        spec = importlib.util.spec_from_loader(
+            "tk_context", importlib.machinery.SourceFileLoader("tk_context", TK_CONTEXT))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertEqual(
+            inspect.signature(module.main).parameters["argv"].default, None)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ fields, read the newest entry, or came from this session. The suite exists
 because the output cannot be sanity-checked by looking at it, and these entries
 are what say the suite can tell the difference.
 
-THREE ENTRIES MUTATE PROSE, in `skills/kickoff/`. Prose is half the subject: a
+FOUR ENTRIES MUTATE PROSE — three in `WINDOW.md`, one in `AFK.md`. Prose is half the subject: a
 command nothing calls is a command nobody runs, and the instruction that calls it
 is exactly what went missing for three generations. The shipped defect — the seam
 sent to the statusline — is entry `the seam is sent back to the statusline`.
@@ -57,7 +57,6 @@ DECLARED = "TheProseThatCallsIt.test_window_licenses_judgement_only_when_it_is_d
 BOUNDARY_WINS = "AfterACompaction.test_a_boundary_newer_than_the_last_response_decides_the_number"
 BOUNDARY_SAID = "AfterACompaction.test_the_reading_says_it_came_from_a_boundary"
 RESPONSE_BACK = "AfterACompaction.test_a_response_after_the_boundary_takes_it_back"
-BOUNDARY_BLANK = "AfterACompaction.test_a_boundary_with_no_usable_count_is_not_an_occupancy"
 ZERO_ROW = "RecordsThatLookLikeAnOccupancyAndAreNot.test_an_all_zero_usage_block_is_skipped"
 NOT_A_NUMBER = ("RecordsThatLookLikeAnOccupancyAndAreNot."
                 "test_a_counter_that_is_not_a_number_refuses_rather_than_reports_an_older_window")
@@ -68,6 +67,14 @@ LITERAL_ID = "ResolvingTheFile.test_a_session_id_is_a_literal_and_never_a_glob"
 TWO_FILES = "ResolvingTheFile.test_two_transcripts_for_one_id_are_refused_and_both_named"
 THE_FLAG = "ResolvingTheFile.test_the_transcript_flag_is_the_file_that_gets_read"
 TYPO = "TheExitCodes.test_a_mistyped_flag_does_not_read_as_no_number"
+
+BOUNDARY_BLANK_REFUSES = ("AfterACompaction."
+                          "test_a_boundary_with_no_usable_count_refuses_and_does_not_fall_back")
+FLAT_ID = "WhatComesFromOutsideThisProcess.test_a_session_id_carrying_an_escape_is_printed_flat"
+FLAT_STAMP = ("WhatComesFromOutsideThisProcess."
+              "test_a_boundary_timestamp_from_the_file_is_printed_flat")
+FLAT_UUID = "WhatComesFromOutsideThisProcess.test_a_record_uuid_from_the_file_is_printed_flat"
+ARGV = "TheSiblingSeam.test_main_takes_its_argv_like_every_sibling_bin"
 
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
@@ -80,8 +87,8 @@ MUTATIONS = [
      [SUM], CONTEXT),
 
     ("the OLDEST reading is printed — a session's opening size, forever",
-     "    stamp, total, kind = points[-1]",
-     "    stamp, total, kind = points[0]",
+     "    last = points[-1]",
+     "    last = points[0]",
      [NEWEST], CONTEXT),
 
     ("a subagent's entry is counted as this session's window",
@@ -99,8 +106,8 @@ MUTATIONS = [
      [HALF_LINE], CONTEXT),
 
     ("the output helpfully carries a percentage, which is the forbidden comparison",
-     'print(f"{total} tokens in context")',
-     'print(f"{total} tokens in context ({total / 1000000:.0%})")',
+     'print(f"{last.tokens} tokens in context")',
+     'print(f"{last.tokens} tokens in context ({last.tokens / 1000000:.0%})")',
      [NO_PCT], CONTEXT),
 
     # -- the three ways there is no number -----------------------------------
@@ -118,8 +125,8 @@ MUTATIONS = [
 
     # -- the curve -----------------------------------------------------------
     ("the curve's rows go to stdout, burying the number a caller compares",
-     """        print(f"  {stamp[:19] or '?':19}  {total:>9,d}{delta}{mark}", file=sys.stderr)""",
-     """        print(f"  {stamp[:19] or '?':19}  {total:>9,d}{delta}{mark}")""",
+     '        print(f"  {stamp:19}  {point.tokens:>9,d}{delta}{mark}", file=sys.stderr)',
+     '        print(f"  {stamp:19}  {point.tokens:>9,d}{delta}{mark}")',
      [CURVE_FD], CONTEXT),
 
     ("the curve prints whether or not it was asked for",
@@ -132,7 +139,7 @@ MUTATIONS = [
     # -- the prose that calls it ---------------------------------------------
     ("the seam is sent back to the statusline — the shipped defect, in AFK.md",
      """the last
-from `tk-context` at that seam""",
+from `../../bin/tk-context` at that seam""",
      """the last
 read from the statusline at that seam""",
      [CALLS_IT, NOT_STATUS], AFK),
@@ -170,18 +177,19 @@ read from the statusline at that seam""",
      [BOUNDARY_WINS, BOUNDARY_SAID], CONTEXT),
 
     ("a boundary anywhere in the file wins, even one an API response has answered",
-     "    stamp, total, kind = points[-1]",
-     '    stamp, total, kind = ([p for p in points if p[2] == "compaction"] or points)[-1]',
+     "    last = points[-1]",
+     '    last = ([p for p in points if p.kind == "compaction"] or points)[-1]',
      [RESPONSE_BACK], CONTEXT),
 
-    ("a boundary with no count becomes an occupancy of zero",
-     """    post = (record.get("compactMetadata") or {}).get("postTokens")
-    if not isinstance(post, int):
-        return None
-    return post""",
-     """    post = (record.get("compactMetadata") or {}).get("postTokens")
-    return post or 0""",
-     [BOUNDARY_BLANK], CONTEXT),
+    ("a boundary with no readable count falls through, and the PRE-compaction row wins",
+     "        no_number(f\"the compaction at {plain(record.get('timestamp') or '?')} \"\n                  \"records no readable postTokens\")",
+     "        return None",
+     [BOUNDARY_BLANK_REFUSES], CONTEXT),
+
+    ("a boundary with no readable count becomes an occupancy of zero",
+     "    if not isinstance(post, int):",
+     "    if False:",
+     [BOUNDARY_BLANK_REFUSES], CONTEXT),
 
     ("the all-zero usage block of a synthetic reply is taken as the window",
      "    return total or None",
@@ -189,13 +197,8 @@ read from the statusline at that seam""",
      [ZERO_ROW], CONTEXT),
 
     ("a counter that is not a number is skipped, and an OLDER window is printed as current",
-     """    except (TypeError, ValueError):""" + """
-        # A counter that is not a number: refuse. Coercing or skipping would
-        # report an OLDER window as though it were current, which is a wrong
-        # number, and this command's whole contract is that it never gives one.
-        no_number(f"a usage counter in {record.get('uuid') or 'a record'} is not a number")""",
-     """    except (TypeError, ValueError):
-        return None""",
+     "        no_number(\"a usage counter in \"",
+     "        return None  # noqa",
      [NOT_A_NUMBER], CONTEXT),
 
     ("the counters are summed uncoerced, so a numeric string refuses instead of reading",
@@ -215,9 +218,9 @@ read from the statusline at that seam""",
      [LITERAL_ID], CONTEXT),
 
     ("two transcripts for one id are resolved alphabetically, in silence",
-     """    if len(hits) > 1:
-        no_number("two transcripts carry this session id: " + ", ".join(hits))
-""",
+     '    if len(hits) > 1:\n'
+     '        no_number("two transcripts carry this session id: "\n'
+     '                  + ", ".join(plain(h) for h in hits))\n',
      "",
      [TWO_FILES], CONTEXT),
 
@@ -238,6 +241,31 @@ read from the statusline at that seam""",
         sampled.append(points[-1])""",
      "    pass",
      [CURVE_FD], CONTEXT),
+    # -- what came from outside this process ---------------------------------
+    ("the escape stripper passes everything through, and a directory name owns the terminal",
+     '    return re.sub(r"[\\x00-\\x1f\\x7f]", "?", str(value))',
+     "    return str(value)",
+     [FLAT_ID, FLAT_STAMP, FLAT_UUID], CONTEXT),
+
+    ("the session id reaches the terminal unstripped",
+     'no_number(f"no transcript for session {plain(session_id)} under {root}")',
+     'no_number(f"no transcript for session {session_id} under {root}")',
+     [FLAT_ID], CONTEXT),
+
+    ("a boundary timestamp read from the file reaches the terminal unstripped",
+     'print(f"tk-context: read from the compaction at {plain(last.stamp)[:19]}, "',
+     'print(f"tk-context: read from the compaction at {last.stamp[:19]}, "',
+     [FLAT_STAMP], CONTEXT),
+
+    ("a record uuid read from the file reaches the terminal unstripped",
+     "f\"{plain(record.get('uuid') or 'a record')} is not a number\")",
+     "f\"{record.get('uuid') or 'a record'} is not a number\")",
+     [FLAT_UUID], CONTEXT),
+
+    ("main stops taking its argv — the seam every sibling bin keeps",
+     "def main(argv=None):",
+     "def main():",
+     [ARGV], CONTEXT),
 ]
 
 if __name__ == "__main__":
