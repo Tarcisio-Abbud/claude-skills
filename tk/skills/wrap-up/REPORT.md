@@ -24,6 +24,8 @@ response-style preference that disagrees with it loses:
 
 **<N> closed · <M> carried · <K> blocked · <D> discarded**
 
+**Sensor:** <births>/<merged PRs> = <ratio> · open <before> → <after>
+
 **Closed** — everything that left the queue, FEITO or DESCARTADO alike
 - <item> — FEITO
 - <item> — DESCARTADO, <why>
@@ -53,15 +55,17 @@ worth the line. A DESCARTADO item has no before and no after, so it appears in C
 alone; a session that delivered nothing writes the header with "nothing delivered" under
 it — an absent block reads as a block nobody wrote.
 
-**The stats line follows, and its first three counts are the queue's balance**: what left
-it against what is still in it. The fourth counts a different object — session findings
+**The stats line follows, and its first three counts are the queue's balance**: what left it
+against what is still in it. The fourth counts a different object — session findings
 discarded in step 1, which never entered the queue — so the group is labelled and the two
-are never summed. Discarding needs a user to do it, so an unattended run reports no
-discards and carries its findings to the gates instead. The outcome groups below are the
-balance and nothing more: each item with its outcome, and the reason wherever the outcome
-does not carry it — the substance was already spent above. Items group by outcome, never
-by chronology, and a group of three or more becomes a table with those same columns — the
-What changed entries stay in lines, a cell being no place for a before and an after.
+are never summed. **The Sensor line under it is the afk close's** — `../kickoff/AFK.md` step
+6 computes it, and a close that ran no package leaves it out. Discarding needs a user to do
+it, so an unattended run reports no discards and carries its findings to the gates instead.
+The outcome groups below are the balance and nothing more: each item with its outcome, and
+the reason wherever the outcome does not carry it — the substance was already spent above.
+Items group by outcome, never by chronology, and a group of three or more becomes a table
+with those same columns — the What changed entries stay in lines, a cell being no place for
+a before and an after.
 
 **The blockers line is unskippable**: "none" written out is an answer, an absent line is
 a rediscovery the next session pays for. It is also the one line of the report that must
