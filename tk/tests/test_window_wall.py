@@ -38,7 +38,15 @@ sibling sites that prescribe the same procedure; those are held by review. And i
 whether the prose is USEFUL: a step whose wording is faithful and unreadable passes.
 
 The only edits made to the prescribed command before running it: the metavariables the step
-writes as `"<id>"` and `"..."`, and the `--dir` the fixture attaches (`queue_fixture.py`).
+writes as `"<id>"`, `"<queue dir>"` and `"..."`.
+
+WHY THE QUEUE FLAG IS ASSERTED ON THE ARGV AND NOT ON THE RUN. The step now writes
+`--dir "<queue dir>"` itself, and the fixture attaches a `--dir` of its own to every
+invocation (`queue_fixture.py`). So the run SUCCEEDS whether or not the prose names the
+queue, and no assertion downstream of the fixture can tell the two apart — a suite asserting
+only that the command runs would stay green with the flag deleted, which is the defect this
+file's `--dir` entry in `mutations_window_wall.py` puts back. The flag is therefore asserted
+on the argv the prose produced, before the fixture is reached.
 """
 
 import os
@@ -141,19 +149,25 @@ def briefing_field(text, heading):
     return (section(text, heading) or "").strip()
 
 
-def fill(argv, iid):
+def fill(argv, iid, memdir):
     """The prescribed argv with its metavariables substituted, BY FLAG.
 
     Positionally would be the bug this suite exists to refuse: three identical
     `"..."` filled left to right land wherever the prose happens to list the flags,
     and nothing downstream would notice. Filled by name, the briefing can then be
     asked whether each value arrived under its own heading.
+
+    `<queue dir>` is filled too: the prose names the queue on every `tk-queue`
+    line, and a literal metavariable left standing would send the run at a
+    directory nothing made.
     """
     out, i = [], 0
     while i < len(argv):
         token = argv[i]
         if token == "<id>":
             out.append(iid)
+        elif token == "<queue dir>":
+            out.append(memdir)
         elif token in VALUE_OF and i + 1 < len(argv) and argv[i + 1] == "...":
             out += [token, VALUE_OF[token]]
             i += 2
@@ -207,6 +221,21 @@ class WallStep2Test(QueueFixture):
                 self.assertTrue(instructs_the_printed_edit(faithful),
                                 "a faithful rewrite of the instruction reads as absent")
 
+    def test_the_prescribed_command_names_the_queue_it_writes(self):
+        """Which project's queue the wall writes is decided by `--dir`, not by the cwd.
+
+        Without the flag `tk-queue` resolves its target from the cwd, and an earlier `cd`
+        in the session retargets it to another project's queue while reporting success.
+        """
+        argv = self.prescribed_handoff()
+        self.assertIn("--dir", argv,
+                      "the wall's step 2 prescribes a handoff that does not name its queue "
+                      "— without `--dir` the script resolves from the cwd, and a run whose "
+                      "cwd moved writes the briefing into another project's queue")
+        self.assertEqual(argv[argv.index("--dir") + 1], "<queue dir>",
+                         "`--dir` is prescribed with no metavariable to fill — the reader "
+                         "is given a path that is not theirs, or none at all")
+
     def test_the_prescribed_command_carries_the_mandatory_fields_in_rendered_order(self):
         """A reader fills three identical `"..."` left to right."""
         argv = self.prescribed_handoff()
@@ -244,7 +273,7 @@ class WallStep2Test(QueueFixture):
     def test_an_ordinary_item_points_at_its_briefing_after_the_prescribed_steps(self):
         """Execute step 2 as written, then ask the queue and the briefing what is there."""
         iid = self.add_ordinary_item()
-        argv = fill(self.prescribed_handoff(), iid)
+        argv = fill(self.prescribed_handoff(), iid, self.mem)
         self.assertNotIn("...", argv, "a placeholder the filler does not know was added")
         self.assertFalse([t for t in argv if re.fullmatch(r"<.+>", t)],
                          "an unfilled metavariable survived the filler")

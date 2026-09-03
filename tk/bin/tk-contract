@@ -61,7 +61,7 @@ ALIGN_RE = re.compile(r":?-{3,}:?\Z")
 # nothing here is ever substituted for a cell, they only say which cells are
 # readable at all
 VOCABULARY = (
-    ("model", ("sonnet", "haiku", "parent")),
+    ("model", ("sonnet", "haiku", "opus", "parent")),
     ("effort", ("session", "high")),
     ("venue", ("local", "cloud")),
     ("pr", ("opens", "none")),

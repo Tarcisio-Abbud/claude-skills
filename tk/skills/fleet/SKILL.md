@@ -35,8 +35,8 @@ report.
 | `## roster` | dispatches it: the name, then the directory to open the run in |
 | `## not dispatchable` | reports it; never dispatches it |
 | `## excluded by the site file` | reports it, naming which list excluded each |
-| `` ## `fleet-allow` names no queue on this machine `` | reports it as a **finding**, below |
-| `` ## `fleet-deny` names no queue on this machine `` | reports it as a **finding**, below |
+| `` ## `fleet-allow` names no queue on this machine `` | reports it as a **stray entry**, below |
+| `` ## `fleet-deny` names no queue on this machine `` | reports it as a **stray entry**, below |
 
 **Do not build a project's path from its queue name.** The name is the cwd encoded, and the
 encoding is one-way: `/w/p/x-y` and `/w/p/x/y` produce the same name. That is why the second
@@ -51,7 +51,7 @@ allow) are read by the bin.
 The fleet accepts no list of its own by flag and reimplements no filter: a second answer to
 "what does the fleet touch" is a second source of truth, and the one the user edits is the file.
 
-**Both `names no queue` sections are findings, not noise.** The bin emits one per list, so a
+**Both `names no queue` sections are stray entries, not noise.** The bin emits one per list, so a
 stray `fleet-allow` entry surfaces exactly as a stray `fleet-deny` one does. An unknown key in
 the site file is ignored on purpose, so `fleet-denny` reads as an absent list and sweeps
 everything. An entry that matched no queue is the only signal that a line exists and is doing
@@ -240,9 +240,9 @@ fleet, and no section rests on a run's self-report alone.
 ## 6. The consolidated vista
 
 The close has two artefacts. The **textual report** is the close itself — the one step 4 has been
-appending to since the first return, on the template in `../wrap-up/SKILL.md`, *The closing
-template*, which is also where block 1's four counts come from. The **vista** is its companion,
-and `../../reference/vista.md` is that page's whole contract: the five blocks, the closed
+appending to since the first return, on the template in `../wrap-up/REPORT.md`, which is also
+where block 1's four counts come from. Its companion is the vista,
+whose coinage and whole contract are `../../reference/vista.md`: the five blocks, the closed
 outcome vocabulary, the outbox it lands in, the gate `tk-vista-check` and that gate's four
 states. **Read it and follow it.** It is the consolidated reporter's contract as much as the
 package close's, which is why it already answers what "consolidated" changes in blocks 1, 2

@@ -5,7 +5,7 @@ description: "Verify a delivery against the item's acceptance criterion, emittin
 
 **Verifying** is running the item's **criterion** against the tree delivered, and emitting
 **evidence** someone else can re-run. The criterion is the acceptance line the item was born
-with: `A:` a deterministic check, `B:` the user's verdict (contract in `../kickoff/SKILL.md`).
+with: `A:` a deterministic check, `B:` the user's verdict (contract in `../../reference/queue.md`).
 It is read-only here: a ruler bent to fit the delivery measures nothing, and one that has to
 change belongs to the user.
 
@@ -33,6 +33,14 @@ The fixture carries the same weight as the currency. Run the criterion against t
 data really has, not the smallest one the wording accepts. When the item's subject has a real
 population — a queue with tagged items, a file with prior content — that population is the
 fixture.
+
+## The anchor outlives the tree
+
+**A criterion anchors on content, never on a line number or an absolute count** — a reformat
+moves the line, a sibling slice moves the count. Anchor by a grep of the sentence. Write an
+unavoidable count paired with the sha of the tree it ran on, the shape
+`../wrap-up/MERGE-GATE.md` gives a green suite. A criterion passed only because a reflow
+refilled its line, and two lane tickets named a count their lane had already passed.
 
 ## Prove it can fail
 

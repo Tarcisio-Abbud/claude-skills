@@ -1243,7 +1243,7 @@ def validate_ref(flag, value):
         return None
     if not REF_RE.fullmatch(value):
         fail(f"--{flag} {value!r} is not a forge reference: the shape is `<repo>#<n>` "
-             "(e.g. homeserver-ambiente#172) — the repo's own name, no owner prefix, "
+             "(e.g. ambiente#172) — the repo's own name, no owner prefix, "
              "and the issue number after '#'. The match is exact: a near-miss feeds a "
              "`closes` line that closes nothing, or names a lane after an issue that "
              "does not exist.")
@@ -1413,7 +1413,7 @@ def validate_repo(value):
         fail(f"--repo {value!r} is not one of the repository addresses this queue "
              "accepts, which are: https://<host>/<path>, ssh://git@<host>/<path>, "
              "git@<host>:<path>, file:///<path>, or an ABSOLUTE path "
-             "(/workspace/projects/.ambiente, /root/.claude/skills, C:\\clones\\repo — "
+             "(/srv/projects/config, /root/.claude/skills, C:\\clones\\repo — "
              "a `~/` address is refused: HOME differs per machine and per reader). "
              "No trailing '.', and no `<user>@` half on an http(s) URL — a token or a "
              "password would be stored in this file and reprinted by `pack` on every "
@@ -1873,7 +1873,7 @@ REPAIR_MIGRATE = "an item with no ID: `tk-queue migrate` assigns one"
 PACK_SAMPLE = """eligible (4 of 8, in queue order):
 T007  S (~20min)    spec ambiente#171     the first ticket of the spec  [ambiente#172]  [repo: https://github.com/owner/code.git]
 T008  M (~1h)       spec ambiente#171     the second one  [ambiente#173]
-T009  S             avulso                the item's text  [repo: /workspace/projects/comercial]
+T009  S             avulso                the item's text  [repo: /srv/projects/exemplo]
 T010  S             avulso (ambiente#159)  a lone ticket, under the floor
 
 excluded (4):
@@ -3574,7 +3574,7 @@ PROSE_OPENERS = "`([*\"'“”‘’«»"
 # neither does a space follow the colon.
 #
 # The shape alone is NOT enough, and the corpus said so before this shipped: the
-# rule as first written fired on a real item (T004 of the estudo-remuneracao-CN
+# rule as first written fired on a real item (T004 of another project's
 # queue), whose wrapped sentence happens to resume `wiki: `_wiki/...`` at 92
 # columns. No fold was lost there — that item is refused for another reason
 # anyway — but the REASON printed was wrong, and a reader repairing an item by a

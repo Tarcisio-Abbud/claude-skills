@@ -145,9 +145,9 @@ def main(date, cache):
     print(f"""# Pruning baseline — {date}
 
 The numbers a pruning pass measures against, for every skill file of the `tk` plugin and
-every skill of the `mattpocock-skills` plugin installed on this machine. It is the first run of
-`tk-prune-measure` (ticket #185, spec #184), and the figure the last slice of that spec measures
-its own result against.
+every skill of the `mattpocock-skills` plugin installed on this machine. Every figure is
+`tk-prune-measure`'s own (ticket #185, spec #184), and this document is what a later pass
+measures its result against.
 
 Every number here is the bin's output. A value in **bold** is one `--targets` marked as over the
 ceiling the bin carries. The columns with no ceiling — words, sentences, pointers, negations,
@@ -216,7 +216,7 @@ reports the line that opened the block it never closed.
 | marks over a ceiling, total | {over(tk)} | {over(matt)} |
 
 The mean `tk` file carries {word_ratio} times the words of the mean `mattpocock-skills` file, and
-{neg_ratio} times the negations. That is the gap the spec estimated, now measured.
+{neg_ratio} times the negations — the gap between the two sets, as this tree stands.
 
 ## The ceilings against the calibration set
 
@@ -236,9 +236,8 @@ be held to; this one describes a house style, applied to a corpus that writes in
 The value stays where the ticket puts it. Moving a ceiling is a decision about the rule, and the
 bin is not the place to take it. What the measurement adds is the consequence: a report that
 reads a mark on this ceiling as a defect will call {matt_max_over} well-written third-party skills
-defective. The slice that writes the pruning skill (#186) is where that is either accepted, or
-this ceiling joins negations and defined terms as report-only, or "instruction" is bound to
-something narrower than every sentence in the file.""")
+defective. The pruning skill (#186) settled it under *Ranking the marks*: KEEP outranks every
+ceiling, and `max words in a sentence` founds no verdict on its own.""")
 
 
 if __name__ == "__main__":

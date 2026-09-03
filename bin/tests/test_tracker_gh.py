@@ -8,6 +8,7 @@ Run: python3 -m unittest discover -s bin/tests
 """
 
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -15,6 +16,8 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WRAPPER = os.path.abspath(os.path.join(HERE, os.pardir, "tracker-gh"))
+DOC = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir, "docs", "agents",
+                                   "issue-tracker.md"))
 
 SLUG = "Fictional-Owner/private-tracker"
 GHDIR = "/somewhere/private/.gh-config"
@@ -225,6 +228,54 @@ class TrackerGhTest(unittest.TestCase):
             ["issue", "list", "-R", "Owner_x.y/repo.name-1", "--state", "open"],
         )
         self.assertNotIn("", c.call()["argv"])
+
+    # --- the doc and the wrapper say the same thing ---------------------------------
+
+    def prescribed(self, needle):
+        """Every BARE `bin/tracker-gh …` line the doc prescribes, carrying `needle`.
+
+        Derived from the doc rather than listed here: a copy of a prescribed command
+        kept beside the doc is a copy that stops agreeing with it, and the whole point
+        of this test is that the two agree. Bare lines only — a row of the conventions
+        table starts with `|`, and reading those would run the same commands twice.
+        """
+        with open(DOC, encoding="utf-8") as fh:
+            lines = [line.strip() for line in fh.read().splitlines()]
+        return [line for line in lines
+                if line.startswith("bin/tracker-gh ") and needle in line]
+
+    def fill(self, line):
+        """The prescribed line with its placeholders answered. `<owner>/<repo>` is a
+        FICTIONAL code repository — the doc's own subject, and not the tracker."""
+        for hole, value in (("<owner>/<repo>", "Fictional-Owner/code-repo"),
+                            ("<pr>", "12"), ("<n>", "5"), ("<file>", os.devnull)):
+            line = line.replace(hole, value)
+        return shlex.split(line)[1:]
+
+    def test_the_cross_link_the_doc_prescribes_is_accepted_by_the_wrapper(self):
+        """The doc and the wrapper used to contradict each other: the doc said to
+        comment the PR's URL onto the ticket, and the wrapper reads a
+        `github.com/<owner>/<repo>` in the body as a target that is not the tracker and
+        refuses it. Following the doc to the letter has to reach `gh`."""
+        lines = self.prescribed("issue comment")
+        self.assertTrue(lines, "the doc prescribes no bare `issue comment` command, so "
+                               "nothing here checks that its cross-link is runnable")
+        for line in lines:
+            with self.subTest(line=line):
+                c = self.case()
+                result = c.run(*self.fill(line))
+                self.assertNotEqual(result.returncode, self.REFUSED, result.stderr)
+                self.assertTrue(c.gh_was_called(), result.stderr)
+
+    def test_a_pull_request_url_in_the_body_is_refused_which_is_why_the_doc_yields(self):
+        """The other half of the same fact. The wrapper's gate is right — an argument
+        naming another repository is how a presence check became an authenticated write
+        — so the doc is the side that had to change."""
+        c = self.case()
+        result = c.run("issue", "comment", "5", "-R", "{tracker}",
+                       "--body", "https://github.com/Fictional-Owner/code-repo/pull/12")
+        self.assertEqual(result.returncode, self.REFUSED, result.stderr)
+        self.assertFalse(c.gh_was_called())
 
 
 if __name__ == "__main__":

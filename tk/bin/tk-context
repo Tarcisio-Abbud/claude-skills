@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""tk-context — how full is THIS session's context window, in tokens.
+
+WHY IT EXISTS: `WINDOW.md` asks the orchestrator to read the context number at
+every seam, and for three generations no orchestrator could. The number is in
+the statusline, and the statusline is rendered to the user's terminal — it never
+enters the model's context. Measured 2026-09-03: three generations in a row
+reported the number as estimated, unread, or `n/m`, and the third then cited a
+threshold it had never read. This command is the reading the rule always meant.
+
+WHERE THE NUMBER COMES FROM: the session's own transcript. Claude Code records
+the `usage` of every API response there, and the shell environment carries
+`CLAUDE_CODE_SESSION_ID`, which names the file. The occupancy is
+`input_tokens + cache_creation_input_tokens + cache_read_input_tokens` — the
+formula the official statusline documentation declares for
+`context_window.total_input_tokens`. Cross-checked twice against a rendered
+statusline on 2026-09-03: 290,286 against 293k, and 86k → 90k → 98k across one
+session's calls.
+
+ABSOLUTE, NEVER A PERCENTAGE. The threshold this feeds measures the SMART ZONE —
+judgement degrading — not the window running out, so it does not scale with the
+window. On a 1M-context model 293k reads as 29%, and an orchestrator comparing
+that against "~150-200k" concludes it has room while sitting well past the
+ceiling. So this command prints tokens and no fraction.
+
+TWO RECORD CLASSES DECIDE THE OCCUPANCY, and the LAST RECORDED of them wins: an
+API response, which carries `message.usage`, and a COMPACT BOUNDARY, which
+carries none. Reading only the first is how a filter over this file lies:
+measured on a real transcript, the last usage row said 263,729 and the boundary
+written after it said `postTokens: 10340` — the window had been emptied and the
+reader walked past the record saying so, exit 0, no signal. Six transcripts in a
+population of 299 carry a boundary, and every one is overstated the same way.
+Each pair below is what a usage-only reader WOULD HAVE PRINTED against what the
+boundary said, measured record by record — not the boundary's own `preTokens`,
+which is a different number a few hundred tokens higher:
+
+    768,430 / 10,803 · 498,097 / 23,198 · 374,302 / 13,572
+    282,107 / 11,771 · 263,729 / 10,340 · 241,979 / 24,193
+
+This is why the walk below reads record CLASSES rather than filtering for the
+shape it likes. Enumerating every other type is not the goal and would be
+endless — the rule is "what changes the occupancy", and a class added to that
+set is added here.
+
+LAST RECORDED, not newest by timestamp. The file is append-only, so its order is
+the order the records happened; the `timestamp` carried alongside is for the
+reader of the curve and decides nothing.
+
+HOW STALE THE NUMBER IS. Between an API response and the next, it lags the live
+statusline by about one turn, and lags it LOW. Across a compaction it does not
+lag at all: the boundary is exact and the reading before it was another window's.
+
+WHAT IT DOES NOT SEE: subagents. Their transcripts are not in the parent's file
+(measured: zero `isSidechain` entries across 299 transcripts, subagents
+dispatched throughout), and their windows are their own. The `subagent_tokens` a
+run reports measure that run, not this session. Run from INSIDE a subagent the
+command therefore reports the PARENT's number, frozen at the parent's last turn
+— measured, unchanged over eight minutes and a dozen subagent turns. Nothing
+warns of it, because nothing can: `CLAUDE_CODE_CHILD_SESSION=1` is set in the
+MAIN session's shell too (measured), so it marks a child PROCESS and not a
+subagent, and a guard on it would fire on every ordinary call. No prose asks a
+subagent for this number; a subagent that wants one asks its parent.
+
+Usage:  tk-context [--curve] [--session ID] [--transcript PATH]
+Exit:   0 the number is printed · 2 no number is available · 64 bad usage.
+        The three are distinct on purpose: invariant of the seam calling this,
+        a mistyped flag must not read as "no number, decide by judgement".
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import sys
+from typing import NamedTuple
+
+EXIT_OK = 0
+EXIT_NO_NUMBER = 2
+EXIT_USAGE = 64                       # sysexits.h EX_USAGE; argparse's own 2 collides
+
+# The three input counters the window holds. Output tokens are excluded on
+# purpose: the documented `used_percentage` is input-only, and matching it is
+# what lets this number be compared against a statusline reading.
+INPUT_FIELDS = ("input_tokens", "cache_creation_input_tokens",
+                "cache_read_input_tokens")
+
+CURVE_ROWS = 6                        # how many samples of the curve are shown
+
+
+class Occupancy(NamedTuple):
+    """One record's answer about the window. `kind` says which class said it,
+    and the caller tells a boundary's number from a response's by reading it."""
+
+    stamp: str
+    tokens: int
+    kind: str
+
+
+def plain(value):
+    """A value from outside this process, safe to print to a terminal.
+
+    Four things this command prints came from somewhere else: the session id
+    (the environment, or an operator's `--session`), the paths that matched, and
+    a boundary's timestamp and a record's uuid, both read out of the jsonl. None
+    of them is attacker-controlled in any ordinary use, and the cost of being
+    wrong about that is a terminal a control sequence reprograms — measured in
+    this house on a sibling channel, where a directory NAME carried the escape.
+    So the sequences are stripped where the value enters the output, not trusted
+    at their source.
+    """
+    return re.sub(r"[\x00-\x1f\x7f]", "?", str(value))
+
+
+def no_number(msg):
+    """Stop with code 2, and say what the caller owes instead of the number.
+
+    The message is half the point. A seam that cannot read the number is not
+    licensed to invent one: it decides by judgement and SAYS it is judgement,
+    which is the failure this whole command exists to answer.
+    """
+    print(f"tk-context: {msg}", file=sys.stderr)
+    print("tk-context: no number — decide by judgement, and say it is judgement",
+          file=sys.stderr)
+    sys.exit(EXIT_NO_NUMBER)
+
+
+def find_transcript(session_id):
+    """The jsonl for one session id, under any project directory.
+
+    The id is ESCAPED before it reaches the glob. Unescaped, `--session '*'`
+    matched a stranger's transcript and printed its number at exit 0 — a
+    confident wrong answer, which is the one outcome this command may not give.
+    Two files for one id is refused rather than resolved: sorting picks a winner
+    silently, and the loser is as likely to be the live session as the stale one.
+    """
+    root = os.path.expanduser("~/.claude/projects")
+    hits = sorted(glob.glob(os.path.join(root, "*", f"{glob.escape(session_id)}.jsonl")))
+    if not hits:
+        no_number(f"no transcript for session {plain(session_id)} under {root}")
+    if len(hits) > 1:
+        no_number("two transcripts carry this session id: "
+                  + ", ".join(plain(h) for h in hits))
+    return hits[0]
+
+
+def response_tokens(record):
+    """The window after an API response, or None if this is not one."""
+    usage = (record.get("message") or {}).get("usage")
+    if not isinstance(usage, dict):
+        return None
+    try:
+        total = sum(int(usage.get(f) or 0) for f in INPUT_FIELDS)
+    except (TypeError, ValueError):
+        # A counter that is not a number: refuse. Coercing or skipping would
+        # report an OLDER window as though it were current, which is a wrong
+        # number, and this command's whole contract is that it never gives one.
+        no_number("a usage counter in "
+                  f"{plain(record.get('uuid') or 'a record')} is not a number")
+    # Zero across all three is not an occupancy. Synthetic replies carry one —
+    # the rate-limit message is written with an all-zero usage block — and
+    # taking it would print `0 tokens in context` over a real 190k window.
+    return total or None
+
+
+def boundary_tokens(record):
+    """The window after a compaction, or None if this is not a boundary.
+
+    A boundary whose count cannot be read REFUSES, exactly as a response with an
+    unreadable counter does. Returning None here instead would hand the answer
+    back to the pre-compaction row and print it at exit 0 — the very defect this
+    class was added to close, walked back in through the malformed case. What is
+    known in that state is that the window was emptied; what is not known is to
+    what, and there is no number to give.
+    """
+    if record.get("subtype") != "compact_boundary":
+        return None
+    post = (record.get("compactMetadata") or {}).get("postTokens")
+    if not isinstance(post, int):
+        no_number(f"the compaction at {plain(record.get('timestamp') or '?')} "
+                  "records no readable postTokens")
+    return post
+
+
+def occupancies(path):
+    """Every recorded occupancy of this session's window, oldest first.
+
+    Read line by line: a long session's transcript reaches megabytes (measured:
+    81 ms on 6.3 MB), and only the counters are wanted. Malformed lines are
+    skipped rather than fatal — a transcript is appended to live, so the last
+    line can be half-written.
+
+    Each record is asked, in turn, what it says about the window. A record that
+    answers nothing is not an error and not an occupancy; it is the other 99% of
+    the file.
+    """
+    out = []
+    try:
+        handle = open(path, errors="replace")
+    except OSError as exc:
+        no_number(f"cannot read {path}: {exc}")
+    with handle:
+        for line in handle:
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            # Belt and braces: subagent entries are not written here today, and
+            # the file being keyed by this session's id is the real guarantee.
+            if record.get("isSidechain"):
+                continue
+            for kind, reader in (("response", response_tokens),
+                                 ("compaction", boundary_tokens)):
+                total = reader(record)
+                if total is not None:
+                    out.append(Occupancy(record.get("timestamp") or "", total, kind))
+                    break
+    return out
+
+
+def print_curve(points):
+    """The slope, not just the height.
+
+    A seam reading one number cannot tell 15k a step from 40k a step, and it is
+    the slope that decides whether another review fits before the ceiling.
+    """
+    if len(points) < 2:
+        return
+    step = max(1, (len(points) - 1) // (CURVE_ROWS - 1))
+    sampled = points[::step]
+    if sampled[-1] is not points[-1]:
+        sampled.append(points[-1])
+    print("curve (oldest first):", file=sys.stderr)
+    previous = None
+    for point in sampled:
+        delta = "" if previous is None else f"  {point.tokens - previous:+d}"
+        mark = "  <- compaction" if point.kind == "compaction" else ""
+        stamp = plain(point.stamp)[:19] or "?"
+        print(f"  {stamp:19}  {point.tokens:>9,d}{delta}{mark}", file=sys.stderr)
+        previous = point.tokens
+
+
+class Parser(argparse.ArgumentParser):
+    """Usage errors exit 64, not argparse's 2.
+
+    2 is this command's "there is no number, decide by judgement". A mistyped
+    flag arriving at a seam as that message is the one confusion invariant the
+    exit codes exist to prevent.
+    """
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        sys.exit(EXIT_USAGE)
+
+
+def main(argv=None):
+    parser = Parser(
+        description="print this session's context occupancy, in tokens")
+    parser.add_argument("--curve", action="store_true",
+                        help="also print the occupancy over the session, on stderr")
+    parser.add_argument("--session", default=os.environ.get("CLAUDE_CODE_SESSION_ID"),
+                        help="session id (default: $CLAUDE_CODE_SESSION_ID)")
+    parser.add_argument("--transcript",
+                        help="read this jsonl instead of resolving the session id")
+    args = parser.parse_args(argv)
+
+    path = args.transcript
+    if not path:
+        if not args.session:
+            no_number("no CLAUDE_CODE_SESSION_ID in the environment")
+        path = find_transcript(args.session)
+
+    points = occupancies(path)
+    if not points:
+        no_number(f"no API response recorded yet in {path}")
+
+    last = points[-1]
+    print(f"{last.tokens} tokens in context")
+    if last.kind == "compaction":
+        # The window was emptied after the last response, and this number is the
+        # boundary's own. Said aloud because it is the case a reader of the old
+        # filter never saw: it printed the pre-compaction window and looked sure.
+        print(f"tk-context: read from the compaction at {plain(last.stamp)[:19]}, "
+              "not from an API response", file=sys.stderr)
+    if args.curve:
+        print_curve(points)
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -149,7 +149,18 @@ those surfaces, the closing line included.** The concession is a repository name
 integer, nothing else.
 
 Name the work by what it is — "tk v3 slice" — everywhere the closing line does not reach. The
-cross-reference still goes the other way too: comment the PR's URL onto the ticket.
+cross-reference still goes the other way too, and it goes as a SLUG:
+
+```bash
+bin/tracker-gh issue comment <n> -R '{tracker}' --body "<owner>/<repo>#<pr>"
+```
+
+`<owner>/<repo>` is this code repository, `<pr>` the pull request's number. The forge renders
+that into the same link a URL would, and the wrapper accepts it. **Do not paste the URL**: a
+`https://github.com/<owner>/<repo>/pull/<n>` in the body is read back by `bin/tracker-gh` as a
+target that is not the tracker, and the command is refused with exit 78. The wrapper is right
+to — an argument naming another repository is exactly what turned a presence check into an
+authenticated write to an arbitrary repo — so the line that yields is this one.
 
 **The commit guard is unaffected, and it has to be.** `githooks/private-values` reads the
 lines a commit adds, the paths it introduces, the commit message and the branch name — and

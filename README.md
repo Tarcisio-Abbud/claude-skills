@@ -1,6 +1,6 @@
 # claude-skills
 
-Own-authored skills for Claude Code, shipped as the **`tk`** (v2), **`tk-cowork`**, **`asr`**
+Own-authored skills for Claude Code, shipped as the **`tk`** (v3), **`tk-cowork`**, **`asr`**
 and **`plugin-drift`** plugins, served by the marketplace defined in
 `.claude-plugin/marketplace.json`.
 
@@ -17,65 +17,32 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 
 | Skill | What it does |
 |---|---|
-| `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens with the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality, triaged and dispatched via menu. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort |
-| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a merge dossier, and merges by an adaptive review digest), and one explicit recommendation (/clear, /compact, /tk:docs-audit). Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
+| `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens on `tk-hygiene` and the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality and triaged — **Effort, Risk and Env** on every item, and an item half here and half elsewhere SLICED, one item per machine. Each DECISION is **briefed in prose before the menu**, retransmitting what the item already carries (its text, its `Criterion`, the memory behind a `[[slug]]` at one hop, its handoff) rather than summarising it. The close reports (a) what is running or scheduled, (b) BLOCKED, (c) EXTERNAL, (d) items bound to ANOTHER environment with their ready-to-paste line, (e) the **session findings** discarded here and (f) the age of what is left standing. A session finding is triaged where it is found, on the three-rung ladder of `tk/reference/session-finding.md` — resolve now, queue with a gate, discard — read in that order, the first that holds being the recommendation. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort; `--budget N` — the orchestrator generations either mode may spend |
+| `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a **digest** — what is being merged, and whether it may be, then the five verdicts of **safe-to-merge**), and one explicit recommendation (/clear, /compact, /tk:docs-audit). An item survives into the queue only under one of three **survival gates** — decision · effort · dependency — and records which one; what passes none is resolved in the session. The close follows a **fixed template** (`tk/skills/wrap-up/REPORT.md`), which wins over any response-style preference. Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
-| `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal that sends a repeated mechanism to the user; and the attack inventory it ships whether or not it found anything — model-invoked. Prose gets the mandatory review only. The site names the trigger items and the provenance of every threshold in `~/.claude/tk/review.md` |
-| `/tk:second-opinion` | A fresh Fable subagent judges what the session is discussing right now, from a prompt written for a cold reader. Args: `once` (default) — one verdict; `consensus [turns]` — argued through `SendMessage` until no disputed point remains or the turn budget is spent (default in the skill); a spent budget hands the open points to the user. User-invoked; every run logs the Fable deviation line |
+| `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal a repeated mechanism raises, answered by the parent where the repo handles no business data and by the user otherwise; and the attack inventory it ships whether or not it found anything — model-invoked. Prose an agent follows takes the mandatory review alone, with ONE exception — where the changed paragraphs prescribe commands, a lens may fire, and it reports only what RUNNING a prescribed command proved. The trigger items live in the site's CLAUDE.md, or wherever the extension points; `~/.claude/tk/review.md` carries the provenance of every threshold and the site's user-data directories |
+| `/tk:second-opinion` | A fresh Fable subagent judges what the session is discussing right now, from a prompt written for a cold reader. Args: `consensus [turns]` (default) — argued through `SendMessage` until no disputed point remains or the turn budget is spent (3 turns absent `turns`); a spent budget hands the open points to the user; `once` — a single verdict. User-invoked; every run logs the Fable deviation line |
 | `/tk:fleet` | Runs the unattended package of EVERY project on this machine from one command: the roster comes from `tk-roster` and the site file's `fleet-allow`/`fleet-deny`, the machine's local subagent ceiling is divided across the runs by the generated contract block, and one full orchestrator per project runs at `--budget 1`. Largest project first; a slot refills the moment a run returns, with no wait for the wave; a project that fails fails alone. Closes on one consolidated vista in the outbox, gated by `tk-vista-check`. The load is a parameter — `afk` by default, `docs-audit` for a documentation sweep. User-invoked |
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
 | `/tk:prune` | Prunes a skill against the `writing-for-agents` ruler with a bias to subtraction: `tk/bin/tk-prune-measure` supplies the numbers and the ceilings, and the run leaves a report — metrics before and after, a KEEP / MOVE / DROP table with one row per sentence that instructs, splitting suggestions, and the named proof — in `./prune-out/<skill>/`, never in place. User-invoked; args: `<skill-path> [<output-dir>]` |
 
-The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract (defined in
-`tk/skills/kickoff/SKILL.md`): two files per project in auto-memory — `next-steps.md`
-(open items only) and `done-log.md` (what left the queue, when, and how) — written ONLY
-through the deterministic CLI **`tk/bin/tk-queue`** (add / done / cancel / edit / bump /
-claim / release / list / pack / report / migrate), which moves a resolved item to the log in one command and enforces a
-two size ceilings whose scope follows each flag's nature: the whole ITEM is measured
-whenever a prose flag (`--text`, `--criterion`, `--risk`, `--deferred`) grows it, while the
-short fields (`--class`, `--effort`, `--project`) answer only to a small per-VALUE ceiling — that
-exemption is what keeps a legacy oversized item taggable without `--force`, and the
-per-value ceiling is what keeps the exemption from becoming a bypass. `edit` also locates
-the field it changes by the item's field CHAIN, refusing to guess when a legacy item quotes
-the marker shape in prose. Every mutating command prints the
-memory dir it resolved on **stderr** before acting, since that target is inferred from
-`--dir` or the cwd and an unseen inference is an unchecked one. Each item carries an ID
-(T001…), **Class** (AUTONOMOUS / DECISION / BLOCKED / EXTERNAL / RECURRING) — the DECISION
-class parks the queue until the user is back, so it is never reached by omission: `add` and
-any `edit` that sets it demand `--deferred <justification>`, kept in the item as a
-**Deferred** field, and the default path is asking the decision at birth so the item is born
-AUTONOMOUS —, **Effort**
-(S/M/L + rough wall-clock time), an optional **Risk** line naming what unsupervised
-execution could damage — an item with a Risk line never enters an afk package, and
-`--risk none` DELETES the field, which is how an obsolete Risk gets re-triaged —, an
-optional **Env** naming WHERE the item runs when that is not here (orthogonal to the class:
-the class says what the item waits for, Env says which machine can execute it; absent = the
-machine that owns the queue, and `--env none` deletes it). Its value is matched by exact
-equality against the roster in the SITE FILE `~/.claude/tk/env`, and a value outside it is
-refused rather than warned — an environment nothing validated is one no machine ever picks
-up. Without that file there is no `--env` at all: the plugin ships no machine name of its
-own, the way git ships no `user.name`. The same file carries this machine's identity and its
-two subagent ceilings, local and cloud; its format lives in `tk/bin/tk_site.py`, which reads
-it. Then a
-required **Criterion** (acceptance: `A:` a
-deterministic check, `B:` the user's verdict; required on `add`, still optional on `edit`
-for legacy items), and an optional **Project** slug tagging which project an item belongs
-to, for a workspace-root queue that mixes several projects — `add` warns (not errors) when
-a tag is unprecedented in the queue, naming the tags already in use, and `list` groups by
-tag once any item carries one, else it stays flat. Priority is the file's own order — `add`
-puts a new item at the end, `bump <id>` moves one to the top, `list`'s groups follow the
-file, and the afk package takes the filtered top. Wrap-up settles the queue at close;
-kickoff verifies and dispatches it at open. The queue has four
-dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, `/loop` over the
-project's `loop.md`, and `/tk:fleet` across every project at once — spelled out in
-`tk/skills/dispatch/SKILL.md`, which also single-sources
-the dispatch palette and the `/goal` recipe; the `loop.md` contract sits beside it, in
-`tk/skills/dispatch/LOOP.md`.
+The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract, defined in
+`tk/reference/queue.md`: two files per project in auto-memory — `next-steps.md` (open
+items only) and `done-log.md` (what left the queue, when, and how) — written ONLY through
+the deterministic CLI **`tk/bin/tk-queue`**. Commands, flags and field shapes live in the
+CLI's own `--help`s; the reference file carries the contract the helps do not confess (the
+two size ceilings, ID allocation, the stderr lines, the field chain, the done-log pointer
+rule). Wrap-up settles the queue at close; kickoff verifies and dispatches it at open. The
+queue has four dispatchers — the interactive kickoff menu, `/tk:kickoff afk|pack`, `/loop`
+over the project's `loop.md`, and `/tk:fleet` across every project at once — spelled out in
+`tk/skills/dispatch/SKILL.md`, which also single-sources the dispatch palette and the
+`/goal` recipe; the `loop.md` contract sits beside it, in `tk/skills/dispatch/LOOP.md`.
 
-A **merge dossier** is written for every PR the versioning gate handles, before its menu
-opens — what is being merged, made readable where it is read, with every citation-by-number
-resolved to the sentence it names. The wrap-up skill says how to write it.
+A **digest** is written for every PR the versioning gate handles, before its menu
+opens — what is being merged and whether it may be, made readable where it is read, with
+every citation-by-number resolved to the sentence it names. The wrap-up skill's
+`MERGE-GATE.md` says how to write it.
 **`tk/bin/tk-collisions`** supplies the one section prose cannot: it merges every pair of open
 branches for real, because the forge's `mergeable` field is blind between two PRs.
 
@@ -190,6 +157,15 @@ tk/
   skills/verify/HANDOFF.md        branch file: the `tk-queue` sequence a third failed
                                   attempt at the hard gate runs, and the form every
                                   site that prescribes a briefing reads
+  skills/review/BRIEF.md          branch file: the block the lens is handed, and the
+                                  one line per angle that fills its `Attack:` field
+  skills/prune/REPORT.md          branch file: the five parts of a pruning report
+  skills/wrap-up/MERGE-GATE.md    branch file: the gate's whole procedure — the digest,
+                                  the five verdicts of safe-to-merge, the triple check
+                                  of the closing line, the action menu, and the strict
+                                  form the unattended close runs
+  skills/wrap-up/REPORT.md        branch file: the fixed closing template, read by every
+                                  skill that closes on it
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
   skills/kickoff/WINDOW.md        branch file: what the package does when it runs
                                   out of window rather than out of work — the
@@ -199,6 +175,11 @@ tk/
                                   --budget generations, and the seams the context
                                   threshold fires at — the cut and the pack confirm
                                   among them
+  reference/queue.md              the queue contract `/tk:kickoff` and `/tk:wrap-up`
+                                  share: the two files, the field chain, ID allocation
+                                  and the gotchas the CLI's `--help`s do not confess
+  reference/session-finding.md    what a session finding is, and the three-rung ladder
+                                  that triages one — attended and unattended
   reference/subagent-policy.md    model, effort, venue, PR-authorship and the
                                   checkpoint invariant per subagent role; the role
                                   table is parseable, schema declared in the file
@@ -208,7 +189,8 @@ tk/
   reference/vista.md              the vista: the digest's visual companion — what it is,
                                   when it is written, where it lands, and the five blocks
                                   it fixes; the contract the consolidated reporter reads.
-                                  Nothing writes one on its own yet
+                                  A fleet run writes one by default; every other close
+                                  writes one only when the user asks
   reference/vista-template.html   that page in its smallest form: the five markers, both
                                   themes, and nothing the browser fetches
   bin/tk-queue                    deterministic CLI: only writer of the queue files
@@ -234,6 +216,44 @@ tk/
                                   defined terms, with `--targets` marking each against the
                                   ceilings it carries as defaults. It measures and does not
                                   judge, so every measurement exits 0
+  bin/tk-ticket-ref               a queue item's ticket as `<owner>/<repo>#<n>`, the form a
+                                  closing line needs — number from the item, owner and
+                                  repository from the tracker config of the clone `--repo`
+                                  names, or the item's own **Repo:** field, through the
+                                  shape gate `bin/tracker-gh` applies. It refuses rather
+                                  than emit an ownerless or guessed reference
+  bin/tk-closure-check            verdict 5 of the merge gate, asked of the pull request:
+                                  the closing keyword, the ticket's identity, the owner
+                                  half, any OTHER closing line in the body and the base
+                                  branch, each reported by name. It compares against the
+                                  reference the reader composes, so it cannot greenlight
+                                  what the reader refuses to emit. Exit 1 names the ones
+                                  that failed
+  bin/tk-context                  this session's context occupancy in tokens, read from its
+                                  own transcript — the number WINDOW.md's seams compare, and
+                                  which no orchestrator can see in the statusline. Absolute,
+                                  never a fraction: the threshold is the smart zone, not the
+                                  window's capacity. Reads the two record classes that decide
+                                  occupancy — an API response and a compaction boundary — and
+                                  the last recorded wins. `--curve` prints the occupancy
+                                  across the session, since the slope is what says whether
+                                  another review fits. Exit 2 no number, 64 bad usage: a
+                                  mistyped flag may not read as the licence to use judgement
+  bin/tk-quota                    what is left of the rolling usage windows — the 5h and
+                                  weekly figures reach the STATUSLINE SCRIPT at render time
+                                  and are in no transcript, so this is the only way an agent
+                                  knows them. BOTH HALVES of the seam are here: `--write`
+                                  records the payload arriving on stdin, and the default
+                                  reads it back from the sidecar. A window must pass two
+                                  tests to be reported — that it has not reset, and that the
+                                  reading is not older than the window it describes — and the
+                                  other window still prints when one fails. A reading that
+                                  passes both and is still old announces its age rather than
+                                  passing as current. The site installs it by calling
+                                  `tk-quota --write` from its statusline script, by absolute
+                                  path: a path that resolves to nothing no-ops in silence and
+                                  reads exactly like "no session has rendered". Exit 1 nothing
+                                  was recorded, 2 no number, 64 bad usage
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
@@ -243,6 +263,16 @@ tk/
   tests/test_tk_collisions.py     regression suite, against a real git repository built
                                   in a throwaway directory
   tests/test_tk_vista_check.py    regression suite for the vista gate
+  tests/test_tk_context.py        regression suite for the reading, and the doc conformance
+                                  of the seams that call it
+  tests/mutations_tk_context.py   its mutations — four on the prose, one on
+                                  the suite's own reader of it, the rest on the bin
+  tests/test_tk_quota.py          regression suite for the quota reading, and the doc
+                                  conformance of the wall that calls it
+  tests/mutations_tk_quota.py     its mutations — nine on the writer, which lived
+                                  outside any suite until a lens found four wrong-number
+                                  defects in it, four on the wall's prose, and one on the
+                                  map pairing each window's label with its length
   tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
@@ -276,6 +306,12 @@ tk/
                                   is not there
   tests/mutations_manifests.py    entries only, through the same seam; it mutates the
                                   manifests themselves, one of them at the repo root
+  tests/test_tk_closure.py        the two closure bins against a throwaway queue, a
+                                  throwaway clone carrying `tk.tracker`, and a fake forge
+                                  CLI on PATH — plus the dispatch prose and the verdict-5
+                                  row, which have to state the rule the checker enforces
+  tests/mutations_closure.py      entries only, through the same seam; five sources, since
+                                  two of the defects live in skill files rather than in a bin
 tk-cowork/
   .claude-plugin/plugin.json      the Cowork plugin manifest
   CONTRACT.md                     the queue contract, shared by both skills
@@ -289,14 +325,22 @@ docs/agents/                      what the mattpocock engineering skills read; v
   issue-tracker.md                where the issues live and how to reach them, with the
                                   private half resolved from local git config
   triage-labels.md                the five triage roles, mapped to label strings
-docs/prune/                       pruning baselines: what the skills of this plugin and of
-                                  `mattpocock-skills` measure, and the gap between them
+docs/prune/                       the pruning track's committed output: the baselines —
+                                  what the skills of this plugin and of `mattpocock-skills`
+                                  measure, and the gap between them — and one pair of files
+                                  per skill already pruned
   baseline.py                     lays a baseline out from the bin's `--json --targets`; it
                                   measures nothing itself, which is why it is here and not
                                   in `tk/bin`
   baseline-<date>.md              one run. Named file by file in `.gitignore`, like the
                                   block above: a pruning report on a PRIVATE skill must not
                                   reach this repo
+  <skill>-report.md               one pruning pass over an own skill: the metrics before and
+                                  after, the KEEP / MOVE / DROP table, the splitting
+                                  suggestions and the named proof
+  <skill>.md                      what that pass removed from that skill — every DROPped
+                                  sentence and every cut clause, kept where a reader looking
+                                  for a retired rule can still find it
 .claude/                          this repo's own agent config; versioned for the reason
                                   given below, and named file by file in `.gitignore` like
                                   the two blocks above
@@ -335,18 +379,25 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 tk/tests/mutations_roster.py`, `tk-hygiene` through
 `python3 tk/tests/mutations_hygiene.py`, `tk-prune-measure` through
 `python3 tk/tests/mutations_prune.py`, the two manifests through
-`python3 tk/tests/mutations_manifests.py`, and the wall's step 2 through
-`python3 tk/tests/mutations_window_wall.py`. The harnesses are separate files sharing
-one shape; the oldest differs only in naming its test module inline. Two of them mutate
+`python3 tk/tests/mutations_manifests.py`, the wall's step 2 through
+`python3 tk/tests/mutations_window_wall.py`, and the two closure bins through
+`python3 tk/tests/mutations_closure.py`, `tk-context` through
+`python3 tk/tests/mutations_tk_context.py`, and `tk-quota` through
+`python3 tk/tests/mutations_tk_quota.py`. The harnesses are separate files sharing
+one shape; the oldest differs only in naming its test module inline. FOUR of them mutate
 more than a bin: the manifests one mutates DATA only — its subject is the repository's
 own state, and `marketplace.json` sits at the repo root, outside the `tk/` the runner
-copies — and the wall one mutates PROSE alongside the bin, an instruction removed from a
-skill file being exactly the defect its suite exists to catch.
+copies — the wall one mutates PROSE alongside the bin, an instruction removed from a
+skill file being exactly the defect its suite exists to catch, and the `tk-context` one
+mutates prose, the bin AND its own TEST FILE, the last being the only way to prove a
+reader that lives in the suite: its statusline check must let the prose SAY the number is
+not there while refusing an instruction to go and read it there — and the `tk-quota` one
+mutates the wall's prose, since a command the wall does not name is a command nobody runs.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`, then advertise it in BOTH
 manifests — a `<name> (…)` clause in `tk/.claude-plugin/plugin.json` and a `/tk:<name>`
 mention in `.claude-plugin/marketplace.json` — and bump the plugin version.
-`tests/test_manifests.py` fails until both descriptions name it; the version is on you.
+`tk/tests/test_manifests.py` fails until both descriptions name it; the version is on you.
 No `.gitignore` change needed — the whole `tk/` tree is versioned.
 
 `docs/agents/` and `.claude/` are versioned, which is unusual for repo-local agent config and

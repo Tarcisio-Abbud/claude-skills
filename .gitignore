@@ -33,6 +33,8 @@
 /docs/prune/*
 !/docs/prune/baseline.py
 !/docs/prune/baseline-2026-08-27.md
+!/docs/prune/baseline-2026-09-01.md
+!/docs/prune/lock.py
 !/docs/prune/dispatch.md
 !/docs/prune/dispatch-report.md
 !/docs/prune/verify.md
@@ -41,6 +43,12 @@
 !/docs/prune/review-report.md
 !/docs/prune/docs-audit.md
 !/docs/prune/docs-audit-report.md
+!/docs/prune/kickoff.md
+!/docs/prune/kickoff-report.md
+!/docs/prune/wrap-up.md
+!/docs/prune/wrap-up-report.md
+!/docs/prune/second-opinion.md
+!/docs/prune/second-opinion-report.md
 
 # The hookify stop rule that this repo's own sessions run under, versioned for the same
 # reason `docs/agents/` is (README, "Layout"): `git worktree add` materialises tracked files

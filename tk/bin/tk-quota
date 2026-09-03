@@ -1,0 +1,367 @@
+#!/usr/bin/env python3
+"""tk-quota — how much of the rolling usage windows is spent, and how long is left.
+
+WHY IT EXISTS: an agent cannot see its own quota. The 5-hour and weekly
+percentages are delivered by Claude Code to the STATUSLINE SCRIPT at render time
+and are written nowhere else — measured 2026-09-03 across 302 transcripts on this
+host, the fields `rate_limits`, `five_hour`, `seven_day`, `resets_at` and
+`used_percentage` appear ZERO times. So every measurement that needed the number
+needed a human to paste it, and work that depended on one waited for that.
+
+This is the second half of what `tk-context` answers. They are NOT the same
+question and neither substitutes for the other: context occupancy is one
+session's window filling, quota is the account's spend across every session,
+subagent and machine at once. A session can sit at 30k of context and have no
+quota left.
+
+BOTH HALVES LIVE HERE, and that is the point. `--write` takes the statusline's
+payload on stdin and records it; the default reads it back. An earlier design put
+the writing in the statusline script itself, in shell — a system lens found four
+wrong-number defects in that half on 2026-09-03, every one of them in the half
+that had no suite and no mutants, while the reading half it was reviewed beside
+had both. A seam specified on one side and tested on the same side is the whole
+class. The site's statusline calls the writer in two lines:
+
+    TKQ=<skills dir>/tk/bin/tk-quota
+    [ -x "$TKQ" ] && printf '%s' "$input" | "$TKQ" --write >/dev/null 2>&1 || true
+
+An ABSOLUTE path, because a statusline runs with no PATH worth relying on, and a
+guard, because a statusline that fails is a statusline that stops rendering. Know
+what the guard costs: a path pointing at nothing no-ops in silence, and the
+sidecar then freezes at its last good write while the reader goes on vouching for
+it. That reads exactly like "no session has rendered". **Where the numbers look
+stuck, check that the path exists before believing anything else** — a clone left
+on an older commit is enough to produce it.
+
+TWO QUESTIONS REFUSE A READING, and a third is disclosed rather than refused:
+
+- **Is the window still open?** `resets_at` in the past means the reading
+  describes a window that has ENDED. Refused.
+- **Is the reading from this window at all?** A sidecar is written only while
+  some session renders a statusline, so a window nobody sat through leaves the
+  file holding an OLD reading of a window that is still open — most of a week,
+  for the weekly one. `written_at` before the window's own start catches it.
+  Refused.
+- **How old is the reading?** Inside its own window a reading can still be days
+  behind, and the weekly window is seven days wide. That is not a reason to
+  refuse the best figure there is, and it is every reason not to let it pass as
+  current: past `STALE_AFTER` the output SAYS the age, and the caller decides.
+
+A window failing either refusal is not reported. The other window still is.
+
+WHAT IT DOES NOT SEE: the account before the first API response of the first
+session to render (Claude Code sends no `rate_limits` until then), any window in
+which no statusline rendered at all, and `spend_limit` — a third limit the payload
+carries ALONGSIDE these two where one is configured, and which this site
+does not have. It also cannot attribute: the percentage is the whole account's, and
+nothing here says which session spent it.
+
+A CROSS-CHECK THIS SITE HAS: where the 5-hour windows are opened deliberately by
+scheduled routines, their boundaries are FIXED, and `resets_at` must land on one
+of them. A reset matching none is a signal the schedule changed — verified
+2026-09-03 to the minute against two rendered statuslines (1h06m and 4h44m
+remaining, both reproduced from the schedule alone).
+
+Usage:  tk-quota [--file PATH]           read the sidecar and print the windows
+        tk-quota --write [--file PATH]   record the statusline payload on stdin
+Exit:   0 done · 1 nothing was recorded (--write) · 2 no number · 64 bad usage
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import tempfile
+import time
+from typing import NamedTuple
+
+EXIT_OK = 0
+EXIT_NOT_RECORDED = 1
+EXIT_NO_NUMBER = 2
+EXIT_USAGE = 64                       # sysexits.h EX_USAGE; argparse's own 2 collides
+
+SIDECAR = "~/.claude/state/quota.json"
+
+ORPHAN_AGE = 600                      # a temp file this old lost its writer
+STALE_AFTER = 600                     # past this, the output says how old it is
+TMP_PREFIX = ".quota."                # both the writer's name and the sweep's
+
+
+class Window(NamedTuple):
+    """What one rolling window is called, and how long it runs.
+
+    ONE map holds both, deliberately. The length is what turns `written_at`
+    into a freshness test: a reading taken before its own window opened is a
+    previous window's. The label names the window in the output and fixes the
+    order the two are printed in. Kept as two maps keyed by the same names,
+    either could gain a window the other did not — a window recorded and never
+    read in one direction, a `KeyError` on a live reading in the other.
+    """
+
+    label: str
+    length: int
+
+
+WINDOWS = {
+    "five_hour": Window("5h", 5 * 3600),
+    "seven_day": Window("7d", 7 * 86400),
+}
+
+
+class Parser(argparse.ArgumentParser):
+    """Usage errors exit 64, not argparse's 2 — which is "no number" here."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        sys.exit(EXIT_USAGE)
+
+
+def plain(value):
+    """A value from outside this process, safe to print to a terminal."""
+    return re.sub(r"[\x00-\x1f\x7f]", "?", str(value))
+
+
+def no_number(msg):
+    """Stop with code 2, and say what the caller owes instead of the number."""
+    print(f"tk-quota: {msg}", file=sys.stderr)
+    print("tk-quota: no number — ask the user for the statusline's limits line, "
+          "or decide by judgement and say it is judgement", file=sys.stderr)
+    sys.exit(EXIT_NO_NUMBER)
+
+
+def number(value):
+    """The value as a number, or None. `True` is not a percentage.
+
+    `isinstance(True, int)` is true in Python, so a bare isinstance check accepts
+    `"used_percentage": true` and prints `1% used`. Booleans are refused by name.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
+
+
+def reading_of(block):
+    """The percentage and reset a window block carries, or None if neither.
+
+    Both halves ask this: the writer to decide what is worth recording, the
+    reader to decide what it may vouch for. Asking twice is deliberate — the
+    sidecar is a file, and a file can be edited between the write and the read
+    — but the question has one shape, so it has one implementation.
+    """
+    if not isinstance(block, dict):
+        return None
+    pct, resets = number(block.get("used_percentage")), number(block.get("resets_at"))
+    if pct is None or resets is None:
+        return None
+    return pct, resets
+
+
+class Vouched(NamedTuple):
+    """A window this command is willing to report.
+
+    `age` is carried and not merely tested, because staleness inside an open
+    window is a matter of degree: a reading four minutes old and one four days
+    old both pass the refusals, and only one of them should be read as current.
+    """
+
+    used: float
+    left: int
+    age: int
+
+
+# ---------------------------------------------------------------- writing
+#
+# The writing half RETURNS its exit code up to `main`; the reading half EXITS
+# where it stands, through `no_number`. Deliberate, and the banner is the line
+# it changes on: a reader that cannot vouch for a number owes the caller that
+# same refusal from wherever it found out, while a failed write is one of two
+# outcomes `main` still has to choose between.
+
+
+def clear_orphans(directory, now):
+    """Temp files whose writer never came back.
+
+    Claude Code cancels an in-flight statusline on every debounce, so a render
+    killed between `mkstemp` and `replace` leaves one behind — measured, 9 of
+    them from 300 kills. They accumulate in a user-data directory forever
+    otherwise. Best-effort: a failure here must not stop the write.
+    """
+    try:
+        for name in os.listdir(directory):
+            if not name.startswith(TMP_PREFIX):
+                continue
+            path = os.path.join(directory, name)
+            try:
+                if now - os.stat(path).st_mtime > ORPHAN_AGE:
+                    os.unlink(path)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
+def windows_from_payload(payload):
+    """The windows the statusline payload actually carries, by name.
+
+    A window Claude Code has DROPPED is absent from the result, never present
+    holding nulls. The distinction is the whole of two measured defects: the
+    forge drops a window the moment it resets, and a writer that records `null`
+    over a good reading destroys it, while a writer that records nothing at all
+    leaves a stale one in place and lets it be read as current.
+    """
+    limits = payload.get("rate_limits")
+    if not isinstance(limits, dict):
+        return {}
+    out = {}
+    for key in WINDOWS:
+        found = reading_of(limits.get(key))
+        if found is None:
+            continue
+        out[key] = {"used_percentage": found[0], "resets_at": found[1]}
+    return out
+
+
+def write_sidecar(path, payload, now):
+    """Record what the payload says about the windows. Never raises.
+
+    Written whenever ANY window is present — not only when the 5-hour one is.
+    Claude Code drops a window as it resets, and a render at that boundary
+    carries a live weekly with no 5-hour at all; a writer gated on the 5-hour
+    records nothing there, and the reader then vouches for the previous
+    weekly. That was the worst of the defects this file replaced.
+    """
+    found = windows_from_payload(payload)
+    if not found:
+        print("tk-quota: the payload carries no window; nothing recorded",
+              file=sys.stderr)
+        return EXIT_NOT_RECORDED
+    found["written_at"] = now
+    directory = os.path.dirname(path) or "."
+    try:
+        os.makedirs(directory, exist_ok=True)
+        clear_orphans(directory, now)
+        handle, tmp = tempfile.mkstemp(prefix=TMP_PREFIX, dir=directory)
+        try:
+            with os.fdopen(handle, "w") as fh:
+                json.dump(found, fh)          # a JSON emitter, never a printf:
+                fh.write("\n")                # a backslash in any value once
+            os.replace(tmp, path)             # wrote a file nothing could parse
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"tk-quota: could not record: {exc}", file=sys.stderr)
+        return EXIT_NOT_RECORDED
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------- reading
+
+
+def read_sidecar(path):
+    try:
+        with open(path, errors="replace") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        no_number(f"no sidecar at {plain(path)} — has any session rendered a "
+                  "statusline since this window opened?")
+    except (OSError, ValueError) as exc:
+        no_number(f"cannot read {plain(path)}: {plain(exc)}")
+    if not isinstance(payload, dict):
+        no_number(f"{plain(path)} does not hold an object")
+    return payload
+
+
+def window(payload, key, now):
+    """One window's percentage and seconds left, or a reason it cannot be given.
+
+    Returns (value, None) or (None, reason). The reason is said aloud: a window
+    that vanishes from the output with no word is indistinguishable from one
+    that was never asked for, and a seam cannot tell that it lost an answer.
+    """
+    block = payload.get(key)
+    if not isinstance(block, dict):
+        return None, "no reading has been recorded for it"
+    found = reading_of(block)
+    if found is None:
+        return None, "its recorded reading is not a number"
+    pct, resets = found
+    if resets <= now:
+        return None, "it has already reset, and no session has rendered since"
+    written = number(payload.get("written_at"))
+    if written is None:
+        return None, "the sidecar does not say when it was written"
+    opened = resets - WINDOWS[key].length
+    if written < opened:
+        return None, (f"its reading is {spell(int(opened - written))} "
+                      "older than the window it describes")
+    return Vouched(pct, int(resets - now), int(now - written)), None
+
+
+def spell(seconds):
+    # No clamp, still. Two callers compute a difference their guard already
+    # proved positive. The third is the age, which a `written_at` in the future
+    # does make negative — and a negative age never clears `STALE_AFTER`, so it
+    # never arrives here. A clamp would be a guard no input can reach, and a
+    # test that cannot tell it apart from its absence proves nothing.
+    if seconds >= 86400:
+        return f"{seconds // 86400}d{(seconds % 86400) // 3600:02d}h"
+    return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
+
+
+def report(payload, now):
+    parts, refused = [], []
+    for key, spec in WINDOWS.items():
+        value, reason = window(payload, key, now)
+        if value is None:
+            refused.append(f"{spec.label}: {reason}")
+        else:
+            # Truncated, as the statusline truncates: rounding printed `100%`
+            # where the bar the user reads showed 99%.
+            said = (f"{spec.label} {int(value.used)}% used, "
+                    f"{spell(value.left)} left")
+            if value.age > STALE_AFTER:
+                said += f" (read {spell(value.age)} ago)"
+            parts.append(said)
+    return parts, refused
+
+
+def main(argv=None):
+    parser = Parser(description="record or print the account's rolling usage windows")
+    parser.add_argument("--write", action="store_true",
+                        help="read the statusline's payload on stdin and record it")
+    parser.add_argument("--file", default=None,
+                        help=f"use this sidecar instead of {SIDECAR}")
+    args = parser.parse_args(argv)
+
+    path = args.file or os.path.expanduser(SIDECAR)
+    now = time.time()
+
+    if args.write:
+        try:
+            payload = json.load(sys.stdin)
+        except (ValueError, OSError) as exc:
+            print(f"tk-quota: unreadable payload on stdin: {plain(exc)}", file=sys.stderr)
+            return EXIT_NOT_RECORDED
+        if not isinstance(payload, dict):
+            print("tk-quota: the payload on stdin is not an object", file=sys.stderr)
+            return EXIT_NOT_RECORDED
+        return write_sidecar(path, payload, now)
+
+    parts, refused = report(read_sidecar(path), now)
+    if not parts:
+        no_number("no window in " + plain(path) + " can be vouched for — "
+                  + "; ".join(refused))
+    print(" · ".join(parts))
+    for line in refused:
+        print(f"tk-quota: {line}", file=sys.stderr)
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())
