@@ -34,6 +34,14 @@ data really has, not the smallest one the wording accepts. When the item's subje
 population — a queue with tagged items, a file with prior content — that population is the
 fixture.
 
+## The anchor outlives the tree
+
+**A criterion anchors on content, never on a line number or an absolute count** — a reformat
+moves the line, a sibling slice moves the count. Anchor by a grep of the sentence. Write an
+unavoidable count paired with the sha of the tree it ran on, the shape
+`../wrap-up/MERGE-GATE.md` gives a green suite. A criterion passed only because a reflow
+refilled its line, and two lane tickets named a count their lane had already passed.
+
 ## Prove it can fail
 
 The first time a criterion A is run at all, prove once that it **can** fail: put the defect back
