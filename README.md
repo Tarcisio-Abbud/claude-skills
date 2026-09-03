@@ -229,6 +229,11 @@ tk/
                                   reference the reader composes, so it cannot greenlight
                                   what the reader refuses to emit. Exit 1 names the ones
                                   that failed
+  bin/tk-context                  this session's context occupancy in tokens, read from its
+                                  own transcript — the number WINDOW.md's seams compare, and
+                                  which no orchestrator can see in the statusline. Absolute,
+                                  never a fraction: the threshold is the smart zone, not the
+                                  window's capacity. Exit 2 when there is no number to give
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
@@ -238,6 +243,10 @@ tk/
   tests/test_tk_collisions.py     regression suite, against a real git repository built
                                   in a throwaway directory
   tests/test_tk_vista_check.py    regression suite for the vista gate
+  tests/test_tk_context.py        regression suite for the reading, and the doc conformance
+                                  of the seams that call it
+  tests/mutations_tk_context.py   its mutations — including three on the prose and one on
+                                  the suite's own reader of it
   tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation

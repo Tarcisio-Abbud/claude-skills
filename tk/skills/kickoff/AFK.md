@@ -304,7 +304,7 @@ the worktree removed, and every claim left with its item or was released.
 ## 6. Measure, and hand the package to the close
 
 Four numbers on one line — **planned × completed × wall clock × context at the cut**, the last
-read from the statusline at that seam (a generation that ran no cut writes its predecessor's
+from `tk-context` at that seam (a generation that ran no cut writes its predecessor's
 number from `--state`, or `?`). Beside them, the deviation lines — one per departure from the
 role table; a deviation with no line is indistinguishable from a slip — and the audit's block.
 Items the package did not close carry the first reason that applies: **blocked** (bound to
