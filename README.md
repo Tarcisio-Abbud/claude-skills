@@ -239,6 +239,12 @@ tk/
                                   across the session, since the slope is what says whether
                                   another review fits. Exit 2 no number, 64 bad usage: a
                                   mistyped flag may not read as the licence to use judgement
+  bin/tk-quota                    what is left of the rolling usage windows, read from a
+                                  sidecar the statusline writes — the 5h and weekly figures
+                                  reach that script at render time and are in no transcript,
+                                  so this is the only way an agent knows them. Refuses a file
+                                  whose window has already reset rather than report a
+                                  previous window's percentage as current
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
@@ -252,6 +258,10 @@ tk/
                                   of the seams that call it
   tests/mutations_tk_context.py   its mutations — four on the prose, one on
                                   the suite's own reader of it, the rest on the bin
+  tests/test_tk_quota.py          regression suite for the quota reading, and the doc
+                                  conformance of the wall that calls it
+  tests/mutations_tk_quota.py     its mutations — three of them on the staleness refusal,
+                                  which is the rule the whole command is built around
   tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
@@ -360,16 +370,18 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 tk/tests/mutations_prune.py`, the two manifests through
 `python3 tk/tests/mutations_manifests.py`, the wall's step 2 through
 `python3 tk/tests/mutations_window_wall.py`, and the two closure bins through
-`python3 tk/tests/mutations_closure.py`, and `tk-context` through
-`python3 tk/tests/mutations_tk_context.py`. The harnesses are separate files sharing
-one shape; the oldest differs only in naming its test module inline. THREE of them mutate
+`python3 tk/tests/mutations_closure.py`, `tk-context` through
+`python3 tk/tests/mutations_tk_context.py`, and `tk-quota` through
+`python3 tk/tests/mutations_tk_quota.py`. The harnesses are separate files sharing
+one shape; the oldest differs only in naming its test module inline. FOUR of them mutate
 more than a bin: the manifests one mutates DATA only — its subject is the repository's
 own state, and `marketplace.json` sits at the repo root, outside the `tk/` the runner
 copies — the wall one mutates PROSE alongside the bin, an instruction removed from a
 skill file being exactly the defect its suite exists to catch, and the `tk-context` one
 mutates prose, the bin AND its own TEST FILE, the last being the only way to prove a
 reader that lives in the suite: its statusline check must let the prose SAY the number is
-not there while refusing an instruction to go and read it there.
+not there while refusing an instruction to go and read it there — and the `tk-quota` one
+mutates the wall's prose, since a command the wall does not name is a command nobody runs.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`, then advertise it in BOTH
 manifests — a `<name> (…)` clause in `tk/.claude-plugin/plugin.json` and a `/tk:<name>`

@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""tk-quota — how much of the rolling usage windows is spent, and how long is left.
+
+WHY IT EXISTS: an agent cannot see its own quota. The 5-hour and weekly
+percentages are delivered by Claude Code to the STATUSLINE SCRIPT at render time
+and are written nowhere else — measured 2026-09-03 across 302 transcripts on this
+host, the fields `rate_limits`, `five_hour`, `seven_day`, `resets_at` and
+`used_percentage` appear ZERO times. So every measurement that needed the number
+needed a human to paste it, and work that depended on one waited for that.
+
+This is the second half of what `tk-context` answers. They are NOT the same
+question and neither substitutes for the other: context occupancy is one
+session's window filling, quota is the account's spend across every session,
+subagent and machine at once. A session can sit at 30k of context and have no
+quota left.
+
+WHERE THE NUMBER COMES FROM: a sidecar the statusline writes on every render,
+at `~/.claude/state/quota.json`. That indirection is the whole design — the
+payload exists for a few milliseconds inside a script the model does not run,
+and a file is how it survives to be read. The writer is the site's statusline;
+this command only reads.
+
+WHY IT REFUSES A STALE FILE RATHER THAN REPORTING IT. The sidecar is written only
+while some session is rendering a statusline, so a window nobody sat through
+leaves the file holding the PREVIOUS window's percentage — a number that looks
+current and is not. `resets_at` is what settles it: once that moment has passed
+the file belongs to a window that has ended, and there is no number to give.
+
+WHAT IT DOES NOT SEE: anything before the first API response of the first session
+to render (the payload carries no `rate_limits` until then), and any window in
+which no statusline rendered at all. It also cannot attribute: the percentage is
+the whole account's, and nothing here says which session spent it.
+
+A CROSS-CHECK THIS SITE HAS: where the 5-hour windows are opened deliberately by
+scheduled routines, their boundaries are FIXED, and `resets_at` must land on one
+of them. A reset time that matches none is a signal the window drifted or the
+schedule changed — verified 2026-09-03 to the minute against two rendered
+statuslines (1h06m and 4h44m remaining, both reproduced from the schedule alone).
+
+Usage:  tk-quota [--file PATH]
+Exit:   0 the numbers are printed · 2 no number is available · 64 bad usage
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+
+EXIT_OK = 0
+EXIT_NO_NUMBER = 2
+EXIT_USAGE = 64                       # sysexits.h EX_USAGE; argparse's own 2 collides
+
+SIDECAR = "~/.claude/state/quota.json"
+
+
+class Parser(argparse.ArgumentParser):
+    """Usage errors exit 64, not argparse's 2 — which is "no number" here."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        sys.exit(EXIT_USAGE)
+
+
+def plain(value):
+    """A value from outside this process, safe to print to a terminal."""
+    return re.sub(r"[\x00-\x1f\x7f]", "?", str(value))
+
+
+def no_number(msg):
+    """Stop with code 2, and say what the caller owes instead of the number."""
+    print(f"tk-quota: {msg}", file=sys.stderr)
+    print("tk-quota: no number — ask the user for the statusline's limits line, "
+          "or decide by judgement and say it is judgement", file=sys.stderr)
+    sys.exit(EXIT_NO_NUMBER)
+
+
+def read_sidecar(path):
+    try:
+        with open(path, errors="replace") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        no_number(f"no sidecar at {plain(path)} — has any session rendered a "
+                  "statusline since this window opened?")
+    except (OSError, ValueError) as exc:
+        no_number(f"cannot read {plain(path)}: {exc}")
+    if not isinstance(payload, dict):
+        no_number(f"{plain(path)} does not hold an object")
+    return payload
+
+
+def window(payload, key, now):
+    """One window's percentage and seconds left, or None where it says nothing.
+
+    A window whose reset has passed is not reported as a low percentage: it is
+    the PREVIOUS window's number, and the caller cannot tell the difference.
+    """
+    block = payload.get(key)
+    if not isinstance(block, dict):
+        return None
+    pct, resets = block.get("used_percentage"), block.get("resets_at")
+    if not isinstance(pct, (int, float)) or not isinstance(resets, (int, float)):
+        return None
+    if resets <= now:
+        return None
+    return pct, int(resets - now)
+
+
+def spell(seconds):
+    if seconds >= 86400:
+        return f"{seconds // 86400}d{(seconds % 86400) // 3600:02d}h"
+    return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
+
+
+def main(argv=None):
+    parser = Parser(description="print the account's rolling usage windows")
+    parser.add_argument("--file", default=os.path.expanduser(SIDECAR),
+                        help=f"read this sidecar instead of {SIDECAR}")
+    args = parser.parse_args(argv)
+
+    now = time.time()
+    payload = read_sidecar(args.file)
+    five = window(payload, "five_hour", now)
+    seven = window(payload, "seven_day", now)
+    if five is None and seven is None:
+        written = payload.get("written_at")
+        age = f", written {spell(int(now - written))} ago" if isinstance(written, (int, float)) else ""
+        no_number(f"every window in {plain(args.file)} has already reset{age} — "
+                  "the file is a previous window's")
+
+    parts = []
+    if five:
+        parts.append(f"5h {five[0]:.0f}% used, {spell(five[1])} left")
+    if seven:
+        parts.append(f"7d {seven[0]:.0f}% used, {spell(seven[1])} left")
+    print(" · ".join(parts))
+
+    if five is None:
+        print("tk-quota: the 5-hour window has reset and no session has rendered "
+              "since — only the weekly figure is current", file=sys.stderr)
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())

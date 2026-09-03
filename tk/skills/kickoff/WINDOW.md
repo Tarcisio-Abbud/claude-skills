@@ -25,6 +25,20 @@ in flight. What survived was exactly what had been committed and pushed.
 
 ## The wall
 
+**Read the quota before dispatching, not only after it fails.** `../../bin/tk-quota` prints
+what is left of the rolling windows — `5h 63% used, 1h21m left · 7d 61% used, 4d11h left` — and
+it is the only way an agent has of knowing: the percentages reach the statusline script at
+render time and are written to no transcript (measured 2026-09-03 across 302 files: zero
+occurrences). A package whose remaining items cost more than the window has left is a package
+planning its own wall, and the cheapest moment to know that is the cut.
+
+It **exits 2 rather than report a figure it cannot vouch for**. The sidecar it reads is written
+only while a session renders a statusline, so a window nobody sat through leaves the file
+holding the PREVIOUS window's percentage — which looks current and is a whole window wrong.
+Refused, the seam owes what *Generations* owes without a context number: judgement, said aloud
+as judgement. Asking the user for the statusline's limits line is the other way, where there is
+a user to ask.
+
 The wall announces itself twice — a dispatched run comes back a **terminal failure**, and the
 error text names the moment the window resets. Both matter. A run the wall killed delivered
 nothing and refuted nothing, so it is **not** one of the three attempts `../verify/SKILL.md`
