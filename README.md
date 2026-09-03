@@ -193,10 +193,13 @@ tk/
                                   writes one only when the user asks
   reference/vista-template.html   that page in its smallest form: the five markers, both
                                   themes, and nothing the browser fetches
-  bin/tk-queue                    deterministic CLI: only writer of the queue files
+  bin/tk-queue                    deterministic CLI: only writer of the queue files.
+                                  `add` also refuses at the site file's WIP cap,
+                                  summed over the roster's queues and with no bypass
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
-                                  identity, the roster of environments, the two ceilings,
-                                  and the fleet's allow/denylist of projects
+                                  identity, the roster of environments, the ceilings (two
+                                  for subagents, one for the queue's open items), and the
+                                  fleet's allow/denylist of projects
   bin/tk-contract                 generates the block a dispatched subagent is handed,
                                   from the site file and the role table — never written
                                   from memory, and carrying no copy of either

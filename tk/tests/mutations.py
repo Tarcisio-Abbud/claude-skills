@@ -2711,6 +2711,80 @@ MUTATIONS = [
      "    except ValueError:\n        return None",
      "    born = datetime.date.fromisoformat(field_value(got[0]))",
      ["TestListShowsTheAge.test_a_legacy_queue_lists_without_an_age_and_without_breaking"]),
+
+    # --- T297: the WIP cap ------------------------------------------------
+
+    ("T297 the cap is not consulted at all",
+     "    check_wip(load_site(), memdir)\n    iid = max_id(memdir) + 1",
+     "    iid = max_id(memdir) + 1",
+     ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap"]),
+
+    ("T297 --force bypasses the cap",
+     "    check_wip(load_site(), memdir)",
+     "    if not args.force:\n        check_wip(load_site(), memdir)",
+     ["TestWipCap.test_force_does_not_reach_the_cap"]),
+
+    ("T297 the cap refuses only PAST itself (off by one)",
+     "    if total < cap:\n        return",
+     "    if total <= cap:\n        return",
+     ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap"]),
+
+    # the over-refusal direction, and the one that would brick every queue on a
+    # machine whose user never chose a number
+    ("T297 an unset cap reads as a cap of zero",
+     "    cap = site.ceilings.get(WIP_KEY) if site else None",
+     "    cap = site.ceilings.get(WIP_KEY, 0) if site else 0",
+     ["TestWipCap.test_no_key_in_the_site_file_is_no_cap",
+      "TestWipCap.test_no_site_file_at_all_is_no_cap"]),
+
+    # the measured bypass: a cap that counts one queue is walked around with
+    # `--dir`, and the WIP is the same WIP
+    ("T297 the cap counts the target queue only (the --dir bypass restored)",
+     "    dirs = [d for name, d in tk_roster.queues(tk_roster.projects_root())\n"
+     "            if not tk_roster.excluded_by(name, allow, deny)]",
+     "    dirs = []",
+     ["TestWipCap.test_the_count_sums_every_queue_on_the_roster",
+      "TestWipCap.test_pointing_dir_at_another_queue_does_not_get_past_the_cap"]),
+
+    ("T297 the queue being written is left out of its own count",
+     "    dirs.append(memdir)", "    pass",
+     ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap"]),
+
+    ("T297 a queue the site file excludes is counted anyway",
+     "            if not tk_roster.excluded_by(name, allow, deny)]", "            if True]",
+     ["TestWipCap.test_a_queue_the_site_file_excludes_is_not_counted"]),
+
+    ("T297 one queue reached by two spellings is counted twice",
+     "        if key in seen:\n            continue", "        if False:\n            continue",
+     ["TestWipCap.test_one_queue_named_twice_is_counted_once"]),
+
+    ("T297 a closed item still counts as open work",
+     '    return sum(1 for kind, _ in split_blocks(content) if kind == "item-open")',
+     '    return sum(1 for kind, _ in split_blocks(content) if kind.startswith("item"))',
+     ["TestWipCap.test_a_done_item_is_not_open_work"]),
+
+    ("T297 the refusal stops naming `done` as a remedy",
+     '    \'`tk-queue done <id> --how "<outcome + pointer>"` for one that is finished, \'',
+     "    ''",
+     ["TestWipCap.test_the_refusal_names_done_and_cancel_and_where_the_number_lives",
+      "TestWipCap.test_the_printed_remedy_RUNS_and_makes_room"]),
+
+    # the cap lives in that file, so a half-read one is a cap that vanishes.
+    # A DIFFERENT anchor from validate_env's identical clause below it — this one
+    # carries the `return`, which is what makes it match once
+    ("T297 a rotten site file reads as an absent one (the cap disappears)",
+     "        return tk_site.load()\n    except tk_site.SiteError as e:\n        fail(str(e))",
+     "        return tk_site.load()\n    except tk_site.SiteError as e:\n        return None",
+     ["TestWipCap.test_a_rotten_site_file_stops_the_add_instead_of_vanishing_the_cap"]),
+
+    # the site file's own half: an unknown key is IGNORED by design, so dropping
+    # the key from the tuple does not fail the file — it silently unsets the cap
+    ("T297 site the cap's key leaves the tuple, so the value reads as an unknown key",
+     'CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items")',
+     'CEILINGS = ("max-local-subagents", "max-cloud-subagents")',
+     ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap",
+      "TestWipCap.test_a_cap_of_zero_is_refused_by_the_site_file"],
+     "bin/tk_site.py"),
 ]
 
 
@@ -2778,7 +2852,7 @@ def main():
                                   "TestASetextTitleIsKeptWithItsUnderline",
                                   "TestClearingOnAClassLessItemIsRefused",
                                   "TestBirthDate", "TestMigrateBackdates",
-                                  "TestListShowsTheAge"])
+                                  "TestListShowsTheAge", "TestWipCap"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

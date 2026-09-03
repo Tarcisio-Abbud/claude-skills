@@ -70,6 +70,16 @@ alone: with only the block ceiling, one exempt field edit took a 100-char item t
 chars; with only the field ceiling, three prose fields in one call took an item past a 700
 block ceiling with no `--force`. `--force` raises both, for the rare exception.
 
+## The WIP cap
+
+A third ceiling bounds the QUEUE, not an item: `add` is refused once the open items reach
+`max-open-items` in the site file, counted across every queue on this machine's roster.
+Summing the roster is what stops `--dir` naming another queue to get past it, and unset means
+NO cap — the number is the user's, per machine. There is no bypass, `--force` included: an
+unattended `--force` is a string no gate can judge. Room is made by taking an item out,
+`done` or `cancel`, and the refusal names both with the count per queue. Still open at the
+cap: `edit --text` on an item that exists, and `handoff`.
+
 ## The field chain
 
 Free text may not contain a bold field marker (`**Project:**`, `**Risk:**`, …) — it would
