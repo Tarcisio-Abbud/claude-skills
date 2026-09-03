@@ -182,8 +182,10 @@ too.
 - **The digest goes into the PR body**, because an unattended session has nobody at the
   gate to read the terminal. A PR the strict verdicts keep from merging carries it there
   too, and its DECISION item points at it as the digest reference.
-- **Verdict 2 hardened: every finding FIXED or QUEUED under the fixer cap, zero
-  accepted** — accepting a finding is human judgment. Three cases bind what an
+- **Verdict 2 hardened: every finding FIXED, QUEUED or PARKED under the fixer cap,
+  zero accepted** — accepting a finding is human judgment, and those three rungs
+  (`../../reference/session-finding.md`) are where one goes instead. A parked finding
+  reaches the user in the close's single question. Three cases bind what an
   unattended session may merge, each checked by itself:
   - **A type-B criterion** — verdict 3 cannot turn green without the user, so the item
     ends at an open PR carrying its proof and waits.

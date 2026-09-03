@@ -331,9 +331,11 @@ the step that stopped the package and the state the tree was left in.
 ## The fixer cap
 
 **A tooling repo — one whose code handles no business data — gets ONE correction cycle per pull
-request.** The cap counts per firing of the review, never for the life of the pull request. No
-second cycle runs against the same firing, and a review re-fired whole by *A resumed generation
-starts here* carries its own. Whatever a re-review finds after that cycle enters the queue by
+request.** The cap counts per firing of the review, never for the life of the pull request. A
+review re-fired whole by *A resumed generation starts here* carries its own cycle. That cycle is a
+single `fixer` dispatch, never resumed: findings it leaves unclosed go to ONE item carrying its
+inventory, not to a second dispatch. A `fixer` whose batch touches a file outside the slice's diff
+stops and reports. Whatever a re-review finds after that cycle enters the queue by
 `tk-queue add --dir "<queue dir>"`, class per the finding's nature, as *A session finding,
 unattended* prescribes. The close's verdict 2 counts a finding queued this way as handled, never
 as one no fixer could close, so the pull request does not wait on it. A repository handling
@@ -341,11 +343,17 @@ business data is uncapped.
 
 ## A session finding, unattended
 
-The ladder is `../../reference/session-finding.md`, and unattended it has one rung: **queue with
-a gate** — `tk-queue add --dir "<queue dir>"` at the moment of discovery, the gate in the item's
-own text, a finding only the user can judge entering as a DECISION with `--deferred afk`. No
-discards and no resolving on the spot — the two rungs that need a human, the second being the
-hydra's own fuel. Every finding queued is listed in the close under its gate for the user's veto,
-`tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"`.
-**Done when:** the close carries one line per session finding, each matching a queued item with
-its gate named — none discarded, none resolved on the spot.
+Unattended, `../../reference/session-finding.md`'s ladder keeps three rungs. **Fix on the spot** —
+a `fixer` under *The fixer cap*. **Queue with a gate** — `tk-queue add --dir "<queue dir>"` at the
+moment of discovery. **Park** — a DECISION with `--deferred afk`, its branch pushed and its
+handoff written. Nothing is discarded, and nothing waits on a parked finding.
+
+At the close ONE `AskUserQuestion` batches every parked DECISION; that question and the close
+report are the same text. Portuguese, these labels verbatim:
+
+- `O que é:` the item or pull request in plain words, never a bare `T123`;
+- `O que muda para você:` what each option costs the user;
+- `Se você não responder:` the default the agent takes, and when.
+
+**Done when:** every session finding carries its rung in the close, the parked ones in one
+question, with the veto `tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"`.

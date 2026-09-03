@@ -32,13 +32,17 @@ resolve-now the ladder had placed third.
 
 ## The ladder, unattended
 
-The ladder needs the user: nobody answers the menu, and both the discard ("this will never
-happen") and the resolve-now (the hydra's own fuel) are judgements that belong to them. An
-unattended session has ONE rung: **queue with a gate** — `tk-queue add` at the moment of
-discovery, the gate named in the item's own text, and a finding only the user can judge
-entering as a DECISION carrying `--deferred afk`.
+Nobody answers the menu, so **discard** is off the table: that judgement is the user's. Three
+rungs are left, read in order:
 
-So an unattended session reports no discards and resolves nothing on the spot. Every
-finding it queued is listed in its close under the gate that kept it, for the user's
-**veto** on their return — `tk-queue cancel "<id>" --why "<the veto>"` is that veto, one
-command against a finding that would otherwise have been lost to nobody's judgement.
+1. **Fix on the spot** — a defect in THIS session's diff, carrying a criterion a run can check.
+   It goes to a `fixer` under the fixer cap, the fourth exit of `../skills/review/SKILL.md`.
+2. **Queue with a gate** — `tk-queue add` at the moment of discovery, the gate in the item's own
+   text. A branch-point finding takes the slice's ticket, or ONE item per firing
+   (`../skills/review/SKILL.md`). Never a `fixer`: dispatching backlog mid-session is scope creep.
+3. **Park it** — only the user can judge it: a DECISION carrying `--deferred afk`, the branch
+   pushed, the handoff written, and the package goes on. The close asks it.
+
+Every finding is listed in the close under the rung that took it, for the user's **veto** on
+their return — `tk-queue cancel "<id>" --why "<the veto>"`, one command against a finding that
+would otherwise have been lost to nobody's judgement.
