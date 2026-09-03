@@ -10,13 +10,13 @@ owns the gate's whole procedure — attended and strict — and its "Done when" 
 and whether it MAY be merged. Every PR in the gate gets one, before the menu — including a
 PR the verdicts hold back, where the decision is whether the red is worth fixing now.
 
-**In the attended gate, section 3 is PRINTED in the terminal before the menu** — five
-lines an item in `REPORT.md`'s `was/now/gain/risk` mould, sections 1, 2, 4 and 5 left to
+**In the attended gate, section 3 is PRINTED in the terminal before the menu** — three
+lines per item in `REPORT.md`'s `was/now/gain/risk` mould, sections 1, 2, 4 and 5 left to
 the digest the menu carries. A digest sitting in the PR body does NOT discharge this —
-that body is not the user's window. Copy the lines from it, name it, and carry the full PR
-URL `https://github.com/<owner>/<repo>/pull/<n>`; recomposing from the diff spends a
-window the user refuses to spend. Write the block for a cold reader: every identifier
-resolves on first mention.
+that body is not the user's window. Copy the lines from the PR body, name the PR, and
+carry the full PR URL `https://github.com/<owner>/<repo>/pull/<n>`; recomposing from the
+diff spends a window the user refuses to spend. Write the block for a cold reader: every
+identifier resolves on first mention.
 
 Its first half is written from the trail — the PR body, the issue it closes, the verdict
 comments — in five sections:
@@ -109,7 +109,7 @@ not reopen the ticket.
 **Review fixes rewrite the PR body**, in the same breath as the fix commit: a body still
 describing the version before the fixes tells the reviewer what the branch no longer does.
 
-**The question opens with what merges** — one clause an item, identifier resolved, before
+**The question opens with what merges** — one clause per item, identifier resolved, before
 any verdict or mechanics. That block scrolls; the question stays under the cursor.
 
 Then ONE multiSelect `AskUserQuestion` with the actions, recommended first — the check IS
