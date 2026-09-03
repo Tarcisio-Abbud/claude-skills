@@ -30,10 +30,10 @@ identifiers and the strings a run emits alike.
 
 The trigger is judged per diff, not per file: a mixed file counts only what changed. Measure the
 diff against the site's trigger items at the slice's **base**: the branch point of the work
-item. A rewrite split across PRs then measures as one rewrite. Capture the command once,
-`git diff <base>...HEAD`, and confirm `<base>` resolves first. Three dots exclude the working
-tree, so the slice is committed before the lens fires. A hit item fires the lens, unless the
-parent declines it in one line in the PR as worth less than it costs.
+item. A rewrite split across PRs then measures as one rewrite. Capture the command once, `git
+diff <base>...HEAD`, confirming `<base>` resolves first. Three dots exclude the working tree, so
+the slice is committed before the lens fires. A hit item fires the lens, unless the parent
+declines it in one line as worth less than it costs.
 
 Two **exemptions** cancel every item they answer. Each is a one-line **exemption receipt** in
 the PR, which the wrap-up gate shows to the user:
@@ -42,7 +42,7 @@ the PR, which the wrap-up gate shows to the user:
   answers every item except the user-data one.
 - A change whose every finding would be a nit (§3).
 
-No item hit: the mandatory review is the whole review, and the parent may still fire, stating
+No item hit: the mandatory review is the whole review; the parent may still fire, stating
 why. No site list at all: the parent decides, stating why.
 
 **Done when:** the PR carries either the firing receipt (§2) or the reason it did not fire.
@@ -51,10 +51,10 @@ Where the slice has no PR, the item's note carries it.
 ## 2. Fire the lens
 
 Check that the window fits (§5). Announce the **firing receipt**: the item hit, the base, the
-estimated cost. Fire **one** subagent, on the tier the site extension names, at
-`effort: "high"`; where no site names one, the tier is `opus`. Findings live in the
-parent's context, so the parent fires it directly. Pick the angle from the slice's class,
-`system` by default: a slice matching two rows, or none of them cleanly, takes it.
+estimated cost. Fire **one** subagent, on the tier the site extension names, at `effort:
+"high"`; where no site names one, the tier is `opus`. Findings live in the parent's context, so
+the parent fires it directly. Pick the angle from the slice's class; a slice matching two rows,
+or none cleanly, takes `system`.
 
 | Slice class | Angle |
 |---|---|
@@ -73,8 +73,8 @@ against the base; the size of the fix is not a grade. A **nit** changes nothing 
 depends on. Everything else is a **defect**, a one-character boundary bug included. Fix nits on
 the spot and list them.
 
-A finding that reproduces at the **branch point** is the repo's backlog, not this slice's. It
-goes to the slice's ticket, or to ONE item holding every branch-point finding of the firing.
+A finding that reproduces at the **branch point** is the repo's backlog, not this slice's. It goes
+to the slice's ticket, failing that to ONE item holding every branch-point finding of the firing.
 `tk-queue edit --text` REPLACES the item's text: a later finding reads it and writes the union.
 One `tk-queue add` per finding is the hydra of `../../reference/session-finding.md`.
 
@@ -87,8 +87,8 @@ finding, recorded in the inventory. A defect has a fourth exit: a `fixer` dispat
 batch. Two conditions hold together: the defect is in THIS session's diff, and it carries a
 criterion a run can check. One dispatch carries every eligible defect of the firing.
 
-Late in a session every fix reads as too big for the window left, and a `fixer` opens a window of
-its own.
+Late in a session every fix reads as too big for the window left. A `fixer` opens a window of
+its own, outside the effort gate.
 
 **The correction batch goes to the repo's mandatory two-axis review, never to another lens**. Its
 brief carries the invariant each finding violated: the spec of a repair is the finding. A batch
@@ -98,13 +98,13 @@ that grows a file past a size ceiling the repo declares owes a line in the PR bo
 correction that writes one statement in one more place, means the next instance is already
 written. An incomplete repair is a correction, not a signal.
 
-A design signal blocks the merge, and the repository decides who answers. Where its code handles
-no business data, the call is the parent's own (`../../reference/subagent-policy.md`). One
-`fixer` cycle consolidates the mechanism into a single source, and the close reports the call
-with a veto line. Code earns its form where the answer must be identical every run or fail
+A design signal blocks the merge, and the repository decides who answers. Where its code handles no
+business data, the call is the parent's own (`../../reference/subagent-policy.md`). The firing's one
+`fixer` cycle consolidates the mechanism into a single source, lifting the block; the close reports
+the call with a veto line. Code earns its form where the answer must be identical every run or fail
 loudly; everywhere else the form is prose. The user's question is reserved for money or business
-data, an edit to a criterion or spec, a discard, and anything hard to undo. Handling business
-data, the unattended slice stays **blocked** and parks (`../../reference/session-finding.md`).
+data, an edit to a criterion or spec, a discard, and anything hard to undo. Handling business data,
+the unattended slice stays **blocked** and parks (`../../reference/session-finding.md`).
 
 **Done when:** every finding carries a grade the parent reproduced, and a fix, a dispatched
 `fixer`, a rejection or a carried-over item naming its destination.
@@ -126,7 +126,7 @@ briefing), and every finding appears in it.
 
 ## 5. Window and handoff
 
-**The lens and the review of its correction batch may not cost more window than the
+**The lens and the review of its correction batch may not cost more window together than the
 implementation they review**. Where the lens alone would breach that ceiling, the slice takes
 the mandatory review alone, with the reason in the PR.
 

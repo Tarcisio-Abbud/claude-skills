@@ -159,14 +159,17 @@ its justification — on `/clear`, with the opening sentences.
 
 ## The `afk` argument
 
-`/tk:wrap-up afk` — the user typed it and left; run every step without a single menu.
+`/tk:wrap-up afk` — the user typed it and left; run every step without a single menu. One
+exception closes the package: the batched question over its parked DECISIONs
+(`../kickoff/AFK.md`), asked after the work is pushed and gating nothing.
 
 - **Concurrent-session guard** first, in the form `../kickoff/AFK.md` defines — the claim
   on the queue's items leads, tree signals follow: another live session working this
   repo → leave the tree untouched and report it.
-- Steps 1–4 and 6 run as written, every menu turning into a queue entry: each session
-  finding and each unanswered choice becomes a DECISION carrying `--deferred afk` — the
-  flag for a decision nobody could ask, against one nobody bothered to ask.
+- Steps 1–4 and 6 run as written, every menu turning into a queue entry: each unanswered
+  choice becomes a DECISION carrying `--deferred afk` — the flag for a decision nobody
+  could ask, against one nobody bothered to ask. A session finding takes the three rungs
+  of `../../reference/session-finding.md` instead.
 - Step 5 runs on `MERGE-GATE.md`, *The strict form*: commit and push before any review —
   `afk` IS that authorization — the digest in the PR body, merge only under the hardened
   verdicts; whatever is not merged enters the queue as a DECISION with its digest

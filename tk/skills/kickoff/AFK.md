@@ -346,14 +346,14 @@ business data is uncapped.
 Unattended, `../../reference/session-finding.md`'s ladder keeps three rungs. **Fix on the spot** —
 a `fixer` under *The fixer cap*. **Queue with a gate** — `tk-queue add --dir "<queue dir>"` at the
 moment of discovery. **Park** — a DECISION with `--deferred afk`, its branch pushed and its
-handoff written. Nothing is discarded, and nothing waits on a parked finding.
+handoff written. Nothing is discarded, and the package never waits on a parked finding.
 
-At the close ONE `AskUserQuestion` batches every parked DECISION; that question and the close
-report are the same text. Portuguese, these labels verbatim:
+At the close, never mid-package, ONE `AskUserQuestion` batches every parked DECISION; that
+question and the close report are the same text. Portuguese, these labels verbatim:
 
-- `O que é:` the item or pull request in plain words, never a bare `T123`;
-- `O que muda para você:` what each option costs the user;
+- `O que é:` the item or pull request in plain words, never a bare `T123` or `#n`;
+- `O que muda para você:` what each option means for the user;
 - `Se você não responder:` the default the agent takes, and when.
 
-**Done when:** every session finding carries its rung in the close, the parked ones in one
+**Done when:** every session finding carries its ladder rung in the close, the parked ones in one
 question, with the veto `tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"`.
