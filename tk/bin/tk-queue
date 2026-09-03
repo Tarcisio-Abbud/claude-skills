@@ -96,6 +96,16 @@ Neither ceiling holds alone: with only the block one, a single field edit was
 exempt and reached 1014 chars; with only the field one, three prose fields in a
 single call reached 709 past a 700 ceiling. --force raises both.
 
+A THIRD ceiling bounds the queue itself rather than an item: the WIP cap. `add`
+is refused once the OPEN items reach `max-open-items` in the site file, counted
+across every queue on this machine's roster (which is what stops `--dir` from
+walking around it). It has NO bypass — --force does not reach it — because the
+only honest way to make room is to take an item out, with `done` or `cancel`;
+the refusal names both. Unset, there is no cap, exactly as before the gate: the
+number is the user's, chosen on the machine that lives with it. What stays open
+at the cap is the pair of sinks that write no new item — `edit --text` on an item
+that already exists, and `handoff`.
+
 Every mutating command prints the resolved memory dir on stderr before acting:
 the target queue is inferred from --dir or the cwd, and an unseen inference is
 an unchecked one.
@@ -122,6 +132,25 @@ except ImportError:      # non-POSIX; see queue_lock
 # THIS file, and the suite also loads it as a module
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tk_site      # noqa: E402  (the path above is what makes it importable)
+
+# `tk-roster` carries no `.py` suffix, so it is loaded by path — the same way
+# `tk-hygiene` beside it loads it, and for the same reason: the roster already
+# answers which queues exist on this machine, and a second sweep written here
+# would be a second answer to it. The WIP cap needs that answer (see check_wip).
+import importlib.machinery  # noqa: E402
+import importlib.util       # noqa: E402
+
+
+def _load_roster():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tk-roster")
+    loader = importlib.machinery.SourceFileLoader("tk_roster", path)
+    spec = importlib.util.spec_from_loader("tk_roster", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+tk_roster = _load_roster()
 
 CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
 # The class that PARKS the queue: nothing moves on a DECISION item until the user
@@ -170,6 +199,13 @@ UMASK = os.umask(0)
 os.umask(UMASK)
 CEILING = 700          # chars per ITEM BLOCK; enough for title + fields + 1 link
 CEILING_FORCED = 2000
+# The WIP cap's key in the site file (`~/.claude/tk/env`, read by tk_site.py).
+# SITE configuration and never a constant here: the machine carrying a hundred
+# open items and the one carrying four run the same plugin, and a number shipped
+# in this file would refuse every `add` on the first of them the day it landed.
+# UNSET MEANS NO CAP — the behaviour every queue had before this gate — so the
+# number is chosen by the user, once, on the machine that has to live with it.
+WIP_KEY = "max-open-items"
 # chars per FIELD VALUE. The block ceiling cannot be the only one: the fields a
 # legacy oversized item must stay able to gain are exempt from it (see cmd_edit),
 # so without a second ceiling the first is bypassed by choosing another flag —
@@ -2587,6 +2623,122 @@ def check_field_ceilings(force, **fields):
                  "([[slug]])." + ("" if force else f" --force raises it to {forced}."))
 
 
+# --- the WIP cap: how many open items this machine may hold at once ---------
+# A queue is a WORKING SET, and an `add` is the cheapest action in this CLI: a
+# session that cannot finish a finding enqueues it, and the queue grows faster
+# than any session empties it. The cap is the whitelist form of the answer —
+# REFUSE AT IT, ALWAYS, and let a human take an item out — and deliberately not
+# a gate with an escape hatch. There is no `--force` here and `add --force` does
+# not reach it: an unattended `--force` is a string no gate can judge, and this
+# script has no signal of whether anyone is present to judge it. What stays open
+# is the pair of sinks a review already prescribes, which write no new item:
+# `edit --text` on an item that exists, and `handoff`.
+
+
+def load_site():
+    """The parsed site file, or None when this machine has none.
+
+    A file that exists and is unusable is FATAL, and that is the whole reason
+    this runs on every `add` rather than only when `--env` is passed: the cap
+    lives in that file, and a half-read one is a cap that silently disappears.
+    The message is tk_site's own — it names the file and the line, which is the
+    diagnosis a reader has to act on.
+    """
+    try:
+        return tk_site.load()
+    except tk_site.SiteError as e:
+        fail(str(e))
+
+
+def open_items(memdir):
+    """How many OPEN items a queue holds, counted with this script's own reader.
+
+    A queue file that is not there counts zero rather than failing: `tk-roster`
+    answered that the queue existed a moment ago, and one that vanished between
+    that answer and this read holds nothing.
+    """
+    content = read(os.path.join(memdir, "next-steps.md"))
+    if content is None:
+        return 0
+    return sum(1 for kind, _ in split_blocks(content) if kind == "item-open")
+
+
+def wip_queues(site, memdir):
+    """Every queue the cap counts: the ROSTER's, plus the one being written.
+
+    The roster is what closes the `--dir` bypass. A cap that counted one queue
+    is walked around by pointing `--dir` at another queue on the same machine —
+    and the WIP is the same WIP, since the same person works both. The answer
+    comes from `tk-roster`, imported at the top of this file: which queues exist
+    is its question, and a second sweep here would be a second cap.
+
+    `queues` and `excluded_by`, NOT `sweep`: this gate needs the queues, and
+    `sweep`'s other half recovers the directory to open a session in by walking
+    the filesystem once per queue, which is a price every `add` would pay for a
+    path the cap never reads. That half also DROPS the queues no single
+    directory resolves to, and a queue nothing can dispatch holds open items all
+    the same. The site file's `fleet-allow`/`fleet-deny` are honoured through
+    `excluded_by`, so a project the machine was told not to touch is not counted
+    against the work it is allowed to do.
+
+    The target queue is appended because it need not be on the roster at all:
+    `--dir` names any directory, and a cap that counted only the roster would
+    wave an add into a queue outside `~/.claude/projects` past a full machine.
+    Directories are compared by realpath, so the roster's spelling of one and
+    `--dir`'s spelling of the same one count once.
+    """
+    allow, deny = tk_roster.lists(site)
+    dirs = [d for name, d in tk_roster.queues(tk_roster.projects_root())
+            if not tk_roster.excluded_by(name, allow, deny)]
+    dirs.append(memdir)
+    seen, out = set(), []
+    for d in dirs:
+        key = os.path.realpath(d)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(d)
+    return out
+
+
+WIP_REMEDY = (
+    'Make room by taking an item OUT, which is the only thing that does: '
+    '`tk-queue done <id> --how "<outcome + pointer>"` for one that is finished, '
+    '`tk-queue cancel <id> --why "<why>"` for one that is not going to happen '
+    "(`tk-queue list` shows the IDs). A finding that has to survive this session "
+    "and cannot become an item of its own goes into an item that already exists "
+    '(`tk-queue edit <id> --text "..."`) or into that item\'s briefing '
+    "(`tk-queue handoff <id> ...`) — neither writes a new item, and both are what "
+    "a review prescribes."
+)
+
+
+def check_wip(site, memdir):
+    """Refuse the add when the open items already fill the cap.
+
+    AT the cap, not past it: the cap is how many items may be OPEN, so the add
+    that would make them cap+1 is the one refused. `--force` is not a parameter
+    of this function, deliberately — see the note above load_site.
+    """
+    cap = site.ceilings.get(WIP_KEY) if site else None
+    if cap is None:
+        return
+    counts = [(d, open_items(d)) for d in wip_queues(site, memdir)]
+    total = sum(n for _, n in counts)
+    if total < cap:
+        return
+    # the per-queue breakdown, because the total alone does not say WHERE the
+    # work is, and the reader has to pick the item to close out of one of them.
+    # Only the queues that hold something: a machine's empty queues would bury
+    # the two lines that matter
+    where = "".join(f"\n  {n:>4}  {d}" for d, n in counts if n)
+    fail(f"{total} open item(s) against a cap of {cap}, so no new item enters the "
+         f"queue:{where}\n\nThe cap is `{WIP_KEY}` in {site.path}, and the count sums "
+         "every queue on this machine's roster — so neither --force nor another --dir "
+         "gets past it, and raising the number is the user's call, not this session's. "
+         + WIP_REMEDY)
+
+
 def cmd_add(args):
     memdir = memory_dir(args.dir)
     if args.classe not in CLASSES:
@@ -2627,6 +2779,10 @@ def cmd_add(args):
     content = read(path)
     if content is None:
         fail("next-steps.md not found in " + memdir + " (first kickoff creates it)")
+    # the WIP cap, and BEFORE the ID is allocated: a refusal that has already
+    # spent a number leaves a hole in the sequence, and `add --force` reaches
+    # this line exactly like every other add — see the note above load_site
+    check_wip(load_site(), memdir)
     iid = max_id(memdir) + 1
     item = compose_item(args, iid)
     check_ceiling(item, args.force)

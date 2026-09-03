@@ -6446,5 +6446,246 @@ class TestListShowsTheAge(QueueTest):
         self.assertIn("T002  AUTONOMOUS     ?  sem tag", out)
 
 
+
+# --- T297: the WIP cap — how many open items this machine may hold at once ---
+
+# The cap is SITE configuration, and the number in these fixtures is a fixture's
+# number: the plugin ships none, because the machine carrying a hundred open
+# items and the one carrying four run the same script. `alpha` is the machine
+# running the suite, as in the roster fixtures above.
+def site_cap(cap):
+    return f"identity = alpha\nenvironments = alpha\nmax-open-items = {cap}\n"
+
+
+class TestWipCap(QueueTest):
+    """`add` is refused once the OPEN items reach the cap, with NO bypass.
+
+    A queue is a working set, and `add` is the cheapest action in this CLI — a
+    session that cannot finish a finding enqueues it, and the queue grows faster
+    than any session empties it. The gate is the whitelist form of the answer:
+    refuse AT the cap, always, and let a human take an item out. There is no
+    `--force` for it, deliberately: an unattended `--force` is a string no gate
+    can judge, and this script has no signal of whether anyone is present.
+
+    The count sums every queue on this machine's roster, which is what closes
+    the `--dir` bypass: a cap that counted one queue is walked around by naming
+    another one on the same machine, and the WIP is the same WIP.
+    """
+
+    ADD = ("add", "achado da review", "--class", "AUTONOMOUS", "--effort", "S",
+           "--criterion", "A: x")
+
+    def roster_queue(self, name, *items):
+        """A queue where `tk-roster` sweeps for them — under this test's HOME.
+
+        The suite's own `self.mem` is a tempdir OUTSIDE ~/.claude/projects, so it
+        is the target queue and never a roster one; a test that needs the roster
+        to hold something writes it here.
+        """
+        d = os.path.join(self.home, ".claude", "projects", name, "memory")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "next-steps.md"), "w", encoding="utf-8") as f:
+            f.write(HEADER + "".join(items))
+        return d
+
+    def add_in(self, memdir, *extra):
+        """`add` against a chosen queue — `run_tk` always appends `self.mem`, and
+        the `--dir` bypass can only be exercised by naming another directory."""
+        env = dict(os.environ, HOME=self.home)
+        return subprocess.run([sys.executable, TK, *self.ADD, *extra, "--dir", memdir],
+                              capture_output=True, text=True, cwd=self.dir, env=env,
+                              timeout=60)
+
+    # --- the cap itself ---------------------------------------------------
+
+    def test_the_add_is_refused_when_the_open_items_reach_the_cap(self):
+        """AT the cap, not past it: the cap is how many items may be OPEN, so the
+        add that would make them cap+1 is the one refused. The WHOLE file is
+        asserted unchanged, not `assertNotIn` on the new text — a refusal that
+        rewrote the queue on its way out would satisfy the narrower assertion."""
+        self.site(site_cap(2))
+        before = HEADER + item(1, "um") + item(2, "dois")
+        self.write("next-steps.md", before)
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("2 open item(s) against a cap of 2", r.stderr)
+        self.assertEqual(self.body(), before)
+
+    def test_a_queue_already_past_the_cap_is_refused_too(self):
+        """The comparison is `>=`, not `==`: a queue that grew past the cap
+        before the gate existed is the population this machine actually has."""
+        self.site(site_cap(2))
+        self.seed(item(1, "um"), item(2, "dois"), item(3, "tres"))
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("3 open item(s) against a cap of 2", r.stderr)
+
+    def test_below_the_cap_the_add_goes_through(self):
+        """The over-refusal direction — the one a gate loses in silence."""
+        self.site(site_cap(3))
+        self.seed(item(1, "um"), item(2, "dois"))
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added T003", r.stdout)
+
+    def test_force_does_not_reach_the_cap(self):
+        """`add --force` raises the SIZE ceilings and must not touch this one:
+        an unattended `--force` is the same unjudgeable string as `--deferred`,
+        and the script cannot tell whether anyone is there to judge it."""
+        self.site(site_cap(2))
+        self.seed(item(1, "um"), item(2, "dois"))
+        r = self.run_tk(*self.ADD, "--force")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("open item(s) against a cap of 2", r.stderr)
+
+    def test_a_done_item_is_not_open_work(self):
+        """The cap counts the WORKING SET. A `[x]` line parked in the queue is
+        work that left it, and counting it would refuse adds for room that is
+        already free."""
+        self.site(site_cap(2))
+        self.seed(item(1, "um"),
+                  item(2, "dois").replace("- [ ]", "- [x]"),
+                  item(3, "tres").replace("- [ ]", "- [x]"))
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    # --- the remedy -------------------------------------------------------
+
+    def test_the_refusal_names_done_and_cancel_and_where_the_number_lives(self):
+        """The only way to make room is to take an item OUT, so the refusal names
+        both commands that do it — and the file the number comes from, or a reader
+        cannot tell a full machine from a misconfigured one."""
+        self.site(site_cap(1))
+        self.seed(item(1, "um"))
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        for fragment in ("tk-queue done <id> --how", "tk-queue cancel <id> --why",
+                         "tk-queue list", "max-open-items",
+                         os.path.join(self.home, ".claude", "tk", "env")):
+            self.assertIn(fragment, r.stderr)
+
+    def test_the_printed_remedy_RUNS_and_makes_room(self):
+        """A refusal's remedy is code: prescribed lines have shipped that no flag
+        combination accepts. The remedy is run with a real ID substituted for the
+        placeholder, and then the refused command is re-run."""
+        self.site(site_cap(1))
+        self.seed(item(1, "um"))
+        refusal = self.run_tk(*self.ADD)
+        self.assertEqual(refusal.returncode, 1, refusal.stdout)
+        self.assertIn('tk-queue done <id> --how "<outcome + pointer>"', refusal.stderr)
+        closed = self.run_tk("done", "T001", "--how", "PR #1")
+        self.assertEqual(closed.returncode, 0, closed.stderr)
+        again = self.run_tk(*self.ADD)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertIn("added T002", again.stdout)
+
+    def test_the_two_sinks_a_review_prescribes_stay_open_at_the_cap(self):
+        """`edit --text` and `handoff` write no new item, and they are where a
+        finding that cannot become an item goes. A cap that closed them too would
+        leave a session at the cap with nowhere to put what it found."""
+        self.site(site_cap(1))
+        self.seed(item(1, "um"))
+        self.assertEqual(self.run_tk(*self.ADD).returncode, 1)
+        edited = self.run_tk("edit", "T001", "--text", "um, mais o achado de hoje")
+        self.assertEqual(edited.returncode, 0, edited.stderr)
+        self.assertIn("mais o achado de hoje", self.body())
+        wrote = self.run_tk("handoff", "T001", "--objective", "fechar o achado",
+                            "--state", "nada feito", "--blockers", "none")
+        self.assertEqual(wrote.returncode, 0, wrote.stderr)
+
+    # --- the roster, which is what closes the --dir bypass ----------------
+
+    def test_the_count_sums_every_queue_on_the_roster(self):
+        """One machine, one working set. The roster comes from `tk-roster`, so a
+        second queue's items count against the cap and the refusal says where
+        they are — the reader has to pick the item to close out of one of them."""
+        self.site(site_cap(3))
+        other = self.roster_queue("-srv-outro", item(1, "um"), item(2, "dois"))
+        self.seed(item(9, "nove"))
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("3 open item(s) against a cap of 3", r.stderr)
+        self.assertIn(other, r.stderr)
+        self.assertIn(self.mem, r.stderr)
+
+    def test_pointing_dir_at_another_queue_does_not_get_past_the_cap(self):
+        """The measured bypass: the cap is walked around by naming a DIFFERENT
+        queue on the same machine. It is closed by summing the roster, so the
+        empty queue is refused exactly like the full one."""
+        self.site(site_cap(2))
+        self.roster_queue("-srv-cheio", item(1, "um"), item(2, "dois"))
+        empty = self.roster_queue("-srv-vazio")
+        r = self.add_in(empty)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("2 open item(s) against a cap of 2", r.stderr)
+
+    def test_a_queue_the_site_file_excludes_is_not_counted(self):
+        """`fleet-deny` is the roster's own answer to which queues this machine
+        works, and the cap reuses it rather than re-deciding: a project the
+        machine was told not to touch is not counted against the work it may do."""
+        self.site(site_cap(2) + "fleet-deny = -srv-alheio\n")
+        self.roster_queue("-srv-alheio", item(1, "um"), item(2, "dois"))
+        self.seed()
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_one_queue_named_twice_is_counted_once(self):
+        """The target queue is added to the roster's list because `--dir` may name
+        a directory no roster sweep reaches. When it names one the sweep DOES
+        reach, the queue's items must not be counted twice — a doubled count
+        refuses adds for room that is there."""
+        self.site(site_cap(2))
+        both = self.roster_queue("-srv-mesma", item(1, "um"))
+        r = self.add_in(both)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added T002", r.stdout)
+
+    # --- what the cap is read from ----------------------------------------
+
+    def test_no_key_in_the_site_file_is_no_cap(self):
+        """Unset means NO cap: the behaviour every queue had before this gate.
+        A ceiling nobody chose is not a ceiling, and a number shipped in the
+        plugin would refuse every add on the first machine already above it."""
+        self.site("identity = alpha\nenvironments = alpha\n")
+        self.seed(*[item(n, f"item {n}") for n in range(1, 8)])
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_no_site_file_at_all_is_no_cap(self):
+        """A fresh install has no site file, and `add` is the command every
+        session runs: it must not start depending on a file the plugin ships
+        nothing for."""
+        self.seed(*[item(n, f"item {n}") for n in range(1, 8)])
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_a_rotten_site_file_stops_the_add_instead_of_vanishing_the_cap(self):
+        """The cap lives in that file, so a half-read one is a cap that silently
+        disappears. The diagnosis is the file's own line number, not a traceback
+        naming a line of Python the reader cannot fix."""
+        self.site("identity = alpha\nenvironments = alpha\nlixo\n")
+        self.seed(item(1, "um"))
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn(":3:", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_a_cap_of_zero_is_refused_by_the_site_file(self):
+        """Zero is a number and it is not a cap: it refuses every add forever,
+        which reads as a broken script rather than as a misconfigured file."""
+        self.site(site_cap(0))
+        self.seed()
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("max-open-items", r.stderr)
+
+    def test_a_cap_that_is_not_a_number_is_refused(self):
+        self.site("identity = alpha\nenvironments = alpha\nmax-open-items = muitos\n")
+        self.seed()
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("max-open-items", r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

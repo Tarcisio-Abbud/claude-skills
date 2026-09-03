@@ -19,6 +19,7 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
     # ceilings, per machine
     max-local-subagents = 3
     max-cloud-subagents = 4
+    max-open-items = 40
 
   identity              REQUIRED. Which roster entry this machine IS. An item
                         whose Env names it — or names nothing — runs here.
@@ -31,6 +32,14 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
   max-cloud-subagents   optional. Concurrent CLOUD subagents — a concurrency
                         ceiling only; it says nothing about quota, which is one
                         window shared by both venues.
+  max-open-items        optional. The WIP cap: how many OPEN items this machine
+                        may hold at once, summed across every queue on the
+                        roster. `tk-queue add` refuses AT it, with no bypass —
+                        room is made by taking an item out (`done`/`cancel`).
+                        Unset means NO cap, which is what every queue had before
+                        the gate: a ceiling nobody chose is not a ceiling, and a
+                        number shipped in the plugin would refuse every add on
+                        the first machine already above it.
   fleet-allow           optional. If present, the ONLY projects the fleet may
                         sweep. Absent means every queue on the machine enters.
   fleet-deny            optional. Projects the fleet must not touch. Applied
@@ -74,7 +83,12 @@ SITE_FILE = os.path.join("~", ".claude", "tk", "env")
 NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}\Z")
 RESERVED_NAME = "none"
 REQUIRED = ("identity", "environments")
-CEILINGS = ("max-local-subagents", "max-cloud-subagents")
+# Every key whose value is a positive whole number. All optional, and read by a
+# DIFFERENT caller each: the two subagent ceilings by the contract generator,
+# `max-open-items` by `tk-queue add`. They share this tuple because they share
+# the validation — a ceiling that is not a number, or is zero, is refused here
+# once rather than in each reader.
+CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items")
 # The fleet's allow/denylist. Both optional, both comma-separated like
 # `environments`, and both read by the roster sweep rather than by this module,
 # which only says whether the file is trustworthy.
@@ -92,7 +106,8 @@ PROJECT_NAME_RE = re.compile(f"[{PROJECT_ALPHABET}]+\\Z")
 TEMPLATE = """  identity = <this machine's environment name>
   environments = <name>, <name>
   max-local-subagents = <concurrent local subagents>
-  max-cloud-subagents = <concurrent cloud subagents>"""
+  max-cloud-subagents = <concurrent cloud subagents>
+  max-open-items = <open items this machine may hold at once>"""
 
 
 class SiteError(Exception):
