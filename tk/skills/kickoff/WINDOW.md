@@ -25,6 +25,29 @@ in flight. What survived was exactly what had been committed and pushed.
 
 ## The wall
 
+**Read the quota before dispatching, not only after it fails.** `../../bin/tk-quota` prints
+what is left of the rolling windows — `5h 63% used, 1h21m left · 7d 61% used, 4d11h left` — and
+it is the only way an agent has of knowing: the percentages reach the statusline script at
+render time and are written to no transcript (measured 2026-09-03 across 302 files: zero
+occurrences). A package whose remaining items cost more than the window has left is a package
+planning its own wall, and the cheapest moment to know that is the cut.
+
+It **exits 2 rather than report a figure it cannot vouch for**, and two independent things can
+make it unvouchable. The window may have RESET, its `resets_at` now past. Or the reading may
+belong to a **previous window** — the sidecar is written only while a session renders a statusline, so a
+stretch nobody sat through leaves an old reading in place, and the weekly window stays open for
+seven days, which is how long a wrong figure can look current. **A reading that survives both
+and is still old SAYS SO**: `(read 4d02h ago)` on the line means nothing has rendered since, so
+the percentage is a floor on what has been spent, never the current figure.
+
+**Exit 0 can still be a partial answer: it prints one window where it can only vouch for one.**
+The line, on **stdout**, carries what survived; **stderr** names what did not, and why. A seam
+reading stdout alone sees a shorter line and no error — so read what it refused before treating the
+line as the whole picture. Where the window it refused is the one the decision needed, the seam
+owes what *Generations* owes without a context number: judgement, said aloud as judgement.
+Asking the user for the statusline's limits line is the other way, where there is a user to ask.
+Exit 64 is a mistyped flag, never a missing number.
+
 The wall announces itself twice — a dispatched run comes back a **terminal failure**, and the
 error text names the moment the window resets. Both matter. A run the wall killed delivered
 nothing and refuted nothing, so it is **not** one of the three attempts `../verify/SKILL.md`
