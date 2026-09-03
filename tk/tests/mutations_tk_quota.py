@@ -24,9 +24,11 @@ modelling error underneath it — staleness treated as ONE question (is the wind
 open) when it is two (and is this reading fresh), which lets a six-day-old weekly
 through a window that stays open for seven.
 
-THREE ENTRIES MUTATE PROSE, in `skills/kickoff/WINDOW.md`: a command the wall
-does not name is a command nobody runs, and a wall that promises exit 0 means
-good numbers hides the partial answer this command can give.
+FOUR ENTRIES MUTATE PROSE, in `skills/kickoff/WINDOW.md`: a command the wall
+does not name is a command nobody runs, a wall that promises exit 0 means good
+numbers hides the partial answer this command can give, and a wall naming only
+the two refusals lets a reading that survives both be read as current when it is
+days behind.
 """
 
 import os
@@ -59,6 +61,8 @@ INSIDE = "AWindowThatCannotBeVouchedFor.test_a_reading_inside_its_own_window_is_
 NO_WRITTEN = "AWindowThatCannotBeVouchedFor.test_a_sidecar_that_does_not_say_when_it_was_written_is_refused"
 BOOL = "AWindowThatCannotBeVouchedFor.test_a_percentage_that_is_a_boolean_is_not_a_percentage"
 PARTIAL = "AWindowThatCannotBeVouchedFor.test_one_window_refused_still_prints_the_other_and_says_why"
+AGE_SAID = "AWindowThatCannotBeVouchedFor.test_a_reading_still_inside_its_window_but_days_old_says_how_old"
+AGE_QUIET = "AWindowThatCannotBeVouchedFor.test_a_reading_from_this_minute_carries_no_age"
 
 NO_FILE = "WhenThereIsNoNumber.test_no_sidecar_at_all"
 BAD_JSON = "WhenThereIsNoNumber.test_a_sidecar_that_is_not_json"
@@ -74,6 +78,7 @@ TYPO = "TheEdgesOfTheContract.test_a_mistyped_flag_does_not_read_as_no_number"
 CALLS_IT = "TheProseThatCallsIt.test_the_wall_sends_the_reader_to_the_command"
 SAYS_REFUSAL = "TheProseThatCallsIt.test_the_wall_says_the_reading_can_be_a_previous_windows"
 SAYS_PARTIAL = "TheProseThatCallsIt.test_the_wall_describes_the_partial_answer"
+SAYS_AGE = "TheProseThatCallsIt.test_the_wall_says_an_old_reading_announces_its_age"
 
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
@@ -84,8 +89,8 @@ MUTATIONS = [
      [W_BOUNDARY], QUOTA),
 
     ("a window whose values are null is recorded as null instead of omitted",
-     "        if pct is None or resets is None:\n            continue",
-     '        if pct is None or resets is None:\n            out[key] = {"used_percentage": pct, "resets_at": resets}\n            continue',
+     "        if found is None:\n            continue",
+     '        if found is None:\n            bad = limits.get(key) or {}\n            out[key] = {"used_percentage": bad.get("used_percentage"), "resets_at": bad.get("resets_at")}\n            continue',
      [W_OMIT], QUOTA),
 
     ("a payload carrying no window overwrites the good sidecar anyway",
@@ -125,7 +130,7 @@ MUTATIONS = [
 
     # -- freshness: the second question, which collapsing loses --------------
     ("the reading's age is never asked, only whether the window is open",
-     "    if written < resets - LENGTHS[key]:",
+     "    if written < opened:",
      "    if False:",
      [OLDER], QUOTA),
 
@@ -135,8 +140,16 @@ MUTATIONS = [
      [NO_WRITTEN], QUOTA),
 
     ("the freshness test is inverted, so only ancient readings pass",
-     "    if written < resets - LENGTHS[key]:",
-     "    if written >= resets - LENGTHS[key]:",
+     "    if written < opened:",
+     "    if written >= opened:",
+     [INSIDE], QUOTA),
+
+    # The map that carries the design: one entry per window, label beside
+    # length. As two maps a hundred lines apart, nothing here could restore
+    # the drift between them — this restores its consequence instead.
+    ("both windows are judged against one length, so the weekly is asked for five hours",
+     '    "seven_day": Window("7d", 7 * 86400),',
+     '    "seven_day": Window("7d", 5 * 3600),',
      [INSIDE], QUOTA),
 
     ("a window whose reset has passed is reported anyway",
@@ -148,6 +161,26 @@ MUTATIONS = [
      "    if isinstance(value, bool) or not isinstance(value, (int, float)):",
      "    if not isinstance(value, (int, float)):",
      [BOOL], QUOTA),
+
+    # -- the third question, disclosed instead of refused --------------------
+    # The two refusals leave a reading that is inside its own window and still
+    # days behind. Silence there is what lets a floor be read as the current
+    # spend; announcing it on every reading is what makes the announcement mean
+    # nothing. Both directions are mutated.
+    ("a reading days old is reported with no word about its age",
+     "            if value.age > STALE_AFTER:",
+     "            if False:",
+     [AGE_SAID], QUOTA),
+
+    ("every reading is stamped with an age, so the stamp stops meaning anything",
+     "            if value.age > STALE_AFTER:",
+     "            if True:",
+     [AGE_QUIET], QUOTA),
+
+    ("the wall names only the refusals, so a days-old figure reads as current",
+     "**A reading that survives both\nand is still old SAYS SO**: `(read 4d02h ago)` on the line means nothing has rendered since, so\nthe percentage is a floor on what has been spent, never the current figure.",
+     "A reading that survives both is the current figure.",
+     [SAYS_AGE], WINDOW),
 
     # -- what the numbers say ------------------------------------------------
     ("the two windows are printed on separate lines",
@@ -161,8 +194,8 @@ MUTATIONS = [
      [DAYS], QUOTA),
 
     ("the percentage is rounded, and 99.6 becomes a 100% the bar never showed",
-     "            parts.append(f\"{label} {int(value[0])}% used, {spell(value[1])} left\")",
-     "            parts.append(f\"{label} {value[0]:.0f}% used, {spell(value[1])} left\")",
+     '            said = (f"{spec.label} {int(value.used)}% used, "',
+     '            said = (f"{spec.label} {value.used:.0f}% used, "',
      [TRUNC], QUOTA),
 
     ("a refused window vanishes with no word, so the seam cannot tell it lost an answer",

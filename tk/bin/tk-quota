@@ -20,27 +20,40 @@ the writing in the statusline script itself, in shell — a system lens found fo
 wrong-number defects in that half on 2026-09-03, every one of them in the half
 that had no suite and no mutants, while the reading half it was reviewed beside
 had both. A seam specified on one side and tested on the same side is the whole
-class. The site's statusline is now one line:
+class. The site's statusline calls the writer in two lines:
 
-    printf '%s' "$input" | tk-quota --write 2>/dev/null || true
+    TKQ=<skills dir>/tk/bin/tk-quota
+    [ -x "$TKQ" ] && printf '%s' "$input" | "$TKQ" --write >/dev/null 2>&1 || true
 
-TWO QUESTIONS, NOT ONE, decide whether a reading may be believed, and asking only
-the first is how this command would lie:
+An ABSOLUTE path, because a statusline runs with no PATH worth relying on, and a
+guard, because a statusline that fails is a statusline that stops rendering. Know
+what the guard costs: a path pointing at nothing no-ops in silence, and the
+sidecar then freezes at its last good write while the reader goes on vouching for
+it. That reads exactly like "no session has rendered". **Where the numbers look
+stuck, check that the path exists before believing anything else** — a clone left
+on an older commit is enough to produce it.
+
+TWO QUESTIONS REFUSE A READING, and a third is disclosed rather than refused:
 
 - **Is the window still open?** `resets_at` in the past means the reading
-  describes a window that has ENDED.
-- **Is the reading fresh?** A sidecar is written only while some session renders
-  a statusline, so a window nobody sat through leaves the file holding an OLD
-  reading of a window that is still open — most of a week, for the weekly one.
-  `written_at` before the window's own start is what catches it.
+  describes a window that has ENDED. Refused.
+- **Is the reading from this window at all?** A sidecar is written only while
+  some session renders a statusline, so a window nobody sat through leaves the
+  file holding an OLD reading of a window that is still open — most of a week,
+  for the weekly one. `written_at` before the window's own start catches it.
+  Refused.
+- **How old is the reading?** Inside its own window a reading can still be days
+  behind, and the weekly window is seven days wide. That is not a reason to
+  refuse the best figure there is, and it is every reason not to let it pass as
+  current: past `STALE_AFTER` the output SAYS the age, and the caller decides.
 
-A window failing either is not reported. The other window, passing both, still is.
+A window failing either refusal is not reported. The other window still is.
 
 WHAT IT DOES NOT SEE: the account before the first API response of the first
 session to render (Claude Code sends no `rate_limits` until then), any window in
-which no statusline rendered at all, and `spend_limit` — the gateway limit that
-binds instead of these two where one is configured, which this site does not
-have. It also cannot attribute: the percentage is the whole account's, and
+which no statusline rendered at all, and `spend_limit` — a third limit the payload
+carries ALONGSIDE these two where one is configured, and which this site
+does not have. It also cannot attribute: the percentage is the whole account's, and
 nothing here says which session spent it.
 
 A CROSS-CHECK THIS SITE HAS: where the 5-hour windows are opened deliberately by
@@ -61,6 +74,7 @@ import re
 import sys
 import tempfile
 import time
+from typing import NamedTuple
 
 EXIT_OK = 0
 EXIT_NOT_RECORDED = 1
@@ -69,11 +83,30 @@ EXIT_USAGE = 64                       # sysexits.h EX_USAGE; argparse's own 2 co
 
 SIDECAR = "~/.claude/state/quota.json"
 
-# How long each window runs. This is what turns `written_at` into a freshness
-# test: a reading taken before its own window opened is a previous window's.
-LENGTHS = {"five_hour": 5 * 3600, "seven_day": 7 * 86400}
-
 ORPHAN_AGE = 600                      # a temp file this old lost its writer
+STALE_AFTER = 600                     # past this, the output says how old it is
+TMP_PREFIX = ".quota."                # both the writer's name and the sweep's
+
+
+class Window(NamedTuple):
+    """What one rolling window is called, and how long it runs.
+
+    ONE map holds both, deliberately. The length is what turns `written_at`
+    into a freshness test: a reading taken before its own window opened is a
+    previous window's. The label names the window in the output and fixes the
+    order the two are printed in. Kept as two maps keyed by the same names,
+    either could gain a window the other did not — a window recorded and never
+    read in one direction, a `KeyError` on a live reading in the other.
+    """
+
+    label: str
+    length: int
+
+
+WINDOWS = {
+    "five_hour": Window("5h", 5 * 3600),
+    "seven_day": Window("7d", 7 * 86400),
+}
 
 
 class Parser(argparse.ArgumentParser):
@@ -109,7 +142,42 @@ def number(value):
     return value
 
 
+def reading_of(block):
+    """The percentage and reset a window block carries, or None if neither.
+
+    Both halves ask this: the writer to decide what is worth recording, the
+    reader to decide what it may vouch for. Asking twice is deliberate — the
+    sidecar is a file, and a file can be edited between the write and the read
+    — but the question has one shape, so it has one implementation.
+    """
+    if not isinstance(block, dict):
+        return None
+    pct, resets = number(block.get("used_percentage")), number(block.get("resets_at"))
+    if pct is None or resets is None:
+        return None
+    return pct, resets
+
+
+class Vouched(NamedTuple):
+    """A window this command is willing to report.
+
+    `age` is carried and not merely tested, because staleness inside an open
+    window is a matter of degree: a reading four minutes old and one four days
+    old both pass the refusals, and only one of them should be read as current.
+    """
+
+    used: float
+    left: int
+    age: int
+
+
 # ---------------------------------------------------------------- writing
+#
+# The writing half RETURNS its exit code up to `main`; the reading half EXITS
+# where it stands, through `no_number`. Deliberate, and the banner is the line
+# it changes on: a reader that cannot vouch for a number owes the caller that
+# same refusal from wherever it found out, while a failed write is one of two
+# outcomes `main` still has to choose between.
 
 
 def clear_orphans(directory, now):
@@ -122,7 +190,7 @@ def clear_orphans(directory, now):
     """
     try:
         for name in os.listdir(directory):
-            if not name.startswith(".quota."):
+            if not name.startswith(TMP_PREFIX):
                 continue
             path = os.path.join(directory, name)
             try:
@@ -147,14 +215,11 @@ def windows_from_payload(payload):
     if not isinstance(limits, dict):
         return {}
     out = {}
-    for key in LENGTHS:
-        block = limits.get(key)
-        if not isinstance(block, dict):
+    for key in WINDOWS:
+        found = reading_of(limits.get(key))
+        if found is None:
             continue
-        pct, resets = number(block.get("used_percentage")), number(block.get("resets_at"))
-        if pct is None or resets is None:
-            continue
-        out[key] = {"used_percentage": pct, "resets_at": resets}
+        out[key] = {"used_percentage": found[0], "resets_at": found[1]}
     return out
 
 
@@ -177,7 +242,7 @@ def write_sidecar(path, payload, now):
     try:
         os.makedirs(directory, exist_ok=True)
         clear_orphans(directory, now)
-        handle, tmp = tempfile.mkstemp(prefix=".quota.", dir=directory)
+        handle, tmp = tempfile.mkstemp(prefix=TMP_PREFIX, dir=directory)
         try:
             with os.fdopen(handle, "w") as fh:
                 json.dump(found, fh)          # a JSON emitter, never a printf:
@@ -222,43 +287,47 @@ def window(payload, key, now):
     block = payload.get(key)
     if not isinstance(block, dict):
         return None, "no reading has been recorded for it"
-    pct, resets = number(block.get("used_percentage")), number(block.get("resets_at"))
-    if pct is None or resets is None:
+    found = reading_of(block)
+    if found is None:
         return None, "its recorded reading is not a number"
+    pct, resets = found
     if resets <= now:
         return None, "it has already reset, and no session has rendered since"
     written = number(payload.get("written_at"))
     if written is None:
         return None, "the sidecar does not say when it was written"
-    if written < resets - LENGTHS[key]:
-        return None, (f"its reading is {spell(int(resets - LENGTHS[key] - written))} "
+    opened = resets - WINDOWS[key].length
+    if written < opened:
+        return None, (f"its reading is {spell(int(opened - written))} "
                       "older than the window it describes")
-    return (pct, int(resets - now)), None
+    return Vouched(pct, int(resets - now), int(now - written)), None
 
 
 def spell(seconds):
-    # No clamp: every caller computes a difference it has already proved
-    # positive — `resets - now` past the `resets <= now` guard, and
-    # `resets - LENGTHS[key] - written` past the freshness one. A clamp here
-    # would be a guard no input can reach, and no test could prove it.
+    # No clamp, still. Two callers compute a difference their guard already
+    # proved positive. The third is the age, which a `written_at` in the future
+    # does make negative — and a negative age never clears `STALE_AFTER`, so it
+    # never arrives here. A clamp would be a guard no input can reach, and a
+    # test that cannot tell it apart from its absence proves nothing.
     if seconds >= 86400:
         return f"{seconds // 86400}d{(seconds % 86400) // 3600:02d}h"
     return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
 
 
-LABELS = {"five_hour": "5h", "seven_day": "7d"}
-
-
 def report(payload, now):
     parts, refused = [], []
-    for key, label in LABELS.items():
+    for key, spec in WINDOWS.items():
         value, reason = window(payload, key, now)
-        if value:
+        if value is None:
+            refused.append(f"{spec.label}: {reason}")
+        else:
             # Truncated, as the statusline truncates: rounding printed `100%`
             # where the bar the user reads showed 99%.
-            parts.append(f"{label} {int(value[0])}% used, {spell(value[1])} left")
-        else:
-            refused.append(f"{label}: {reason}")
+            said = (f"{spec.label} {int(value.used)}% used, "
+                    f"{spell(value.left)} left")
+            if value.age > STALE_AFTER:
+                said += f" (read {spell(value.age)} ago)"
+            parts.append(said)
     return parts, refused
 
 

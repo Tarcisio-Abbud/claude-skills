@@ -239,12 +239,21 @@ tk/
                                   across the session, since the slope is what says whether
                                   another review fits. Exit 2 no number, 64 bad usage: a
                                   mistyped flag may not read as the licence to use judgement
-  bin/tk-quota                    what is left of the rolling usage windows, read from a
-                                  sidecar the statusline writes — the 5h and weekly figures
-                                  reach that script at render time and are in no transcript,
-                                  so this is the only way an agent knows them. Refuses a file
-                                  whose window has already reset rather than report a
-                                  previous window's percentage as current
+  bin/tk-quota                    what is left of the rolling usage windows — the 5h and
+                                  weekly figures reach the STATUSLINE SCRIPT at render time
+                                  and are in no transcript, so this is the only way an agent
+                                  knows them. BOTH HALVES of the seam are here: `--write`
+                                  records the payload arriving on stdin, and the default
+                                  reads it back from the sidecar. A window must pass two
+                                  tests to be reported — that it has not reset, and that the
+                                  reading is not older than the window it describes — and the
+                                  other window still prints when one fails. A reading that
+                                  passes both and is still old announces its age rather than
+                                  passing as current. The site installs it by calling
+                                  `tk-quota --write` from its statusline script, by absolute
+                                  path: a path that resolves to nothing no-ops in silence and
+                                  reads exactly like "no session has rendered". Exit 1 nothing
+                                  was recorded, 2 no number, 64 bad usage
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
@@ -262,7 +271,8 @@ tk/
                                   conformance of the wall that calls it
   tests/mutations_tk_quota.py     its mutations — nine on the writer, which lived
                                   outside any suite until a lens found four wrong-number
-                                  defects in it, and three on the wall's prose
+                                  defects in it, four on the wall's prose, and one on the
+                                  map pairing each window's label with its length
   tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation

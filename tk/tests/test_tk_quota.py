@@ -260,6 +260,19 @@ class AWindowThatCannotBeVouchedFor(QuotaFixture):
         self.stale_reading("seven_day", HOUR)
         self.assertIn("7d 61% used", self.run_it().stdout)
 
+    def test_a_reading_still_inside_its_window_but_days_old_says_how_old(self):
+        # It survives both refusals — the window is open, and the reading was
+        # taken inside it. It is still two days behind, and the weekly window is
+        # seven days wide: without the age the percentage reads as current.
+        self.stale_reading("seven_day", 2 * 86400)
+        run = self.run_it()
+        self.assertIn("7d 61% used", run.stdout)
+        self.assertIn("(read 2d00h ago)", run.stdout)
+
+    def test_a_reading_from_this_minute_carries_no_age(self):
+        self.render(five=8, seven=None)
+        self.assertNotIn("(read", self.run_it().stdout)
+
     def test_a_sidecar_that_does_not_say_when_it_was_written_is_refused(self):
         now = time.time()
         self.write_raw({"five_hour": {"used_percentage": 10, "resets_at": now + HOUR}})
@@ -360,6 +373,12 @@ class TheProseThatCallsIt(unittest.TestCase):
         # `tk-context`'s own bullet carries a few paragraphs up.
         self.assertRegex(self.window, r"tk-quota.{0,1400}?previous window")
         self.assertRegex(self.window, r"tk-quota.{0,800}?exits 2 rather than report")
+
+    def test_the_wall_says_an_old_reading_announces_its_age(self):
+        # The refusals are two; the age is a third thing, disclosed and not
+        # refused. A wall naming only the refusals lets a days-old percentage
+        # be read as the current one.
+        self.assertRegex(self.window, r"tk-quota.{0,1600}?read 4d02h ago")
 
     def test_the_wall_describes_the_partial_answer(self):
         # exit 0 can print ONE window. A seam told only about exit 2 reads the

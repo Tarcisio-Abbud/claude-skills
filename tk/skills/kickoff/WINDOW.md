@@ -33,14 +33,16 @@ occurrences). A package whose remaining items cost more than the window has left
 planning its own wall, and the cheapest moment to know that is the cut.
 
 It **exits 2 rather than report a figure it cannot vouch for**, and two independent things can
-make it unvouchable. The window may have RESET, its `resets_at` now past. Or the reading may be
-STALE inside a window still open — the sidecar is written only while a session renders a
-statusline, so a stretch nobody sat through leaves a previous window's reading in place, and
-the weekly window stays open for seven days, which is how long a wrong figure can look current.
+make it unvouchable. The window may have RESET, its `resets_at` now past. Or the reading may
+belong to a **previous window** — the sidecar is written only while a session renders a statusline, so a
+stretch nobody sat through leaves an old reading in place, and the weekly window stays open for
+seven days, which is how long a wrong figure can look current. **A reading that survives both
+and is still old SAYS SO**: `(read 4d02h ago)` on the line means nothing has rendered since, so
+the percentage is a floor on what has been spent, never the current figure.
 
 **Exit 0 can still be a partial answer: it prints one window where it can only vouch for one.**
-The line carries what survived and stderr names what did not, with the reason. A seam reading
-stdout alone sees a shorter line and no error — so read what it refused before treating the
+The line, on **stdout**, carries what survived; **stderr** names what did not, and why. A seam
+reading stdout alone sees a shorter line and no error — so read what it refused before treating the
 line as the whole picture. Where the window it refused is the one the decision needed, the seam
 owes what *Generations* owes without a context number: judgement, said aloud as judgement.
 Asking the user for the statusline's limits line is the other way, where there is a user to ask.
