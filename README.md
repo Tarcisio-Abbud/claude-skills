@@ -233,7 +233,10 @@ tk/
                                   own transcript — the number WINDOW.md's seams compare, and
                                   which no orchestrator can see in the statusline. Absolute,
                                   never a fraction: the threshold is the smart zone, not the
-                                  window's capacity. Exit 2 when there is no number to give
+                                  window's capacity. Reads the two record classes that decide
+                                  occupancy — an API response and a compaction boundary — and
+                                  the newest wins. Exit 2 no number, 64 bad usage: a mistyped
+                                  flag may not read as the licence to use judgement
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys

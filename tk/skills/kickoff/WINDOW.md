@@ -191,9 +191,10 @@ the package:
 - **Read the context number on purpose**, at each of those seams: `tk-context` prints it,
   from this session's own transcript. It is not in the statusline — that is rendered to the
   user's terminal and never enters an orchestrator's context, and three generations in a row
-  reported the number as estimated, unread or `n/m` while this rule asked for it. The reading
-  lags the live one by about a turn and lags it LOW, so a seam sitting on the threshold reads
-  the lag as room it does not have.
+  reported the number as estimated, unread or `n/m` while this rule asked for it. Between one API
+  response and the next the reading lags the live one by about a turn, and lags it LOW, so a
+  seam sitting on the threshold reads the lag as room it does not have. Across a compaction it
+  does not lag: the command reads the boundary the compaction wrote, and says it did.
 - **Where there is no number, the judgement says so.** `tk-context` exits 2 when it cannot
   read one. Deciding by judgement is allowed there; presenting that judgement as this rule is
   not, and the report names it as judgement. Measured 2026-09-03: a generation stopped a
