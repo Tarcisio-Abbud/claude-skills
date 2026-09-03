@@ -260,8 +260,9 @@ tk/
                                   the suite's own reader of it, the rest on the bin
   tests/test_tk_quota.py          regression suite for the quota reading, and the doc
                                   conformance of the wall that calls it
-  tests/mutations_tk_quota.py     its mutations — three of them on the staleness refusal,
-                                  which is the rule the whole command is built around
+  tests/mutations_tk_quota.py     its mutations — nine on the writer, which lived
+                                  outside any suite until a lens found four wrong-number
+                                  defects in it, and three on the wall's prose
   tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
