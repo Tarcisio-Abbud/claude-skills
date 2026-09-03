@@ -13,8 +13,8 @@ PR the verdicts hold back, where the decision is whether the red is worth fixing
 **In the attended gate, section 3 is PRINTED in the terminal before the menu** — three
 lines per item in `REPORT.md`'s `was/now/gain/risk` mould, sections 1, 2, 4 and 5 left to
 the digest the menu carries. A digest sitting in the PR body does NOT discharge this —
-that body is not the user's window. Copy the lines from the PR body, name the PR, and
-carry the full PR URL `https://github.com/<owner>/<repo>/pull/<n>`; recomposing from the
+that body is not the user's window. Copy the lines from it, name the PR, and carry the
+full PR URL `https://github.com/<owner>/<repo>/pull/<n>`; recomposing from the
 diff spends a window the user refuses to spend. Write the block for a cold reader: every
 identifier resolves on first mention.
 
