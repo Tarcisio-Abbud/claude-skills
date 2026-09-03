@@ -306,18 +306,18 @@ the worktree removed, and every claim left with its item or was released.
 Four numbers on one line — **planned × completed × wall clock × context at the cut**, the last from
 `../../bin/tk-context` at that seam (no cut this generation: the predecessor's `--state` number;
 none at all, `?`). Then the **sensor**: births per merged pull request — the queue IDs born in the
-package (`Born:` in `tk-queue list`, highest − lowest + 1) over the pull requests it merged, with
-`pack`'s open count before and after. 02/09 read 39 over 5 ≈ 7.8; the target is under 2, open not
-rising. Beside them, the deviation lines — one per departure from the role table — and the audit's
-block. An unclosed item carries the first reason that applies: **blocked** (another environment,
-"runs on: X"); **carried** under the dependency gate (a sibling's claim, owner and moment), the
-lane gate (a spec's branch on the remote, the pull request's number or the deletion repair), any
-other `pack` exclusion (its printed value, and whether it names a defect in the item), or the
-effort gate (cut for size, with the ready-to-paste line that runs it). Items verify ended at proof
-ready or DECISION owe nothing further.
+package (the age column of `tk-queue list`; highest − lowest + 1, one queue only, and a sibling's
+IDs in the range count too) over its merged pull requests, with `pack`'s open count before and
+after. 02/09 read 39 over 5 ≈ 7.8; the target is under 2, open not rising. One deviation line per
+departure from the role table, and the audit's block. An unclosed item carries the first reason that
+applies: **blocked** (another environment, "runs on: X"); **carried** under the dependency gate (a
+sibling's claim, owner and moment), the lane gate (a spec's branch on the remote, the pull request's
+number or the deletion repair), any other `pack` exclusion (its printed value, and whether it names
+a defect in the item), or the effort gate (cut for size, with the ready-to-paste line that runs it).
+Items verify ended at proof ready or DECISION owe nothing further.
 
 **Done when:** the measurement and sensor lines, audit block and deviation lines are written, every
-unclosed item carries its rung, and the unvisited items are handed over by class.
+unclosed item carries its rung, and the unvisited items are handed over by exclusion.
 
 ## 7. Chain the afk wrap-up
 
