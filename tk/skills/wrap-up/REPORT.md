@@ -45,13 +45,14 @@ response-style preference that disagrees with it loses:
 **What changed opens the report, and it retransmits.** One entry per DELIVERED item,
 three lines under it — the risk clause rides the gain line where there is one — read off
 the digest step 5 already wrote (its section 3, *Before/after in practice*, is literally
-these lines), or off the work itself where the item closed without a PR. This block is
-how that digest reaches the person who returns to the terminal. The gain is concrete —
-"the queue can no longer lose a resolved item" beats "improved the queue" — and an item
-that closed with no gain worth a line says exactly that on its gain line, which is itself
-worth the line. A DESCARTADO item has no before and no after, so it appears in Closed
-alone; a session that delivered nothing writes the header with "nothing delivered" under
-it — an absent block reads as a block nobody wrote.
+these lines), or off the work itself where the item closed without a PR. At an attended
+gate the user has already read those lines in the terminal, before the menu, so this block
+repeats them where the report keeps them; an unattended run's reader meets them here
+first. The gain is concrete — "the queue can no longer lose a resolved item" beats "improved
+the queue" — and an item that closed with no gain worth a line says exactly that on its gain
+line, which is itself worth the line. A DESCARTADO item has no before and no after, so it
+appears in Closed alone; a session that delivered nothing writes the header with "nothing
+delivered" under it — an absent block reads as a block nobody wrote.
 
 **The stats line follows, and its first three counts are the queue's balance**: what left
 it against what is still in it. The fourth counts a different object — session findings
