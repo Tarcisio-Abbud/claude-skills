@@ -74,11 +74,11 @@ block ceiling with no `--force`. `--force` raises both, for the rare exception.
 
 A third ceiling bounds the QUEUE, not an item: `add` is refused once the open items reach
 `max-open-items` in the site file, counted across every queue on this machine's roster.
-Summing the roster is what stops `--dir` naming another queue to get past it, and unset means
-NO cap — the number is the user's, per machine. There is no bypass, `--force` included: an
-unattended `--force` is a string no gate can judge. Room is made by taking an item out,
-`done` or `cancel`, and the refusal names both with the count per queue. Still open at the
-cap: `edit --text` on an item that exists, and `handoff`.
+Summing the roster stops `--dir` naming another queue to get past it; unset means NO cap, the
+number being the user's. No bypass, `--force` included: an unattended one is a string no gate
+can judge. Room is made by taking an item out, `done` or `cancel`, and the refusal names both,
+counting this queue apart from the rest, which it never names. Still open at the cap:
+`edit --text` on an item that exists, and `handoff`.
 
 ## The field chain
 

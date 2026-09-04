@@ -2655,21 +2655,66 @@ def check_field_ceilings(force, **fields):
 # script has no signal of whether anyone is present to judge it. What stays open
 # is the pair of sinks a review already prescribes, which write no new item:
 # `edit --text` on an item that exists, and `handoff`.
+#
+# WHAT THE WHITELIST DOES NOT COVER: `HOME`. It resolves the site file and the
+# roster both, so a home with a cap in it and no `~/.claude/projects` counts one
+# queue as if it were the machine. That is not a way past THIS machine's cap —
+# whoever chooses HOME chooses the site file the cap is written in, and could
+# simply write no cap — but the shrunken count is said out loud in check_wip
+# rather than left to look like a full sum.
+
+
+def site_names_the_cap():
+    """Whether the site file NAMES the cap, asked of a file that would not parse.
+
+    The question is not "is the file good" — `tk_site` already answered no. It is
+    whether the cap is in there at all, and it is asked the crudest way on
+    purpose: the bytes, decoded with every undecodable one replaced, scanned for
+    an assignment to the key. A file this reader cannot parse is one no parser
+    should be pointed at twice.
+
+    A path that is not a plain file answers False: the FIFO that would hang and
+    the directory that cannot be read hold no cap anyone can act on, and the
+    caller that DOES need that file — `--env` — still refuses it loudly.
+    """
+    path = tk_site.site_path()
+    if not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except OSError:
+        # unreadable is not a cap anyone can act on, either way
+        return False
+    assignment = re.compile(rf"\s*{re.escape(WIP_KEY)}\s*=")
+    return any(assignment.match(line) for line in raw.decode("utf-8", "replace").splitlines())
 
 
 def load_site():
     """The parsed site file, or None when this machine has none.
 
-    A file that exists and is unusable is FATAL, and that is the whole reason
-    this runs on every `add` rather than only when `--env` is passed: the cap
-    lives in that file, and a half-read one is a cap that silently disappears.
-    The message is tk_site's own — it names the file and the line, which is the
-    diagnosis a reader has to act on.
+    A file that exists, carries the cap and is unusable is FATAL, and that is the
+    whole reason this runs on every `add` rather than only when `--env` is passed:
+    the cap lives in that file, and a half-read one is a cap that silently
+    disappears. The message is tk_site's own — it names the file and the line,
+    which is the diagnosis a reader has to act on.
+
+    WITH NO CAP IN IT, the same file is only REPORTED. An absent cap has to be a
+    perfect no-op, and this gate made a rotten site file fatal to a command that
+    had always ignored it — measured on six shapes of rot, base exit 0 against
+    HEAD exit 1, on machines that never chose a number. The file is still broken
+    for every reader that needs it, `--env` included, and this one says so on the
+    way past instead of taking the queue down with it.
     """
     try:
         return tk_site.load()
     except tk_site.SiteError as e:
-        fail(str(e))
+        if site_names_the_cap():
+            fail(str(e))
+        print(f"tk-queue: {e}\n(no `{WIP_KEY}` line was found in it, so no cap gates "
+              "this add — but the file stays broken for every command that reads it)",
+              file=sys.stderr)
+        return None
 
 
 def open_items(memdir):
@@ -2708,10 +2753,12 @@ def open_items(memdir):
     queues would deadlock on the day they took them in opposite orders. The
     reads are not torn: the queue files are published by rename, so a count is
     of one committed state or the next. What the missing locks cost is a sibling
-    session adding to ANOTHER queue between this count and our write, which can
-    put the machine one item over the cap; the next `add` on either queue then
-    refuses. A cap held to the item by cross-project locking is not worth a
-    deadlock in the command every session runs.
+    session adding to ANOTHER queue between this count and our write. The bound
+    is not one item: every add that races this one counts the same free slot, so
+    k of them land k-1 items above the cap, and only the NEXT add on any queue
+    refuses. Measured, four adds on four queues with nine open against a cap of
+    ten: thirteen open, three above. A cap held to the item by cross-project
+    locking is not worth a deadlock in the command every session runs.
     """
     path = os.path.join(memdir, "next-steps.md")
     try:
@@ -2786,15 +2833,35 @@ def check_wip(site, memdir):
     cap = site.ceilings.get(WIP_KEY) if site else None
     if cap is None:
         return
+    root = roster().projects_root()
+    if not os.path.isdir(root):
+        # HOME resolves BOTH the site file and the roster, so a home carrying a
+        # cap and no projects directory counts ONE queue and calls it the
+        # machine. Not a bypass — a different HOME is a different machine's
+        # configuration, cap included — but it may not shrink the count in
+        # silence, which is the one thing a whitelist gate cannot afford
+        print(f"tk-queue: {root} does not exist, so `{WIP_KEY}` is counted over this "
+              "queue alone and not over the machine.", file=sys.stderr)
     counts = [(d, open_items(d)) for d in wip_queues(site, memdir)]
     total = sum(n for _, n in counts)
     if total < cap:
         return
-    # the per-queue breakdown, because the total alone does not say WHERE the
-    # work is, and the reader has to pick the item to close out of one of them.
+    # WHERE the work is, WITHOUT writing another project's name into this
+    # session's output. The reader has to pick an item to close, and the queue
+    # they can pick it from is the one they are in — that one is named. The rest
+    # is a count plus the command that names them on the machine itself: a
+    # project directory carries a client's or a company's name, and this text
+    # travels into transcripts and pull request bodies, which is the leak
+    # `tk-hygiene` was already written against.
     # Only the queues that hold something: a machine's empty queues would bury
     # the two lines that matter
-    where = "".join(f"\n  {n:>4}  {d}" for d, n in counts if n)
+    target = os.path.realpath(memdir)
+    mine = sum(n for d, n in counts if os.path.realpath(d) == target)
+    others = [(d, n) for d, n in counts if os.path.realpath(d) != target and n]
+    where = f"\n  {mine:>4}  {memdir}"
+    if others:
+        where += (f"\n  {sum(n for _, n in others):>4}  in {len(others)} other queue(s) "
+                  "on this machine (`tk-roster` lists them there)")
     fail(f"{total} open item(s) against a cap of {cap}, so no new item enters the "
          f"queue:{where}\n\nThe cap is `{WIP_KEY}` in {site.path}, and the count sums "
          "every queue on this machine's roster — so neither --force nor another --dir "
@@ -2842,9 +2909,11 @@ def cmd_add(args):
     content = read(path)
     if content is None:
         fail("next-steps.md not found in " + memdir + " (first kickoff creates it)")
-    # the WIP cap, and BEFORE the ID is allocated: a refusal that has already
-    # spent a number leaves a hole in the sequence, and `add --force` reaches
-    # this line exactly like every other add — see the note above load_site
+    # the WIP cap. It sits above `max_id` for reading order, not for safety:
+    # `max_id` only READS, nothing is reserved, and a refusal below it would
+    # leave no hole in the sequence — the claim that it would was written here
+    # and was never true. `add --force` reaches this line exactly like every
+    # other add: see the note above load_site
     check_wip(load_site(), memdir)
     iid = max_id(memdir) + 1
     item = compose_item(args, iid)
