@@ -38,6 +38,10 @@ unattended session has ONE rung: **queue with a gate** — `tk-queue add` at the
 discovery, the gate named in the item's own text, and a finding only the user can judge
 entering as a DECISION carrying `--deferred afk`.
 
+`add` can REFUSE: the machine reached `max-open-items`, and no flag gets past it. What stays
+open writes no new item — `tk-queue edit <id> --text` folds the finding into an item that
+exists, `handoff` into its briefing. The close lists it there.
+
 So an unattended session reports no discards and resolves nothing on the spot. Every
 finding it queued is listed in its close under the gate that kept it, for the user's
 **veto** on their return — `tk-queue cancel "<id>" --why "<the veto>"` is that veto, one

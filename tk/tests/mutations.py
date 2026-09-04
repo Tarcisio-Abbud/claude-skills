@@ -2785,6 +2785,30 @@ MUTATIONS = [
      ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap",
       "TestWipCap.test_a_cap_of_zero_is_refused_by_the_site_file"],
      "bin/tk_site.py"),
+
+    # --- T345: the reader a THIRD PARTY's file goes through ----------------
+
+    # the consolidation itself: `read` is this script's own reader, and it guards
+    # none of what the site file's does — the two defects below were measured
+    # through it, on the queues of projects this session never opened
+    ("T345 the count reads a third party's queue with the unguarded reader",
+     '        content = tk_site.read_text(\n'
+     '            path, "A queue file is Markdown written by `tk-queue`",\n'
+     '            " — the offending byte arrived with text pasted from another encoding")',
+     "        content = read(path)",
+     ["TestWipCap.test_a_sibling_queue_that_is_not_utf8_is_diagnosed_and_not_crashed",
+      "TestWipCap.test_an_invisible_bom_in_a_sibling_queue_does_not_undercount_it"]),
+
+    ("T345 the roster is loaded at import again, so every command depends on it",
+     "        _ROSTER = mod\n    return _ROSTER",
+     "        _ROSTER = mod\n    return _ROSTER\n\n\n_EAGER_ROSTER = roster()",
+     ["TestWipCap.test_a_broken_roster_does_not_reach_the_commands_that_never_read_it",
+      "TestWipCap.test_an_add_with_no_cap_never_loads_the_roster_either"]),
+
+    ("T345 a `tk-roster` that cannot be loaded comes back as a raw traceback",
+     "        except Exception as e:\n            fail(",
+     "        except ZeroDivisionError as e:\n            fail(",
+     ["TestWipCap.test_a_broken_roster_under_a_cap_is_reported_not_crashed"]),
 ]
 
 

@@ -141,16 +141,38 @@ import importlib.machinery  # noqa: E402
 import importlib.util       # noqa: E402
 
 
-def _load_roster():
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tk-roster")
-    loader = importlib.machinery.SourceFileLoader("tk_roster", path)
-    spec = importlib.util.spec_from_loader("tk_roster", loader)
-    mod = importlib.util.module_from_spec(spec)
-    loader.exec_module(mod)
-    return mod
+_ROSTER = None
 
 
-tk_roster = _load_roster()
+def roster():
+    """The `tk-roster` module, loaded ON FIRST USE and never at import time.
+
+    Only the WIP cap reads it, and only on a machine that set a cap. Loaded at
+    import, it would make every `list`, `done` and `add` — on every machine,
+    capped or not — depend on a file none of them reads. Measured before this
+    was lazy: with `tk-roster` deleted or carrying a syntax error, `list` and
+    `done` died in a raw traceback, `done` being the very remedy the cap's
+    refusal prints.
+
+    A load that fails is REPORTED rather than raised, for the same reason the
+    site file's reader reports: the broken file is an installation of this
+    plugin, and a traceback names a line of Python instead of the file to fix.
+    """
+    global _ROSTER
+    if _ROSTER is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tk-roster")
+        loader = importlib.machinery.SourceFileLoader("tk_roster", path)
+        spec = importlib.util.spec_from_loader("tk_roster", loader)
+        mod = importlib.util.module_from_spec(spec)
+        try:
+            loader.exec_module(mod)
+        except Exception as e:
+            fail(f"`tk-roster` beside this script could not be loaded "
+                 f"({e.__class__.__name__}: {e}), and the WIP cap is summed over the "
+                 f"queues it reports. Restore that file, or take `{WIP_KEY}` out of "
+                 "the site file to run with no cap at all.")
+        _ROSTER = mod
+    return _ROSTER
 
 CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
 # The class that PARKS the queue: nothing moves on a DECISION item until the user
@@ -2651,11 +2673,35 @@ def load_site():
 
 
 def open_items(memdir):
-    """How many OPEN items a queue holds, counted with this script's own reader.
+    """How many OPEN items a queue holds, read through `tk_site.read_text`.
+
+    NOT this script's own `read`. Every directory counted here but one belongs
+    to a project this session never opened, and a reader of somebody else's file
+    needs the guards that reader already carries, each measured in its docstring:
+    a non-UTF-8 byte, a queue that is a directory or a FIFO, and a U+FEFF in any
+    position. Measured on this gate before the reader was shared — a SIBLING
+    queue saved as UTF-16 turned every `add` on the machine into a raw
+    UnicodeDecodeError, and one invisible U+FEFF glued to an item's marker
+    under-counted its queue enough to wave an add past a full cap.
+
+    Only the COUNTING path reads that way. `read` keeps its `utf-8-sig` and
+    feeds the rewrite of the target queue, where dropping a character the user
+    typed would edit their own file — a decision that is theirs and is parked as
+    a queue item, not one this gate takes on the way past.
+
+    Two of that reader's guards arrive here UNREACHABLE, and the suite says so
+    rather than claiming them: `tk-roster` lists a project only when its queue is
+    a plain FILE, so no directory or FIFO reaches this count from the roster —
+    and the target queue's own is read by `read` further down `cmd_add`, which
+    still hangs on a FIFO. That hang is older than this gate and is parked as a
+    queue item of its own; inheriting the guard costs nothing and closes the door
+    the day either of those changes.
 
     A queue file that is not there counts zero rather than failing: `tk-roster`
     answered that the queue existed a moment ago, and one that vanished between
-    that answer and this read holds nothing.
+    that answer and this read holds nothing. The other reachable way in is a
+    first `add` into a brand-new queue, whose file this command is about to
+    create.
 
     Only the TARGET queue's lock is held while this runs, and taking every
     queue's would need a locking order across projects — two sessions on two
@@ -2667,7 +2713,13 @@ def open_items(memdir):
     refuses. A cap held to the item by cross-project locking is not worth a
     deadlock in the command every session runs.
     """
-    content = read(os.path.join(memdir, "next-steps.md"))
+    path = os.path.join(memdir, "next-steps.md")
+    try:
+        content = tk_site.read_text(
+            path, "A queue file is Markdown written by `tk-queue`",
+            " — the offending byte arrived with text pasted from another encoding")
+    except tk_site.SiteError as e:
+        fail(str(e))
     if content is None:
         return 0
     return sum(1 for kind, _ in split_blocks(content) if kind == "item-open")
@@ -2697,6 +2749,7 @@ def wip_queues(site, memdir):
     Directories are compared by realpath, so the roster's spelling of one and
     `--dir`'s spelling of the same one count once.
     """
+    tk_roster = roster()
     allow, deny = tk_roster.lists(site)
     dirs = [d for name, d in tk_roster.queues(tk_roster.projects_root())
             if not tk_roster.excluded_by(name, allow, deny)]

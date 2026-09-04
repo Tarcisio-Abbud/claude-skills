@@ -6686,6 +6686,108 @@ class TestWipCap(QueueTest):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("max-open-items", r.stderr)
 
+    # --- the reader a THIRD PARTY's file goes through (T345) --------------
+
+    def test_a_sibling_queue_that_is_not_utf8_is_diagnosed_and_not_crashed(self):
+        """Every queue counted here but one belongs to a project this session
+        never opened. One of them saved as UTF-16, or carrying a single byte from
+        another encoding, turned EVERY `add` on the machine into a raw
+        UnicodeDecodeError — the guard the site file's reader already carried and
+        this count did not, until the two shared one reader."""
+        self.site(site_cap(9))
+        d = os.path.join(self.home, ".claude", "projects", "-srv-outro", "memory")
+        os.makedirs(d, exist_ok=True)
+        queue = os.path.join(d, "next-steps.md")
+        for label, raw in (("utf-16", (HEADER + item(1, "um")).encode("utf-16")),
+                           ("one byte from another encoding",
+                            b"# Next steps\n\n- [ ] **T001** caf\xe9\n")):
+            with self.subTest(case=label):
+                with open(queue, "wb") as f:
+                    f.write(raw)
+                self.seed(item(1, "um"))
+                r = self.run_tk(*self.ADD)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                # the one assertion that separates a diagnosis from a crash
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertIn("tk-queue:", r.stderr)
+                self.assertIn("not valid UTF-8", r.stderr)
+                self.assertIn(queue, r.stderr)       # and it names THEIR file
+                self.assertNotIn("achado da review", self.body())
+
+    def test_an_invisible_bom_in_a_sibling_queue_does_not_undercount_it(self):
+        """A U+FEFF glued to an item's marker takes that line out of every
+        `^`-anchored grammar, so the queue counts one short — one invisible
+        character waving an add past a full cap. The shared reader removes it in
+        EVERY position, and its docstring carries why utf-8-sig cannot."""
+        self.site(site_cap(3))
+        self.roster_queue("-srv-outro", item(1, "um"), "\ufeff" + item(2, "dois"))
+        self.seed(item(9, "nove"))
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("3 open item(s) against a cap of 3", r.stderr)
+
+    # --- the roster module, loaded on first use (T345) --------------------
+
+    def broken_roster(self, contents):
+        """A copy of the three bins with `tk-roster` broken — `None` deletes it.
+
+        A copy, because the suite may not edit the tree it is testing, and the
+        mutation harness runs against a copy of its own.
+        """
+        d = os.path.join(self.dir, "bin")
+        os.makedirs(d, exist_ok=True)
+        src = os.path.dirname(os.path.abspath(TK))
+        for name in ("tk-queue", "tk_site.py"):
+            shutil.copy(os.path.join(src, name), os.path.join(d, name))
+        path = os.path.join(d, "tk-roster")
+        if contents is None:
+            if os.path.exists(path):
+                os.remove(path)
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(contents)
+        return os.path.join(d, "tk-queue")
+
+    def run_copy(self, tk, *argv):
+        return subprocess.run([sys.executable, tk, *argv, "--dir", self.mem],
+                              capture_output=True, text=True, cwd=self.dir,
+                              env=dict(os.environ, HOME=self.home), timeout=60)
+
+    def test_a_broken_roster_does_not_reach_the_commands_that_never_read_it(self):
+        """`tk-roster` is read by the WIP cap and by nothing else in this CLI.
+        Loaded at import, it put every command behind a file none of them reads:
+        with it deleted or carrying a syntax error, `list` and `done` died in a
+        raw traceback — `done` being the very remedy the refusal prints."""
+        self.seed(item(1, "um"))
+        for label, contents in (("deleted", None), ("a syntax error", "def (\n")):
+            with self.subTest(roster=label):
+                tk = self.broken_roster(contents)
+                for argv in (("list",), ("done", "T001", "--how", "PR #1")):
+                    r = self.run_copy(tk, *argv)
+                    self.assertEqual(r.returncode, 0, r.stderr)
+                    self.assertNotIn("Traceback", r.stderr)
+                self.seed(item(1, "um"))
+
+    def test_an_add_with_no_cap_never_loads_the_roster_either(self):
+        """The design note's claim, which an import-time load falsified: with no
+        cap chosen, `add` costs one small file read and nothing else."""
+        self.site("identity = alpha\nenvironments = alpha\n")
+        self.seed(item(1, "um"))
+        r = self.run_copy(self.broken_roster(None), *self.ADD)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added T002", r.stdout)
+
+    def test_a_broken_roster_under_a_cap_is_reported_not_crashed(self):
+        """The cap is summed over the queues that file reports, so an `add` at a
+        cap cannot proceed without it — and says so, naming the file to restore."""
+        self.site(site_cap(2))
+        self.seed(item(1, "um"))
+        r = self.run_copy(self.broken_roster("def (\n"), *self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("tk-roster", r.stderr)
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

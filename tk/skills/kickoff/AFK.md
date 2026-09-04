@@ -346,5 +346,12 @@ own text, a finding only the user can judge entering as a DECISION with `--defer
 discards and no resolving on the spot — the two rungs that need a human, the second being the
 hydra's own fuel. Every finding queued is listed in the close under its gate for the user's veto,
 `tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"`.
+
+That `add` can be REFUSED: the machine reached `max-open-items` in its site file, and neither
+`--force` nor another `--dir` gets past it. The rung that stays open writes NO NEW ITEM —
+`tk-queue edit "<id>" --text "<the finding>" --dir "<queue dir>"` folds it into an item that
+already exists, and `tk-queue handoff "<id>" --dir "<queue dir>" ...` puts it in that item's
+briefing. Never make room by closing an item — `done` and `cancel` are the user's verdicts.
 **Done when:** the close carries one line per session finding, each matching a queued item with
-its gate named — none discarded, none resolved on the spot.
+its gate named, or the item a refused `add` was folded into — none discarded, none resolved on
+the spot.
