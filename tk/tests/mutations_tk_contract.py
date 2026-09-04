@@ -213,7 +213,28 @@ MUTATIONS = [
 
     ("a byte order mark on the opening marker hides the whole table",
      '            text = f.read().replace("\\ufeff", "")', "            text = f.read()",
+     ["TestRoleTable.test_a_byte_order_mark_does_not_hide_the_table",
+      "TestRoleTable.test_a_byte_order_mark_at_byte_zero_of_the_table_changes_nothing"]),
+
+    # the half `utf-8-sig` would have missed, and which the comment beside the
+    # strip in the bin ASSERTS without anything proving it: it removes exactly
+    # one BOM, at the very start, so the second one — on the marker — survives.
+    # The byte-zero case above is deliberately NOT named here: with a single BOM
+    # at the head this mutant is the fix, and naming it would claim a proof this
+    # run cannot make
+    ("only the FIRST leading byte order mark is stripped out of the table",
+     '            text = f.read().replace("\\ufeff", "")',
+     '            text = f.read().replace("\\ufeff", "", 1)',
      ["TestRoleTable.test_a_byte_order_mark_does_not_hide_the_table"]),
+
+    # the OTHER reader this bin depends on, and a second file for this harness:
+    # the site file is opened by `tk_site.load`, whose strip carries the BOM off
+    # byte 0 before `parse` splits the line on `=`. Its own suite reaches it
+    # through `tk-queue`; nothing reached it through this bin until now
+    ("the site file's byte order mark is glued to `identity`, which reads as absent",
+     '            text = f.read().replace("﻿", "")', "            text = f.read()",
+     ["TestCeilings.test_a_byte_order_mark_at_byte_zero_of_the_site_file_changes_nothing"],
+     "bin/tk_site.py"),
 
     ("the default table is looked for somewhere it is not",
      '    os.path.join(BIN_DIR, os.pardir, "reference", "subagent-policy.md"))',
