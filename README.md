@@ -260,13 +260,17 @@ tk/
                                   no fixture was adjusted to agree with the measurement
   tests/mutations_prune.py        entries only, through the same seam
   tests/test_afk_audit.py         audit of the afk contract against the skill files
+  tests/test_unattended_ladder.py the rung an unattended session has left when the WIP
+                                  cap refuses its `add`: both documents that prescribe
+                                  `add` must name `edit --text` and `handoff`, and both
+                                  commands must RUN against a queue at its cap
   tests/test_window_wall.py       step 2 of the wall, lifted out of WINDOW.md and run
                                   against a throwaway queue: an ORDINARY item (no
                                   DECISION, no --deferred) ends up pointing at its
                                   briefing through the edit the handoff prints
   tests/mutations_window_wall.py  entries only, through the same seam; six of its eleven
                                   entries edit a skill file, the other five the bin
-  tests/queue_fixture.py          the throwaway queue the two doc-conformance suites run
+  tests/queue_fixture.py          the throwaway queue the three doc-conformance suites run
                                   their prescriptions against: the directory, the tk-queue
                                   shim on PATH, the paste-into-bash and the reached() log
   tests/test_manifests.py         the two tk manifests against the skills on disk:

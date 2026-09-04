@@ -2827,19 +2827,19 @@ MUTATIONS = [
     # refusal travels into transcripts and pull request bodies
     ("T346 the refusal dumps every project on the machine again",
      '    target = os.path.realpath(memdir)\n'
-     '    mine = sum(n for d, n in counts if os.path.realpath(d) == target)\n'
-     '    others = [(d, n) for d, n in counts if os.path.realpath(d) != target and n]\n'
+     '    mine = sum(n for _, key, n in counts if key == target)\n'
+     '    others = [(d, n) for d, key, n in counts if key != target and n]\n'
      '    where = f"\\n  {mine:>4}  {memdir}"\n'
      '    if others:\n'
      '        where += (f"\\n  {sum(n for _, n in others):>4}  in {len(others)} '
      'other queue(s) "\n                  "on this machine (`tk-roster` lists them there)")',
-     '    where = "".join(f"\\n  {n:>4}  {d}" for d, n in counts if n)',
+     '    where = "".join(f"\\n  {n:>4}  {d}" for d, _, n in counts if n)',
      ["TestWipCap.test_the_refusal_never_names_another_project",
       "TestWipCap.test_the_count_sums_every_queue_on_the_roster"]),
 
     ("T346 a queue holding nothing is counted among the queues to go look in",
-     "    others = [(d, n) for d, n in counts if os.path.realpath(d) != target and n]",
-     "    others = [(d, n) for d, n in counts if os.path.realpath(d) != target]",
+     "    others = [(d, n) for d, key, n in counts if key != target and n]",
+     "    others = [(d, n) for d, key, n in counts if key != target]",
      ["TestWipCap.test_an_empty_queue_is_not_counted_as_a_queue_holding_work"]),
 
     ("T346 a count shrunk by HOME passes in silence",
@@ -2867,6 +2867,36 @@ MUTATIONS = [
      """    # the WIP cap, and BEFORE the ID is allocated: a refusal that has already
     # spent a number leaves a hole in the sequence.""",
      ["TestWipCap.test_no_prose_claims_a_refused_add_would_burn_an_id"]),
+
+    # --- the two axes, over the batch above (T346, cold session) ----------
+
+    ("T346 the cap is looked for in UTF-8 only, so a UTF-16 site file loses it",
+     '(("utf-8", "replace"),) + WIDE_DECODINGS', '(("utf-8", "replace"),)',
+     ["TestWipCap.test_a_site_file_in_utf16_that_sets_the_cap_still_stops_the_add"]),
+
+    ("T346 reading the wide encodings makes an ABSENT cap fatal too",
+     "        if any(assignment.match(line) for line in text.splitlines()):\n"
+     "            return True\n"
+     "    return False",
+     "        if any(assignment.match(line) for line in text.splitlines()):\n"
+     "            return True\n"
+     "    return True",
+     ["TestWipCap.test_a_site_file_in_utf16_with_no_cap_in_it_still_does_not_break_the_add"]),
+
+    ("T346 the roster is said to be imported at the top of the file again",
+     "comes from `tk-roster`, loaded on FIRST USE by `roster()` and not at import",
+     "comes from `tk-roster`, imported at the top of this file",
+     ["TestWipCap.test_no_prose_says_the_roster_is_imported_at_the_top_of_the_file"]),
+
+    ("T346 the no-leak claim widens back from the refusal to the whole command",
+     "    # WHERE the work is, WITHOUT writing another project's name into THE",
+     "    # WHERE the work is, WITHOUT writing another project's name into this session's output. The",
+     ["TestWipCap.test_no_prose_claims_the_refusals_channel_never_names_another_project"]),
+
+    ("T346 the untested branch claims a first `add` reaches it",
+     "THAT RACE IS THE ONLY WAY INTO THAT",
+     "The other reachable way in is a first `add` into a brand-new queue. THAT IS NOT",
+     ["TestWipCap.test_the_untested_branch_says_it_is_the_race_and_not_a_first_add"]),
 ]
 
 

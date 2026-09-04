@@ -6848,6 +6848,44 @@ class TestWipCap(QueueTest):
         self.assertIn(":3:", r.stderr)            # said, not swallowed
         self.assertIn("max-open-items", r.stderr)
 
+    def site_bytes(self, raw):
+        """The site file written as RAW BYTES — the only way to reach an
+        encoding `self.site` cannot produce, and the shape this pair needs."""
+        d = os.path.join(self.home, ".claude", "tk")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "env"), "wb") as f:
+            f.write(raw)
+
+    def test_a_site_file_in_utf16_that_sets_the_cap_still_stops_the_add(self):
+        """The cap was written, and the scan for it read only UTF-8. In UTF-16
+        the key is spelled `m\\x00a\\x00x...`, so the scan answered "no cap in
+        this file", the add went through UNCAPPED, and the reason printed was
+        that no cap was written — the silent disappearance the gate's own
+        docstring names as the one direction it may not fail in. A Windows
+        editor told "Unicode" writes exactly this file, and this house runs one.
+        """
+        self.site_bytes(site_cap(2).encode("utf-16"))
+        self.seed(item(1, "um"), item(2, "dois"))
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("not valid UTF-8", r.stderr)
+        self.assertNotIn("no `max-open-items` line was found", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertNotIn("achado da review", self.body())
+
+    def test_a_site_file_in_utf16_with_no_cap_in_it_still_does_not_break_the_add(self):
+        """The other direction, and the vacuity guard on the test above: reading
+        the wide encodings may not turn an ABSENT cap into a fatal one. A machine
+        that never chose a number keeps the behaviour it had before this gate,
+        whatever the file is encoded in."""
+        self.site_bytes("identity = alpha\nenvironments = alpha\n".encode("utf-16"))
+        self.seed(item(1, "um"))
+        r = self.run_tk(*self.ADD)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added T002", r.stdout)
+        self.assertIn("not valid UTF-8", r.stderr)       # said, not swallowed
+        self.assertIn("max-open-items", r.stderr)
+
     def test_a_home_with_no_projects_directory_says_the_count_shrank(self):
         """`HOME` resolves the site file AND the roster, so a home carrying a cap
         and no projects directory counts one queue as if it were the machine.
@@ -6881,6 +6919,35 @@ class TestWipCap(QueueTest):
         with open(TK, encoding="utf-8") as f:
             src = f.read()
         self.assertNotIn("leaves a hole in the sequence", src)
+
+    def test_no_prose_says_the_roster_is_imported_at_the_top_of_the_file(self):
+        """`wip_queues` kept saying so after the loader was made lazy, one file
+        over from the two mutation entries this batch wrote against exactly this
+        class — a fact in prose that no command knows. The retraction applies at
+        every site of the claim, so the claim is grepped, not remembered."""
+        self.assertNotIn("imported at the top of this file", load_tk().wip_queues.__doc__)
+
+    def test_no_prose_claims_the_refusals_channel_never_names_another_project(self):
+        """The refusal names no other project, and that was written as if it held
+        for the whole command. It does not: the diagnosis of an unreadable
+        SIBLING queue names that queue's path, on purpose and by its own test.
+        The narrow claim is true and the wide one is not."""
+        with open(TK, encoding="utf-8") as f:
+            # comment markers and wrapping out, so the assertion is about the
+            # SENTENCE and not about where the line happened to break
+            flat = " ".join(f.read().replace("#", " ").split())
+        self.assertNotIn("another project's name into this session's output", flat)
+        self.assertIn("names the sibling queue whose file cannot be read", flat)
+
+    def test_the_untested_branch_says_it_is_the_race_and_not_a_first_add(self):
+        """F9's decline is only recorded where a reader finds it. The `content is
+        None` branch is reachable ONLY by a queue vanishing under the count:
+        `tk-roster` lists a project where the queue is already a plain file, and
+        a missing TARGET queue is refused further up `cmd_add`. The first `add`
+        into a brand-new queue never reaches this function."""
+        doc = load_tk().open_items.__doc__
+        self.assertIn("THAT RACE IS THE ONLY WAY INTO THAT", doc)
+        self.assertNotIn("The other reachable way in is a", doc)
 
 
 
