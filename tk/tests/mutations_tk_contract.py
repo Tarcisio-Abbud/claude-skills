@@ -234,7 +234,7 @@ MUTATIONS = [
     ("the site file's byte order mark is glued to `identity`, which reads as absent",
      '            text = f.read().replace("﻿", "")', "            text = f.read()",
      ["TestCeilings.test_a_byte_order_mark_at_byte_zero_of_the_site_file_changes_nothing"],
-     "bin/tk_site.py"),
+     os.path.join("bin", "tk_site.py")),
 
     ("the default table is looked for somewhere it is not",
      '    os.path.join(BIN_DIR, os.pardir, "reference", "subagent-policy.md"))',
