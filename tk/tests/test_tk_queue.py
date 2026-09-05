@@ -7292,5 +7292,67 @@ class TestWipCap(QueueTest):
 
 
 
+class TestMutationHarness(unittest.TestCase):
+    """The harness is what says this suite protects anything, and until T152
+    nothing checked IT. Each test here is a way the harness could go on printing
+    a clean score over a list that proves less than it claims."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import mutations
+        self.h = mutations
+        self.mod = sys.modules[__name__]
+
+    def problem(self, entry, source="the anchor"):
+        return self.h.entry_problem(entry, self.mod, source)
+
+    def test_an_entry_naming_a_test_that_does_not_exist_is_refused(self):
+        """unittest answers a name it cannot load with a non-zero exit, and the
+        runner reads non-zero as "the named test fell" — so a typo used to be
+        scored as a mutant killed. It is the one failure worse than an uncovered
+        guard: a guard reporting itself covered."""
+        sound = ("a real one", "the anchor", "the mutant",
+                 ["TestPrefixedId.test_garbage_is_still_rejected"])
+        self.assertIsNone(self.problem(sound))
+        kind, why = self.problem(("a typo", "the anchor", "the mutant",
+                                  ["TestPrefixedId.test_no_such_thing"]))
+        self.assertEqual(kind, "MISNAMED")
+        self.assertIn("test_no_such_thing", why)
+        gone = self.problem(("a class that went", "the anchor", "the mutant",
+                             ["TestVanished.test_x"]))
+        self.assertEqual(gone[0], "MISNAMED")
+
+    def test_an_entry_naming_a_whole_class_is_not_read_as_a_typo(self):
+        """Older entries name a CLASS, which unittest loads as readily as one
+        method. Reading those as typos would report working entries as broken
+        and bury the nine real ones."""
+        self.assertIsNone(self.problem(("a whole class", "the anchor", "the mutant",
+                                        ["TestPrefixedId"])))
+
+    def test_a_mutation_that_changes_nothing_is_refused(self):
+        kind, why = self.problem(("a no-op", "same", "same", ["TestPrefixedId"]))
+        self.assertEqual(kind, "UNRUNNABLE")
+        self.assertIn("no-op", why)
+
+    def test_an_anchor_that_does_not_match_exactly_once_is_refused(self):
+        """Zero matches means the code moved out from under the entry; two mean
+        the mutation applied is not the one the label describes."""
+        entry = ("a stale anchor", "nowhere in here", "the mutant", ["TestPrefixedId"])
+        kind, why = self.problem(entry, source="a source without it")
+        self.assertEqual(kind, "UNRUNNABLE")
+        self.assertIn("matched 0x", why)
+        twice = self.problem(("twice over", "here", "the mutant", ["TestPrefixedId"]),
+                             source="here and here")
+        self.assertIn("matched 2x", twice[1])
+
+    def test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one(self):
+        """The debt is a ceiling to lower, and this is what makes it bite in two
+        minutes instead of in the six the full harness takes: a tenth misnamed
+        entry reddens the suite the moment it is written."""
+        import mutations_tk_contract
+        real = mutations_tk_contract.misnamed(self.h.MUTATIONS, self.mod)
+        self.assertGreaterEqual(self.h.KNOWN_MISNAMED, len(real),
+                                f"the list grew a misnamed entry: {real}")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

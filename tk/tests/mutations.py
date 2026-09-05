@@ -34,6 +34,19 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 TK_DIR = os.path.dirname(HERE)
 DEFAULT_SRC = os.path.join("bin", "tk-queue")
+TEST_MODULE = "test_tk_queue"
+
+sys.path.insert(0, HERE)
+from mutations_tk_contract import load_module, misnamed  # noqa: E402 (path above)
+
+# ENTRIES THAT NAME A TEST WHICH DOES NOT EXIST. The defect is in the LIST, not
+# in the suite: unittest answers a name it cannot load with a non-zero exit, and
+# `run_suite` below reads non-zero as "the named test fell" — so a typo scored
+# itself as coverage, which is worse than an uncovered guard. Such entries are
+# excluded from the tally and reported apart, and this is the debt the list
+# carries: a ceiling to LOWER as entries are repaired, never to raise. Measured
+# 2026-09-05: nine entries name five tests renamed out from under them.
+KNOWN_MISNAMED = 9
 
 # (label, old, new, [test names that must fail]) — plus an optional 5th element,
 # the source file the anchor lives in, relative to tk/ (default: bin/tk-queue).
@@ -3060,6 +3073,45 @@ MUTATIONS = [
      "THAT RACE IS THE ONLY WAY INTO THAT",
      "The other reachable way in is a first `add` into a brand-new queue. THAT IS NOT",
      ["TestWipCap.test_the_untested_branch_says_it_is_the_race_and_not_a_first_add"]),
+
+    # --- T152 the harness's own reader of an entry ------------------------
+    # These mutate THIS file. A short anchor would also match inside its own
+    # entry literal and be called UNRUNNABLE; an anchor spanning a line break
+    # escapes that, because a `\n` written in an entry is two characters here
+    # and never a newline.
+    ("T152 an entry naming a test that does not exist is scored as a kill again",
+     "    if misnamed([entry], module_obj):\n        gone",
+     "    if False:\n        gone",
+     ["TestMutationHarness.test_an_entry_naming_a_test_that_does_not_exist_is_refused"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T152 an entry naming a whole class is read as a typo",
+     "            cls = getattr(module_obj, cls_name, None)\n"
+     "            if cls is None or (attr and not hasattr(cls, attr)):",
+     "            cls = getattr(module_obj, cls_name, None)\n"
+     "            if cls is None or not hasattr(cls, attr):",
+     ["TestMutationHarness.test_an_entry_naming_a_whole_class_is_not_read_as_a_typo"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("T152 a mutation that changes nothing runs anyway",
+     "    if not pairs or any(o == n for o, n in pairs):\n"
+     '        return "UNRUNNABLE"',
+     "    if not pairs:\n"
+     '        return "UNRUNNABLE"',
+     ["TestMutationHarness.test_a_mutation_that_changes_nothing_is_refused"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T152 an anchor that matches twice is applied to the first match",
+     "    if any(c != 1 for c in counts):\n        # NOT a survivor",
+     "    if any(c < 1 for c in counts):\n        # NOT a survivor",
+     ["TestMutationHarness.test_an_anchor_that_does_not_match_exactly_once_is_refused"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T152 the recorded debt of misnamed entries stops being read",
+     "\nKNOWN_MISNAMED = 9", "\nKNOWN_MISNAMED = 0",
+     ["TestMutationHarness."
+      "test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one"],
+     os.path.join("tests", "mutations.py")),
 ]
 
 
@@ -3067,6 +3119,40 @@ def run_suite(tk_dir, names):
     tests = os.path.join(tk_dir, "tests")
     argv = [sys.executable, "-m", "unittest", "-v"] + [f"test_tk_queue.{n}" for n in names]
     return subprocess.run(argv, cwd=tests, capture_output=True, text=True)
+
+
+def pairs_of(entry):
+    """An entry's (old, new) pairs — one, or a list applied in order."""
+    old, new = entry[1], entry[2]
+    if isinstance(old, (list, tuple)):
+        return list(zip(old, new))
+    return [(old, new)]
+
+
+def entry_problem(entry, module_obj, source):
+    """Why this entry cannot be replayed, as (kind, why) — or None when it can.
+
+    Every reason here means the entry proves NOTHING, and one of them used to be
+    invisible: the runner reads a non-zero exit as "the named test fell", so an
+    entry naming a test that does not exist reported itself as a mutant killed.
+
+    The checks are per PAIR, and one bad pair disqualifies the entry: a paired
+    mutation whose second edit did not land is a DIFFERENT mutation from the one
+    the label names, and it would be scored under that name."""
+    if misnamed([entry], module_obj):
+        gone = ", ".join(n for n in entry[3]
+                         if misnamed([(entry[0], "a", "b", [n])], module_obj))
+        return "MISNAMED", f"names a test that does not exist: {gone}"
+    pairs = pairs_of(entry)
+    if not pairs or any(o == n for o, n in pairs):
+        return "UNRUNNABLE", "the mutation is a no-op: old == new"
+    counts = [source.count(o) for o, _ in pairs]
+    if any(c != 1 for c in counts):
+        # NOT a survivor: the mutation never ran, so it says nothing about the
+        # suite. It is still a failure — a stale anchor silently stops proving
+        # whatever it used to prove — but calling it "survived" would be a lie
+        return "UNRUNNABLE", f"anchor matched {', '.join(str(c) for c in counts)}x, not once"
+    return None
 
 
 def load_check(tk_dir, rel):
@@ -3099,6 +3185,7 @@ def load_check(tk_dir, rel):
 
 
 def main():
+    module_obj = load_module(TEST_MODULE, TK_DIR)
     baseline = run_suite(TK_DIR, ["TestPrefixedId", "TestConcurrency", "TestMissingItemMessage",
                                   "TestDirResolution", "TestProjectTagInDoneLog",
                                   "TestEmbeddedMarker", "TestAtomicWrite",
@@ -3139,31 +3226,19 @@ def main():
         if rel not in sources:
             with open(os.path.join(TK_DIR, rel), encoding="utf-8") as f:
                 sources[rel] = f.read()
-    survived, unrunnable = [], []
+    survived, unrunnable, fictitious = [], [], []
     for entry in MUTATIONS:
         label, old, new, names = entry[:4]
         rel = entry[4] if len(entry) > 4 else DEFAULT_SRC
         src = sources[rel]
-        pairs = (list(zip(old, new)) if isinstance(old, (list, tuple))
-                 else [(old, new)])
-        # every check below is per PAIR, and one bad pair disqualifies the entry:
-        # a paired mutation whose second edit did not land is a DIFFERENT mutation
-        # from the one the label names, and it would be scored under that name
-        if not pairs or any(o == n for o, n in pairs):
-            unrunnable.append(f"{label} (the mutation is a no-op: old == new)")
-            print(f"UNRUNNABLE {label}\n           the mutation is a no-op: old == new")
-            continue
-        counts = [src.count(o) for o, _ in pairs]
-        if any(c != 1 for c in counts):
-            # NOT a survivor: the mutation never ran, so it says nothing about the
-            # suite. It is still a failure — a stale anchor silently stops proving
-            # whatever it used to prove — but calling it "survived" would be a lie
-            shown = ", ".join(str(c) for c in counts)
-            unrunnable.append(f"{label} (anchor matched {shown}x, not once)")
-            print(f"UNRUNNABLE {label}\n           anchor matched {shown}x, not once")
+        problem = entry_problem(entry, module_obj, src)
+        if problem is not None:
+            kind, why = problem
+            (fictitious if kind == "MISNAMED" else unrunnable).append(f"{label} ({why})")
+            print(f"{kind:10} {label}\n           {why}")
             continue
         mutated = src
-        for o, n in pairs:
+        for o, n in pairs_of(entry):
             mutated = mutated.replace(o, n, 1)
         tmp = tempfile.mkdtemp(prefix="tk-mutation.")
         try:
@@ -3202,16 +3277,26 @@ def main():
         else:
             print(f"caught     {label}\n           → all {len(names)} named test(s) fell")
 
-    ran = len(MUTATIONS) - len(unrunnable)
+    ran = len(MUTATIONS) - len(unrunnable) - len(fictitious)
     print(f"\n{ran - len(survived)}/{ran} mutations caught"
-          + (f" ({len(unrunnable)} could not run)" if unrunnable else ""))
+          + (f" ({len(unrunnable)} could not run)" if unrunnable else "")
+          + (f" ({len(fictitious)} name no such test)" if fictitious else ""))
     for title, items in (("SURVIVORS (the suite does not actually protect these)", survived),
-                         ("UNRUNNABLE (stale anchor — proves nothing until fixed)", unrunnable)):
+                         ("UNRUNNABLE (stale anchor — proves nothing until fixed)", unrunnable),
+                         ("MISNAMED (names no such test — scored as nothing, never as a kill)",
+                          fictitious)):
         if items:
             print(f"{title}:")
             for i in items:
                 print("  -", i)
-    return 1 if survived or unrunnable else 0
+    grown = len(fictitious) > KNOWN_MISNAMED
+    if grown:
+        print(f"\nthe list carried {KNOWN_MISNAMED} misnamed entries and this run found "
+              f"{len(fictitious)}: a new one was written")
+    elif len(fictitious) < KNOWN_MISNAMED:
+        print(f"\nKNOWN_MISNAMED says {KNOWN_MISNAMED} and only {len(fictitious)} entries "
+              "are misnamed now — lower the constant, or the ratchet stops biting")
+    return 1 if survived or unrunnable or grown else 0
 
 
 if __name__ == "__main__":
