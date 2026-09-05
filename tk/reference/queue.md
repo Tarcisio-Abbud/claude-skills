@@ -41,10 +41,10 @@ allocated, or removed by another writer. None of those mean "invent it again": r
 
 ## The stderr lines
 
-Every mutating command prints the memory dir it resolved on **stderr** before acting —
-`migrate --dry-run` too. That target is inferred from `--dir` or the cwd, and a shell that
-keeps its cwd between calls has already made an `edit` land on a homonymous item in ANOTHER
-project's queue while reporting success. Read that line before trusting the result.
+Every command but `report` prints the memory dir it resolved on **stderr** before acting —
+`list` and `pack` too. That target is inferred from `--dir` or the cwd, and a shell that
+kept its cwd made an `edit` land on a homonymous item in ANOTHER project's queue, and a
+`list` answer with two items of it. Read it before trusting either.
 
 **The preview's report is not evidence that the migration happened.** `migrate --dry-run`
 prints a report byte-identical to a real run's — past tense and all — and the

@@ -256,6 +256,50 @@ class TestConcurrency(QueueTest):
                       "the message must name both kinds of holder")
         self.assertIn("Nothing was changed", r.stderr)
 
+    @unittest.skipIf(fcntl is None, "flock unavailable on this platform")
+    def test_pack_reads_straight_through_a_held_lock(self):
+        """The other side of the gate, and the one the package is dispatched
+        from: `pack` writes nothing, so it may not queue behind a writer — a
+        report that blocks for LOCK_TIMEOUT whenever someone is adding an item
+        is a report nobody can read at the moment they need it. The claim used
+        to be proved by the announcement (readers named no queue); since T215
+        every command but `report` names its queue, and the LOCK is what is left
+        to tell a reader from a writer."""
+        self.seed(item(1, "um"))
+        lock_fd = os.open(os.path.join(self.mem, ".tk-queue.lock"),
+                          os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            r = self.run_tk("pack", timeout=10)
+        finally:
+            os.close(lock_fd)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+
+    @unittest.skipIf(fcntl is None, "flock unavailable on this platform")
+    def test_bump_waits_for_the_lock_like_every_other_writer(self):
+        """`bump` rewrites the queue, so it belongs on the locked side of the
+        gate. Nothing proved that directly until the announcement stopped being
+        the observable: the queue is named on reads now too, so a command
+        wrongly counted as a reader still names its dir and only the lock tells
+        the two sides apart."""
+        self.seed(item(1, "um"), item(2, "dois"))
+        lock_fd = os.open(os.path.join(self.mem, ".tk-queue.lock"),
+                          os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        proc = subprocess.Popen(
+            [sys.executable, TK, "bump", "T002", "--dir", self.mem],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(os.environ, HOME=self.home))
+        try:
+            with self.assertRaises(subprocess.TimeoutExpired,
+                                   msg="bump did not wait for the lock"):
+                proc.wait(timeout=1.5)
+        finally:
+            os.close(lock_fd)
+        out, err = proc.communicate(timeout=30)
+        self.assertEqual(proc.returncode, 0, err)
+
     def test_concurrent_close_and_add_keep_both_files_coherent(self):
         self.seed(item(1, "um"), item(2, "dois"))
         with ThreadPoolExecutor(2) as ex:
@@ -1227,15 +1271,24 @@ class TestTargetQueueAnnounced(QueueTest):
         self.assertNotIn(self.mem, r.stdout)
         self.assertEqual(r.stdout.splitlines()[0].split()[1].rstrip(":"), "T002")
 
-    def test_readers_stay_silent(self):
-        """`list`, `report` and `pack` take no lock and write nothing — announcing a
-        write target there would be noise on every read."""
+    def test_the_readers_of_one_queue_name_it_too_and_report_stays_silent(self):
+        """A read is what a decision is made from, and the same wrong cwd that
+        made an `edit` land elsewhere made a `list` from the repository root
+        answer with TWO items of another project's queue, in silence (2026-08-27).
+        `list` and `pack` read ONE inferred queue, so they announce it. `report`
+        sweeps every project's queue and has no single dir to name."""
         self.seed(item(1, "um"))
-        for argv in (("list",), ("report", "--since", "2026-01-01"), ("pack",)):
+        for argv in (("list",), ("pack",)):
             with self.subTest(cmd=argv[0]):
                 r = self.run_tk(*argv)
                 self.assertEqual(r.returncode, 0, r.stderr)
-                self.assertNotIn(self.mem, r.stderr)
+                self.assertIn(self.mem, r.stderr, f"{argv[0]} did not name the queue")
+                self.assertIn("/memory", r.stderr)
+                # stdout is parsed — `pack` is read by the afk flow line by line
+                self.assertNotIn(self.mem, r.stdout)
+        r = self.run_tk("report", "--since", "2026-01-01")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn(f"queue: {self.mem}", r.stderr)
 
 
 # --- review#2: the real field is the one in the CHAIN, never the last marker ---

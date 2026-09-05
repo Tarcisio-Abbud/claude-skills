@@ -389,11 +389,24 @@ MUTATIONS = [
      '        print(f"tk-queue: queue: {memdir}")',
      ["TestTargetQueueAnnounced.test_it_goes_to_stderr_and_never_pollutes_stdout"]),
 
-    # over-trigger direction: readers write nothing, so announcing a write target
-    # on `list`/`report` is noise on every read
-    ("T072 readers announce a write target too",
+    ("T072 a reader takes the write lock too",
      'READERS = frozenset(("list", "report", "pack"))', "READERS = frozenset()",
-     ["TestTargetQueueAnnounced.test_readers_stay_silent"]),
+     ["TestTargetQueueAnnounced."
+      "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
+
+    ("T215 the readers of one queue go back to naming nothing",
+     '    memdir = None if args.cmd == "report" else memory_dir(args.dir)',
+     "    memdir = None if args.cmd in READERS else memory_dir(args.dir)",
+     ["TestTargetQueueAnnounced."
+      "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
+
+    # over-trigger direction: `report` sweeps every project's queue, so a single
+    # dir named on it is a queue it does not read
+    ("T215 report announces one queue out of the many it sweeps",
+     '    memdir = None if args.cmd == "report" else memory_dir(args.dir)',
+     "    memdir = memory_dir(args.dir)",
+     ["TestTargetQueueAnnounced."
+      "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
     # --- review#2: the real field is the one in the CHAIN ------------------
 
     ("review#2 the real field is the LAST marker in the block again (note eaten)",
@@ -630,10 +643,13 @@ MUTATIONS = [
      "                           )",
      ["TestBump.test_a_bump_shows_in_list_on_a_tagged_queue_too"]),
 
-    ("T119 bump counts as a reader, so it takes no lock and names no queue",
+    # the announcement used to be this mutation's observable; since T215 every
+    # command but `report` names its queue, reader or not, so the LOCK is what
+    # tells the two sides apart and the test that watches it is the proof
+    ("T119 bump counts as a reader, so it takes no lock",
      'READERS = frozenset(("list", "report", "pack"))',
      'READERS = frozenset(("list", "report", "pack", "bump"))',
-     ["TestTargetQueueAnnounced.test_every_mutating_command_names_the_memdir_on_stderr"]),
+     ["TestConcurrency.test_bump_waits_for_the_lock_like_every_other_writer"]),
 
     # --- 2nd pair of eyes: the free-text guards, ON THE NEW FLAG --------------
     # Wiring `deferred=` into a generic checker is not proof that the checker sees
@@ -1464,10 +1480,12 @@ MUTATIONS = [
      '        return "?"',
      ["TestPack.test_an_unreadable_Effort_does_not_cost_the_item_its_place"]),
 
-    ("T126 pack stops being a reader, so it takes the lock and names the queue",
+    # the observable moved with T215: naming the queue no longer tells a reader
+    # from a writer, since every command but `report` names it — the LOCK does
+    ("T126 pack stops being a reader, so it queues behind a writer",
      "READERS = frozenset((\"list\", \"report\", \"pack\"))",
      "READERS = frozenset((\"list\", \"report\"))",
-     ["TestTargetQueueAnnounced.test_readers_stay_silent"]),
+     ["TestConcurrency.test_pack_reads_straight_through_a_held_lock"]),
 
     # --- T122 handoff: the briefing that lives and dies with the item --------
     ("T122 the write gate asks a PROXY instead of the composed briefing",

@@ -4675,18 +4675,25 @@ def main():
         "pack": cmd_pack,
         "migrate": cmd_migrate,
     }[args.cmd]
-    if args.cmd not in READERS:
-        memdir = memory_dir(args.dir)
-        # Which queue is being written is INFERRED — from --dir, or from the cwd
-        # when it is absent — and an inference nobody sees is an inference nobody
-        # checks. A caller whose cwd is not where they think (the agent's shell
-        # keeps its cwd between calls) edits a homonymous item in ANOTHER project's
-        # queue and is told "T019 updated", which reads as success. Printing the
-        # resolved dir is what makes that visible without a flag to remember —
-        # stderr, so it never contaminates stdout that a caller parses, and BEFORE
-        # the work, so a command that then fails or blocks on the lock has still
-        # said where it was aiming.
+    # Which queue this command is aimed at is INFERRED — from --dir, or from the
+    # cwd when it is absent — and an inference nobody sees is an inference nobody
+    # checks. A caller whose cwd is not where they think (the agent's shell keeps
+    # its cwd between calls) edits a homonymous item in ANOTHER project's queue
+    # and is told "T019 updated", which reads as success. The same wrong cwd
+    # answers a `list` with another project's two items and says nothing at all,
+    # which is why READING commands announce too: a read is what a decision is
+    # made from, and silence there is the same inference gone unchecked.
+    # stderr, so it never contaminates the stdout that `add` and `pack` callers
+    # parse, and BEFORE the work, so a command that then fails or blocks on the
+    # lock has still said where it was aiming.
+    #
+    # `report` is the ONE command with no single dir to name: it sweeps every
+    # project's queue under PROJECTS_ROOT by construction, so there is no
+    # inference for it to expose and no dir of its own to resolve.
+    memdir = None if args.cmd == "report" else memory_dir(args.dir)
+    if memdir is not None:
         print(f"tk-queue: queue: {memdir}", file=sys.stderr)
+    if args.cmd not in READERS:
         # taken BEFORE the handler's first read, released after its last write:
         # a lock around the write alone would still let a stale snapshot win
         with queue_lock(memdir):
