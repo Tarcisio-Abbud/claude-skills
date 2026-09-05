@@ -7551,7 +7551,7 @@ class TestMutationHarness(unittest.TestCase):
         self.mod = sys.modules[__name__]
 
     def problem(self, entry, source="the anchor"):
-        return self.h.entry_problem(entry, self.mod, source)
+        return self.h.entry_problem(entry, {"test_tk_queue": self.mod}, source)
 
     def test_an_entry_naming_a_test_that_does_not_exist_is_refused(self):
         """unittest answers a name it cannot load with a non-zero exit, and the
@@ -7607,18 +7607,62 @@ class TestMutationHarness(unittest.TestCase):
         show it: N/N counts the mutants someone wrote. The ceiling is what keeps
         a new one from arriving in silence."""
         import mutations_tk_contract
-        real = mutations_tk_contract.unproved(self.h.MUTATIONS, self.mod)
+        real = mutations_tk_contract.unproved(
+            self.h.per_module(self.h.MUTATIONS, "test_tk_queue"), self.mod)
         self.assertGreaterEqual(self.h.KNOWN_UNPROVED, len(real),
                                 f"{len(real)} tests no entry names: {real}")
+
+    def test_the_absorbed_roster_suite_keeps_its_own_unproved_ceiling(self):
+        """The twenty entries absorbed from `mutations_roster.py` name tests in
+        another module, and that suite's harness never had an orphan check. Its
+        debt is a SECOND number: folded into the one above it would have raised a
+        ceiling whose whole rule is that it only ever falls."""
+        import mutations_tk_contract
+        roster = mutations_tk_contract.load_module("test_tk_roster",
+                                                   os.path.dirname(os.path.dirname(TK)))
+        real = mutations_tk_contract.unproved(
+            self.h.per_module(self.h.MUTATIONS, "test_tk_roster"), roster)
+        self.assertGreaterEqual(self.h.KNOWN_UNPROVED_ROSTER, len(real),
+                                f"{len(real)} roster tests no entry names: {real}")
+        self.assertEqual(mutations_tk_contract.misnamed(
+            self.h.per_module(self.h.MUTATIONS, "test_tk_roster"), roster), [])
 
     def test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one(self):
         """The debt is a ceiling to lower, and this is what makes it bite in two
         minutes instead of in the six the full harness takes: a tenth misnamed
         entry reddens the suite the moment it is written."""
         import mutations_tk_contract
-        real = mutations_tk_contract.misnamed(self.h.MUTATIONS, self.mod)
+        real = mutations_tk_contract.misnamed(
+            self.h.per_module(self.h.MUTATIONS, "test_tk_queue"), self.mod)
         self.assertGreaterEqual(self.h.KNOWN_MISNAMED, len(real),
                                 f"the list grew a misnamed entry: {real}")
+
+    def test_a_name_may_say_which_suite_it_lives_in(self):
+        """The one line that was a whole second harness file. `mutations_roster.py`
+        existed because the module was hardcoded in `run_suite`, so an entry for
+        another suite could not be written here at all — its own docstring said the
+        merge was this. A leading lowercase `test_` is the whole rule, and counting
+        dots instead broke the caller that hands over a whole CLASS: the baseline
+        runs `module.Class`, two components naming a module."""
+        self.assertEqual(self.h.qualify("TestX.test_y"),
+                         ("test_tk_queue", "TestX.test_y"))
+        self.assertEqual(self.h.qualify("test_tk_roster.TestX.test_y"),
+                         ("test_tk_roster", "TestX.test_y"))
+        self.assertEqual(self.h.qualify("test_tk_roster.TestX"),
+                         ("test_tk_roster", "TestX"))
+        self.assertEqual(self.h.qualify("TestX"), ("test_tk_queue", "TestX"))
+        self.assertEqual(
+            self.h.names_by_module(["TestX.test_y", "test_tk_roster.TestZ.test_w"]),
+            {"test_tk_queue": ["TestX.test_y"], "test_tk_roster": ["TestZ.test_w"]})
+
+    def test_an_entry_naming_a_module_this_run_never_loaded_is_refused(self):
+        """`per_module` DROPS a name whose module nothing resolves, so without
+        this the entry would be scored on the names that did resolve and its
+        typo would never be asked about — the misnamed defect one level up."""
+        kind, why = self.problem(("a typo'd module", "the anchor", "the mutant",
+                                  ["test_tk_nothing.TestSweep.test_x"]))
+        self.assertEqual(kind, "MISNAMED")
+        self.assertIn("test_tk_nothing", why)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

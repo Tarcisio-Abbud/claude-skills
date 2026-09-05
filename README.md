@@ -284,8 +284,6 @@ tk/
                                   an argument — and that reports a test no mutation
                                   names, since a green score counts only the mutants
                                   someone wrote
-  tests/mutations_roster.py       the same, for the roster suite — folds into that
-                                  runner, which already takes the suite as an argument
   tests/mutations_collisions.py   entries only: it enters through that runner's seam,
                                   which is what the seam was written for
   tests/mutations_vista.py        entries only: it folds into the same runner, through the
@@ -385,8 +383,7 @@ nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answer
 rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard through
 `python3 githooks/tests/mutations_private_values.py`, the tracker wrapper through
 `python3 bin/tests/mutations_tracker_gh.py`, `tk-vista-check` through
-`python3 tk/tests/mutations_vista.py`, the roster through
-`python3 tk/tests/mutations_roster.py`, `tk-hygiene` through
+`python3 tk/tests/mutations_vista.py`, `tk-hygiene` through
 `python3 tk/tests/mutations_hygiene.py`, `tk-prune-measure` through
 `python3 tk/tests/mutations_prune.py`, the two manifests through
 `python3 tk/tests/mutations_manifests.py`, the wall's step 2 through

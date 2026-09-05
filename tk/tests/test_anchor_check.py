@@ -29,7 +29,7 @@ def run_checker(tk_dir, *args):
                           + list(args), capture_output=True, text=True)
 
 
-def an_entry(harness_name="mutations_roster", position=0):
+def an_entry(harness_name="mutations_vista", position=0):
     """One real entry, read through the checker's own loader — never a literal
     copied into this file, which would go stale the moment the entry is edited."""
     path = os.path.join(HERE, harness_name + ".py")
@@ -45,7 +45,7 @@ class TestTheTreeItRunsIn(unittest.TestCase):
         A hand-kept list would be the failure mode the check exists to remove."""
         expected = sorted(glob.glob(os.path.join(HERE, "mutations*.py")))
         self.assertEqual(anchor_check.discover(HERE), expected)
-        self.assertGreaterEqual(len(expected), 12)
+        self.assertGreaterEqual(len(expected), 11)
 
     def test_the_working_tree_has_every_anchor_matching_once(self):
         result = run_checker(TK_DIR)
@@ -65,7 +65,7 @@ class TestTheTreeItRunsIn(unittest.TestCase):
     def test_it_counts_the_entries_it_read(self):
         """A silent green run cannot be told from one that found no entries."""
         result = run_checker(TK_DIR)
-        self.assertRegex(result.stdout, r"12 harness\(es\), \d{3,} entries")
+        self.assertRegex(result.stdout, r"1[1-9] harness\(es\), \d{3,} entries")
 
 
 class TestABrokenAnchorIsNamed(unittest.TestCase):

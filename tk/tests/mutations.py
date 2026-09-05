@@ -35,6 +35,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TK_DIR = os.path.dirname(HERE)
 DEFAULT_SRC = os.path.join("bin", "tk-queue")
 TEST_MODULE = "test_tk_queue"
+# The other two sources this list anchors into, and the module whose tests prove
+# them. They arrived with the twenty entries absorbed from `mutations_roster.py`
+# (T119): one list, because a second harness existed only for the hardcoded
+# module name below and for nothing else.
+ROSTER = os.path.join("bin", "tk-roster")
+SITE = os.path.join("bin", "tk_site.py")
+ROSTER_TEST_MODULE = "test_tk_roster"
+TEST_MODULES = (TEST_MODULE, ROSTER_TEST_MODULE)
 
 sys.path.insert(0, HERE)
 from mutations_tk_contract import (  # noqa: E402 (path above)
@@ -57,6 +65,13 @@ KNOWN_MISNAMED = 9
 # the suite's 480 test methods. Triaging them is not this item's work; noticing
 # a sixty-second one is.
 KNOWN_UNPROVED = 61
+
+# The same debt for the suite absorbed with the roster entries (T119), kept as
+# its OWN number rather than folded into the one above. Folding would have
+# RAISED a ceiling whose whole rule is that it only ever falls, and the two
+# debts are not one: this one arrived with a harness that never had an orphan
+# check at all. Measured 2026-09-05: 4 of test_tk_roster's 22 test methods.
+KNOWN_UNPROVED_ROSTER = 4
 
 # (label, old, new, [test names that must fail]) — plus an optional 5th element,
 # the source file the anchor lives in, relative to tk/ (default: bin/tk-queue).
@@ -3188,9 +3203,31 @@ MUTATIONS = [
     # escapes that, because a `\n` written in an entry is two characters here
     # and never a newline.
     ("T152 an entry naming a test that does not exist is scored as a kill again",
-     "    if misnamed([entry], module_obj):\n        gone",
-     "    if False:\n        gone",
+     "    if gone:\n        return \"MISNAMED\", f\"names a test that does not exist:",
+     "    if False:\n        return \"MISNAMED\", f\"names a test that does not exist:",
      ["TestMutationHarness.test_an_entry_naming_a_test_that_does_not_exist_is_refused"],
+     os.path.join("tests", "mutations.py")),
+
+    # the same defect one level up: `per_module` drops the names of a module
+    # nothing resolved, so an entry naming a typo'd MODULE would be scored on
+    # whatever names were left and never asked about its typo
+    ("T119 an entry naming a module this run never loaded is scored on the rest",
+     "    absent = modules_missing([entry], modules)\n    if absent:",
+     "    absent = modules_missing([entry], modules)\n    if False:",
+     ["TestMutationHarness."
+      "test_an_entry_naming_a_module_this_run_never_loaded_is_refused"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T119 the absorbed suite's debt is recorded as zero, so its ratchet cannot bite",
+     "\nKNOWN_UNPROVED_ROSTER = 4", "\nKNOWN_UNPROVED_ROSTER = 0",
+     ["TestMutationHarness."
+      "test_the_absorbed_roster_suite_keeps_its_own_unproved_ceiling"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T119 the module a name carries is ignored, so one list cannot hold two suites",
+     '    if module.startswith("test_") and rest:\n        return module, rest',
+     "    if False:\n        return module, rest",
+     ["TestMutationHarness.test_a_name_may_say_which_suite_it_lives_in"],
      os.path.join("tests", "mutations.py")),
 
     ("T152 an entry naming a whole class is read as a typo",
@@ -3234,13 +3271,169 @@ MUTATIONS = [
      ["TestMutationHarness."
       "test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one"],
      os.path.join("tests", "mutations.py")),
+
+    # --- absorbed from mutations_roster.py (T119) --------------------------
+    # The roster suite's own harness was a second file because THIS one ran
+    # every named test as `test_tk_queue.<name>`, hardcoded, so a roster entry
+    # could not be expressed here at all. It can now: a name may carry the
+    # module it lives in, and these twenty do. Their anchors live in two other
+    # sources, which the 5th element has always been able to say.
+    ("T128 roster any project directory counts, queue file or not",
+     "if os.path.isfile(os.path.join(root, name, MEMORY_DIR, QUEUE_FILE))]", "if True]",
+     ["test_tk_roster."
+       "TestSweep.test_a_directory_without_the_queue_file_is_not_a_project"], ROSTER),
+
+    ("T128 roster the queue is the done log, so a finished project is swept",
+     'QUEUE_FILE = "next-steps.md"', 'QUEUE_FILE = "done-log.md"',
+     ["test_tk_roster."
+       "TestSweep.test_a_directory_without_the_queue_file_is_not_a_project"], ROSTER),
+
+    ("T128 site the encoding alphabet keeps a character tk-queue replaces",
+     'PROJECT_ALPHABET = "A-Za-z0-9-"', 'PROJECT_ALPHABET = "A-Za-z0-9_-"',
+     ["test_tk_roster."
+       "TestProjectPath.test_the_path_is_the_directory_that_encodes_to_the_name"], SITE),
+
+    ("T128 roster a projects root that does not exist is a failure to report",
+     "    except FileNotFoundError:\n"
+     "        # not a failure of this machine's setup: a machine where no session ever\n"
+     "        # ran has no such directory, and an empty roster is the true answer\n"
+     "        return []",
+     "    except FileNotFoundError:\n        fail(\"no projects root\")",
+     ["test_tk_roster."
+       "TestSweep.test_an_absent_projects_root_is_an_empty_roster_not_a_failure"], ROSTER),
+
+    ("T128 roster a name no POSIX path encodes to is resolved anyway",
+     '    return name.startswith("-")', "    return True",
+     ["test_tk_roster."
+       "TestProjectPath.test_a_name_another_machine_wrote_is_not_resolved_as_a_shorter_path"],
+     ROSTER),
+
+    ("T128 roster a queue another machine wrote is reported as a gone directory",
+     "    if not encodes_a_posix_path(name):\n        return \"the name encodes no POSIX "
+     "absolute path, so another machine wrote it\"\n",
+     "",
+     ["test_tk_roster."
+       "TestProjectPath.test_a_name_another_machine_wrote_is_not_resolved_as_a_shorter_path"],
+     ROSTER),
+
+    ("T128 roster the report names the wrong list as the keeper",
+     '        return "fleet-allow"', '        return "fleet-deny"',
+     ["test_tk_roster."
+       "TestAllowDeny.test_fleet_allow_admits_only_what_it_lists"], ROSTER),
+
+    ("T128 roster an ambiguous name is dispatched to the first match",
+     "        if len(paths) == 1:", "        if paths:",
+     ["test_tk_roster."
+       "TestProjectPath.test_two_directories_encoding_to_one_name_are_not_dispatchable"], ROSTER),
+
+    ("T128 roster a symlinked directory counts as a candidate",
+     "if not entry.is_dir(follow_symlinks=False):", "if not entry.is_dir(follow_symlinks=True):",
+     ["test_tk_roster."
+       "TestProjectPath.test_a_symlink_does_not_make_a_project_ambiguous"], ROSTER),
+
+    ("T128 roster deny is consulted only when there is no allowlist",
+     "    if any(list_key(e) == name for e in deny):",
+     "    if not allow and any(list_key(e) == name for e in deny):",
+     ["test_tk_roster.TestAllowDeny.test_a_name_in_both_lists_is_denied"], ROSTER),
+
+    ("T128 roster an absent allowlist excludes everything",
+     "    if allow and not any(list_key(e) == name for e in allow):",
+     "    if not any(list_key(e) == name for e in allow):",
+     ["test_tk_roster.TestAllowDeny.test_without_lists_every_queue_enters"], ROSTER),
+
+    ("T128 roster the allowlist admits what it does NOT list",
+     "    if allow and not any(list_key(e) == name for e in allow):",
+     "    if allow and any(list_key(e) == name for e in allow):",
+     ["test_tk_roster."
+       "TestAllowDeny.test_fleet_allow_admits_only_what_it_lists"], ROSTER),
+
+    ("T128 roster a list entry that is a path is matched verbatim, never encoded",
+     '    return project_slug(entry) if entry.startswith("/") else entry',
+     "    return entry",
+     ["test_tk_roster."
+       "TestAllowDeny.test_an_entry_written_as_a_path_names_the_same_project"], ROSTER),
+
+    ("T128 roster an entry that matched nothing is passed over in silence",
+     "        unmatched = [e for e in entries if list_key(e) not in listed]",
+     "        unmatched = []",
+     ["test_tk_roster."
+       "TestAllowDeny.test_an_entry_matching_no_queue_is_reported"], ROSTER),
+
+    ("T128 roster every entry is reported as unmatched, matched ones included",
+     "        unmatched = [e for e in entries if list_key(e) not in listed]",
+     "        unmatched = list(entries)",
+     ["test_tk_roster."
+       "TestAllowDeny.test_a_matching_entry_is_not_reported_as_unmatched"], ROSTER),
+
+    ("T128 roster a rotten site file is read as an absent one",
+     "    except tk_site.SiteError as e:\n        fail(str(e))",
+     "    except tk_site.SiteError as e:\n        site = None",
+     ["test_tk_roster."
+       "TestSiteFile.test_a_rotten_site_file_stops_the_sweep_instead_of_ignoring_the_lists"],
+     ROSTER),
+
+    ("T128 roster an absent site file is swept without a word",
+     "    if site is None:\n        print(", "    if False:\n        print(",
+     ["test_tk_roster."
+       "TestSiteFile.test_no_site_file_sweeps_everything_and_says_the_file_is_absent"], ROSTER),
+
+    ("T128 site an empty fleet list reads as an absent one",
+     "        if not entries:", "        if False:",
+     ["test_tk_roster."
+       "TestListValidation.test_an_empty_list_is_refused_not_read_as_an_absent_one"], SITE),
+
+    ("T128 site a project name outside the encoding alphabet is accepted",
+     "            if not PROJECT_NAME_RE.match(entry):", "            if False:",
+     ["test_tk_roster.TestListValidation.test_a_relative_path_names_no_project",
+      "test_tk_roster."
+       "TestListValidation.test_a_name_outside_the_encoding_alphabet_is_refused"], SITE),
+
+    ("T128 site an unknown key is refused instead of ignored",
+     "        pairs[key] = value.strip()",
+     "        pairs[key] = value.strip()\n"
+     "        if key not in REQUIRED + CEILINGS + FLEET_LISTS:\n"
+     '            raise SiteError(f"{path}:{n}: unknown key {key!r}.")',
+     ["test_tk_roster.TestSiteFile.test_an_unknown_key_is_still_ignored"], SITE),
 ]
+
+
+def qualify(name):
+    """(module, `Class.method`) for one entry's test name.
+
+    An entry writes `Class.method` and means this harness's own suite, or
+    `module.Class.method` and says which suite it means. The FIRST component
+    decides: a test module is `test_<something>` and a TestCase class is
+    `Test<Something>`, so a leading lowercase `test_` is a module and nothing
+    else is. Counting dots was the first rule here and it was wrong for the one
+    caller that hands over a whole class — the baseline runs `module.Class`, two
+    components naming a module, and every one of them was read as a class of
+    this harness's own suite (58 load errors, measured).
+
+    This one line is what a second harness file used to be. `mutations_roster.py`
+    existed because the module was hardcoded HERE — its own docstring said so and
+    said the merge was this — while its twenty entries already carried the 5th
+    element naming their source. Two runners, two baselines and two reports for
+    one missing prefix."""
+    module, _, rest = name.partition(".")
+    if module.startswith("test_") and rest:
+        return module, rest
+    return TEST_MODULE, name
 
 
 def run_suite(tk_dir, names):
     tests = os.path.join(tk_dir, "tests")
-    argv = [sys.executable, "-m", "unittest", "-v"] + [f"test_tk_queue.{n}" for n in names]
+    argv = [sys.executable, "-m", "unittest", "-v"]
+    argv += [f"{module}.{rest}" for module, rest in map(qualify, names)]
     return subprocess.run(argv, cwd=tests, capture_output=True, text=True)
+
+
+def names_by_module(names):
+    """{module: [`Class.method`, …]} — the entry's names, sorted by the suite each
+    one lives in, so a check that needs a module object asks the right one."""
+    out = {}
+    for module, rest in map(qualify, names):
+        out.setdefault(module, []).append(rest)
+    return out
 
 
 def baseline_classes(module_obj):
@@ -3263,20 +3456,51 @@ def pairs_of(entry):
     return [(old, new)]
 
 
-def entry_problem(entry, module_obj, source):
+def per_module(mutations, module):
+    """`mutations` carrying only the names that belong to `module`, entries with
+    none of them dropped.
+
+    It is what lets a check written for ONE suite be asked of a list that now
+    carries two: `misnamed` and `unproved` both resolve a name against a module
+    object, and neither needs to learn that a name may say which module."""
+    out = []
+    for entry in mutations:
+        names = names_by_module(entry[3]).get(module)
+        if names:
+            out.append((entry[0], entry[1], entry[2], names) + tuple(entry[4:]))
+    return out
+
+
+def modules_missing(mutations, modules):
+    """Entries naming a MODULE this run did not load — the misnamed check one
+    level up. A name whose module nothing resolves would otherwise be dropped by
+    `per_module` and never asked about by anybody."""
+    return sorted(f"{entry[0]} -> {name}" for entry in mutations for name in entry[3]
+                  if qualify(name)[0] not in modules)
+
+
+def entry_problem(entry, modules, source):
     """Why this entry cannot be replayed, as (kind, why) — or None when it can.
 
     Every reason here means the entry proves NOTHING, and one of them used to be
     invisible: the runner reads a non-zero exit as "the named test fell", so an
     entry naming a test that does not exist reported itself as a mutant killed.
 
+    `modules` is {module name: module object} rather than one module, because an
+    entry may name tests in either suite this list now carries, and the question
+    "does this test exist" is only answerable against the module it lives in.
+
     The checks are per PAIR, and one bad pair disqualifies the entry: a paired
     mutation whose second edit did not land is a DIFFERENT mutation from the one
     the label names, and it would be scored under that name."""
-    if misnamed([entry], module_obj):
-        gone = ", ".join(n for n in entry[3]
-                         if misnamed([(entry[0], "a", "b", [n])], module_obj))
-        return "MISNAMED", f"names a test that does not exist: {gone}"
+    absent = modules_missing([entry], modules)
+    if absent:
+        return "MISNAMED", f"names a module that is not loaded: {', '.join(absent)}"
+    gone = [name for name in entry[3]
+            if misnamed([(entry[0], "a", "b", [qualify(name)[1]])],
+                        modules[qualify(name)[0]])]
+    if gone:
+        return "MISNAMED", f"names a test that does not exist: {', '.join(gone)}"
     pairs = pairs_of(entry)
     if not pairs or any(o == n for o, n in pairs):
         return "UNRUNNABLE", "the mutation is a no-op: old == new"
@@ -3319,16 +3543,25 @@ def load_check(tk_dir, rel):
 
 
 def main():
-    module_obj = load_module(TEST_MODULE, TK_DIR)
-    baseline = run_suite(TK_DIR, baseline_classes(module_obj))
+    # BOTH suites, because the list names tests in both: a baseline over one of
+    # them would leave the other's red — from a defect that was already there —
+    # indistinguishable from a mutant this run reddened
+    modules = {name: load_module(name, TK_DIR) for name in TEST_MODULES}
+    baseline_names = [f"{name}.{cls}" for name, obj in modules.items()
+                      for cls in baseline_classes(obj)]
+    baseline = run_suite(TK_DIR, baseline_names)
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
 
-    orphans = unproved(MUTATIONS, module_obj)
-    for name in orphans:
-        print(f"UNPROVED   {name} — no mutation entry names this test")
-    if orphans:
+    # per suite, and reported per suite, because the DEBT is per suite: the
+    # ceilings below are two numbers and each one only ever goes down
+    orphans = {name: unproved(per_module(MUTATIONS, name), obj)
+               for name, obj in modules.items()}
+    for module, names in orphans.items():
+        for name in names:
+            print(f"UNPROVED   {module}.{name} — no mutation entry names this test")
+    if any(orphans.values()):
         print()
 
     sources = {}
@@ -3342,7 +3575,7 @@ def main():
         label, old, new, names = entry[:4]
         rel = entry[4] if len(entry) > 4 else DEFAULT_SRC
         src = sources[rel]
-        problem = entry_problem(entry, module_obj, src)
+        problem = entry_problem(entry, modules, src)
         if problem is not None:
             kind, why = problem
             (fictitious if kind == "MISNAMED" else unrunnable).append(f"{label} ({why})")
@@ -3392,7 +3625,9 @@ def main():
     print(f"\n{ran - len(survived)}/{ran} mutations caught"
           + (f" ({len(unrunnable)} could not run)" if unrunnable else "")
           + (f" ({len(fictitious)} name no such test)" if fictitious else "")
-          + f", {len(orphans)} test(s) no entry proves")
+          + ", " + " + ".join(f"{len(names)} in {module}"
+                              for module, names in orphans.items())
+          + " test(s) no entry proves")
     for title, items in (("SURVIVORS (the suite does not actually protect these)", survived),
                          ("UNRUNNABLE (stale anchor — proves nothing until fixed)", unrunnable),
                          ("MISNAMED (names no such test — scored as nothing, never as a kill)",
@@ -3404,7 +3639,10 @@ def main():
     grown = []
     for name, ceiling, count, what in (
             ("KNOWN_MISNAMED", KNOWN_MISNAMED, len(fictitious), "misnamed entries"),
-            ("KNOWN_UNPROVED", KNOWN_UNPROVED, len(orphans), "tests no entry proves")):
+            ("KNOWN_UNPROVED", KNOWN_UNPROVED, len(orphans[TEST_MODULE]),
+             "tests no entry proves"),
+            ("KNOWN_UNPROVED_ROSTER", KNOWN_UNPROVED_ROSTER,
+             len(orphans[ROSTER_TEST_MODULE]), "roster tests no entry proves")):
         if count > ceiling:
             grown.append(f"{name} records {ceiling} {what} and this run found {count}")
         elif count < ceiling:

@@ -296,11 +296,19 @@ def fail(msg):
 
 
 def memory_dir(explicit):
+    """This queue's directory: `--dir`, or the one the cwd encodes to.
+
+    The encoding is `tk_site.project_slug`, not a regex of its own. It was one
+    here and one there, and the roster runs the SAME rule BACKWARDS — it walks
+    `~/.claude/projects` and recovers the directory each name encodes. Two
+    copies of an encoder and its decoder are two answers to "which queue is
+    this", and the day they disagree the disagreement is silent: a queue the
+    roster counts under one name and this command writes under another.
+    """
     if explicit:
         d = os.path.abspath(os.path.expanduser(explicit))
     else:
-        slug = re.sub(r"[^A-Za-z0-9-]", "-", os.getcwd())
-        d = os.path.join(PROJECTS_ROOT, slug, "memory")
+        d = os.path.join(PROJECTS_ROOT, tk_site.project_slug(os.getcwd()), "memory")
     if not os.path.isdir(d):
         fail(f"memory dir not found: {d}\n(use --dir, or run from the project's directory)")
     return d
