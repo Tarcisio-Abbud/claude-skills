@@ -917,6 +917,35 @@ def qualified_fields(block, field):
     return real_fields(block, field), len(FIELD_MARKER_RE[field].findall(block))
 
 
+def append_to_first_line(block, segment):
+    """`block` with `segment` appended at the end of its FIRST line — the only
+    place a command may WRITE a field it did not find, because the chain lives
+    there. Appending after a continuation line writes the field OUTSIDE the chain,
+    i.e. produces on the spot the very shape every gate in this file refuses to
+    read.
+
+    One spelling for three callers — the anchor with no chain to sit ahead of, the
+    field `edit` did not find, and the claim segment. Three copies of a two-line
+    partition is how one of them keeps a rule the other two dropped, and each copy
+    already carried its own comment saying this same thing.
+    """
+    head, sep, rest = block.partition("\n")
+    return head.rstrip() + " " + segment + sep + rest
+
+
+def fields_off_first_line(block):
+    """Whether a field marker sits on a CONTINUATION line of `block` — the
+    question that decides whether the FOLD has to come before anything else.
+
+    Asked from the regex `fold_chain_onto_first_line` asks it from, and that is
+    the point: the fold and the three messages that name it as a remedy must agree
+    about which items it is for. A remedy printed for an item the fold does not
+    lift is a dead end; one withheld from an item it does lift sends the caller to
+    `cancel` + re-add for nothing.
+    """
+    return bool(EMBEDDED_MARKER_RE.search("\n".join(block.rstrip("\n").split("\n")[1:])))
+
+
 def write_class_segment(block, value):
     """(`block` with a **Class:** segment, the field names that segment just made
     readable) — the ONE writer of the anchor every other field is measured from.
@@ -930,8 +959,13 @@ def write_class_segment(block, value):
     AUTONOMOUS` that `pack` itself prints as the repair — and `pack` went on
     showing that item's Effort as `?` for ever, `list` its age as `?`, with
     nothing anywhere saying why. The class therefore goes AHEAD of the chain the
-    item already carries, which is where `compose_item` writes it too: the
-    repaired item comes out byte-identical to one `add` would have written.
+    item already carries — the position `compose_item` writes it in too, so the
+    anchor lands where every reader already looks for it.
+
+    NOT byte-identical to an item `add` would have written, and the difference is
+    not cosmetic: `compose_item` stamps a **Born:** this never writes, and it
+    normalises the field ORDER, while this preserves the legacy chain's. What the
+    two share is the anchor's POSITION, which is the whole of what this decides.
 
     An item with no chain has nothing to sit ahead of, so its class is appended at
     the end of the first line and becomes the chain.
@@ -950,8 +984,7 @@ def write_class_segment(block, value):
     chain = field_chain(block)
     segment = f"**Class:** {value}."
     if not chain:
-        head, sep, rest = block.partition("\n")
-        return head.rstrip() + " " + segment + sep + rest, []
+        return append_to_first_line(block, segment), []
     at = chain[0].start()
     return (block[:at] + segment + " " + block[at:],
             [canonical_field(m.group(1)) for m in chain])
@@ -1178,6 +1211,19 @@ def claim_unwritable_message(block, candidate):
             "FREE by `list` and impossible to release. ")
     shape = class_shape(block)
     if shape == CLASS_SHAPE_NONE:
+        if fields_off_first_line(block):
+            # the class alone is REFUSED on this item (cmd_edit), and it would be
+            # the wrong first command even if it were not: the anchor appended to a
+            # chain-less first line strands the fields below it for good
+            return head + (
+                "It has no class, and its fields sit OUTSIDE the first line, so the "
+                "class cannot come first: appended to a line with no chain on it, the "
+                "anchor leaves those fields unreadable for good and stops `migrate` "
+                "from folding them. `tk-queue migrate` folds them up, every item "
+                "carrying this shape in one pass, and names the ones it could not "
+                f"fold; then `tk-queue edit {label} --class AUTONOMOUS`. If the fold "
+                "does not lift this — three real items keep a marker and its value on "
+                "different lines — close the item with `cancel` and re-add it clean.")
         return head + f"Give it a class first: `tk-queue edit {label} --class AUTONOMOUS`."
     if shape == CLASS_SHAPE_OFF_LINE:
         return head + (
@@ -1970,6 +2016,16 @@ REPAIR_FOLD = ("fields off the first line: `tk-queue migrate` folds them up, eve
                "opens a Markdown block — it will not lift half a chain; the repair for both "
                "is `cancel` + re-add")
 REPAIR_CLASSLESS = "no **Class:** at all: `tk-queue edit <id> --class AUTONOMOUS`"
+# The same shape with its fields still off the first line, and the ORDER is the
+# whole of it: `edit --class` appends the anchor to a first line that has no
+# chain, which strands those fields for good and stops `migrate` from ever
+# folding them. `edit --class` refuses that item now, so printing REPAIR_CLASSLESS
+# for it would be a dead end printed as an answer — the failure this block exists
+# to avoid, and the suite runs this line verbatim
+REPAIR_FOLD_THEN_CLASS = ("no **Class:** AND fields off the first line: `tk-queue "
+                          "migrate` folds them up first — the class is refused until "
+                          "they are on the line it anchors — then `tk-queue edit <id> "
+                          "--class AUTONOMOUS`")
 REPAIR_RELEASE = ("a claim whose session is gone: `tk-queue release <id>` hands the item "
                   "back without closing it, and prints whose claim it dropped")
 REPAIR_MIGRATE = "an item with no ID: `tk-queue migrate` assigns one"
@@ -2148,6 +2204,12 @@ def pack_classless_reason(block):
                 "ambiguous", REPAIR_CANCEL)
     shape = class_shape(block)
     if shape == CLASS_SHAPE_NONE:
+        # two repairs under one shape, because the ORDER of the two commands is
+        # what the item's readability turns on — and the wrong order is the one
+        # this list used to print
+        if fields_off_first_line(block):
+            return ("no **Class:** field, and its fields sit off the first line",
+                    REPAIR_FOLD_THEN_CLASS)
         return "no **Class:** field", REPAIR_CLASSLESS
     if shape == CLASS_SHAPE_OFF_LINE:
         return "**Class:** sits off the first line, where no gate reads it", REPAIR_FOLD
@@ -3517,10 +3579,12 @@ def cmd_edit(args):
         tail_m = re.search(r"\*\*(?:" + ANY_FIELD + r"):\*\*.*", block, re.S)
         tail = tail_m.group(0) if tail_m else ""
         new = head_m.group(0) + args.text.strip() + (" " + tail if tail else "\n")
-    for flag, field in ((args.classe, "Class"), (args.effort, "Effort"),
-                        (args.risk, "Risk"), (args.env, "Env"),
-                        (args.criterion, "Criterion"),
-                        (args.project, "Project"), (deferred_flag, "Deferred")):
+    flags = ((args.classe, "Class"), (args.effort, "Effort"),
+             (args.risk, "Risk"), (args.env, "Env"),
+             (args.criterion, "Criterion"),
+             (args.project, "Project"), (deferred_flag, "Deferred"))
+    promoted_names = []
+    for flag, field in flags:
         if not flag:
             continue
         # the real field is the one in the item's FIELD CHAIN — never merely the
@@ -3626,6 +3690,32 @@ def cmd_edit(args):
                      f"{shlex.quote(flag)}` — one command, class first, and the field "
                      "lands inside the chain.")
             if field == "Class":
+                # THE FOLD COMES FIRST. With no chain on the first line the anchor
+                # is APPENDED there (write_class_segment), and the item's real
+                # fields are on a continuation line — so the write leaves them
+                # exactly where no reader may use them, and takes the last route
+                # out with it: `fold_chain_onto_first_line` returns early on an
+                # item whose chain already reaches a **Class:**, and `edit --text`
+                # anchors its tail on the first marker in the block, so neither
+                # folds the item afterwards. Measured, each step exit 0: `pack`
+                # excluded the item and printed `edit <id> --class AUTONOMOUS` as
+                # the repair, that command took it, and `pack` then listed the
+                # item ELIGIBLE with Effort `?` — a candidate for an unattended
+                # package whose own fields nothing can read, with `cancel` +
+                # re-add the only way back. Refused before the write, because
+                # after it the refusal has nothing left to protect.
+                if fields_off_first_line(new):
+                    fail(f"{label} carries field markers OFF its first line, so the "
+                         "class would be appended to a line with no chain on it while "
+                         "the item's real fields stay where no gate and no report may "
+                         "read them — and the anchor then stops `migrate` from folding "
+                         "them up, which is the only command that would have. Nothing "
+                         "was changed. Fold first, then give it the class: `tk-queue "
+                         f"migrate` (every item carrying this shape in one pass, and it "
+                         "names the ones it could not fold), then `tk-queue edit "
+                         f"{label} --class {flag}`. Where the fold does not lift this — "
+                         "a marker and its value on different lines — close the item "
+                         "with `cancel` and re-add it clean.")
                 # Composed FIRST, then handed to the same reader every gate uses.
                 # Asking the block as it ARRIVED whether it looks right is the proxy
                 # this file has already paid for (claim_readback): appending the
@@ -3637,22 +3727,42 @@ def cmd_edit(args):
                 back = [canonical_field(m.group(1)) for m in field_chain(candidate)]
                 if back != ["Class"] + promoted or chain_class(candidate) != flag:
                     fail(f"{label} would not read back as a {flag} item carrying "
-                         f"{len(promoted)} field(s) behind the anchor. Nothing was "
+                         f"{len(promoted)} field(s) after the anchor. Nothing was "
                          "changed. Close it with `cancel` and re-add it clean.")
-                new = candidate
-                if promoted:
+                # A PROMOTION ENDS THE CALL. Every segment the anchor just made
+                # readable is a REAL field for the rest of this loop, so a later
+                # flag finds and rewrites it — and the run the anchor leads is the
+                # one run this command cannot tell from the item's own prose. Both
+                # directions measured on one item, in one command, exit 0: `edit
+                # T033 --class AUTONOMOUS --project tk` overwrote four words of the
+                # title, and `--risk none` DELETED the imitating segment whole. The
+                # warning below fires at the same moment and cannot substitute for
+                # this: its remedy is `cancel` + re-add, advice that arrives after
+                # the only copy of the text is gone. The class still goes in — it
+                # is worth doing, it is what the refusal for every other flag on
+                # this population already prescribes — but ALONE, so the caller
+                # reads the warning before the flag that would rewrite what it
+                # names. Nothing is written here: the whole call is refused, and
+                # the caller re-runs it in the two commands the message prints.
+                others = [f for f, name in flags if f and name != "Class"]
+                if promoted and others:
                     names = ", ".join(f"**{n}:**" for n in promoted)
-                    print(f"tk-queue: warning: {label} already ended its first line with "
-                          f"{names}, so the class went AHEAD of that run — the one position "
-                          "where a gate reads it. Check the list: a segment there that is "
-                          "the item's own prose quoting a marker now counts as a field, and "
-                          "`cancel` + re-add is the repair for that.", file=sys.stderr)
+                    fail(f"{label} already ended its first line with {names}, so the "
+                         "class goes AHEAD of that run and every segment in it becomes a "
+                         "real field — including any that is the item's own prose quoting "
+                         "a marker, which this command cannot tell apart. The other flags "
+                         "in this call would then rewrite that run (and with "
+                         f"`{FIELD_CLEAR}`, DELETE part of it). Nothing was changed. Run "
+                         f"`tk-queue edit {label} --class {flag}` alone, read the segments "
+                         "it names on stderr, and run the rest only if that whole run "
+                         "really is fields — `cancel` + re-add is the repair if it is not.")
+                new = candidate
+                promoted_names = promoted
                 continue
             # append at the end of the FIRST line, where the chain lives. Appending
             # after a continuation line would put the field outside the chain — i.e.
             # write, right now, the very shape the guard above refuses to touch later
-            head, sep, rest = new.partition("\n")
-            new = head.rstrip() + f" **{field}:** {flag}." + sep + rest
+            new = append_to_first_line(new, f"**{field}:** {flag}.")
     # The BLOCK ceiling guards the item's prose, so every PROSE flag is measured
     # against it — --text and the free-text fields alike — and only when the edit
     # grows the item, since shrinking a legacy oversized item must always be allowed.
@@ -3672,6 +3782,17 @@ def cmd_edit(args):
     if any(getattr(args, f, None) for f in FREE_TEXT_FLAGS) and len(new) > len(block):
         check_ceiling(new, args.force)
     splice_item(memdir, content, block, start, new)
+    # AFTER the write, and that is the rule the rest of this file already keeps:
+    # compose, check, act. Printed before it, this announced a promotion that
+    # `check_ceiling` then refused — the caller reading a past-tense warning about
+    # a write that never happened, exit 1, file untouched.
+    if promoted_names:
+        names = ", ".join(f"**{n}:**" for n in promoted_names)
+        print(f"tk-queue: warning: {label} already ended its first line with "
+              f"{names}, so the class went AHEAD of that run — the one position "
+              "where a gate reads it. Check the list: a segment there that is "
+              "the item's own prose quoting a marker now counts as a field, and "
+              "`cancel` + re-add is the repair for that.", file=sys.stderr)
     print(f"{label} updated")
     # An edit is the only command other than a close that changes WHICH briefings
     # an item reaches, and dropping the last pointer to one is a closing path in
@@ -3713,8 +3834,8 @@ def cmd_claim(args):
     # `edit` puts a field it did not find, and the only place claim_segment reads
     # one back from. The class is the one field NOT written here: it is the anchor
     # the rest are measured from, so it goes ahead of the run (write_class_segment)
-    head, sep, rest = block.partition("\n")
-    new = head.rstrip() + f" **Claimed:** {args.owner}{CLAIM_SINCE}{stamp}." + sep + rest
+    new = append_to_first_line(
+        block, f"**Claimed:** {args.owner}{CLAIM_SINCE}{stamp}.")
     # THE gate, and it is asked of what would be WRITTEN — compose first, then require
     # the reader to find exactly the claim composed. Every proxy for this question
     # (does the chain carry a Class?) is a guess about a chain the write itself
@@ -4137,7 +4258,7 @@ def fold_chain_onto_first_line(block):
         # a report exists to name
         return None, None
     lines = block.rstrip("\n").split("\n")
-    if not EMBEDDED_MARKER_RE.search("\n".join(lines[1:])):
+    if not fields_off_first_line(block):
         # no field marker sits off the first line. An item with no fields at all
         # is a different defect with a different repair (`edit --class`), and
         # reporting it here would name the fold for a shape the fold is not about
@@ -4388,7 +4509,13 @@ def main():
                    help="replaces the whole class VALUE. On an item that carries "
                    "none the anchor is written AHEAD of any fields already ending "
                    "the first line — the only position a gate reads them from — and "
-                   "those fields are named on stderr")
+                   "those fields are named on stderr, and any OTHER flag in that "
+                   "same call is refused — it would rewrite the run the anchor just "
+                   "promoted, before you have read the names. Refused too, and "
+                   "nothing written, on an item whose fields sit off the first line "
+                   "(`migrate` folds them first) and on one carrying a **Deferred:** "
+                   "marker away from its position. An item with no fields at all "
+                   "promotes nothing, and takes its class and its fields in one call")
     e.add_argument("--effort")
     e.add_argument("--risk", help="new Risk line, or 'none' to DELETE the field "
                    "(re-triage of an obsolete Risk)")

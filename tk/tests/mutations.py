@@ -37,6 +37,17 @@ DEFAULT_SRC = os.path.join("bin", "tk-queue")
 
 # (label, old, new, [test names that must fail]) — plus an optional 5th element,
 # the source file the anchor lives in, relative to tk/ (default: bin/tk-queue).
+#
+# `old` and `new` may each be a LIST of the same length, applied in order. A
+# defect that two guards jointly prevent cannot be replayed one guard at a time:
+# switch off the guard alone and the correct writer behind it still writes the
+# right file, so nothing falls and the entry reports a survivor that is really a
+# pair. The measured case is T169's anchor — `cmd_edit`'s readback REFUSES every
+# mis-positioned class `write_class_segment` can produce, so the three position
+# entries below exit 1 on the gate and the bad FILE their tests assert against is
+# never written. Paired with the readback relaxed, the write lands and the file
+# assertions are what kill. Both forms are kept: one proves the gate, one proves
+# the position.
 # The queue's guards are not all in one file any more: the site file's reader is
 # a module of its own, because the sibling bins read the same file and a second
 # parser for it would be a second answer to "which environments exist".
@@ -872,8 +883,8 @@ MUTATIONS = [
       "TestEnvField.test_clearing_needs_no_site_file_at_all"]),
 
     ("T120 edit stops writing the field at all",
-     "                        (args.risk, \"Risk\"), (args.env, \"Env\"),",
-     '                        (args.risk, "Risk"),',
+     "             (args.risk, \"Risk\"), (args.env, \"Env\"),",
+     '             (args.risk, "Risk"),',
      ["TestEnvField.test_edit_sets_the_field_and_then_REPLACES_it"]),
 
     # Env is bounded by the roster, so it answers to the short fields' rule: a
@@ -1051,9 +1062,8 @@ MUTATIONS = [
      ["TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
 
     ("T121 the claim is appended to the BLOCK, landing outside the field chain",
-     '    head, sep, rest = block.partition("\\n")\n'
-     '    new = head.rstrip() + f" **Claimed:** {args.owner}{CLAIM_SINCE}{stamp}." '
-     '+ sep + rest',
+     "    new = append_to_first_line(\n"
+     '        block, f"**Claimed:** {args.owner}{CLAIM_SINCE}{stamp}.")',
      '    new = block.rstrip("\\n") + f" **Claimed:** {args.owner}{CLAIM_SINCE}{stamp}."',
      ["TestClaim.test_the_claim_lands_in_the_chain_on_an_item_with_a_continuation_line"]),
 
@@ -1725,7 +1735,7 @@ MUTATIONS = [
      ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED"]),
 
     ("T121 an item with no field off the first line is dragged into the fold's report",
-     '    if not EMBEDDED_MARKER_RE.search("\\n".join(lines[1:])):', "    if False:",
+     "    if not fields_off_first_line(block):", "    if False:",
      ["TestMigrateFold.test_an_item_with_no_field_at_all_is_neither_folded_nor_reported"]),
 
     # the two report lines, each on its own: silence about what was rewritten, and
@@ -2077,22 +2087,120 @@ MUTATIONS = [
     # direction, and the population --class was written for
     ("T169 an item with no chain gets its class inserted at the head of an empty run",
      "    if not chain:\n"
-     '        head, sep, rest = block.partition("\\n")\n'
-     '        return head.rstrip() + " " + segment + sep + rest, []',
+     "        return append_to_first_line(block, segment), []",
      "    if False:\n"
-     '        head, sep, rest = block.partition("\\n")\n'
-     '        return head.rstrip() + " " + segment + sep + rest, []',
+     "        return append_to_first_line(block, segment), []",
      ["TestTheClassLandsAheadOfTheChain.test_an_item_with_no_chain_still_gets_its_class_APPENDED",
       "TestAFieldAppendedBeforeTheAnchorIsRefused."
       "test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through"]),
 
+    # --- T169 review: the file the readback keeps out of existence ------------
+    # The three entries above all exit 1 on cmd_edit's readback, so the FILE their
+    # tests assert against is never written and what they prove is the GATE. Paired
+    # with the readback relaxed to a set comparison — which is exactly the
+    # relaxation a later reader would call harmless — the write lands and the file
+    # assertions are what kill. That pairing is also the only thing that makes the
+    # readback's own EXACTNESS load-bearing: relaxed on its own, behind a correct
+    # writer, nothing falls.
+    ("T169 the class at the END of the line, with the readback relaxed to a set",
+     ['    at = chain[0].start()\n'
+      '    return (block[:at] + segment + " " + block[at:],\n'
+      '            [canonical_field(m.group(1)) for m in chain])',
+      '                if back != ["Class"] + promoted or chain_class(candidate) != flag:'],
+     ['    at = len(block.split("\\n", 1)[0].rstrip())\n'
+      '    return (block[:at] + " " + segment + block[at:],\n'
+      '            [canonical_field(m.group(1)) for m in chain])',
+      '                if sorted(back) != sorted(["Class"] + promoted) '
+      'or chain_class(candidate) != flag:'],
+     ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
+      "TestTheClassLandsAheadOfTheChain."
+      "test_the_anchor_lands_where_add_puts_it_and_the_item_is_not_identical",
+      "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair"]),
+
+    ("T169 the class after the first field, with the readback relaxed to a set",
+     ["    at = chain[0].start()",
+      '                if back != ["Class"] + promoted or chain_class(candidate) != flag:'],
+     ["    at = chain[0].end()",
+      '                if sorted(back) != sorted(["Class"] + promoted) '
+      'or chain_class(candidate) != flag:'],
+     ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
+      "TestTheClassLandsAheadOfTheChain."
+      "test_the_anchor_lands_where_add_puts_it_and_the_item_is_not_identical",
+      "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair"]),
+
+    # --- T169 review CRITICAL: the anchor promotes, the same call destroys ----
+    # Every segment the anchor makes readable is a real field for the rest of the
+    # flag loop, so a later flag in the SAME command rewrites it — measured rc 0
+    # both ways on one item: `--project tk` overwrote four words of the title,
+    # `--risk none` deleted the imitating segment whole.
+    ("T169 review: a promoted run is left to the rest of the same call",
+     "                if promoted and others:",
+     "                if False and promoted and others:",
+     ["TestTheClassLandsAheadOfTheChain.test_a_promotion_ENDS_the_call_instead_of_feeding_the_next_flag",
+      "TestTheClassLandsAheadOfTheChain.test_the_refusals_remedy_runs_and_the_two_commands_land_the_field"]),
+
+    # the over-refusal direction: the class ALONE is what repairs this population,
+    # so a rule that refused it would lock the repair out of its own items
+    ("T169 review: the refusal swallows `--class` on its own",
+     "                if promoted and others:",
+     "                if promoted:",
+     ["TestTheClassLandsAheadOfTheChain.test_the_class_alone_is_still_taken_by_the_same_item",
+      "TestTheClassLandsAheadOfTheChain.test_the_promotion_is_ANNOUNCED_and_names_the_segments"]),
+
+    # --- T169 review HIGH: the fold has to come before the class -------------
+    # With no chain on the first line the anchor is APPENDED there, the item's real
+    # fields stay on the continuation line, and the anchor then stops `migrate`
+    # from folding them — `pack` printed the class as the repair and listed the
+    # item eligible with Effort `?` afterwards.
+    ("T169 review: the class is written on an item whose fields are off the line",
+     "                if fields_off_first_line(new):",
+     "                if False:",
+     ["TestTheClassLandsAheadOfTheChain.test_a_class_less_item_still_UNFOLDED_is_refused_and_told_the_order",
+      "TestTheClassLandsAheadOfTheChain.test_an_item_whose_note_merely_QUOTES_a_marker_is_covered_too"]),
+
+    # a remedy printed for the wrong shape is a dead end printed as an answer, and
+    # this list's whole reason for existing is that a skill reads it and runs it
+    ("T169 review: pack prints the class repair before the fold",
+     "        if fields_off_first_line(block):\n"
+     '            return ("no **Class:** field, and its fields sit off the first line",\n'
+     "                    REPAIR_FOLD_THEN_CLASS)",
+     "        if False:\n"
+     '            return ("no **Class:** field, and its fields sit off the first line",\n'
+     "                    REPAIR_FOLD_THEN_CLASS)",
+     ["TestTheClassLandsAheadOfTheChain.test_a_class_less_item_still_UNFOLDED_is_refused_and_told_the_order"]),
+
+    ("T169 review: the claim's diagnosis prescribes a class that is refused",
+     "        if fields_off_first_line(block):\n"
+     "            # the class alone is REFUSED on this item (cmd_edit), and it would be",
+     "        if False:\n"
+     "            # the class alone is REFUSED on this item (cmd_edit), and it would be",
+     ["TestTheClassLandsAheadOfTheChain.test_the_claims_diagnosis_names_the_fold_before_the_class"]),
+
+    # compose, check, act — the order the rest of this file keeps. Printed ahead of
+    # the write, the warning announced a promotion `check_ceiling` then refused.
+    # The write itself STAYS: a mutation that deleted the splice would redden the
+    # whole class and prove nothing about the ORDER, which is the rule here
+    ("T169 review: the promotion warning goes back ahead of the write",
+     "                new = candidate\n"
+     "                promoted_names = promoted\n"
+     "                continue",
+     "                new = candidate\n"
+     "                promoted_names = promoted\n"
+     "                if promoted:\n"
+     '                    names = ", ".join(f"**{n}:**" for n in promoted)\n'
+     '                    print(f"tk-queue: warning: {label} already ended its first "\n'
+     '                          f"line with {names}, so the class went AHEAD of that "\n'
+     '                          "run.", file=sys.stderr)\n'
+     "                continue",
+     ["TestTheClassLandsAheadOfTheChain.test_the_promotion_warning_waits_for_the_write_to_commit"]),
+
     # the promotion is the PRICE of the position, and a price nobody is told about
     # is the silence this slice was opened to close
     ("T169 the segments the anchor promoted go unannounced",
-     "                if promoted:\n"
-     '                    names = ", ".join(f"**{n}:**" for n in promoted)',
-     "                if False:\n"
-     '                    names = ", ".join(f"**{n}:**" for n in promoted)',
+     "    if promoted_names:\n"
+     '        names = ", ".join(f"**{n}:**" for n in promoted_names)',
+     "    if False:\n"
+     '        names = ", ".join(f"**{n}:**" for n in promoted_names)',
      ["TestTheClassLandsAheadOfTheChain.test_the_promotion_is_ANNOUNCED_and_names_the_segments"]),
 
     # --- review#5: the setext protection only looked at the underline -------
@@ -3036,18 +3144,27 @@ def main():
         label, old, new, names = entry[:4]
         rel = entry[4] if len(entry) > 4 else DEFAULT_SRC
         src = sources[rel]
-        if old == new:
+        pairs = (list(zip(old, new)) if isinstance(old, (list, tuple))
+                 else [(old, new)])
+        # every check below is per PAIR, and one bad pair disqualifies the entry:
+        # a paired mutation whose second edit did not land is a DIFFERENT mutation
+        # from the one the label names, and it would be scored under that name
+        if not pairs or any(o == n for o, n in pairs):
             unrunnable.append(f"{label} (the mutation is a no-op: old == new)")
             print(f"UNRUNNABLE {label}\n           the mutation is a no-op: old == new")
             continue
-        if src.count(old) != 1:
+        counts = [src.count(o) for o, _ in pairs]
+        if any(c != 1 for c in counts):
             # NOT a survivor: the mutation never ran, so it says nothing about the
             # suite. It is still a failure — a stale anchor silently stops proving
             # whatever it used to prove — but calling it "survived" would be a lie
-            unrunnable.append(f"{label} (anchor matched {src.count(old)}x, not once)")
-            print(f"UNRUNNABLE {label}\n           anchor matched {src.count(old)}x, not once")
+            shown = ", ".join(str(c) for c in counts)
+            unrunnable.append(f"{label} (anchor matched {shown}x, not once)")
+            print(f"UNRUNNABLE {label}\n           anchor matched {shown}x, not once")
             continue
-        mutated = src.replace(old, new, 1)
+        mutated = src
+        for o, n in pairs:
+            mutated = mutated.replace(o, n, 1)
         tmp = tempfile.mkdtemp(prefix="tk-mutation.")
         try:
             dst = os.path.join(tmp, "tk")
