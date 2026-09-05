@@ -167,6 +167,10 @@ tk/
   skills/wrap-up/REPORT.md        branch file: the fixed closing template, read by every
                                   skill that closes on it
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
+  skills/kickoff/RESUME.md        branch file: what a generation that inherited a
+                                  package mid-flight runs before anything else —
+                                  reset, draft, close, re-dispatch, and the exits
+                                  that grade a package it cannot resume
   skills/kickoff/AUDIT.md         branch file: the wave audit AFK.md step 4 routes
                                   to — the three lenses, one verifier per finding,
                                   the four outcomes, and the REGRILL that halts a

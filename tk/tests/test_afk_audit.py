@@ -58,6 +58,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 KICKOFF = os.path.join(HERE, os.pardir, "skills", "kickoff")
 AFK = os.path.join(KICKOFF, "AFK.md")
 AUDIT = os.path.join(KICKOFF, "AUDIT.md")
+RESUME = os.path.join(KICKOFF, "RESUME.md")
+# every file of the kickoff skill that PRESCRIBES a command inline. The quoting
+# sweep below reads all of them: a metavariable is unquoted wherever a reader
+# pastes it, and the two splits moved prescriptions out of AFK.md into files a
+# sweep aimed at one name would have stopped covering.
+PRESCRIBING = (("AFK.md", AFK), ("AUDIT.md", AUDIT), ("RESUME.md", RESUME))
 
 # The audit's own file, and the numbered step of AFK.md that routes into it.
 OUTCOMES_HEADING = re.compile(r"^## The four outcomes\s*$", re.M)
@@ -196,7 +202,7 @@ class AfkAuditTest(QueueFixture):
     # --- the gate ------------------------------------------------------------
 
     def test_inline_commands_quote_their_metavariables(self):
-        """Both whole files, not only the recipe: `tk-queue done <id>` in prose is the
+        """Every file of the skill, not only the recipe: `tk-queue done <id>` in prose is the
         same defect the recipe was just fixed for, and a reader pastes prose too.
 
         This checks QUOTING, not execution — the inline commands are illustrative and
@@ -204,9 +210,9 @@ class AfkAuditTest(QueueFixture):
         before tk-queue sees it.
         """
         spans = [(name, span)
-                 for name, path in (("AFK.md", AFK), ("AUDIT.md", AUDIT))
+                 for name, path in PRESCRIBING
                  for span in re.findall(r"`(tk-queue [^`]*)`", read(path))]
-        self.assertTrue(spans, "no inline tk-queue command in either file — re-anchor "
+        self.assertTrue(spans, "no inline tk-queue command in any of them — re-anchor "
                                "this test")
         for name, span in spans:
             bare = re.findall(r"(?<![\"'])<[^<>`\"]+>(?![\"'])", span)
