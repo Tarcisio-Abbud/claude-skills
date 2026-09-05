@@ -118,6 +118,32 @@ class QueueTest(unittest.TestCase):
                               env=env, timeout=timeout)
 
 
+# --- the redirected HOME reaches EVERY spawn, not only run_tk's -----------
+
+class TestEverySpawnCarriesTheRedirectedHome(unittest.TestCase):
+    """`setUp` redirects HOME for every test, and `run_tk` passes it on. A test
+    that reaches for `subprocess` directly does not get it for free: it reads the
+    REAL `~/.claude/tk/env`, so the site file of the machine running the suite
+    decides the result. Four such calls existed, and two of them failed on `main`
+    once the live queue reached its open-item cap -- a green suite turning red
+    because of a number in the user's queue, with nothing in the diff to blame.
+
+    The check derives the call list from the source instead of counting it, so a
+    fifth spawn written without `env=` fails here rather than years later on
+    somebody's machine."""
+
+    def test_no_spawn_of_tk_queue_inherits_the_real_home(self):
+        source = open(__file__, encoding="utf-8").read()
+        calls = re.findall(r"subprocess\.(?:run|Popen)\((?:[^()]|\([^()]*\))*\)",
+                           source, re.S)
+        self.assertTrue(calls, "the scan found no subprocess call at all -- it broke")
+        naked = [c for c in calls if "env=" not in c]
+        self.assertEqual(
+            naked, [],
+            "these spawns inherit the real HOME and read the machine's own site "
+            "file: " + "; ".join(c.split("\n")[0] for c in naked))
+
+
 # --- T025: the displayed ID form must be accepted ------------------------
 
 class TestPrefixedId(QueueTest):
@@ -191,7 +217,8 @@ class TestConcurrency(QueueTest):
         proc = subprocess.Popen(
             [sys.executable, TK, "add", "bloqueado", "--class", "AUTONOMOUS",
              "--effort", "S", "--criterion", "A: c", "--dir", self.mem],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(os.environ, HOME=self.home))
         try:
             with self.assertRaises(subprocess.TimeoutExpired,
                                    msg="the writer did not wait for the lock"):
@@ -217,7 +244,8 @@ class TestConcurrency(QueueTest):
             r = subprocess.run(
                 [sys.executable, TK, "add", "bloqueado", "--class", "AUTONOMOUS",
                  "--effort", "S", "--criterion", "A: c", "--dir", self.mem],
-                capture_output=True, text=True, timeout=60)
+                capture_output=True, text=True, timeout=60,
+                env=dict(os.environ, HOME=self.home))
         finally:
             os.close(lock_fd)
         self.assertNotEqual(r.returncode, 0, "the blocked command reported success")
@@ -675,7 +703,8 @@ class TestDirResolution(QueueTest):
         self.seed(item(1, "um"))
         r = subprocess.run([sys.executable, TK, "--dir", self.mem, "add", "novo",
                             "--class", "AUTONOMOUS", "--effort", "S", "--criterion", "A: c"],
-                           capture_output=True, text=True, cwd=self.dir)
+                           capture_output=True, text=True, cwd=self.dir,
+                           env=dict(os.environ, HOME=self.home))
         self.assertEqual(r.returncode, 0, r.stderr)
         after = self.run_tk("list")
         self.assertIn("T002", after.stdout)
@@ -1181,7 +1210,8 @@ class TestTargetQueueAnnounced(QueueTest):
         with open(os.path.join(other, "next-steps.md"), "w", encoding="utf-8") as f:
             f.write(HEADER + item(19, "revisar Risk obsoleto"))
         r = subprocess.run([sys.executable, TK, "edit", "T019", "--effort", "L",
-                            "--dir", other], capture_output=True, text=True, cwd=self.dir)
+                            "--dir", other], capture_output=True, text=True, cwd=self.dir,
+                           env=dict(os.environ, HOME=self.home))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(other, r.stderr)
         self.assertNotIn(self.mem, r.stderr)
