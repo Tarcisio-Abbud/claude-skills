@@ -588,8 +588,8 @@ MUTATIONS = [
      ["TestDecisionDeferralGate.test_leaving_the_decision_class_takes_the_deferral_with_it"]),
 
     ("T119 Deferred stops being clearable, so leaving the class WRITES 'none'",
-     'CLEARABLE = frozenset(("Risk", "Deferred", "Env"))',
-     'CLEARABLE = frozenset(("Risk", "Env"))',
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env", "Blocked-by"))',
+     'CLEARABLE = frozenset(("Risk", "Env", "Blocked-by"))',
      ["TestDecisionDeferralGate.test_leaving_the_decision_class_takes_the_deferral_with_it"]),
 
     ("T119 add stops measuring the justification against the field ceiling",
@@ -897,12 +897,14 @@ MUTATIONS = [
      ["TestEnvField.test_add_writes_no_field_for_the_reserved_word"]),
 
     ("T120 the field moves out of the position the package filter reads",
-     '    if args.env and not clears_field(args.env):\n'
-     '        fields.append(f"**Env:** {args.env}.")\n'
-     '    fields.append(f"**Criterion:** {args.criterion}.")',
-     '    fields.append(f"**Criterion:** {args.criterion}.")\n'
-     '    if args.env and not clears_field(args.env):\n'
-     '        fields.append(f"**Env:** {args.env}.")',
+     ['    if args.env and not clears_field(args.env):\n'
+      '        fields.append(f"**Env:** {args.env}.")\n'
+      '    # the third field',
+      '    fields.append(f"**Criterion:** {args.criterion}.")'],
+     ['    # the third field',
+      '    fields.append(f"**Criterion:** {args.criterion}.")\n'
+      '    if args.env and not clears_field(args.env):\n'
+      '        fields.append(f"**Env:** {args.env}.")'],
      ["TestEnvField.test_add_writes_the_field_where_the_readers_look_for_it"]),
 
     # the neighbouring gate field, which the assertion above only sees because the
@@ -931,8 +933,8 @@ MUTATIONS = [
       "TestEnvField.test_a_marker_only_outside_the_chain_is_refused_not_guessed"]),
 
     ("T120 Env stops being clearable (the stale pin nobody can remove)",
-     'CLEARABLE = frozenset(("Risk", "Deferred", "Env"))',
-     'CLEARABLE = frozenset(("Risk", "Deferred"))',
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env", "Blocked-by"))',
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Blocked-by"))',
      ["TestEnvField.test_the_reserved_word_clears_the_field_and_leaves_the_file_intact",
       "TestEnvField.test_clearing_needs_no_site_file_at_all"]),
 
@@ -2361,11 +2363,9 @@ MUTATIONS = [
     # deliberately NOT granted to, and a ticket re-pointed at another issue is
     # the work of another issue
     ("T300 the relaxation spreads to Ticket, which is provenance and add-only",
+     '    e.add_argument("--project", help="assign/change the project tag")\n',
      '    e.add_argument("--project", help="assign/change the project tag")\n'
-     '    e.add_argument("--spec"',
-     '    e.add_argument("--project", help="assign/change the project tag")\n'
-     '    e.add_argument("--ticket")\n'
-     '    e.add_argument("--spec"',
+     '    e.add_argument("--ticket")\n',
      ["TestTheSpecIsTheOneEditableFieldOfItsGroup."
       "test_the_other_two_fields_of_the_group_still_have_no_flag"]),
 
@@ -2618,7 +2618,8 @@ MUTATIONS = [
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
     # --- T172, round 4: provenance is read at the writer's position ONLY -----
     ("T172 a provenance marker in prose excludes the item, demoting its spec's lane",
-     '    for name in ("Risk", "Env"):', '    for name in ("Risk", "Env", "Spec"):',
+     '    for name in ("Risk", "Env", "Blocked-by"):',
+     '    for name in ("Risk", "Env", "Blocked-by", "Spec"):',
      ["TestPackLane.test_one_siblings_PROSE_never_demotes_a_whole_specs_lane",
       "TestPackLane.test_a_spec_QUOTED_IN_PROSE_leaves_the_item_AVULSO"]),
 
@@ -3271,6 +3272,78 @@ MUTATIONS = [
      ["TestMutationHarness."
       "test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one"],
      os.path.join("tests", "mutations.py")),
+
+    # --- T306: the dependency between two items of one queue ----------------
+    ("T306 the blocker is written outside the position every gate reads",
+     ['    if args.blocked_by and not clears_field(args.blocked_by):\n'
+      '        fields.append(f"**Blocked-by:** {args.blocked_by}.")\n'
+      '    fields.append(f"**Criterion:** {args.criterion}.")',
+      '    if args.project:\n        fields.append(f"**Project:** {args.project}.")'],
+     ['    fields.append(f"**Criterion:** {args.criterion}.")',
+      '    if args.project:\n        fields.append(f"**Project:** {args.project}.")\n'
+      '    if args.blocked_by and not clears_field(args.blocked_by):\n'
+      '        fields.append(f"**Blocked-by:** {args.blocked_by}.")'],
+     ["TestBlockedBy.test_the_line_is_written_where_the_gates_read_a_field"]),
+
+    ("T306 add stops validating the blocker",
+     '    args.blocked_by = validate_blocker(args.blocked_by)\n'
+     "    # returned UNCHANGED where the two above are canonicalised",
+     "    # returned UNCHANGED where the two above are canonicalised",
+     ["TestBlockedBy.test_a_value_that_is_no_item_id_is_refused_and_writes_nothing",
+      "TestBlockedBy.test_every_id_spelling_is_stored_as_the_one"]),
+
+    ("T306 the id is stored in whatever spelling the caller typed",
+     '    return f"T{int(m.group(1)):03d}"', "    return value",
+     ["TestBlockedBy.test_every_id_spelling_is_stored_as_the_one"]),
+
+    # over-trigger direction: a field written whether or not the caller asked
+    # for one gives every item a dependency nobody declared
+    ("T306 the line is written on an add that never named a blocker",
+     "    if args.blocked_by and not clears_field(args.blocked_by):",
+     "    if True:",
+     ["TestBlockedBy.test_an_add_without_the_flag_writes_the_item_of_today"]),
+
+    ("T306 an open blocker stops holding the item back",
+     "        if int(m.group(1)) in open_ids:", "        if False:",
+     ["TestBlockedBy.test_pack_leaves_the_item_out_while_the_blocker_is_open"]),
+
+    # the other direction: a blocker already closed goes on holding the item,
+    # which is a package that shrinks by itself and never grows back
+    ("T306 every blocker holds the item back, the closed ones included",
+     "        if int(m.group(1)) in open_ids:", "        if True:",
+     ["TestBlockedBy.test_closing_the_blocker_lets_it_back_in_with_no_re_edit",
+      "TestBlockedBy.test_a_blocker_this_queue_never_held_does_not_hold_the_item"]),
+
+    ("T306 the exclusion reason drops the value it read",
+     '            return f"blocked by {value}, still open", None',
+     '            return "blocked, still open", None',
+     ["TestBlockedBy.test_pack_leaves_the_item_out_while_the_blocker_is_open"]),
+
+    ("T306 a blocker no reader can parse is dispatched anyway",
+     '            return (f"Blocked-by is {value!r}, which is not an item id, so whether the "\n'
+     '                    "dependency is met cannot be told", REPAIR_CANCEL)',
+     "            return None",
+     ["TestBlockedBy.test_an_unreadable_value_excludes_the_item"]),
+
+    ("T306 a Blocked-by marker where no gate reads it stops excluding",
+     "        if markers > len(segs):\n"
+     '            return (f"a **{name}:** marker sits where no gate reads it',
+     '        if markers > len(segs) and name != "Blocked-by":\n'
+     '            return (f"a **{name}:** marker sits where no gate reads it',
+     ["TestBlockedBy.test_a_marker_where_no_gate_reads_it_excludes_the_item"]),
+
+    ("T306 the blocker stops being clearable (the stale pin nobody can remove)",
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env", "Blocked-by"))',
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env"))',
+     ["TestBlockedBy.test_edit_writes_rewrites_and_clears_the_field"]),
+
+    ("T306 edit stops writing the blocker at all",
+     '             (args.blocked_by, "Blocked-by"),', "",
+     ["TestBlockedBy.test_edit_writes_rewrites_and_clears_the_field"]),
+
+    ("T306 list stops showing which item is held back",
+     '    return f"blocked by {field_value(segs[0])}"', '    return ""',
+     ["TestBlockedBy.test_list_shows_the_blocker_beside_the_item"]),
 
     # --- absorbed from mutations_roster.py (T119) --------------------------
     # The roster suite's own harness was a second file because THIS one ran

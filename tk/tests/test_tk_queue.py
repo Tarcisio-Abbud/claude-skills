@@ -3297,6 +3297,125 @@ class TestTheSpecIsTheOneEditableFieldOfItsGroup(QueueTest):
         self.assertEqual(self.run_tk("pack").stdout.count("spec repo#171"), 2)
 
 
+def blocked_item(iid, text, blocker, **kw):
+    """An item as `add --blocked-by` writes one: the field sits between Env and
+    Criterion, beside the other two fields `pack` gates on."""
+    return item(iid, text, **kw).replace(
+        " **Criterion:**", f" **Blocked-by:** {blocker}. **Criterion:**", 1)
+
+
+class TestBlockedBy(QueueTest):
+    """A dependency between two items existed only as prose in a tracker, and
+    `pack` reads the queue and never the forge — so the package could not know
+    that one of its candidates cannot start yet, and the lane stayed serial by
+    construction. The field is the third one `pack` gates on: Risk says whether
+    this may run unattended, Env says where, and this says NOT YET."""
+
+    def add(self, *extra, text="depende"):
+        return self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                           "--criterion", "A: x", *extra)
+
+    def test_the_line_is_written_where_the_gates_read_a_field(self):
+        """In the chain, beside Risk and Env. Written anywhere else the value is
+        there and no reader may use it, which is worse than absent."""
+        self.seed()
+        r = self.add("--blocked-by", "T006")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Effort:** S. **Blocked-by:** T006. **Criterion:**", self.body())
+
+    def test_every_id_spelling_is_stored_as_the_one(self):
+        """`pack` prints this value in the reason it excludes the item with, and
+        a caller reading `blocked by 6` has to guess what to look up."""
+        for spelling in ("T006", "t006", "006", "6"):
+            with self.subTest(spelling=spelling):
+                self.seed()
+                self.assertEqual(self.add("--blocked-by", spelling).returncode, 0)
+                self.assertIn("**Blocked-by:** T006.", self.body())
+
+    def test_a_value_that_is_no_item_id_is_refused_and_writes_nothing(self):
+        for junk in ("repo#1", "T", "T00x", "amanhã", "T1 e T2", ""):
+            with self.subTest(junk=junk):
+                self.seed()
+                r = self.add("--blocked-by", junk)
+                self.assertNotEqual(r.returncode, 0, f"{junk!r} was accepted")
+                self.assertNotIn("- [ ] ", self.body(), "the item was written anyway")
+
+    def test_an_add_without_the_flag_writes_the_item_of_today(self):
+        """A new optional field is the cheapest place to change the shape of
+        EVERY item by accident."""
+        self.seed()
+        self.assertEqual(self.add(text="sem bloqueio").returncode, 0)
+        today = datetime.date.today().isoformat()
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T001** — sem bloqueio **Class:** AUTONOMOUS. "
+                         "**Effort:** S. **Criterion:** A: x. "
+                         f"**Born:** {today}. **Source:** {today}\n")
+
+    def test_pack_leaves_the_item_out_while_the_blocker_is_open(self):
+        """And NAMES the value: an item silently missing from the package is an
+        item the caller never learns about, which is what every exclusion reason
+        in this command exists to prevent."""
+        self.seed(item(1, "o bloqueador"), blocked_item(2, "o bloqueado", "T001"))
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        eligible, excluded = r.stdout.split("excluded")
+        self.assertIn("T001", eligible)
+        self.assertNotIn("T002", eligible)
+        self.assertIn("blocked by T001, still open", excluded)
+
+    def test_closing_the_blocker_lets_it_back_in_with_no_re_edit(self):
+        """The criterion of the item, end to end: the field is a pointer read
+        against the queue on every run, never a state somebody has to remember
+        to clear."""
+        self.seed(item(1, "o bloqueador"), blocked_item(2, "o bloqueado", "T001"))
+        self.assertEqual(self.run_tk("done", "T001", "--how", "PR #1").returncode, 0)
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T002", r.stdout.split("excluded")[0])
+        self.assertNotIn("blocked by", r.stdout)
+
+    def test_a_blocker_this_queue_never_held_does_not_hold_the_item(self):
+        """An id in no open item is a dependency already met — the blocker was
+        closed and archived. Refusing there would make the field unusable on the
+        very queue where it has done its work."""
+        self.seed(blocked_item(1, "o bloqueado", "T099"))
+        self.assertIn("T001", self.run_tk("pack").stdout.split("excluded")[0])
+
+    def test_an_unreadable_value_excludes_the_item(self):
+        """The writer's gate is not the only door — a hand edit, a foreign tool,
+        a merge — and here the safe default is Risk's and Env's, not Spec's: a
+        dependency nobody can read is one nobody may declare satisfied."""
+        self.seed(blocked_item(1, "o bloqueado", "amanhã"))
+        r = self.run_tk("pack")
+        self.assertIn("which is not an item id", r.stdout.split("excluded")[1])
+
+    def test_a_marker_where_no_gate_reads_it_excludes_the_item(self):
+        """Same answer as Risk and Env, and for the same reason: what the item
+        really carries cannot be told."""
+        self.seed(item(1, "cita **Blocked-by:** na prosa"))
+        excluded = self.run_tk("pack").stdout.split("excluded")[1]
+        self.assertIn("**Blocked-by:** marker sits where no gate reads it", excluded)
+
+    def test_edit_writes_rewrites_and_clears_the_field(self):
+        self.seed(item(1, "um"))
+        self.assertEqual(self.run_tk("edit", "T001", "--blocked-by", "5").returncode, 0)
+        self.assertIn("**Blocked-by:** T005.", self.body())
+        self.assertEqual(self.run_tk("edit", "T001", "--blocked-by", "T006").returncode, 0)
+        body = self.body()
+        self.assertIn("**Blocked-by:** T006.", body)
+        self.assertNotIn("T005", body)
+        self.assertEqual(self.run_tk("edit", "T001", "--blocked-by", "none").returncode, 0)
+        self.assertNotIn("**Blocked-by:**", self.body())
+
+    def test_list_shows_the_blocker_beside_the_item(self):
+        """`list` and `pack` may not disagree about whether an item is held back:
+        the caller reads the reason in one and looks the item up in the other."""
+        self.seed(item(1, "livre"), blocked_item(2, "preso", "T001"))
+        out = self.run_tk("list").stdout
+        self.assertIn("[blocked by T001]", out)
+        self.assertEqual(out.count("blocked by"), 1)
+
+
 class TestPackLane(PackOutput):
     """The lane is what the afk orchestrator dispatches by, and it is read from
     the QUEUE — never from GitHub, which `pack` does not touch. Tickets of one
