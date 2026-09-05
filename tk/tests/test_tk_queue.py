@@ -1914,8 +1914,14 @@ class TestEnvField(QueueTest):
         the line of THEIR file that has to change."""
         d = os.path.join(self.home, ".claude", "tk")
         os.makedirs(d, exist_ok=True)
+        def raw(payload):
+            """A `with`, not a bare `open().write()`: the discarded handle made
+            the whole suite print a ResourceWarning from this line."""
+            with open(os.path.join(d, "env"), "wb") as f:
+                f.write(payload)
+
         cases = {"a directory": lambda: os.mkdir(os.path.join(d, "env")),
-                 "a non-UTF-8 byte": lambda: open(os.path.join(d, "env"), "wb").write(
+                 "a non-UTF-8 byte": lambda: raw(
                      b"identity = alpha\nenvironments = alpha, bravo\n# caf\xe9\n")}
         for label, make in cases.items():
             with self.subTest(case=label):
