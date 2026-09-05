@@ -236,6 +236,49 @@ class TestTheSentenceUnit(MeasureTest):
         self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
                           + "\none — two\n", "body_words", 2)
 
+    def test_a_full_stop_inside_bold_ends_the_sentence_it_closes(self):
+        """The stop the author wrote is the stop the author meant, whatever
+        emphasis closes over it. Written `**… .**`, the period is followed by an
+        asterisk instead of a space, and the two sentences either side of it
+        were counted as ONE — seen on a legitimate draft (T209), which rose from
+        20 long sentences to 22 and came back only when the period was moved
+        outside the bold."""
+        self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
+                          + "\n**The gate refuses it.** The next step runs.\n",
+                          "sentences", 2)
+
+    def test_a_full_stop_inside_bold_does_not_inflate_the_long_sentence_counts(self):
+        """The count is not the damage; the two numbers riding on it are. Joined,
+        the pair below reads as one 32-word sentence and marks
+        `sentences_over_30`."""
+        text = (QUIET.replace("The steps below run in order.\n", "")
+                + "\n**" + "word " * 16 + "stop.** " + "word " * 15 + "end.\n")
+        m = self.metrics_of(text)
+        self.assertEqual(m["sentences"], 2)
+        self.assertEqual(m["sentences_over_30"], 0)
+        self.assertEqual(m["max_sentence_words"], 17)
+
+    def test_a_full_stop_inside_italics_ends_the_sentence_too(self):
+        self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
+                          + "\n_The gate refuses it._ The next step runs.\n",
+                          "sentences", 2)
+
+    def test_a_full_stop_inside_a_code_span_does_not_end_a_sentence(self):
+        """The emphasis markers close over PROSE and the stop inside them is the
+        author's; a backtick closes over CODE, where a trailing dot belongs to
+        the token — `git log.` names a command, not a sentence. The bin cannot
+        tell one from the other, so the marker it does not follow is the one
+        whose contents are not prose."""
+        self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
+                          + "\nRun `git log.` and read what it prints.\n",
+                          "sentences", 1)
+
+    def test_a_stop_before_bold_that_opens_the_next_sentence_still_splits(self):
+        # the run of markers after the stop is optional, not required
+        self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
+                          + "\nThe gate refuses it. **The next step runs.**\n",
+                          "sentences", 2)
+
 
 class TestTheChunkBoundary(MeasureTest):
     """A hard-break line is a chunk of its own on BOTH sides. Flushing only after
@@ -638,7 +681,7 @@ class TestInlineEvidence(MeasureTest):
                          ["count", "iso date", "measured"])
 
 
-class TestPointers(MeasureTest):
+class TestTargets(MeasureTest):
     def test_a_home_relative_path_is_a_pointer(self):
         # extensionless on purpose: a path carrying `.md` is found by the other
         # branch too, and would pass with this one gone

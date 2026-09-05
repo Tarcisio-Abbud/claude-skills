@@ -187,7 +187,20 @@ FM_COMMENT = re.compile(r"^\s*#")
 # A period that ends a sentence, versus one inside `e.g.` or an initial. The
 # lookahead is whitespace-or-end; the word before it is checked in code, because
 # a lookbehind cannot be variable-width.
-SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
+#
+# THE EMPHASIS THAT CLOSES OVER THE STOP is skipped before that whitespace is
+# asked for. Written `**… stop.**`, the period is followed by an asterisk and
+# the sentence never ended: the two either side of it were measured as one, and
+# a legitimate draft rose from 20 long sentences to 22 until its author moved
+# the period outside the bold (T323). The run is optional, so a stop with a
+# plain space after it still ends where it always did.
+#
+# A BACKTICK IS NOT IN THE CLASS, and the omission is the rule rather than an
+# oversight: `*` and `_` close over prose, where a period is the author's, while
+# a backtick closes over CODE, where a trailing dot belongs to the token —
+# `git log.` names a command and not a sentence. The bin cannot read which is
+# meant, so the marker whose contents are not prose is the one it does not skip.
+SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\s|$))")
 # `no` is deliberately absent: "No. 5" is rare in a skill and the word "no."
 # ending a sentence is not, and swallowing a real sentence end costs more.
 #

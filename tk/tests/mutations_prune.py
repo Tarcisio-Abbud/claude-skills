@@ -118,15 +118,36 @@ MUTATIONS = [
 
     # -- the sentence unit --------------------------------------------------
     ("T185 a full stop no longer ends a sentence",
-     'SENTENCE_END = re.compile(r"[.!?]+(?=\\s|$)")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
      'SENTENCE_END = re.compile(r"(?!x)x")',
      ["TestTheBloatedFixture.test_the_sentence_count_is_the_one_the_sentence_unit_produces",
       "TestTheSentenceUnit.test_a_full_stop_inside_a_list_item_still_splits_it"]),
 
     ("T185 a full stop ends a sentence wherever it sits, decimals included",
-     'SENTENCE_END = re.compile(r"[.!?]+(?=\\s|$)")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
      'SENTENCE_END = re.compile(r"[.!?]+")',
      ["TestTheSentenceUnit.test_a_decimal_point_does_not_end_a_sentence"]),
+
+    # -- the stop the emphasis closes over (T323) ---------------------------
+    ("T323 a stop is only a stop with a space after it, so bold merges two",
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=\\s|$)")',
+     ["TestTheSentenceUnit.test_a_full_stop_inside_bold_ends_the_sentence_it_closes",
+      "TestTheSentenceUnit."
+      "test_a_full_stop_inside_bold_does_not_inflate_the_long_sentence_counts",
+      "TestTheSentenceUnit.test_a_full_stop_inside_italics_ends_the_sentence_too"]),
+
+    ("T323 a code span closes over prose too, so a dotted token ends a sentence",
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_`]*(?:\\s|$))")',
+     ["TestTheSentenceUnit."
+      "test_a_full_stop_inside_a_code_span_does_not_end_a_sentence"]),
+
+    ("T323 the emphasis run is required, so a plain stop no longer ends one",
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]+(?:\\s|$))")',
+     ["TestTheSentenceUnit."
+      "test_a_stop_before_bold_that_opens_the_next_sentence_still_splits"]),
 
     ("T185 an abbreviation ends a sentence",
      "        if last in ABBREV:", "        if False:",
