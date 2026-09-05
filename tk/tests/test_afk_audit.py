@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Doc-conformance proof for the audit step of `../skills/kickoff/AFK.md`.
+"""Doc-conformance proof for the wave audit, `../skills/kickoff/AUDIT.md`.
 
 Run: python3 -m unittest discover -s tk/tests   (stdlib only, no deps)
 
-What it proves: the `tk-queue` recipe that step PRESCRIBES for a REGRILL is lifted out of
-the audit SECTION of AFK.md and made to run — as an argv list and, separately, in a real
+The audit was step 4 of `AFK.md` until it was split out into its own branch file
+(homeserver-ambiente#225); the recipe travelled with it and this file was re-anchored in the
+same commit, which is what keeps a split from being a silent deletion of the proof.
+
+What it proves: the `tk-queue` recipe the audit PRESCRIBES for a REGRILL is lifted out of
+`AUDIT.md`'s outcomes SECTION and made to run — as an argv list and, separately, in a real
 shell — landing a `DECISION` item that carries its **Deferred:** gate and, after the remedy
 the tool prints, points at its briefing. Every prescribed command that sets
 `--class DECISION`, whatever its subcommand, must carry `--deferred`; and the `add` with
@@ -12,8 +16,9 @@ the tool prints, points at its briefing. Every prescribed command that sets
 
 Four properties are deliberate, each having been a hole once:
 
-- the extraction is scoped to the audit section, so a ```sh example added under any OTHER
-  step is neither folded into "the recipe" nor executed here;
+- the extraction is scoped to the outcomes section of ONE file, so a ```sh example added
+  under any other section of `AUDIT.md`, or anywhere in `AFK.md`, is neither folded into
+  "the recipe" nor executed here;
 - the gate sweep asks `--class DECISION` of every subcommand, not only of `add`: an ungated
   `edit --class DECISION` beside the real recipe once sat under a green suite;
 - the recipe is run through a shell as well as through argv, because `shlex.split` plus
@@ -25,14 +30,13 @@ Four properties are deliberate, each having been a hole once:
   run asserts the weaker, real property — the shell HANDS the line to `tk-queue` — measured
   through a shim that records every invocation.
 
-Two limits of the extraction, decided rather than inherited. The scope is the audit's H2 and
-everything under it, so a `tk-queue` line in ANY H3 of that step counts as the recipe — which
-is deliberate, the recipe itself living in an H3. And only ```sh fences are read: a fence
-written ```bash, or indented inside a blockquote, is invisible. Rewriting the REAL recipe that
-way empties the list and the vacuity guard fires loud; what would pass unseen is a
-SUPPLEMENTARY recipe added in one of those formats.
+Two limits of the extraction, decided rather than inherited. The scope is *The four outcomes*
+and everything under it, so a `tk-queue` line in ANY H3 of that section counts as the recipe.
+And only ```sh fences are read: a fence written ```bash, or indented inside a blockquote, is
+invisible. Rewriting the REAL recipe that way empties the list and the vacuity guard fires
+loud; what would pass unseen is a SUPPLEMENTARY recipe added in one of those formats.
 
-What it does NOT prove: that an orchestrator running a package reaches the step at all, or
+What it does NOT prove: that an orchestrator running a package reaches the audit at all, or
 that a REGRILL it decided on was really queued. Nothing here can see a session — that is
 what the block the step owes step 6 is for. It also does not execute prescribed subcommands
 other than `add` and `handoff`: those are swept for the gate, not run, since giving each one
@@ -51,25 +55,38 @@ import unittest
 from queue_fixture import QueueFixture, item_fields
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-AFK = os.path.join(HERE, os.pardir, "skills", "kickoff", "AFK.md")
+KICKOFF = os.path.join(HERE, os.pardir, "skills", "kickoff")
+AFK = os.path.join(KICKOFF, "AFK.md")
+AUDIT = os.path.join(KICKOFF, "AUDIT.md")
 
-AUDIT_HEADING = re.compile(r"^## \d+\. Audit\b.*$", re.M)
+# The audit's own file, and the numbered step of AFK.md that routes into it.
+OUTCOMES_HEADING = re.compile(r"^## The four outcomes\s*$", re.M)
+AUDIT_STEP_HEADING = re.compile(r"^## \d+\. Audit\b.*$", re.M)
 
 
-def afk_text():
-    with open(AFK, encoding="utf-8") as f:
+def read(path):
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 
-def audit_section(text=None):
-    """AFK.md from the audit heading to the next `## ` heading.
+def afk_text():
+    return read(AFK)
 
-    Scoped on purpose: this used to regex the whole file, so a legitimate ```sh
-    example under any other step was folded into the recipe and executed here —
-    the test's own target moving with no signal.
+
+def audit_text():
+    return read(AUDIT)
+
+
+def audit_section(text=None):
+    """AUDIT.md from *The four outcomes* to the next `## ` heading.
+
+    Scoped on purpose, and on two axes: the extraction used to regex the whole of
+    AFK.md, so a legitimate ```sh example under any other step was folded into the
+    recipe and executed here — the test's own target moving with no signal. Reading
+    one section of one file keeps that shut now that the audit has a file of its own.
     """
-    text = afk_text() if text is None else text
-    m = AUDIT_HEADING.search(text)
+    text = audit_text() if text is None else text
+    m = OUTCOMES_HEADING.search(text)
     if not m:
         return ""
     rest = text[m.end():]
@@ -128,48 +145,72 @@ class AfkAuditTest(QueueFixture):
     # --- the guards that stop every check below from passing over nothing ----
 
     def test_the_audit_step_and_its_regrill_recipe_are_still_there(self):
-        """Each check below iterates a list derived from AFK.md; an empty list
+        """Each check below iterates a list derived from AUDIT.md; an empty list
         would let all of them pass while the recipe was gone."""
-        text = afk_text()
+        text = audit_text()
         # assertTrue, not assertRegex: the latter prints the whole file on failure.
-        self.assertTrue(AUDIT_HEADING.search(text), "AFK.md has no numbered Audit step")
-        self.assertTrue(audit_section(text).strip(), "the Audit section is empty")
+        self.assertTrue(OUTCOMES_HEADING.search(text),
+                        "AUDIT.md has no `## The four outcomes` section")
+        self.assertTrue(audit_section(text).strip(), "the outcomes section is empty")
         self.assertTrue([a for _, a in self.cmds if sets_decision(a)],
                         "the audit section prescribes no `--class DECISION` command — "
                         "the REGRILL recipe is gone, and every gate check below is vacuous")
         self.assertTrue([a for _, a in self.cmds if subcommand(a) == "handoff"],
                         "the REGRILL recipe prescribes no handoff")
 
-    def test_the_extraction_is_scoped_to_the_audit_section(self):
-        """A ```sh example under another step must not be folded into the recipe."""
-        text = afk_text()
-        intruder = ('\n```sh\ntk-queue add "not the recipe" --class AUTONOMOUS '
-                    '--effort S --criterion "A: x"\n```\n')
-        m = re.search(r"^## \d+\. Verify\b.*$", text, re.M)
-        self.assertTrue(m, "the step after the audit was renamed; re-anchor this test")
-        # AFTER that heading, so the intruder really sits in the next step: inserted
-        # before it, it lands inside the audit section, which runs up to that heading.
-        spiked = text[:m.end()] + intruder + text[m.end():]
+    def intruder(self):
+        """A ```sh fence prescribing a command that is NOT the recipe."""
+        return ('\n```sh\ntk-queue add "not the recipe" --class AUTONOMOUS '
+                '--effort S --criterion "A: x"\n```\n')
+
+    def test_the_extraction_is_scoped_to_the_outcomes_section(self):
+        """A ```sh example under another section must not be folded into the recipe."""
+        text = audit_text()
+        m = OUTCOMES_HEADING.search(text)
+        self.assertTrue(m, "AUDIT.md lost its outcomes heading; re-anchor this test")
+        # BEFORE that heading, so the intruder really sits in an earlier section:
+        # inserted after it, it lands inside the outcomes section, which is the scope.
+        spiked = text[:m.start()] + self.intruder() + text[m.start():]
         self.assertIn("not the recipe", spiked)
         self.assertEqual(logical_lines(audit_section(spiked)),
                          logical_lines(audit_section(text)),
-                         "a command from another step was folded into the recipe")
+                         "a command from another section was folded into the recipe")
+
+    def test_the_extraction_reads_the_audit_file_not_the_step_that_routes_to_it(self):
+        """The split (homeserver-ambiente#225) left a routing step behind in AFK.md.
+
+        Nothing of AFK.md may reach the recipe list: before the split the whole file
+        was in scope, and a fence added anywhere in it would have been executed here.
+        The route itself is asserted too, because an audit no step reaches never runs.
+        """
+        self.assertTrue(AUDIT_STEP_HEADING.search(afk_text()),
+                        "AFK.md has no numbered Audit step routing to AUDIT.md")
+        self.assertIn("AUDIT.md", afk_text(),
+                      "AFK.md never names AUDIT.md — the audit is unreachable from the "
+                      "package flow, and the seam between the claim and the first run "
+                      "sends the orchestrator nowhere")
+        self.assertEqual(logical_lines(audit_section(afk_text() + self.intruder())), [],
+                         "AFK.md is being read for the recipe — the extraction moved "
+                         "back to the file the audit left")
 
     # --- the gate ------------------------------------------------------------
 
     def test_inline_commands_quote_their_metavariables(self):
-        """The whole file, not only the recipe: `tk-queue done <id>` in prose is the
+        """Both whole files, not only the recipe: `tk-queue done <id>` in prose is the
         same defect the recipe was just fixed for, and a reader pastes prose too.
 
         This checks QUOTING, not execution — the inline commands are illustrative and
         have no fixture here. Unquoted, `<id>` is a shell redirect and the line dies
         before tk-queue sees it.
         """
-        spans = re.findall(r"`(tk-queue [^`]*)`", afk_text())
-        self.assertTrue(spans, "no inline tk-queue command in AFK.md — re-anchor this test")
-        for span in spans:
+        spans = [(name, span)
+                 for name, path in (("AFK.md", AFK), ("AUDIT.md", AUDIT))
+                 for span in re.findall(r"`(tk-queue [^`]*)`", read(path))]
+        self.assertTrue(spans, "no inline tk-queue command in either file — re-anchor "
+                               "this test")
+        for name, span in spans:
             bare = re.findall(r"(?<![\"'])<[^<>`\"]+>(?![\"'])", span)
-            with self.subTest(cmd=span):
+            with self.subTest(file=name, cmd=span):
                 self.assertEqual(bare, [],
                                  f"unquoted metavariable {bare} — a shell reads it as a "
                                  f"redirect and the line dies before tk-queue sees it")
