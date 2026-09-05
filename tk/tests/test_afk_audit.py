@@ -45,6 +45,15 @@ a fixture is work of its own.
 The only edits made to a prescribed command before running it: `--dir <throwaway>`, applied
 by the shim so no real memory dir is touched, and `<id>`, which becomes the id the `add`
 printed.
+
+WHY THE QUEUE FLAG IS ASSERTED ON THE ARGV AND NOT ON THE RUN. That first edit is also a
+mask. The recipe writes `--dir "<queue dir>"` itself, and both routes into the script —
+`run_tk` and the shell shim — append a `--dir` of their own, which argparse then takes as
+the winner. So every run here SUCCEEDS whether or not the prose names the queue, and no
+assertion downstream of the fixture can tell the two apart: the recipe could lose the flag
+and this file would stay green, while an orchestrator pasting it wrote whichever queue its
+cwd encodes to. The flag is therefore asserted on the argv the PROSE produced, before the
+fixture is reached — as `test_window_wall.py` asserts the same flag for the same reason.
 """
 
 import os
@@ -220,6 +229,24 @@ class AfkAuditTest(QueueFixture):
                 self.assertEqual(bare, [],
                                  f"unquoted metavariable {bare} — a shell reads it as a "
                                  f"redirect and the line dies before tk-queue sees it")
+
+    def test_every_prescribed_command_names_the_queue_it_writes(self):
+        """Which project's queue the recipe writes is decided by `--dir`, not by the cwd.
+
+        Asserted on the argv, never on the run: see the module docstring — the fixture
+        appends its own `--dir` to everything it executes, so the run is green either way.
+        """
+        self.assertTrue(self.cmds, "the recipe prescribes no command — re-anchor this file")
+        for line, argv in self.cmds:
+            with self.subTest(cmd=line):
+                self.assertIn("--dir", argv,
+                              "a prescribed command names no queue directory — without "
+                              "`--dir` the script resolves from the cwd, which while a "
+                              "package runs is the code's clone, and the item lands in "
+                              "another project's queue")
+                self.assertEqual(argv[argv.index("--dir") + 1], "<queue dir>",
+                                 "`--dir` is prescribed with no metavariable to fill — the "
+                                 "reader has nothing to substitute and pastes the literal")
 
     def test_every_prescribed_decision_command_carries_the_deferral(self):
         for line, argv in self.cmds:
