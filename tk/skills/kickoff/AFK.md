@@ -303,20 +303,21 @@ the worktree removed, and every claim left with its item or was released.
 
 ## 6. Measure, and hand the package to the close
 
-Four numbers on one line — **planned × completed × wall clock × context at the cut**, the last
-read from the statusline at that seam (a generation that ran no cut writes its predecessor's
-number from `--state`, or `?`). Beside them, the deviation lines — one per departure from the
-role table; a deviation with no line is indistinguishable from a slip — and the audit's block.
-Items the package did not close carry the first reason that applies: **blocked** (bound to
-another environment, "runs on: X"); **carried** under the dependency gate (a sibling's claim,
-with owner and moment), the lane gate (a spec's branch on the remote, the pull request's number
-or the deletion repair beside it), any other `pack` exclusion (its printed value, and whether it
-names a defect in the item), or the effort gate (cut for size, with the ready-to-paste line that
-runs it). Items verify ended at proof ready or DECISION owe nothing further. The queue items no
-step visited are handed over by class — every class the step-1 filter refuses.
+Four numbers on one line — **planned × completed × wall clock × context at the cut**, the last from
+`../../bin/tk-context` at that seam (no cut this generation: the predecessor's `--state` number;
+none at all, `?`). Then the **sensor**: births per merged pull request — the queue IDs born in the
+package (the age column of `tk-queue list`; highest − lowest + 1, one queue only, and a sibling's
+IDs in the range count too) over its merged pull requests, with `pack`'s open count before and
+after. The target is under 2, open not rising. One deviation line per
+departure from the role table, and the audit's block. An unclosed item carries the first reason that
+applies: **blocked** (another environment, "runs on: X"); **carried** under the dependency gate (a
+sibling's claim, owner and moment), the lane gate (a spec's branch on the remote, the pull request's
+number or the deletion repair), any other `pack` exclusion (its printed value, and whether it names
+a defect in the item), or the effort gate (cut for size, with the ready-to-paste line that runs it).
+Items verify ended at proof ready or DECISION owe nothing further.
 
-**Done when:** the measurement line, audit block and deviation lines are written, every unclosed
-item carries its rung, and the unvisited items are handed over by class.
+**Done when:** the measurement and sensor lines, audit block and deviation lines are written, every
+unclosed item carries its rung, and the unvisited items are handed over by exclusion.
 
 ## 7. Chain the afk wrap-up
 
@@ -330,28 +331,29 @@ the step that stopped the package and the state the tree was left in.
 ## The fixer cap
 
 **A tooling repo — one whose code handles no business data — gets ONE correction cycle per pull
-request.** The cap counts per firing of the review, never for the life of the pull request. No
-second cycle runs against the same firing, and a review re-fired whole by *A resumed generation
-starts here* carries its own. Whatever a re-review finds after that cycle enters the queue by
+request.** The cap counts per firing of the review, never for the life of the pull request. A
+review re-fired whole by *A resumed generation starts here* carries its own cycle. That cycle is a
+single `fixer` dispatch, never resumed: findings it leaves unclosed go to ONE item carrying its
+inventory. A `fixer` whose batch touches a file outside the slice's diff stops and reports. Whatever a re-review finds after that cycle enters the queue by
 `tk-queue add --dir "<queue dir>"`, class per the finding's nature, as *A session finding,
 unattended* prescribes. The close's verdict 2 counts a finding queued this way as handled, never
-as one no fixer could close, so the pull request does not wait on it. A repository handling
-business data is uncapped.
+as one no fixer could close, so the pull request does not wait on it.
 
 ## A session finding, unattended
 
-The ladder is `../../reference/session-finding.md`, and unattended it has one rung: **queue with
-a gate** — `tk-queue add --dir "<queue dir>"` at the moment of discovery, the gate in the item's
-own text, a finding only the user can judge entering as a DECISION with `--deferred afk`. No
-discards and no resolving on the spot — the two rungs that need a human, the second being the
-hydra's own fuel. Every finding queued is listed in the close under its gate for the user's veto,
-`tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"`.
+Unattended, `../../reference/session-finding.md`'s ladder keeps three rungs. **Fix on the spot** —
+a `fixer` under *The fixer cap*. **Queue with a gate** — `tk-queue add --dir "<queue dir>"` at the
+moment of discovery, REFUSED at `max-open-items` past every flag: fold with `edit --text` or
+`handoff`, never by closing an item. **Park** — a DECISION with `--deferred afk`, its branch
+pushed and its handoff written. Nothing is discarded, and the package never waits on a parked
+finding.
 
-That `add` can be REFUSED: the machine reached `max-open-items` in its site file, and neither
-`--force` nor another `--dir` gets past it. The rung that stays open writes NO NEW ITEM —
-`tk-queue edit "<id>" --text "<the finding>" --dir "<queue dir>"` folds it into an item that
-already exists, and `tk-queue handoff "<id>" --dir "<queue dir>" ...` puts it in that item's
-briefing. Never make room by closing an item — `done` and `cancel` are the user's verdicts.
-**Done when:** the close carries one line per session finding, each matching a queued item with
-its gate named, or the item a refused `add` was folded into — none discarded, none resolved on
-the spot.
+At the close, never mid-package, ONE `AskUserQuestion` batches every parked DECISION; that
+question and the close report are the same text. Portuguese, these labels verbatim:
+
+- `O que é:` the item or pull request in plain words, never a bare `T123` or `#n`;
+- `O que muda para você:` what each option means for the user;
+- `Se você não responder:` the default the agent takes, and when.
+
+**Done when:** every session finding carries its ladder rung in the close, the parked ones in one
+question, with the veto `tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"`.

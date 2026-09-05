@@ -10,6 +10,14 @@ owns the gate's whole procedure — attended and strict — and its "Done when" 
 and whether it MAY be merged. Every PR in the gate gets one, before the menu — including a
 PR the verdicts hold back, where the decision is whether the red is worth fixing now.
 
+**In the attended gate, section 3 is PRINTED in the terminal before the menu** — three
+lines per item in `REPORT.md`'s `was/now/gain/risk` mould, sections 1, 2, 4 and 5 left to
+the digest the menu carries. A digest sitting in the PR body does NOT discharge this —
+that body is not the user's window. Copy the lines from it, name the PR, and carry the
+full PR URL `https://github.com/<owner>/<repo>/pull/<n>`; recomposing from the
+diff spends a window the user refuses to spend. Write the block for a cold reader: every
+identifier resolves on first mention.
+
 Its first half is written from the trail — the PR body, the issue it closes, the verdict
 comments — in five sections:
 
@@ -45,7 +53,7 @@ line each:
 Five green → merge is the recommended action. Any red → the digest says which one, and the
 merge is not offered. A small diff (guidance: ≲150 lines) is still shown whole in the
 terminal and a large one gets the link, but the diff is a courtesy: the five verdicts are
-what authorize the merge.
+what RECOMMEND the merge, and the checked option is what authorizes it.
 
 **Verdict 3 has a second shape: a type-B criterion** ends at proof ready, because the
 verdict is the user's, GIVEN rather than inferred. The digest displays the proof and the
@@ -100,6 +108,9 @@ not reopen the ticket.
 
 **Review fixes rewrite the PR body**, in the same breath as the fix commit: a body still
 describing the version before the fixes tells the reviewer what the branch no longer does.
+
+**The question opens with what merges** — one clause per item, identifier resolved, before
+any verdict or mechanics. That block scrolls; the question stays under the cursor.
 
 Then ONE multiSelect `AskUserQuestion` with the actions, recommended first — the check IS
 the authorization. Execute what was checked, following the project's conventions
@@ -182,8 +193,11 @@ too.
 - **The digest goes into the PR body**, because an unattended session has nobody at the
   gate to read the terminal. A PR the strict verdicts keep from merging carries it there
   too, and its DECISION item points at it as the digest reference.
-- **Verdict 2 hardened: every finding FIXED or QUEUED under the fixer cap, zero
-  accepted** — accepting a finding is human judgment. Three cases bind what an
+- **Verdict 2 hardened: every finding FIXED under the fixer cap, QUEUED or PARKED,
+  zero accepted** — accepting a finding is human judgment, and those three rungs
+  (`../../reference/session-finding.md`) are where one goes instead. A parked finding
+  reaches the user in the close's single question. It defers this pull request only
+  where it is also a finding no fixer could close. Three cases bind what an
   unattended session may merge, each checked by itself:
   - **A type-B criterion** — verdict 3 cannot turn green without the user, so the item
     ends at an open PR carrying its proof and waits.
@@ -203,7 +217,7 @@ too.
 explicit DECISION — none merely implied. Every PR in the gate had its digest before the
 menu, its five trail sections present or named absent, each citation-by-number resolved
 or named unresolved, and its collision with the other open PRs run for real rather than
-read off the forge. A package's accumulated lane carried one digest per item, its verdicts
-split package/item and its `--merge --delete-branch` precondition stated. Every merged
-PR's body describes what it merged, and the user has the summary — what changed, what was
-verified, what was deferred.
+read off the forge, and an attended gate printed section 3 and the PR URL. A package's
+accumulated lane carried one digest per item, its verdicts split package/item and its
+`--merge --delete-branch` precondition stated. Every merged PR's body describes what it
+merged, and the user has the summary — what changed, what was verified, what was deferred.

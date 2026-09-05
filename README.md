@@ -21,7 +21,7 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a **digest** — what is being merged, and whether it may be, then the five verdicts of **safe-to-merge**), and one explicit recommendation (/clear, /compact, /tk:docs-audit). An item survives into the queue only under one of three **survival gates** — decision · effort · dependency — and records which one; what passes none is resolved in the session. The close follows a **fixed template** (`tk/skills/wrap-up/REPORT.md`), which wins over any response-style preference. Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
-| `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal that sends a repeated mechanism to the user; and the attack inventory it ships whether or not it found anything — model-invoked. Prose an agent follows takes the mandatory review alone, with ONE exception — where the changed paragraphs prescribe commands, a lens may fire, and it reports only what RUNNING a prescribed command proved. The trigger items live in the site's CLAUDE.md, or wherever the extension points; `~/.claude/tk/review.md` carries the provenance of every threshold and the site's user-data directories |
+| `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal a repeated mechanism raises, answered by the parent where the repo handles no business data and by the user otherwise; and the attack inventory it ships whether or not it found anything — model-invoked. Prose an agent follows takes the mandatory review alone, with ONE exception — where the changed paragraphs prescribe commands, a lens may fire, and it reports only what RUNNING a prescribed command proved. The trigger items live in the site's CLAUDE.md, or wherever the extension points; `~/.claude/tk/review.md` carries the provenance of every threshold and the site's user-data directories |
 | `/tk:second-opinion` | A fresh Fable subagent judges what the session is discussing right now, from a prompt written for a cold reader. Args: `consensus [turns]` (default) — argued through `SendMessage` until no disputed point remains or the turn budget is spent (3 turns absent `turns`); a spent budget hands the open points to the user; `once` — a single verdict. User-invoked; every run logs the Fable deviation line |
 | `/tk:fleet` | Runs the unattended package of EVERY project on this machine from one command: the roster comes from `tk-roster` and the site file's `fleet-allow`/`fleet-deny`, the machine's local subagent ceiling is divided across the runs by the generated contract block, and one full orchestrator per project runs at `--budget 1`. Largest project first; a slot refills the moment a run returns, with no wait for the wave; a project that fails fails alone. Closes on one consolidated vista in the outbox, gated by `tk-vista-check`. The load is a parameter — `afk` by default, `docs-audit` for a documentation sweep. User-invoked |
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
@@ -232,6 +232,31 @@ tk/
                                   reference the reader composes, so it cannot greenlight
                                   what the reader refuses to emit. Exit 1 names the ones
                                   that failed
+  bin/tk-context                  this session's context occupancy in tokens, read from its
+                                  own transcript — the number WINDOW.md's seams compare, and
+                                  which no orchestrator can see in the statusline. Absolute,
+                                  never a fraction: the threshold is the smart zone, not the
+                                  window's capacity. Reads the two record classes that decide
+                                  occupancy — an API response and a compaction boundary — and
+                                  the last recorded wins. `--curve` prints the occupancy
+                                  across the session, since the slope is what says whether
+                                  another review fits. Exit 2 no number, 64 bad usage: a
+                                  mistyped flag may not read as the licence to use judgement
+  bin/tk-quota                    what is left of the rolling usage windows — the 5h and
+                                  weekly figures reach the STATUSLINE SCRIPT at render time
+                                  and are in no transcript, so this is the only way an agent
+                                  knows them. BOTH HALVES of the seam are here: `--write`
+                                  records the payload arriving on stdin, and the default
+                                  reads it back from the sidecar. A window must pass two
+                                  tests to be reported — that it has not reset, and that the
+                                  reading is not older than the window it describes — and the
+                                  other window still prints when one fails. A reading that
+                                  passes both and is still old announces its age rather than
+                                  passing as current. The site installs it by calling
+                                  `tk-quota --write` from its statusline script, by absolute
+                                  path: a path that resolves to nothing no-ops in silence and
+                                  reads exactly like "no session has rendered". Exit 1 nothing
+                                  was recorded, 2 no number, 64 bad usage
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
@@ -241,6 +266,16 @@ tk/
   tests/test_tk_collisions.py     regression suite, against a real git repository built
                                   in a throwaway directory
   tests/test_tk_vista_check.py    regression suite for the vista gate
+  tests/test_tk_context.py        regression suite for the reading, and the doc conformance
+                                  of the seams that call it
+  tests/mutations_tk_context.py   its mutations — four on the prose, one on
+                                  the suite's own reader of it, the rest on the bin
+  tests/test_tk_quota.py          regression suite for the quota reading, and the doc
+                                  conformance of the wall that calls it
+  tests/mutations_tk_quota.py     its mutations — nine on the writer, which lived
+                                  outside any suite until a lens found four wrong-number
+                                  defects in it, four on the wall's prose, and one on the
+                                  map pairing each window's label with its length
   tests/mutations.py              puts each defect back; every test must fall
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
@@ -353,12 +388,18 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 tk/tests/mutations_prune.py`, the two manifests through
 `python3 tk/tests/mutations_manifests.py`, the wall's step 2 through
 `python3 tk/tests/mutations_window_wall.py`, and the two closure bins through
-`python3 tk/tests/mutations_closure.py`. The harnesses are separate files sharing
-one shape; the oldest differs only in naming its test module inline. Two of them mutate
+`python3 tk/tests/mutations_closure.py`, `tk-context` through
+`python3 tk/tests/mutations_tk_context.py`, and `tk-quota` through
+`python3 tk/tests/mutations_tk_quota.py`. The harnesses are separate files sharing
+one shape; the oldest differs only in naming its test module inline. FOUR of them mutate
 more than a bin: the manifests one mutates DATA only — its subject is the repository's
 own state, and `marketplace.json` sits at the repo root, outside the `tk/` the runner
-copies — and the wall one mutates PROSE alongside the bin, an instruction removed from a
-skill file being exactly the defect its suite exists to catch.
+copies — the wall one mutates PROSE alongside the bin, an instruction removed from a
+skill file being exactly the defect its suite exists to catch, and the `tk-context` one
+mutates prose, the bin AND its own TEST FILE, the last being the only way to prove a
+reader that lives in the suite: its statusline check must let the prose SAY the number is
+not there while refusing an instruction to go and read it there — and the `tk-quota` one
+mutates the wall's prose, since a command the wall does not name is a command nobody runs.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`, then advertise it in BOTH
 manifests — a `<name> (…)` clause in `tk/.claude-plugin/plugin.json` and a `/tk:<name>`
