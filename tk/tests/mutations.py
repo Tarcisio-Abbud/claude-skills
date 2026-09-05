@@ -37,7 +37,8 @@ DEFAULT_SRC = os.path.join("bin", "tk-queue")
 TEST_MODULE = "test_tk_queue"
 
 sys.path.insert(0, HERE)
-from mutations_tk_contract import load_module, misnamed  # noqa: E402 (path above)
+from mutations_tk_contract import (  # noqa: E402 (path above)
+    load_module, misnamed, test_classes, unproved)
 
 # ENTRIES THAT NAME A TEST WHICH DOES NOT EXIST. The defect is in the LIST, not
 # in the suite: unittest answers a name it cannot load with a non-zero exit, and
@@ -47,6 +48,15 @@ from mutations_tk_contract import load_module, misnamed  # noqa: E402 (path abov
 # carries: a ceiling to LOWER as entries are repaired, never to raise. Measured
 # 2026-09-05: nine entries name five tests renamed out from under them.
 KNOWN_MISNAMED = 9
+
+# TESTS NO ENTRY NAMES. A run prints `N/N caught` and means it — but N counts
+# the mutants SOMEONE WROTE, so a test nobody mutated is invisible to that
+# number, and the suite reads as fully proved while that test protects nothing.
+# They are enumerated from the module and reported, and this is the debt the
+# list carries: a ceiling to LOWER, never to raise. Measured 2026-09-05: 61 of
+# the suite's 480 test methods. Triaging them is not this item's work; noticing
+# a sixty-second one is.
+KNOWN_UNPROVED = 61
 
 # (label, old, new, [test names that must fail]) — plus an optional 5th element,
 # the source file the anchor lives in, relative to tk/ (default: bin/tk-queue).
@@ -3107,6 +3117,20 @@ MUTATIONS = [
      ["TestMutationHarness.test_an_anchor_that_does_not_match_exactly_once_is_refused"],
      os.path.join("tests", "mutations.py")),
 
+    ("T160 the baseline classes go back to a hand-kept list",
+     'have been told from one the mutant reddened."""\n'
+     "    return list(test_classes(module_obj))",
+     'have been told from one the mutant reddened."""\n'
+     '    return ["TestPrefixedId", "TestConcurrency"]',
+     ["TestMutationHarness.test_the_classes_the_baseline_runs_are_derived_not_listed"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T160 the recorded debt of tests no entry proves stops being read",
+     "\nKNOWN_UNPROVED = 61", "\nKNOWN_UNPROVED = 0",
+     ["TestMutationHarness."
+      "test_the_recorded_count_of_unproved_tests_is_not_below_the_real_one"],
+     os.path.join("tests", "mutations.py")),
+
     ("T152 the recorded debt of misnamed entries stops being read",
      "\nKNOWN_MISNAMED = 9", "\nKNOWN_MISNAMED = 0",
      ["TestMutationHarness."
@@ -3119,6 +3143,18 @@ def run_suite(tk_dir, names):
     tests = os.path.join(tk_dir, "tests")
     argv = [sys.executable, "-m", "unittest", "-v"] + [f"test_tk_queue.{n}" for n in names]
     return subprocess.run(argv, cwd=tests, capture_output=True, text=True)
+
+
+def baseline_classes(module_obj):
+    """The classes the baseline runs — DERIVED from the module, never listed.
+
+    A hand-kept list is a list someone forgets, and a class left out of it drops
+    out of the baseline AND out of the orphan check at the same time: both
+    watchers go blind at once, in silence. The list this replaced had forgotten
+    TestPackLaneUnderWay and TestEverySpawnCarriesTheRedirectedHome, so neither
+    ran before a mutation was applied and a suite already red there could not
+    have been told from one the mutant reddened."""
+    return list(test_classes(module_obj))
 
 
 def pairs_of(entry):
@@ -3186,39 +3222,16 @@ def load_check(tk_dir, rel):
 
 def main():
     module_obj = load_module(TEST_MODULE, TK_DIR)
-    baseline = run_suite(TK_DIR, ["TestPrefixedId", "TestConcurrency", "TestMissingItemMessage",
-                                  "TestDirResolution", "TestProjectTagInDoneLog",
-                                  "TestEmbeddedMarker", "TestAtomicWrite",
-                                  "TestRiskDeletion", "TestCeilingScope",
-                                  "TestTargetQueueAnnounced", "TestFieldChain",
-                                  "TestCloseFieldCeilings", "TestIdAllocationScope",
-                                  "TestDoneLogLineGrammar", "TestCanonicalHead",
-                                  "TestDecisionDeferralGate", "TestBump",
-                                  "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
-                                  "TestEnvField", "TestClaim",
-                                  "TestPack", "TestProvenanceFields", "TestPackLane",
-                                  "TestRepoField", "TestPackRepo",
-                                  "PackOutput",
-                                  "TestHandoffCreation",
-                                  "TestHandoffLifecycle", "TestByteOrderMark",
-                                  "TestIdSpelling", "TestAmbiguousId",
-                                  "TestMigrateFold", "TestMigrateDryRun",
-                                  "TestProseWearingAFieldName",
-                                  "TestListReadsTheClassFromTheChain",
-                                  "TestResolvedItemKeepsItsOwnSpelling",
-                                  "TestFoldKeepsTheItemsMarkdown",
-                                  "TestAClassLessChainIsNotAField",
-                                  "TestTheZeroIdIsStillAnId",
-                                  "TestFoldFailsSafeOnShapesNobodyEnumerated",
-                                  "TestAFieldAppendedBeforeTheAnchorIsRefused",
-                                  "TestTheClassLandsAheadOfTheChain",
-                                  "TestASetextTitleIsKeptWithItsUnderline",
-                                  "TestClearingOnAClassLessItemIsRefused",
-                                  "TestBirthDate", "TestMigrateBackdates",
-                                  "TestListShowsTheAge", "TestWipCap"])
+    baseline = run_suite(TK_DIR, baseline_classes(module_obj))
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
+
+    orphans = unproved(MUTATIONS, module_obj)
+    for name in orphans:
+        print(f"UNPROVED   {name} — no mutation entry names this test")
+    if orphans:
+        print()
 
     sources = {}
     for entry in MUTATIONS:
@@ -3280,7 +3293,8 @@ def main():
     ran = len(MUTATIONS) - len(unrunnable) - len(fictitious)
     print(f"\n{ran - len(survived)}/{ran} mutations caught"
           + (f" ({len(unrunnable)} could not run)" if unrunnable else "")
-          + (f" ({len(fictitious)} name no such test)" if fictitious else ""))
+          + (f" ({len(fictitious)} name no such test)" if fictitious else "")
+          + f", {len(orphans)} test(s) no entry proves")
     for title, items in (("SURVIVORS (the suite does not actually protect these)", survived),
                          ("UNRUNNABLE (stale anchor — proves nothing until fixed)", unrunnable),
                          ("MISNAMED (names no such test — scored as nothing, never as a kill)",
@@ -3289,13 +3303,17 @@ def main():
             print(f"{title}:")
             for i in items:
                 print("  -", i)
-    grown = len(fictitious) > KNOWN_MISNAMED
-    if grown:
-        print(f"\nthe list carried {KNOWN_MISNAMED} misnamed entries and this run found "
-              f"{len(fictitious)}: a new one was written")
-    elif len(fictitious) < KNOWN_MISNAMED:
-        print(f"\nKNOWN_MISNAMED says {KNOWN_MISNAMED} and only {len(fictitious)} entries "
-              "are misnamed now — lower the constant, or the ratchet stops biting")
+    grown = []
+    for name, ceiling, count, what in (
+            ("KNOWN_MISNAMED", KNOWN_MISNAMED, len(fictitious), "misnamed entries"),
+            ("KNOWN_UNPROVED", KNOWN_UNPROVED, len(orphans), "tests no entry proves")):
+        if count > ceiling:
+            grown.append(f"{name} records {ceiling} {what} and this run found {count}")
+        elif count < ceiling:
+            print(f"\n{name} says {ceiling} and this run found only {count} {what} — "
+                  "lower the constant, or the ratchet stops biting")
+    for line in grown:
+        print(f"\n{line}: the debt grew")
     return 1 if survived or unrunnable or grown else 0
 
 

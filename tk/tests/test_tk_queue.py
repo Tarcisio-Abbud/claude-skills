@@ -7345,6 +7345,25 @@ class TestMutationHarness(unittest.TestCase):
                              source="here and here")
         self.assertIn("matched 2x", twice[1])
 
+    def test_the_classes_the_baseline_runs_are_derived_not_listed(self):
+        """A class missing from a hand-kept list drops out of the baseline and
+        out of the orphan check at once, and says nothing on the way out. The
+        list this replaced had forgotten the first two names below."""
+        found = self.h.baseline_classes(self.mod)
+        for name in ("TestPackLaneUnderWay", "TestEverySpawnCarriesTheRedirectedHome",
+                     "TestPrefixedId", "TestMutationHarness"):
+            self.assertIn(name, found)
+        self.assertNotIn("QueueTest", found)   # a base class holds no tests
+
+    def test_the_recorded_count_of_unproved_tests_is_not_below_the_real_one(self):
+        """A test no entry names is a guard nobody proved, and the tally cannot
+        show it: N/N counts the mutants someone wrote. The ceiling is what keeps
+        a new one from arriving in silence."""
+        import mutations_tk_contract
+        real = mutations_tk_contract.unproved(self.h.MUTATIONS, self.mod)
+        self.assertGreaterEqual(self.h.KNOWN_UNPROVED, len(real),
+                                f"{len(real)} tests no entry names: {real}")
+
     def test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one(self):
         """The debt is a ceiling to lower, and this is what makes it bite in two
         minutes instead of in the six the full harness takes: a tenth misnamed
