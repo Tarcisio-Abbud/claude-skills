@@ -273,11 +273,48 @@ MUTATIONS = [
      'ISO_DATE = re.compile(r"\\b\\d{4}-\\d{2}-\\d{2}\\b")',
      'ISO_DATE = re.compile(r"(?!x)x")',
      ["TestInlineEvidence.test_an_iso_date_is_evidence",
-      "TestTheBloatedFixture.test_every_kind_of_inline_evidence_is_found"]),
+      "TestTheBloatedFixture.test_every_kind_of_inline_evidence_is_found",
+      "TestEvidenceInBothDirections."
+      "test_the_word_measured_beside_a_date_is_inline_evidence"]),
 
     ("T185 the word measured is not evidence",
      'MEASURED = re.compile(r"(?i)\\bmeasured\\b")', 'MEASURED = re.compile(r"(?!x)x")',
-     ["TestInlineEvidence.test_the_word_measured_is_evidence"]),
+     ["TestInlineEvidence.test_the_word_measured_is_evidence",
+      "TestEvidenceInBothDirections."
+      "test_the_word_measured_beside_a_number_is_inline_evidence"]),
+
+    # -- the counter that missed in both directions (T284) ------------------
+    ("T284 the bare word is a measurement again, with nothing measured on the line",
+     "            if QUANTITY.search(text) for m in found]",
+     "            if True for m in found]",
+     ["TestEvidenceInBothDirections.test_the_word_measured_alone_is_not_inline_evidence",
+      "TestEvidenceInBothDirections."
+      "test_the_two_cases_of_the_verify_file_are_green_side_by_side"]),
+
+    ("T284 no clause is ever narrated, so the evidence with no date stays invisible",
+     'NARRATED = re.compile(r"(?i)\\b(?:has|have|had)\\s+(?:\\w+\\s+)?\\w+(?:ed|en)\\b")',
+     'NARRATED = re.compile(r"(?!x)x")',
+     ["TestEvidenceInBothDirections.test_a_clause_narrating_what_happened_is_reported",
+      "TestEvidenceInBothDirections."
+      "test_the_text_report_lists_the_narrated_outcomes_with_their_lines"]),
+
+    ("T284 the auxiliary is dropped, so every participle recounts something",
+     'NARRATED = re.compile(r"(?i)\\b(?:has|have|had)\\s+(?:\\w+\\s+)?\\w+(?:ed|en)\\b")',
+     'NARRATED = re.compile(r"(?i)\\b\\w+(?:ed|en)\\b")',
+     ["TestEvidenceInBothDirections."
+      "test_a_rule_in_the_present_tense_is_not_a_narrated_outcome"]),
+
+    ("T284 two words may sit between the auxiliary and the participle again",
+     'NARRATED = re.compile(r"(?i)\\b(?:has|have|had)\\s+(?:\\w+\\s+)?\\w+(?:ed|en)\\b")',
+     'NARRATED = re.compile(r"(?i)\\b(?:has|have|had)\\s+(?:\\w+\\s+){0,2}\\w+(?:ed|en)\\b")',
+     ["TestEvidenceInBothDirections."
+      "test_a_participle_belonging_to_a_noun_is_not_a_narrated_outcome"]),
+
+    ("T284 the narrated outcomes are marked against a ceiling the regex cannot support",
+     '    "terms_defined_in_sibling": 0,\n}',
+     '    "terms_defined_in_sibling": 0,\n    "narrated_outcomes": 0,\n}',
+     ["TestEvidenceInBothDirections.test_a_narrated_outcome_is_marked_against_no_target",
+      "TestTargets.test_the_targets_the_bin_carries_are_the_ones_the_house_rule_names"]),
 
     ("T185 a count followed by times or before is not evidence",
      'COUNT_EVIDENCE = re.compile(r"(?i)\\b\\d+\\s+(?:times|before)\\b")',

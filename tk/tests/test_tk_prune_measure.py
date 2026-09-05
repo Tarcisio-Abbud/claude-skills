@@ -53,6 +53,7 @@ LABELS = {
     "sentences_over_30": "sentences over 30 words",
     "description_words": "description words",
     "inline_evidence": "inline evidence",
+    "narrated_outcomes": "narrated outcomes",
     "pointers": "pointers to other files",
     "negations": "negations",
     "defined_terms": "defined terms",
@@ -655,7 +656,10 @@ class TestInlineEvidence(MeasureTest):
         self.assertMetric(QUIET + "\nThe sweep ran on 2026-06-03.\n", "inline_evidence", 1)
 
     def test_the_word_measured_is_evidence(self):
-        self.assertMetric(QUIET + "\nThe gap was measured against the tree.\n",
+        # WITH the measurement it names. The bare word was evidence until T284:
+        # it is also how a skill writes the rule about evidence, and
+        # `TestEvidenceInBothDirections` carries that case
+        self.assertMetric(QUIET + "\nThe gap was measured at 12 words.\n",
                           "inline_evidence", 1)
 
     def test_a_count_followed_by_times_is_evidence(self):
@@ -671,7 +675,7 @@ class TestInlineEvidence(MeasureTest):
     def test_the_evidence_is_listed_in_the_order_a_reader_reads_it(self):
         # the three rules are scanned one after another, so without the sort a
         # date on a later line is listed before a `measured` on an earlier one
-        text = QUIET + "\nThe gap was measured here.\nThe sweep ran on 2026-06-03.\n"
+        text = QUIET + "\nThe gap was measured at 12 words.\nThe sweep ran on 2026-06-03.\n"
         report = self.report(self.write(text))
         self.assertEqual([e["line"] for e in report["inline_evidence"]], [8, 9])
 
@@ -679,6 +683,87 @@ class TestInlineEvidence(MeasureTest):
         report = self.report(self.fixture("bloated"))
         self.assertEqual(sorted({e["kind"] for e in report["inline_evidence"]}),
                          ["count", "iso date", "measured"])
+
+
+class TestEvidenceInBothDirections(MeasureTest):
+    """The inline-evidence counter missed in BOTH directions on one file, and
+    the two misses are the two cases below (T284).
+
+    The pruning pass over `verify/SKILL.md` (2026-08-31) read `inline evidence 1`
+    where the file held the opposite of that number: the one it counted was the
+    bare word in ordinary prose, and the one piece of real evidence — a clause
+    narrating what happened the one time a minimal fixture was trusted — it never
+    saw. A pass cannot decide what leaves a file on a counter that wrong.
+
+    THE TWO CASES ANSWER ON DIFFERENT ROWS, and that is the fix rather than a
+    dodge. `inline_evidence` carries a ceiling of zero, so what enters it is a
+    verdict; a narrated outcome is a shape a regex can find and cannot weigh —
+    `A criterion passed only because a reflow refilled its line` is a war story
+    and `an item the ladder had placed third` is a rule — so it is REPORTED with
+    its line, beside the negations, and marked against nothing.
+    """
+
+    FALSE_POSITIVE = ("The one thing that reaches the user is what was **measured**, which is why the criterion travels intact.")
+    FALSE_NEGATIVE = ("Run the criterion against the shape the data really has: a criterion read as satisfied on a minimal fixture has passed while the same command failed on the populated form.")
+
+    def test_the_word_measured_alone_is_not_inline_evidence(self):
+        """The false positive: prose about what a report must carry, holding no
+        measurement of its own."""
+        self.assertMetric(QUIET + "\n" + self.FALSE_POSITIVE + "\n",
+                          "inline_evidence", 0)
+
+    def test_the_word_measured_beside_a_number_is_inline_evidence(self):
+        self.assertMetric(QUIET + "\nThe gap was measured at 12 words.\n",
+                          "inline_evidence", 1)
+
+    def test_the_word_measured_beside_a_date_is_inline_evidence(self):
+        # two findings on the line: the date is one of its own
+        self.assertMetric(QUIET + "\nMeasured against the tree of 2026-08-31.\n",
+                          "inline_evidence", 2)
+
+    def test_a_clause_narrating_what_happened_is_reported(self):
+        """The false negative: no date, no count, no `measured` — a perfect
+        tense, which is how prose stops instructing and starts recounting."""
+        report = self.report(self.write(QUIET + "\n" + self.FALSE_NEGATIVE + "\n"))
+        self.assertEqual(report["metrics"]["narrated_outcomes"], 1)
+        self.assertEqual(report["narrated_outcomes"][0]["match"], "has passed")
+        self.assertIn("minimal fixture", report["narrated_outcomes"][0]["context"])
+
+    def test_a_rule_in_the_present_tense_is_not_a_narrated_outcome(self):
+        # `restored` is a participle and the sentence still instructs: what
+        # separates the two is the auxiliary in front of it, not the ending
+        self.assertMetric(QUIET + "\nA criterion that passes with the defect "
+                          "restored proves nothing.\n", "narrated_outcomes", 0)
+
+    def test_a_participle_belonging_to_a_noun_is_not_a_narrated_outcome(self):
+        # `has an encoding proposed` — two words between the auxiliary and the
+        # participle, and the participle belongs to the noun. Real line, from
+        # `wrap-up/SKILL.md`
+        self.assertMetric(QUIET + "\nEvery finding has an encoding proposed "
+                          "by the close.\n", "narrated_outcomes", 0)
+
+    def test_the_two_cases_of_the_verify_file_are_green_side_by_side(self):
+        """The regression the item asks for: both sentences in one file, each
+        answering on its own row and neither answering on the other's."""
+        m = self.metrics_of(QUIET + "\n" + self.FALSE_POSITIVE
+                            + "\n\n" + self.FALSE_NEGATIVE + "\n")
+        self.assertEqual(m["inline_evidence"], 0)
+        self.assertEqual(m["narrated_outcomes"], 1)
+
+    def test_a_narrated_outcome_is_marked_against_no_target(self):
+        """Reported, never marked: which perfect tense recounts a run and which
+        one states a rule is the reader's call, and a target that fails
+        `writing-for-agents` is not a target."""
+        marked = {m["metric"] for m in
+                  self.report(self.write(QUIET + "\n" + self.FALSE_NEGATIVE + "\n"),
+                              "--targets")["targets"]}
+        self.assertNotIn("narrated_outcomes", marked)
+
+    def test_the_text_report_lists_the_narrated_outcomes_with_their_lines(self):
+        out = self.run_on(self.write(QUIET + "\n" + self.FALSE_NEGATIVE + "\n"),
+                          ).stdout
+        self.assertIn("narrated outcomes (1)", out)
+        self.assertIn("has passed", out)
 
 
 class TestPointers(MeasureTest):

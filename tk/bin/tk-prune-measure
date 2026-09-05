@@ -20,8 +20,12 @@ WHAT IT COUNTS, and where each number comes from:
   context pointer and is measured against a rule of its own. A file with no
   frontmatter has no description, and that is reported as absent rather than 0 —
   the bin measures any markdown, and a runbook legitimately has none.
-- inline evidence: ISO dates, the word "measured", and a count followed by
-  "times" or "before". Evidence belongs to the repo's history, not to a skill.
+- inline evidence: ISO dates, a count followed by "times" or "before", and the
+  word "measured" WITH a number or a date on its line. Evidence belongs to the
+  repo's history, not to a skill.
+- narrated outcomes, LISTED WITH CONTEXT and marked against nothing: prose in a
+  perfect tense, which is how a file stops instructing and starts recounting.
+  `scan_narrated` says why this is the second row rather than more of the first.
 - pointers to other files.
 - negations, LISTED WITH CONTEXT. A count alone would be a verdict the regex
   cannot support: `never` steering the agent and `never` inside the name of an
@@ -144,6 +148,7 @@ METRICS = [
     ("sentences_over_30", f"sentences over {LONG_SENTENCE} words"),
     ("description_words", "description words"),
     ("inline_evidence", "inline evidence"),
+    ("narrated_outcomes", "narrated outcomes"),
     ("pointers", "pointers to other files"),
     ("negations", "negations"),
     ("defined_terms", "defined terms"),
@@ -215,7 +220,17 @@ ABBREV = {"e.g", "i.e", "etc", "vs", "cf", "mr", "mrs", "ms", "dr", "prof",
 NEGATIONS = re.compile(r"(?i)(?<![\w'’])(do not|don['’]t|never|not|no)(?![\w'’])")
 ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 MEASURED = re.compile(r"(?i)\bmeasured\b")
+# What turns the word into a report. `measured` alone is prose about what a
+# report must carry — "the one thing that reaches the user is what was
+# **measured**" — and counting it made `verify/SKILL.md` read `inline evidence 1`
+# on a file whose one real piece of evidence carried no such word (T284). A
+# measurement names its measurement, so a digit on the line is what promotes it.
+QUANTITY = re.compile(r"\d")
 COUNT_EVIDENCE = re.compile(r"(?i)\b\d+\s+(?:times|before)\b")
+# A perfect tense: the auxiliary, at most one adverb, the participle. Two words
+# between them admitted `has an encoding proposed`, where the participle belongs
+# to the noun and nothing is being recounted.
+NARRATED = re.compile(r"(?i)\b(?:has|have|had)\s+(?:\w+\s+)?\w+(?:ed|en)\b")
 # A web address, which is not a pointer to a file of this repo however it ends.
 # `www.` is here beside the schemes because a scheme-less host is written that
 # way in prose, and `www.example.com/index.html` was counted as a file.
@@ -707,6 +722,39 @@ def scan_kind(body, pattern, kind):
             for line, _, found in line_matches(body, pattern) for m in found]
 
 
+def scan_measured(body):
+    """`measured` where the line also carries a number.
+
+    The word on its own is not a measurement and the counter said it was: it is
+    how a skill writes the RULE about evidence, and the pruning pass over
+    `verify/SKILL.md` read `1` off a file that held no evidence by this rule and
+    one piece by nobody's. A report names what it measured, so the digit is the
+    promotion — a date is digits too, and reports itself besides.
+    """
+    return [{"line": line.number, "kind": "measured", "match": m.group(0)}
+            for line, text, found in line_matches(body, MEASURED)
+            if QUANTITY.search(text) for m in found]
+
+
+def scan_narrated(body):
+    """Perfect-tense clauses, carrying the line they sit on.
+
+    THE OTHER HALF OF T284, and it is a SECOND ROW rather than more of the first.
+    The evidence the counter missed in `verify/SKILL.md` had no date, no count
+    and no `measured` in it — "a criterion read as satisfied on a minimal fixture
+    HAS PASSED while the same command failed on the populated form" — and what
+    marks it is the tense: an instruction is written in the present, and a
+    perfect tense recounts.
+
+    `inline_evidence` carries a ceiling of zero, so what enters it is a VERDICT,
+    and this shape cannot support one: `a count their lane had already passed` is
+    a war story and `an item the ladder had placed third` is a rule, and only the
+    person reading the line can tell. So it is reported beside the negations,
+    with its context, and marked against nothing.
+    """
+    return scan_context(body, NARRATED)
+
+
 def scan_pointers(body):
     """Path-shaped tokens that are pointers: a path prefix, or a known suffix.
 
@@ -817,9 +865,10 @@ def measure(path):
     body_words = sum(counts)
 
     evidence = (scan_kind(body, ISO_DATE, "iso date")
-                + scan_kind(body, MEASURED, "measured")
+                + scan_measured(body)
                 + scan_kind(body, COUNT_EVIDENCE, "count"))
     evidence.sort(key=lambda e: (e["line"], e["match"]))
+    narrated = scan_narrated(body)
     pointers = scan_pointers(body)
     negations = scan_context(body, NEGATIONS)
     terms = defined_terms(body)
@@ -837,6 +886,7 @@ def measure(path):
         "sentences_over_30": sum(1 for n in counts if n > LONG_SENTENCE),
         "description_words": None if description is None else len(words(description)),
         "inline_evidence": len(evidence),
+        "narrated_outcomes": len(narrated),
         "pointers": len(pointers),
         "negations": len(negations),
         "defined_terms": len(terms),
@@ -849,6 +899,7 @@ def measure(path):
         "long_sentences": [{"line": number, "words": n}
                            for number, n in sents if n > LONG_SENTENCE],
         "inline_evidence": evidence,
+        "narrated_outcomes": narrated,
         "pointers": pointers,
         "negations": negations,
         "defined_terms": [{"line": number, "term": term} for number, term in terms],
@@ -901,6 +952,8 @@ def render(report, show_targets):
                      lambda e: f"{e['words']} words")
     lines += section("inline evidence", report["inline_evidence"],
                      lambda e: f"{e['kind']:<9} {e['match']}")
+    lines += section("narrated outcomes", report["narrated_outcomes"],
+                     lambda e: f"{e['match']:<20} {e['context']}")
     lines += section("pointers to other files", report["pointers"],
                      lambda e: e["match"])
     lines += section("negations", report["negations"],
