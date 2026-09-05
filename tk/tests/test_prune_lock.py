@@ -130,6 +130,11 @@ class TestTheLockIsWellFormed(LockTest):
                  for name, lines, words in rows}
         compared = 0
         for path, locked in self.lock["files"].items():
+            # A file the tree renamed after the lock was written keeps, in `baseline`,
+            # the name the pruning pass measured it under — so the rename does not
+            # quietly drop it out of this comparison. The numbers are the same numbers.
+            name = locked.get("baseline")
+            path = f"tk/skills/{name}" if name else path
             if path not in table:
                 continue
             compared += 1

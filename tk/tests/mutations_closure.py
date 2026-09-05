@@ -11,7 +11,7 @@ test NO entry names as UNPROVED — the half a score of N/N cannot show.
 
 FIVE SOURCES, not one. The two bins are mutated, and so are the three prose
 files that dispatch or govern them: `skills/kickoff/SKILL.md`,
-`skills/kickoff/AFK.md` and `skills/wrap-up/MERGE-GATE.md`. A skill file is code
+`skills/kickoff/AFK.md` and `skills/merge-gate/SKILL.md`. A skill file is code
 an agent executes, and the defects two of this ticket's criteria name live there
 rather than in Python — the attended path dispatching without the reference, and
 a verdict row whose keyword rule the checker has already left behind. Neither
@@ -36,7 +36,7 @@ READER = os.path.join("bin", "tk-ticket-ref")
 CHECKER = os.path.join("bin", "tk-closure-check")
 KICKOFF = os.path.join("skills", "kickoff", "SKILL.md")
 AFK = os.path.join("skills", "kickoff", "AFK.md")
-GATE = os.path.join("skills", "wrap-up", "MERGE-GATE.md")
+GATE = os.path.join("skills", "merge-gate", "SKILL.md")
 
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
@@ -383,9 +383,9 @@ MUTATIONS = [
       "test_the_verdict_row_says_the_set_is_english"], GATE),
 
     ("T238 the retracted claim that any keyword the forge honours counts comes back",
-     "A verdict an agent can satisfy by asserting it is not a verdict.",
-     "A verdict an agent can satisfy by asserting it is not a verdict. Any closing\n"
-     "keyword the forge honours counts — `Fixes`, `Closes`, `Resolves` — since "
+     "A\n   Portuguese `Fecha #n` is present, cites the right ticket, and closes NOTHING.",
+     "A\n   Portuguese `Fecha #n` is present, cites the right ticket, and closes NOTHING. Any\n"
+     "   closing keyword the forge honours counts — `Fixes`, `Closes`, `Resolves` — since "
      "they are the same mechanism.",
      ["TestTheMergeGateStatesTheRuleTheCheckerEnforces."
       "test_the_file_does_not_say_a_closing_keyword_the_forge_honours_counts"], GATE),

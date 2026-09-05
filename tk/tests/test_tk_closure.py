@@ -674,7 +674,7 @@ class TestTheMergeGateStatesTheRuleTheCheckerEnforces(unittest.TestCase):
     enforces a set the row does not name proves the row's older, looser rule."""
 
     def setUp(self):
-        with open(os.path.join(SKILLS, "wrap-up", "MERGE-GATE.md"), encoding="utf-8") as f:
+        with open(os.path.join(SKILLS, "merge-gate", "SKILL.md"), encoding="utf-8") as f:
             self.text = f.read()
         self.row = next(line for line in self.text.splitlines()
                         if line.startswith("| 5 |") and "Closure" in line)

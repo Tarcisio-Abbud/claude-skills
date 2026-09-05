@@ -172,7 +172,7 @@ its branch stays until the lane's pull request merges.
 ### The lane's tail
 
 Runs once per package, where an accumulated lane survived, in the lane's worktree. Every exit
-ends in one place — the pull request out of draft, carrying `../wrap-up/MERGE-GATE.md`'s per-item
+ends in one place — the pull request out of draft, carrying `../merge-gate/SKILL.md`'s per-item
 digest; that gate decides the merge, and nothing here reopens an item, reverts a merge or
 rewrites anything pushed. In order:
 

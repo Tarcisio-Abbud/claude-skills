@@ -5,7 +5,7 @@ Given a pull request and the queue item it belongs to, it says whether merging
 that pull request will close THAT ticket, and exits non-zero naming WHICH
 condition failed.
 
-WHY THIS IS CODE AND NOT PROSE. `../skills/wrap-up/MERGE-GATE.md` states the
+WHY THIS IS CODE AND NOT PROSE. `../skills/merge-gate/SKILL.md` states the
 verdict, and a session reading it checked the body by eye. Every eye-check
 measured so far asked PRESENCE where the rule asks IDENTITY: a body copy-pasted
 from the previous slice carries a well-formed closing line for the wrong ticket
@@ -326,7 +326,7 @@ def refused(refusal, label):
 
 
 def escape(block, body, label):
-    """Verdict 5 for an item that names no ticket — MERGE-GATE's own escape, and
+    """Verdict 5 for an item that names no ticket — the merge gate's own escape, and
     it is the ITEM that gives it. Every closing line is named, not the first: a
     body carrying two of them closes two tickets this item never claimed."""
     closing = [m for m in mentions(body) if m[0].lower() in reader.KEYWORDS]

@@ -1,8 +1,15 @@
+---
+name: merge-gate
+description: "The merge gate: the digest a pull request is judged on, and the five verdicts of safe-to-merge. Use when a close or a package tail has one to settle."
+disable-model-invocation: true
+---
+
 # The merge gate — the digest and the five verdicts
 
-Read from step 5 of `SKILL.md`, whenever the inventory holds any pending version-control
-action: uncommitted work, an unpushed branch, a PR to open, a PR awaiting merge. This file
-owns the gate's whole procedure — attended and strict — and its "Done when" is step 5's.
+The gate runs whenever an inventory holds a pending version-control action: uncommitted work,
+an unpushed branch, a PR to open, a PR awaiting merge. Three consumers reach it — step 5 of
+`../wrap-up/SKILL.md`, the lane's tail in `../kickoff/AFK.md`, and a merge settled outside
+either, which is what invoking this skill directly is for. Its "Done when" is the caller's.
 
 ## The digest
 
@@ -11,7 +18,7 @@ and whether it MAY be merged. Every PR in the gate gets one, before the menu —
 PR the verdicts hold back, where the decision is whether the red is worth fixing now.
 
 **In the attended gate, section 3 is PRINTED in the terminal before the menu** — three
-lines per item in `REPORT.md`'s `was/now/gain/risk` mould, sections 1, 2, 4 and 5 left to
+lines per item in `../wrap-up/REPORT.md`'s `was/now/gain/risk` mould, sections 1, 2, 4 and 5 left to
 the digest the menu carries. A digest sitting in the PR body does NOT discharge this —
 that body is not the user's window. Copy the lines from it, name the PR, and carry the
 full PR URL `https://github.com/<owner>/<repo>/pull/<n>`; recomposing from the
@@ -48,7 +55,7 @@ line each:
 | 2 | **Review** | the review flow ran, and every finding is fixed, or accepted with its justification written down |
 | 3 | **Criterion** | the item's criterion was re-run here and passed |
 | 4 | **Reversal** | the way back is named in one line (revert, flag, restore) |
-| 5 | **Closure** | the PR body carries a closing line under an English keyword the forge honours — `Fixes`, `Closes`, `Resolves` and their `fix`/`fixed` forms, that set and no other — naming **the ticket this item names**, owner half and all, no OTHER closing line in the body, and the PR targets its own repository's default branch. Owner-qualified, the keyword closes ACROSS repositories. `../../bin/tk-closure-check <id> --pr <n>` asks all five and names the ones that failed. The escape is the item naming no ticket, with the digest quoting it to show that |
+| 5 | **Closure** | the PR body carries a closing line under an English keyword the forge honours — `Fixes`, `Closes`, `Resolves` and their `fix`/`fixed` forms, that set and no other — naming **the ticket this item names**, owner half and all, no OTHER closing line in the body, and the PR targets its own repository's default branch. Owner-qualified, the keyword closes ACROSS repositories. `../../bin/tk-closure-check <id> --pr <n>` asks all five and names the ones that failed. The escape is the item naming no ticket, with the digest quoting it to show that — a verdict an agent can satisfy by asserting it is not a verdict |
 
 Five green → merge is the recommended action. Any red → the digest says which one, and the
 merge is not offered. A small diff (guidance: ≲150 lines) is still shown whole in the
@@ -91,18 +98,10 @@ from the item's own **Repo:** field, so pass `--repo <clone>` when the item name
    closes nothing, silently. Re-check after any retarget, a step this gate itself
    performs — it turns verdict 5 from green to red without touching the body.
 
-The escape is **the item, not the session's word for it**: a change that answers to no
-ticket turns verdict 5 green only when the digest quotes the item showing no `Ticket:`
-field. A verdict an agent can satisfy by asserting it is not a verdict.
-
 **An item whose `Ticket:` no reader may use is RED, with its remedy named.** `pack` prints
 `[?]` where the ticket goes. Provenance is add-only — no `edit --ticket` exists — so the
 repair is `tk-queue cancel <id>` and a fresh `add` carrying the right reference. Until
 `../../bin/tk-ticket-ref <id>` runs clean the item has no closing line to dispatch with.
-
-Verdict 5 is the one red whose remedy costs less than reporting it: rewrite the body and
-it is green. Found after the merge, it costs a manual close, and reverting the merge does
-not reopen the ticket.
 
 ## The menu, and what stays behind
 

@@ -39,7 +39,7 @@ fixture.
 **A criterion anchors on content, never on a line number or an absolute count** — a reformat
 moves the line, a sibling slice moves the count. Anchor by a grep of the sentence. Write an
 unavoidable count paired with the sha of the tree it ran on, the shape
-`../wrap-up/MERGE-GATE.md` gives a green suite. A criterion passed only because a reflow
+`../merge-gate/SKILL.md` gives a green suite. A criterion passed only because a reflow
 refilled its line, and two lane tickets named a count their lane had already passed.
 
 ## Prove it can fail

@@ -106,8 +106,9 @@ was stated — and every item closed by this session carries its evidence block.
 
 Settle every version-control decision NOW — this gate is what makes the wrap-up a real
 close. From the inventory, list the pending actions per repo: uncommitted work, unpushed
-branches, PRs to open, PRs awaiting merge. **The gate's whole procedure is
-`MERGE-GATE.md` beside this file — read it whenever that list is non-empty**: the digest,
+branches, PRs to open, PRs awaiting merge. **The gate's whole procedure is the
+`merge-gate` skill, `../merge-gate/SKILL.md` — read it whenever that list is
+non-empty**: the digest,
 its five verdicts of safe-to-merge, the triple check of the closing line, the action
 menu, stack order, and the accumulated lane's per-item form.
 
@@ -116,7 +117,7 @@ here as an action, never as a new item**. Merging its own PR is one line of the 
 and the menu is the authorization. Reclassifying to `DECISION` belongs to an item still
 open from before this session. Where the menu leaves the merge unchecked, the DECISION it
 writes carries that action, and the delivered item stays closed.
-**Done when:** `MERGE-GATE.md`'s own "Done when" holds — every action executed or an
+**Done when:** `../merge-gate/SKILL.md`'s own "Done when" holds — every action executed or an
 explicit DECISION, none merely implied — or the list was empty and that was said.
 `tk-queue list` then names no item this session delivered — a deferred merge sits there as
 that action, never as the item back open.
@@ -170,7 +171,7 @@ exception closes the package: the batched question over its parked DECISIONs
   choice becomes a DECISION carrying `--deferred afk` — the flag for a decision nobody
   could ask, against one nobody bothered to ask. A session finding takes the three rungs
   of `../../reference/session-finding.md` instead.
-- Step 5 runs on `MERGE-GATE.md`, *The strict form*: commit and push before any review —
+- Step 5 runs on `../merge-gate/SKILL.md`, *The strict form*: commit and push before any review —
   `afk` IS that authorization — the digest in the PR body, merge only under the hardened
   verdicts; whatever is not merged enters the queue as a DECISION with its digest
   reference ready.

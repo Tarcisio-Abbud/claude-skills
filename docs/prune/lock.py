@@ -53,7 +53,7 @@ MOVED = [
     ("tk/skills/dispatch/LOOP.md", "dispatch-report.md"),
     ("tk/skills/review/BRIEF.md", "review-report.md"),
     ("tk/skills/verify/HANDOFF.md", "verify-report.md"),
-    ("tk/skills/wrap-up/MERGE-GATE.md", "wrap-up-report.md"),
+    ("tk/skills/merge-gate/SKILL.md", "wrap-up-report.md"),
     ("tk/skills/wrap-up/REPORT.md", "wrap-up-report.md"),
     ("tk/reference/queue.md", "kickoff-report.md"),
     ("tk/reference/session-finding.md", "kickoff-report.md"),
@@ -66,7 +66,16 @@ def measure(path):
     return json.loads(out)
 
 
-def row(measured, role, report):
+# A file the tree RENAMED after the lock was written. The baseline table is keyed
+# by the name the pruning pass measured it under, so the row carries that name beside
+# the new path: without it the comparison against `docs/prune/baseline-<date>.md`
+# silently stops covering the file. The NUMBERS are untouched by a rename.
+BASELINE_NAME = {
+    "tk/skills/merge-gate/SKILL.md": "wrap-up/MERGE-GATE.md",   # ambiente#226
+}
+
+
+def row(measured, role, report, path=None):
     """One locked row: the two uncapped numbers, and the marks the file carries.
 
     `over` is the list of ceilings the bin marks TODAY. The test reads it as a
@@ -79,6 +88,7 @@ def row(measured, role, report):
         "lines": measured["metrics"]["lines"],
         "body_words": measured["metrics"]["body_words"],
         "over": [m["metric"] for m in measured["targets"] if m["status"] == "over"],
+        **({"baseline": BASELINE_NAME[path]} if path in BASELINE_NAME else {}),
     }
 
 
@@ -98,7 +108,7 @@ def main(date):
         "generator": "docs/prune/lock.py",
         "slack": SLACK,
         "ceilings": ceilings,
-        "files": {path: row(measured[path], role, report)
+        "files": {path: row(measured[path], role, report, path)
                   for path, role, report in plan},
     }, indent=2, sort_keys=False))
 
