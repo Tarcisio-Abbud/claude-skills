@@ -681,7 +681,7 @@ class TestInlineEvidence(MeasureTest):
                          ["count", "iso date", "measured"])
 
 
-class TestTargets(MeasureTest):
+class TestPointers(MeasureTest):
     def test_a_home_relative_path_is_a_pointer(self):
         # extensionless on purpose: a path carrying `.md` is found by the other
         # branch too, and would pass with this one gone
