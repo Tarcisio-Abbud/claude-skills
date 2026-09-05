@@ -915,6 +915,46 @@ def qualified_fields(block, field):
     return real_fields(block, field), len(FIELD_MARKER_RE[field].findall(block))
 
 
+def write_class_segment(block, value):
+    """(`block` with a **Class:** segment, the field names that segment just made
+    readable) — the ONE writer of the anchor every other field is measured from.
+
+    POSITION, not text, is what this function is for. `real_fields` measures from
+    the **Class:** the chain begins at, so a class written at the END of the line
+    leaves every field already on that line BEHIND the anchor, where no gate and
+    no report may read it. Measured end to end, and each step exited 0: a legacy
+    item whose fields sat on a continuation line went through `migrate`, which
+    folds them onto the first line, and then through the `edit <id> --class
+    AUTONOMOUS` that `pack` itself prints as the repair — and `pack` went on
+    showing that item's Effort as `?` for ever, `list` its age as `?`, with
+    nothing anywhere saying why. The class therefore goes AHEAD of the chain the
+    item already carries, which is where `compose_item` writes it too: the
+    repaired item comes out byte-identical to one `add` would have written.
+
+    An item with no chain has nothing to sit ahead of, so its class is appended at
+    the end of the first line and becomes the chain.
+
+    The second half of the return is what the caller WARNS about, and it is the
+    price of this position. A chain with no anchor can be the item's own prose
+    wearing a field's shape — `field_chain` absorbs any run of `**Field:** value.`
+    segments that ends the line — and putting the anchor in front of that run
+    makes the prose a field. Naming what became readable is what lets the caller
+    see it; guessing which segments are prose is the guess this file refuses
+    everywhere else. The two silences are not equal, which is why the guess is not
+    simply avoided by appending: a field left behind the anchor is invisible for
+    ever and to everything, while a promoted one is printed by `list` and by
+    `pack` the next time either runs.
+    """
+    chain = field_chain(block)
+    segment = f"**Class:** {value}."
+    if not chain:
+        head, sep, rest = block.partition("\n")
+        return head.rstrip() + " " + segment + sep + rest, []
+    at = chain[0].start()
+    return (block[:at] + segment + " " + block[at:],
+            [canonical_field(m.group(1)) for m in chain])
+
+
 def chain_breaker(candidate):
     """The field segment that stops the chain from reaching back to **Class:** — the
     one a refusal has to NAME, because it is the one the caller must repair.
@@ -3511,9 +3551,11 @@ def cmd_edit(args):
                      "chain can be told from the item's own prose wearing a field's name — "
                      f"`--{field.lower()}` would rewrite that prose (and with `none`, DELETE "
                      "it). Nothing was changed. Close the item with `cancel` and re-add it "
-                     f"clean. `tk-queue edit {label} --class <CLASS>` is NOT the remedy for "
-                     "this: it gives the item a class, which is worth doing, and the fields "
-                     "already in the chain stay where no reader may write them.")
+                     f"clean. `tk-queue edit {label} --class <CLASS>` is not the remedy "
+                     "for this either: it gives the item a class, which is worth doing, and "
+                     "the anchor it writes makes EVERY segment now ending that line a "
+                     f"field — this **{field}:** included. Run it only where that whole run "
+                     "really is fields; it names them when it does.")
             fail(f"{label} has a **{field}:** marker OUTSIDE its field chain — in "
                  "the item's own prose (before the **Class:** the chain begins at) or on "
                  "a continuation line — and none inside it. Nothing was changed. Editing "
@@ -3560,23 +3602,50 @@ def cmd_edit(args):
         else:
             # A chain with no **Class:** anchors nothing, so a field appended to it
             # is a field no reader may ever honour: real_fields and qualified_fields
-            # both answer [] while the anchor is missing, and the anchor a later
-            # `--class` adds goes at the END of the line, BEHIND what was appended
-            # here. Measured: `--effort L` printed "updated", `--class AUTONOMOUS`
-            # printed "updated", and `pack` went on showing the item's Effort as
-            # `?`. The refusal above covers the item that carries the marker
-            # already; this covers the one that carries no marker at all, which is
-            # the same trap on the same population — the class-less legacy item.
+            # both answer [] while the anchor is missing, so what this would write
+            # is a field no gate and no report may read — not later, NOW. Measured:
+            # `--effort L` printed "updated", `--class AUTONOMOUS` printed "updated",
+            # and `pack` went on showing the item's Effort as `?`. Since T169 the
+            # second half of that no longer holds — the anchor is written AHEAD of
+            # the chain, so a `--class` arriving afterwards does rescue what was
+            # appended here — and the refusal stands on the first half alone: one
+            # command with `--class` in it costs the caller nothing and never leaves
+            # the item in a state its own reports cannot see. The refusal above
+            # covers the item that carries the marker already; this covers the one
+            # that carries no marker at all — the class-less legacy item.
             if field != "Class" and not real_fields(new, "Class"):
                 fail(f"{label} names no **Class:** in its field chain, so an appended "
-                     f"**{field}:** would sit BEFORE the anchor a later `--class` adds, "
-                     "where no gate and no report may read it. Nothing was changed. Run "
+                     f"**{field}:** is a field no gate and no report may read. Nothing was "
+                     "changed. Run "
                      f"`tk-queue edit {label} --class <CLASS> --{field.lower()} "
                      # the caller's own value, whole and quoted: a remedy that says
                      # <value> makes every caller retype what they just typed, and a
                      # remedy built from a truncated one repairs something else
                      f"{shlex.quote(flag)}` — one command, class first, and the field "
                      "lands inside the chain.")
+            if field == "Class":
+                # Composed FIRST, then handed to the same reader every gate uses.
+                # Asking the block as it ARRIVED whether it looks right is the proxy
+                # this file has already paid for (claim_readback): appending the
+                # anchor CHANGES the chain the question is about. What is required
+                # back is exact — the anchor, then the run that was already there,
+                # in that order — because "a Class is in the chain somewhere" is
+                # true of the write this slice exists to stop.
+                candidate, promoted = write_class_segment(new, flag)
+                back = [canonical_field(m.group(1)) for m in field_chain(candidate)]
+                if back != ["Class"] + promoted or chain_class(candidate) != flag:
+                    fail(f"{label} would not read back as a {flag} item carrying "
+                         f"{len(promoted)} field(s) behind the anchor. Nothing was "
+                         "changed. Close it with `cancel` and re-add it clean.")
+                new = candidate
+                if promoted:
+                    names = ", ".join(f"**{n}:**" for n in promoted)
+                    print(f"tk-queue: warning: {label} already ended its first line with "
+                          f"{names}, so the class went AHEAD of that run — the one position "
+                          "where a gate reads it. Check the list: a segment there that is "
+                          "the item's own prose quoting a marker now counts as a field, and "
+                          "`cancel` + re-add is the repair for that.", file=sys.stderr)
+                continue
             # append at the end of the FIRST line, where the chain lives. Appending
             # after a continuation line would put the field outside the chain — i.e.
             # write, right now, the very shape the guard above refuses to touch later
