@@ -5,8 +5,9 @@ Both build the same **package** — the largest set of queue items this session 
 session running a package is an **orchestrator**: it claims, dispatches, verifies and closes, and
 implements nothing inline. Every run takes its model, effort and venue from the role table in
 `../../reference/subagent-policy.md`, which also fixes the one-line format a departure costs.
-While the package runs the orchestrator ALONE writes the queue, and **every `tk-queue` call
-below carries `--dir "<queue dir>"`** — the queue dir `../../reference/queue.md` addresses.
+While the package runs the orchestrator ALONE writes the queue, and **every `tk-queue` and
+`tk-ticket-ref` call below carries `--dir "<queue dir>"`** — the queue dir
+`../../reference/queue.md` addresses.
 Without it the script resolves from the cwd, which an earlier `cd` retargets to another
 project's queue. A `--help` call takes no `--dir`.
 
@@ -106,9 +107,19 @@ reviews none of it. The distilled contract below covers the ITEM; these notes co
 and without them every implementer of the lane reads the same tree again at its own cost. A
 package with no accumulated lane skips this: one run reads one base.
 
-The lane is serial: each ticket dispatches into a worktree of its own on `spec/<m>/T<id>`, cut
-from `origin/spec/<m>-<slug>` fetched at that moment, only after the previous ticket's cycle
-ends. Solo items dispatch beside it, in series within one repository; neither lane passes the
+The lane is serial: each ticket dispatches into a worktree of its own, cut from
+`origin/spec/<m>-<slug>` fetched at that moment, only after the previous ticket's cycle ends.
+Both lines below are what put the upstream on the ticket's OWN branch: cut from the lane's
+branch without `--no-track` it tracks THAT one, and a bare `push` then writes the ticket's work
+in progress into the branch the pull request publishes — refused today only because
+`push.default=simple` reads two different names, a defence `push.default=upstream` removes.
+
+```sh
+git -C "<the lane's repo address>" worktree add --no-track "<path>/T<id>" -b "spec/<m>/T<id>" "origin/spec/<m>-<slug>"
+git -C "<path>/T<id>" push -u origin "spec/<m>/T<id>"
+```
+
+Solo items dispatch beside it, in series within one repository; neither lane passes the
 local ceiling. An item too big for one subagent's context leaves the package carrying its
 briefing (`../verify/SKILL.md` prescribes the form) and its ready-to-paste line.
 
@@ -119,8 +130,8 @@ the **item's distilled contract**: the item, the memory file behind its `[[slug]
 its handoff; context in none of the three is a missing handoff, named in its own line. A lane
 run also gets the path `<notes dir>` of the exploration above, read and never re-run. A solo run
 also gets its ticket reference for its PR's closing line, composed HERE by
-`../../bin/tk-ticket-ref <id> --closing-line`, which reads the owner from the clone the item's
-**Repo:** field names — pass `--repo <clone>` when the item names none. Exit 3 is the item
+`../../bin/tk-ticket-ref <id> --dir "<queue dir>" --closing-line`, which reads the owner from
+the clone the item's **Repo:** field names — pass `--repo <clone>` when the item names none. Exit 3 is the item
 that HAS no ticket; exit 1 is a refusal naming the defect and its remedy; exit 2 is a run that
 could not be made at all. None of the three is a run dispatched without a reference. Count
 each run by the venue signature it returns, never by the flag you passed. On a wave, step 4 —
