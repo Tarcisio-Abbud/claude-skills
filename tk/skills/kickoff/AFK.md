@@ -99,6 +99,13 @@ leave on the no-address rung. The address names a repository, not a working tree
 its clone on this machine, and an item whose repository has no clone here leaves the package
 undispatched, named with the reason.
 
+**Explore the base ONCE, before the first ticket goes out.** One exploration run reads the
+tree the lane's tickets name and writes its notes to `<notes dir>` — a scratch directory of
+this session's own, OUTSIDE the repository, so the lane commits none of it and the tail
+reviews none of it. The distilled contract below covers the ITEM; these notes cover the BASE,
+and without them every implementer of the lane reads the same tree again at its own cost. A
+package with no accumulated lane skips this: one run reads one base.
+
 The lane is serial: each ticket dispatches into a worktree of its own on `spec/<m>/T<id>`, cut
 from `origin/spec/<m>-<slug>` fetched at that moment, only after the previous ticket's cycle
 ends. Solo items dispatch beside it, in series within one repository; neither lane passes the
@@ -109,7 +116,8 @@ Each run's prompt carries, produced here and never delegated back: the **contrac
 verbatim from `../../bin/tk-contract --role <row>` — `implementer`, or `implementer-spec` on the
 lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull request — and
 the **item's distilled contract**: the item, the memory file behind its `[[slug]]` at one hop,
-its handoff; context in none of the three is a missing handoff, named in its own line. A solo run
+its handoff; context in none of the three is a missing handoff, named in its own line. A lane
+run also gets the path `<notes dir>` of the exploration above, read and never re-run. A solo run
 also gets its ticket reference for its PR's closing line, composed HERE by
 `../../bin/tk-ticket-ref <id> --closing-line`, which reads the owner from the clone the item's
 **Repo:** field names — pass `--repo <clone>` when the item names none. Exit 3 is the item
@@ -119,8 +127,9 @@ each run by the venue signature it returns, never by the flag you passed. On a w
 `AUDIT.md` beside this file — stands between the claim and the first run.
 
 **Done when:** every item is claimed or reported held elsewhere, the lane branch exists and is
-pushed before its first ticket goes out, and every run carries a generated contract block and a
-prompt self-sufficient without the tracker.
+pushed before its first ticket goes out, the base was explored once with its notes outside the
+repository, and every run carries a generated contract block, that path, and a prompt
+self-sufficient without the tracker.
 
 ## 4. Audit the spec and the tickets
 
