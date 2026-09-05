@@ -4384,7 +4384,11 @@ def main():
     e = sub.add_parser("edit", parents=[common], help="edit fields of an open item")
     e.add_argument("id", type=parse_id)
     e.add_argument("--text")
-    e.add_argument("--class", dest="classe")
+    e.add_argument("--class", dest="classe",
+                   help="replaces the whole class VALUE. On an item that carries "
+                   "none the anchor is written AHEAD of any fields already ending "
+                   "the first line — the only position a gate reads them from — and "
+                   "those fields are named on stderr")
     e.add_argument("--effort")
     e.add_argument("--risk", help="new Risk line, or 'none' to DELETE the field "
                    "(re-triage of an obsolete Risk)")
