@@ -51,7 +51,7 @@ line each:
 
 | # | Verdict | Green when |
 |---|---|---|
-| 1 | **Tests** | the suite ran on the final tree and passed |
+| 1 | **Tests** | the suite ran on the final tree and passed, and `git rev-parse HEAD` equals `git rev-parse @{u}` — what merges is what the remote holds, so a commit ahead of the upstream, or a branch with none, is a tree the forge will never see |
 | 2 | **Review** | the review flow ran, and every finding is fixed, or accepted with its justification written down |
 | 3 | **Criterion** | the item's criterion was re-run here and passed |
 | 4 | **Reversal** | the way back is named in one line (revert, flag, restore) |
@@ -60,7 +60,7 @@ line each:
 Five green → merge is the recommended action. Any red → the digest says which one, and the
 merge is not offered. A small diff (guidance: ≲150 lines) is still shown whole in the
 terminal and a large one gets the link, but the diff is a courtesy: the five verdicts are
-what RECOMMEND the merge, and the checked option is what authorizes it.
+what RECOMMEND the merge.
 
 **Verdict 3 has a second shape: a type-B criterion** ends at proof ready, because the
 verdict is the user's, GIVEN rather than inferred. The digest displays the proof and the
@@ -193,7 +193,9 @@ too.
   gate to read the terminal. A PR the strict verdicts keep from merging carries it there
   too, and its DECISION item points at it as the digest reference.
 - **Verdict 2 hardened: every finding FIXED under the fixer cap, QUEUED or PARKED,
-  zero accepted** — accepting a finding is human judgment, and those three rungs
+  zero accepted** — the cap is `../kickoff/AFK.md`'s *The fixer cap*, counted per FIRING of
+  the review and never per life of this pull request. Accepting a finding is human judgment,
+  and those three rungs
   (`../../reference/session-finding.md`) are where one goes instead. A parked finding
   reaches the user in the close's single question. It defers this pull request only
   where it is also a finding no fixer could close. Three cases bind what an
