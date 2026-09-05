@@ -18,13 +18,16 @@ cap, and that the two commands work against a queue whose machine is at its cap.
 WHAT IS NOT: that an unattended session reaches the paragraph. Nothing here can
 see a session, and the close's own block is what carries that.
 
-VACUITY GUARD. The paragraph is found by the cap's key, so deleting the sentence
-from either document empties the search and the first test fails loudly — which
-is how this file was proved: each paragraph was removed in turn, and the run went
-red, before the pull request that added it.
+VACUITY GUARD. The sentence is found by the cap's key, so deleting it from either
+document empties the search and the first test fails loudly — which is how this
+file was proved: each sentence was removed in turn, and the run went red, before
+the pull request that added it. Searching the PARAGRAPH is what this guard has to
+refuse: rung 3 names a handoff of its own, and the `handoff` assertion passed over
+it with the sink gone.
 """
 
 import os
+import re
 import unittest
 
 from queue_fixture import QueueFixture, HEADER
@@ -41,11 +44,16 @@ ITEM = ("- [ ] **T001** — um achado anterior **Class:** AUTONOMOUS. **Effort:*
         "**Criterion:** A: x. **Source:** 2026-09-04\n")
 
 
-def rung_paragraph(path):
-    """The paragraph that names the cap — blank-line separated, as Markdown reads."""
+def rung_sentence(path):
+    """The SENTENCE that names the cap, read across the file's line wrapping.
+
+    NOT the paragraph. The three rungs are one Markdown paragraph, and rung 3
+    writes a handoff of its own — so `assertIn("handoff", ...)` over the
+    paragraph passed with the sink sentence deleted from either document, and
+    proved nothing about the rung. Measured, both ways, in the pull request."""
     with open(path, encoding="utf-8") as f:
-        paragraphs = f.read().split("\n\n")
-    return next((p for p in paragraphs if WIP_KEY in p), "")
+        flat = " ".join(f.read().split())
+    return next((s for s in re.split(r"(?<=\.)\s+", flat) if WIP_KEY in s), "")
 
 
 class TestTheDocumentsNameTheRung(unittest.TestCase):
@@ -53,7 +61,7 @@ class TestTheDocumentsNameTheRung(unittest.TestCase):
     def test_both_documents_name_the_rung_the_cap_leaves_open(self):
         for label, path in DOCS.items():
             with self.subTest(document=label):
-                para = rung_paragraph(path)
+                para = rung_sentence(path)
                 self.assertTrue(para, f"{label} never names `{WIP_KEY}`, so a session "
                                       "reading it does not know `add` can refuse")
                 self.assertIn("edit", para)

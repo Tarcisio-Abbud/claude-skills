@@ -37,11 +37,11 @@ Three rungs are left, read in order:
    check. It goes to a `fixer` under the fixer cap, the fourth exit of `../skills/review/SKILL.md`.
 2. **Queue with a gate** — `tk-queue add` at the moment of discovery, the gate in the item's own
    text. A branch-point finding takes the slice's ticket, failing that ONE item per firing
-   (`../skills/review/SKILL.md`). Never a `fixer`: dispatching backlog is scope creep. At
-   `max-open-items` the `add` refuses, past every flag; `edit --text` folds the finding into
-   an item that exists, `tk-queue handoff` into its briefing.
+   (`../skills/review/SKILL.md`). Never a `fixer`: dispatching backlog is scope creep.
 3. **Park it** — only the user can judge it: a DECISION carrying `--deferred afk`, the branch pushed,
-   the handoff of `../skills/kickoff/WINDOW.md` written, and the package goes on.
+   the handoff of `../skills/kickoff/WINDOW.md` written, and the package goes on. Either `add`
+   refuses at `max-open-items`, past every flag; `edit --text` folds the finding into an item
+   that exists, `tk-queue handoff` into its briefing.
 
 Every finding is listed in the close under the rung that took it, for the user's **veto** on
 their return. `tk-queue cancel "<id>" --why "<the veto>"` is that veto, one command against a
