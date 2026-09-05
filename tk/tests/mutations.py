@@ -2711,6 +2711,192 @@ MUTATIONS = [
      "    except ValueError:\n        return None",
      "    born = datetime.date.fromisoformat(field_value(got[0]))",
      ["TestListShowsTheAge.test_a_legacy_queue_lists_without_an_age_and_without_breaking"]),
+
+    # --- T297: the WIP cap ------------------------------------------------
+
+    ("T297 the cap is not consulted at all",
+     "    check_wip(load_site(), memdir)\n    iid = max_id(memdir) + 1",
+     "    iid = max_id(memdir) + 1",
+     ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap"]),
+
+    ("T297 --force bypasses the cap",
+     "    check_wip(load_site(), memdir)",
+     "    if not args.force:\n        check_wip(load_site(), memdir)",
+     ["TestWipCap.test_force_does_not_reach_the_cap"]),
+
+    ("T297 the cap refuses only PAST itself (off by one)",
+     "    if total < cap:\n        return",
+     "    if total <= cap:\n        return",
+     ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap"]),
+
+    # the over-refusal direction, and the one that would brick every queue on a
+    # machine whose user never chose a number
+    ("T297 an unset cap reads as a cap of zero",
+     "    cap = site.ceilings.get(WIP_KEY) if site else None",
+     "    cap = site.ceilings.get(WIP_KEY, 0) if site else 0",
+     ["TestWipCap.test_no_key_in_the_site_file_is_no_cap",
+      "TestWipCap.test_no_site_file_at_all_is_no_cap"]),
+
+    # the measured bypass: a cap that counts one queue is walked around with
+    # `--dir`, and the WIP is the same WIP
+    ("T297 the cap counts the target queue only (the --dir bypass restored)",
+     "    dirs = [d for name, d in tk_roster.queues(tk_roster.projects_root())\n"
+     "            if not tk_roster.excluded_by(name, allow, deny)]",
+     "    dirs = []",
+     ["TestWipCap.test_the_count_sums_every_queue_on_the_roster",
+      "TestWipCap.test_pointing_dir_at_another_queue_does_not_get_past_the_cap"]),
+
+    ("T297 the queue being written is left out of its own count",
+     "    dirs.append(memdir)", "    pass",
+     ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap"]),
+
+    ("T297 a queue the site file excludes is counted anyway",
+     "            if not tk_roster.excluded_by(name, allow, deny)]", "            if True]",
+     ["TestWipCap.test_a_queue_the_site_file_excludes_is_not_counted"]),
+
+    ("T297 one queue reached by two spellings is counted twice",
+     "        if key in seen:\n            continue", "        if False:\n            continue",
+     ["TestWipCap.test_one_queue_named_twice_is_counted_once",
+      "TestWipCap.test_a_symlink_naming_a_roster_queue_is_still_counted_once"]),
+
+    ("T297 a closed item still counts as open work",
+     '    return sum(1 for kind, _ in split_blocks(content) if kind == "item-open")',
+     '    return sum(1 for kind, _ in split_blocks(content) if kind.startswith("item"))',
+     ["TestWipCap.test_a_done_item_is_not_open_work"]),
+
+    ("T297 the refusal stops naming `done` as a remedy",
+     '    \'`tk-queue done <id> --how "<outcome + pointer>"` for one that is finished, \'',
+     "    ''",
+     ["TestWipCap.test_the_refusal_names_done_and_cancel_and_where_the_number_lives",
+      "TestWipCap.test_the_printed_remedy_RUNS_and_makes_room"]),
+
+    # the cap lives in that file, so a half-read one is a cap that vanishes.
+    # A DIFFERENT anchor from validate_env's identical clause below it — this one
+    # carries the `return`, which is what makes it match once
+    ("T297 a rotten site file reads as an absent one (the cap disappears)",
+     "        if site_names_the_cap():\n            fail(str(e))",
+     "        if False:\n            fail(str(e))",
+     ["TestWipCap.test_a_rotten_site_file_stops_the_add_instead_of_vanishing_the_cap"]),
+
+    # the site file's own half: an unknown key is IGNORED by design, so dropping
+    # the key from the tuple does not fail the file — it silently unsets the cap
+    ("T297 site the cap's key leaves the tuple, so the value reads as an unknown key",
+     'CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items")',
+     'CEILINGS = ("max-local-subagents", "max-cloud-subagents")',
+     ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap",
+      "TestWipCap.test_a_cap_of_zero_is_refused_by_the_site_file"],
+     "bin/tk_site.py"),
+
+    # --- T345: the reader a THIRD PARTY's file goes through ----------------
+
+    # the consolidation itself: `read` is this script's own reader, and it guards
+    # none of what the site file's does — the two defects below were measured
+    # through it, on the queues of projects this session never opened
+    ("T345 the count reads a third party's queue with the unguarded reader",
+     '        content = tk_site.read_text(\n'
+     '            path, "A queue file is Markdown written by `tk-queue`",\n'
+     '            " — the offending byte arrived with text pasted from another encoding")',
+     "        content = read(path)",
+     ["TestWipCap.test_a_sibling_queue_that_is_not_utf8_is_diagnosed_and_not_crashed",
+      "TestWipCap.test_an_invisible_bom_in_a_sibling_queue_does_not_undercount_it"]),
+
+    ("T345 the roster is loaded at import again, so every command depends on it",
+     "        _ROSTER = mod\n    return _ROSTER",
+     "        _ROSTER = mod\n    return _ROSTER\n\n\n_EAGER_ROSTER = roster()",
+     ["TestWipCap.test_a_broken_roster_does_not_reach_the_commands_that_never_read_it",
+      "TestWipCap.test_an_add_with_no_cap_never_loads_the_roster_either"]),
+
+    ("T345 a `tk-roster` that cannot be loaded comes back as a raw traceback",
+     "        except Exception as e:\n            fail(",
+     "        except ZeroDivisionError as e:\n            fail(",
+     ["TestWipCap.test_a_broken_roster_under_a_cap_is_reported_not_crashed"]),
+
+    # --- T346: the lens's findings on the slice above ---------------------
+
+    # the dedup key, whose reachable input is a `--dir` naming a queue the roster
+    # already swept, by another spelling of the same path
+    ("T346 two spellings of one queue are compared as STRINGS",
+     "        key = os.path.realpath(d)", "        key = d",
+     ["TestWipCap.test_a_symlink_naming_a_roster_queue_is_still_counted_once"]),
+
+    ("T346 an absent cap is no longer a no-op: a rotten site file takes the add down",
+     "        if site_names_the_cap():", "        if True:",
+     ["TestWipCap.test_a_rotten_site_file_with_no_cap_in_it_does_not_break_the_add"]),
+
+    # the leak: a project directory carries a client's or a company's name, and a
+    # refusal travels into transcripts and pull request bodies
+    ("T346 the refusal dumps every project on the machine again",
+     '    target = os.path.realpath(memdir)\n'
+     '    mine = sum(n for _, key, n in counts if key == target)\n'
+     '    others = [(d, n) for d, key, n in counts if key != target and n]\n'
+     '    where = f"\\n  {mine:>4}  {memdir}"\n'
+     '    if others:\n'
+     '        where += (f"\\n  {sum(n for _, n in others):>4}  in {len(others)} '
+     'other queue(s) "\n                  "on this machine (`tk-roster` lists them there)")',
+     '    where = "".join(f"\\n  {n:>4}  {d}" for d, _, n in counts if n)',
+     ["TestWipCap.test_the_refusal_never_names_another_project",
+      "TestWipCap.test_the_count_sums_every_queue_on_the_roster"]),
+
+    ("T346 a queue holding nothing is counted among the queues to go look in",
+     "    others = [(d, n) for d, key, n in counts if key != target and n]",
+     "    others = [(d, n) for d, key, n in counts if key != target]",
+     ["TestWipCap.test_an_empty_queue_is_not_counted_as_a_queue_holding_work"]),
+
+    ("T346 a count shrunk by HOME passes in silence",
+     "    if not os.path.isdir(root):", "    if False:",
+     ["TestWipCap.test_a_home_with_no_projects_directory_says_the_count_shrank"]),
+
+    # the two prose entries: five numbers in this slice's prose were wrong, none
+    # of them known to any command. These two are now known to one
+    ("T346 the overshoot goes back to one item over the cap",
+     """    session adding to ANOTHER queue between this count and our write. The bound
+    is not one item: every add that races this one counts the same free slot, so
+    k of them land k-1 items above the cap, and only the NEXT add on any queue
+    refuses. Measured, four adds on four queues with nine open against a cap of
+    ten: thirteen open, three above.""",
+     """    session adding to ANOTHER queue between this count and our write, which can
+    put the machine one item over the cap; the next `add` on either queue then
+    refuses.""",
+     ["TestWipCap.test_the_overshoot_the_missing_locks_cost_is_stated_as_measured"]),
+
+    ("T346 the refusal is said again to burn an ID it never reserved",
+     """    # the WIP cap. It sits above `max_id` for reading order, not for safety:
+    # `max_id` only READS, nothing is reserved, and a refusal below it would
+    # leave no hole in the sequence — the claim that it would was written here
+    # and was never true.""",
+     """    # the WIP cap, and BEFORE the ID is allocated: a refusal that has already
+    # spent a number leaves a hole in the sequence.""",
+     ["TestWipCap.test_no_prose_claims_a_refused_add_would_burn_an_id"]),
+
+    # --- the two axes, over the batch above (T346, cold session) ----------
+
+    ("T346 the cap is looked for in UTF-8 only, so a UTF-16 site file loses it",
+     '(("utf-8", "replace"),) + WIDE_DECODINGS', '(("utf-8", "replace"),)',
+     ["TestWipCap.test_a_site_file_in_utf16_that_sets_the_cap_still_stops_the_add"]),
+
+    ("T346 reading the wide encodings makes an ABSENT cap fatal too",
+     "        if any(assignment.match(line) for line in text.splitlines()):\n"
+     "            return True\n"
+     "    return False",
+     "        if any(assignment.match(line) for line in text.splitlines()):\n"
+     "            return True\n"
+     "    return True",
+     ["TestWipCap.test_a_site_file_in_utf16_with_no_cap_in_it_still_does_not_break_the_add"]),
+
+    ("T346 the roster is said to be imported at the top of the file again",
+     "comes from `tk-roster`, loaded on FIRST USE by `roster()` and not at import",
+     "comes from `tk-roster`, imported at the top of this file",
+     ["TestWipCap.test_no_prose_says_the_roster_is_imported_at_the_top_of_the_file"]),
+
+    ("T346 the no-leak claim widens back from the refusal to the whole command",
+     "    # WHERE the work is, WITHOUT writing another project's name into THE",
+     "    # WHERE the work is, WITHOUT writing another project's name into this session's output. The",
+     ["TestWipCap.test_no_prose_claims_the_refusals_channel_never_names_another_project"]),
+
+    ("T346 the untested branch claims a first `add` reaches it",
+     "THAT RACE IS THE ONLY WAY INTO THAT",
+     "The other reachable way in is a first `add` into a brand-new queue. THAT IS NOT",
+     ["TestWipCap.test_the_untested_branch_says_it_is_the_race_and_not_a_first_add"]),
 ]
 
 
@@ -2778,7 +2964,7 @@ def main():
                                   "TestASetextTitleIsKeptWithItsUnderline",
                                   "TestClearingOnAClassLessItemIsRefused",
                                   "TestBirthDate", "TestMigrateBackdates",
-                                  "TestListShowsTheAge"])
+                                  "TestListShowsTheAge", "TestWipCap"])
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1

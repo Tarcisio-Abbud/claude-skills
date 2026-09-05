@@ -193,10 +193,13 @@ tk/
                                   writes one only when the user asks
   reference/vista-template.html   that page in its smallest form: the five markers, both
                                   themes, and nothing the browser fetches
-  bin/tk-queue                    deterministic CLI: only writer of the queue files
+  bin/tk-queue                    deterministic CLI: only writer of the queue files.
+                                  `add` also refuses at the site file's WIP cap,
+                                  summed over the roster's queues and with no bypass
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
-                                  identity, the roster of environments, the two ceilings,
-                                  and the fleet's allow/denylist of projects
+                                  identity, the roster of environments, the ceilings (two
+                                  for subagents, one for the queue's open items), and the
+                                  fleet's allow/denylist of projects
   bin/tk-contract                 generates the block a dispatched subagent is handed,
                                   from the site file and the role table — never written
                                   from memory, and carrying no copy of either
@@ -292,13 +295,17 @@ tk/
                                   no fixture was adjusted to agree with the measurement
   tests/mutations_prune.py        entries only, through the same seam
   tests/test_afk_audit.py         audit of the afk contract against the skill files
+  tests/test_unattended_ladder.py the rung an unattended session has left when the WIP
+                                  cap refuses its `add`: both documents that prescribe
+                                  `add` must name `edit --text` and `handoff`, and both
+                                  commands must RUN against a queue at its cap
   tests/test_window_wall.py       step 2 of the wall, lifted out of WINDOW.md and run
                                   against a throwaway queue: an ORDINARY item (no
                                   DECISION, no --deferred) ends up pointing at its
                                   briefing through the edit the handoff prints
   tests/mutations_window_wall.py  entries only, through the same seam; six of its eleven
                                   entries edit a skill file, the other five the bin
-  tests/queue_fixture.py          the throwaway queue the two doc-conformance suites run
+  tests/queue_fixture.py          the throwaway queue the three doc-conformance suites run
                                   their prescriptions against: the directory, the tk-queue
                                   shim on PATH, the paste-into-bash and the reached() log
   tests/test_manifests.py         the two tk manifests against the skills on disk:

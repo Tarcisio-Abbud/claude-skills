@@ -308,7 +308,7 @@ Four numbers on one line — **planned × completed × wall clock × context at 
 none at all, `?`). Then the **sensor**: births per merged pull request — the queue IDs born in the
 package (the age column of `tk-queue list`; highest − lowest + 1, one queue only, and a sibling's
 IDs in the range count too) over its merged pull requests, with `pack`'s open count before and
-after. 02/09 read 39 over 5 ≈ 7.8; the target is under 2, open not rising. One deviation line per
+after. The target is under 2, open not rising. One deviation line per
 departure from the role table, and the audit's block. An unclosed item carries the first reason that
 applies: **blocked** (another environment, "runs on: X"); **carried** under the dependency gate (a
 sibling's claim, owner and moment), the lane gate (a spec's branch on the remote, the pull request's
@@ -331,22 +331,22 @@ the step that stopped the package and the state the tree was left in.
 ## The fixer cap
 
 **A tooling repo — one whose code handles no business data — gets ONE correction cycle per pull
-request.** The cap counts per firing of the review, never for the life of the pull request. A
-review re-fired whole by *A resumed generation starts here* carries its own cycle. That cycle is a
-single `fixer` dispatch, never resumed: findings it leaves unclosed go to ONE item carrying its
-inventory, not to a second dispatch. A `fixer` whose batch touches a file outside the slice's diff
-stops and reports. Whatever a re-review finds after that cycle enters the queue by
-`tk-queue add --dir "<queue dir>"`, class per the finding's nature, as *A session finding,
-unattended* prescribes. The close's verdict 2 counts a finding queued this way as handled, never
-as one no fixer could close, so the pull request does not wait on it. A repository handling
-business data is uncapped.
+request.** The cap counts per firing of the review, never for the life of the pull request. A review
+re-fired whole by *A resumed generation starts here* carries its own cycle. That cycle is a single
+`fixer` dispatch, never resumed: findings it leaves unclosed go to ONE item carrying its inventory. A
+`fixer` whose batch touches a file outside the slice's diff stops and reports. Whatever a re-review
+finds after that cycle enters the queue by `tk-queue add --dir "<queue dir>"`, class per the finding's
+nature, as *A session finding, unattended* prescribes. The close's verdict 2 counts a finding queued
+this way as handled, never as one no fixer could close, so the pull request does not wait on it.
 
 ## A session finding, unattended
 
 Unattended, `../../reference/session-finding.md`'s ladder keeps three rungs. **Fix on the spot** —
 a `fixer` under *The fixer cap*. **Queue with a gate** — `tk-queue add --dir "<queue dir>"` at the
 moment of discovery. **Park** — a DECISION with `--deferred afk`, its branch pushed and its
-handoff written. Nothing is discarded, and the package never waits on a parked finding.
+handoff written. Either `add` is REFUSED at `max-open-items` past every flag: fold with
+`edit --text` or `handoff`, never by closing one. Nothing is discarded, and the package never waits
+on a parked finding.
 
 At the close, never mid-package, ONE `AskUserQuestion` batches every parked DECISION; that
 question and the close report are the same text. Portuguese, these labels verbatim:

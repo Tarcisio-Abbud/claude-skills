@@ -138,10 +138,10 @@ MUTATIONS = [
 
     # -- the prose that calls it ---------------------------------------------
     ("the seam is sent back to the statusline — the shipped defect, in AFK.md",
-     """the last
-from `../../bin/tk-context` at that seam""",
-     """the last
-read from the statusline at that seam""",
+     """the last from
+`../../bin/tk-context` at that seam""",
+     """the last read
+from the statusline at that seam""",
      [CALLS_IT, NOT_STATUS], AFK),
 
     ("WINDOW.md says the number IS in the statusline",

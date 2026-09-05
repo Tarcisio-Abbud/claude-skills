@@ -19,6 +19,7 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
     # ceilings, per machine
     max-local-subagents = 3
     max-cloud-subagents = 4
+    max-open-items = 40
 
   identity              REQUIRED. Which roster entry this machine IS. An item
                         whose Env names it — or names nothing — runs here.
@@ -31,6 +32,14 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
   max-cloud-subagents   optional. Concurrent CLOUD subagents — a concurrency
                         ceiling only; it says nothing about quota, which is one
                         window shared by both venues.
+  max-open-items        optional. The WIP cap: how many OPEN items this machine
+                        may hold at once, summed across every queue on the
+                        roster. `tk-queue add` refuses AT it, with no bypass —
+                        room is made by taking an item out (`done`/`cancel`).
+                        Unset means NO cap, which is what every queue had before
+                        the gate: a ceiling nobody chose is not a ceiling, and a
+                        number shipped in the plugin would refuse every add on
+                        the first machine already above it.
   fleet-allow           optional. If present, the ONLY projects the fleet may
                         sweep. Absent means every queue on the machine enters.
   fleet-deny            optional. Projects the fleet must not touch. Applied
@@ -74,7 +83,12 @@ SITE_FILE = os.path.join("~", ".claude", "tk", "env")
 NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}\Z")
 RESERVED_NAME = "none"
 REQUIRED = ("identity", "environments")
-CEILINGS = ("max-local-subagents", "max-cloud-subagents")
+# Every key whose value is a positive whole number. All optional, and read by a
+# DIFFERENT caller each: the two subagent ceilings by the contract generator,
+# `max-open-items` by `tk-queue add`. They share this tuple because they share
+# the validation — a ceiling that is not a number, or is zero, is refused here
+# once rather than in each reader.
+CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items")
 # The fleet's allow/denylist. Both optional, both comma-separated like
 # `environments`, and both read by the roster sweep rather than by this module,
 # which only says whether the file is trustworthy.
@@ -92,7 +106,8 @@ PROJECT_NAME_RE = re.compile(f"[{PROJECT_ALPHABET}]+\\Z")
 TEMPLATE = """  identity = <this machine's environment name>
   environments = <name>, <name>
   max-local-subagents = <concurrent local subagents>
-  max-cloud-subagents = <concurrent cloud subagents>"""
+  max-cloud-subagents = <concurrent cloud subagents>
+  max-open-items = <open items this machine may hold at once>"""
 
 
 class SiteError(Exception):
@@ -246,10 +261,16 @@ def parse(text, path):
                 fleet_deny=lists.get("fleet-deny", ()))
 
 
-def load(path=None):
-    """The parsed site file, or None when there is none — the two cases the
-    caller answers differently (one asks the user to create it; the other names
-    the defect). Raises SiteError for a file that exists and is unusable.
+def read_text(path, kind, utf8_hint=""):
+    """The file's text with every U+FEFF removed, or None when there is no such
+    file. Raises SiteError for a path that exists and cannot be read as text.
+
+    THE GUARDS LIVE HERE rather than inside `load`, so a reader of ANOTHER file
+    inherits them instead of writing its own set. `tk-queue`'s WIP cap counts
+    the queues of projects this session never opened — files it did not write,
+    which is exactly the reading measured below. `kind` and `utf8_hint` carry
+    what each caller knows about its own file, and are the only part of a
+    diagnosis that differs between them.
 
     The reading itself is guarded, and not only the parsing: a defect does not
     have to be in the file's TEXT to exist. Measured on this module — a site
@@ -269,17 +290,21 @@ def load(path=None):
     later line. U+FEFF has no legitimate use in a file of slugs and numbers, and
     `str.strip()` does not remove it — it is not whitespace.
 
+    STRIPPING BELONGS TO A READER THAT ONLY READS. A caller that writes its file
+    back must not reach this function: removing a character the user typed is an
+    edit nobody asked for. `tk-queue.read` feeds such a rewrite and keeps its own
+    `utf-8-sig`; only its COUNTING path reads through here.
+
     The regular-file check is the third of these: `open()` on a FIFO with no
     writer does not raise, it BLOCKS — the session hangs with no output at all,
     which is worse than the traceback the guards above replace, and no timeout
     anywhere would explain it.
     """
-    path = path or site_path()
     if not os.path.exists(path):
         return None
     if not os.path.isfile(path):
         raise SiteError(f"{path} is not a plain file (it is a directory, a device or a "
-                        "pipe). The site file is hand-written text — check the path.")
+                        f"pipe). {kind} — check the path.")
     try:
         with open(path, encoding="utf-8") as f:
             text = f.read().replace("﻿", "")
@@ -289,7 +314,21 @@ def load(path=None):
                         "it is readable.")
     except UnicodeDecodeError as e:
         raise SiteError(f"{path} is not valid UTF-8 (byte {e.object[e.start]:#04x} at "
-                        f"position {e.start}). Save it as UTF-8 — a machine name is a "
-                        "plain slug, so the offending byte is almost certainly in a "
-                        "comment.")
+                        f"position {e.start}). Save it as UTF-8{utf8_hint}.")
+    return text
+
+
+def load(path=None):
+    """The parsed site file, or None when there is none — the two cases the
+    caller answers differently (one asks the user to create it; the other names
+    the defect). Raises SiteError for a file that exists and is unusable.
+
+    The READING is `read_text`'s, guards and all; what is left here is the parse.
+    """
+    path = path or site_path()
+    text = read_text(path, "The site file is hand-written text",
+                     " — a machine name is a plain slug, so the offending byte is "
+                     "almost certainly in a comment")
+    if text is None:
+        return None
     return parse(text, path)
