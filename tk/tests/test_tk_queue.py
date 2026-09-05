@@ -118,6 +118,32 @@ class QueueTest(unittest.TestCase):
                               env=env, timeout=timeout)
 
 
+# --- the redirected HOME reaches EVERY spawn, not only run_tk's -----------
+
+class TestEverySpawnCarriesTheRedirectedHome(unittest.TestCase):
+    """`setUp` redirects HOME for every test, and `run_tk` passes it on. A test
+    that reaches for `subprocess` directly does not get it for free: it reads the
+    REAL `~/.claude/tk/env`, so the site file of the machine running the suite
+    decides the result. Four such calls existed, and two of them failed on `main`
+    once the live queue reached its open-item cap -- a green suite turning red
+    because of a number in the user's queue, with nothing in the diff to blame.
+
+    The check derives the call list from the source instead of counting it, so a
+    fifth spawn written without `env=` fails here rather than years later on
+    somebody's machine."""
+
+    def test_no_spawn_of_tk_queue_inherits_the_real_home(self):
+        source = open(__file__, encoding="utf-8").read()
+        calls = re.findall(r"subprocess\.(?:run|Popen)\((?:[^()]|\([^()]*\))*\)",
+                           source, re.S)
+        self.assertTrue(calls, "the scan found no subprocess call at all -- it broke")
+        naked = [c for c in calls if "env=" not in c]
+        self.assertEqual(
+            naked, [],
+            "these spawns inherit the real HOME and read the machine's own site "
+            "file: " + "; ".join(c.split("\n")[0] for c in naked))
+
+
 # --- T025: the displayed ID form must be accepted ------------------------
 
 class TestPrefixedId(QueueTest):
@@ -191,7 +217,8 @@ class TestConcurrency(QueueTest):
         proc = subprocess.Popen(
             [sys.executable, TK, "add", "bloqueado", "--class", "AUTONOMOUS",
              "--effort", "S", "--criterion", "A: c", "--dir", self.mem],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(os.environ, HOME=self.home))
         try:
             with self.assertRaises(subprocess.TimeoutExpired,
                                    msg="the writer did not wait for the lock"):
@@ -217,7 +244,8 @@ class TestConcurrency(QueueTest):
             r = subprocess.run(
                 [sys.executable, TK, "add", "bloqueado", "--class", "AUTONOMOUS",
                  "--effort", "S", "--criterion", "A: c", "--dir", self.mem],
-                capture_output=True, text=True, timeout=60)
+                capture_output=True, text=True, timeout=60,
+                env=dict(os.environ, HOME=self.home))
         finally:
             os.close(lock_fd)
         self.assertNotEqual(r.returncode, 0, "the blocked command reported success")
@@ -675,7 +703,8 @@ class TestDirResolution(QueueTest):
         self.seed(item(1, "um"))
         r = subprocess.run([sys.executable, TK, "--dir", self.mem, "add", "novo",
                             "--class", "AUTONOMOUS", "--effort", "S", "--criterion", "A: c"],
-                           capture_output=True, text=True, cwd=self.dir)
+                           capture_output=True, text=True, cwd=self.dir,
+                           env=dict(os.environ, HOME=self.home))
         self.assertEqual(r.returncode, 0, r.stderr)
         after = self.run_tk("list")
         self.assertIn("T002", after.stdout)
@@ -1181,7 +1210,8 @@ class TestTargetQueueAnnounced(QueueTest):
         with open(os.path.join(other, "next-steps.md"), "w", encoding="utf-8") as f:
             f.write(HEADER + item(19, "revisar Risk obsoleto"))
         r = subprocess.run([sys.executable, TK, "edit", "T019", "--effort", "L",
-                            "--dir", other], capture_output=True, text=True, cwd=self.dir)
+                            "--dir", other], capture_output=True, text=True, cwd=self.dir,
+                           env=dict(os.environ, HOME=self.home))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(other, r.stderr)
         self.assertNotIn(self.mem, r.stderr)
@@ -5491,32 +5521,43 @@ class TestAClassLessChainIsNotAField(QueueTest):
     # --- and the repair the rule must NOT lock out ------------------------
 
     def test_a_class_less_item_can_still_be_GIVEN_a_class(self):
-        """`--class` is the flag that gives the item its anchor. It is never
-        located in the chain of an item that carries none — it is appended — so
-        the position rule has nothing to say about it, and a rule that refused it
-        would lock the repair out of the one population it exists for."""
-        for seeded, iid in ((CLASSLESS_REAL, "T023"), (CLASSLESS_PROJECT, "T021")):
+        """`--class` is the flag that gives the item its anchor, so a rule that
+        refused it would lock the repair out of the one population it exists for.
+
+        Where the item already ends its line with a chain, the anchor goes AHEAD
+        of that chain and not after it — T169, and `TestTheClassLandsAheadOfTheChain`
+        is where that position is proved. Here it is asserted only so this class,
+        which owns the class-less item, cannot go on describing the old one."""
+        for seeded, iid, at in ((CLASSLESS_REAL, "T023", "legado sem classe. "),
+                                (CLASSLESS_PROJECT, "T021", "item, cita o ")):
             with self.subTest(item=iid):
                 self.seed(seeded)
                 r = self.run_tk("edit", iid, "--class", "AUTONOMOUS")
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(r.stdout, f"{iid} updated\n")
                 self.assertEqual(self.body(),
-                                 HEADER + seeded.rstrip("\n")
-                                 + " **Class:** AUTONOMOUS.\n")
+                                 HEADER + seeded.replace(
+                                     at, at + "**Class:** AUTONOMOUS. "))
                 self.assertIn(f"{iid}  AUTONOMOUS", self.run_tk("list").stdout)
 
     def test_the_refusal_does_not_offer_a_remedy_that_is_a_dead_end(self):
-        """`--class` appends the anchor at the END of the line, so the fields
-        already in the chain stay before it and stay unwritable. A refusal that
-        named it as the remedy would send the caller to run it and meet the same
-        refusal — so it says, in the same sentence, that it is not the remedy."""
+        """A refusal that named `--class` as THE remedy would be wrong in both
+        directions, and the message says which one this item is in.
+
+        On CLASSLESS_REAL the fields are real, so the class repairs the item and
+        `--effort` goes through afterwards — that is T169's whole point. On
+        CLASSLESS_PROJECT the same anchor turns four words of the item's own title
+        into a **Project:** value, and `--project` would then overwrite them. The
+        message therefore stops calling the class a remedy for the refused edit and
+        says what it does to the run it anchors."""
         self.seed(CLASSLESS_REAL)
         r = self.run_tk("edit", "T023", "--effort", "L")
-        self.assertIn("is NOT the remedy for this", r.stderr)
+        self.assertIn("is not the remedy for this either", r.stderr)
+        self.assertIn("makes EVERY segment now ending that line a field", r.stderr)
         self.assertEqual(self.run_tk("edit", "T023", "--class", "AUTONOMOUS").returncode, 0)
         again = self.run_tk("edit", "T023", "--effort", "L")
-        self.assertEqual(again.returncode, 1, again.stdout)      # the dead end, run
+        self.assertEqual(again.returncode, 0, again.stderr)   # the dead end is gone
+        self.assertIn("**Effort:** L.", self.body())
 
     def test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_edit_through(self):
         """A refusal is only acceptable while its remedy is reachable, so the
@@ -5853,7 +5894,7 @@ class TestAFieldAppendedBeforeTheAnchorIsRefused(QueueTest):
         self.assertEqual(self.body(), HEADER + R4_BARE)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("T009 names no **Class:** in its field chain, so an appended "
-                      "**Effort:** would sit BEFORE the anchor", r.stderr)
+                      "**Effort:** is a field no gate and no report may read", r.stderr)
         self.assertIn("Nothing was changed", r.stderr)
 
     def test_the_file_and_the_reader_no_longer_disagree_about_the_field(self):
@@ -5862,7 +5903,9 @@ class TestAFieldAppendedBeforeTheAnchorIsRefused(QueueTest):
         The file and its reader disagreeing is the finding — not the `?`.
 
         They agree now, and they agree the honest way: nothing was written, so
-        nothing claims a value the reader cannot see."""
+        nothing claims a value the reader cannot see. T169 closed the other half of
+        that sequence, so this item's `pack` line reads `?` because it carries no
+        Effort at all, which is the truth about it."""
         self.seed(R4_BARE)
         self.assertEqual(self.run_tk("edit", "T009", "--effort", "L").returncode, 1)
         self.assertEqual(self.run_tk("edit", "T009", "--class", "AUTONOMOUS").returncode, 0)
@@ -5882,8 +5925,8 @@ class TestAFieldAppendedBeforeTheAnchorIsRefused(QueueTest):
                 r = self.run_tk("edit", "T009", flag, value)
                 self.assertEqual(self.body(), HEADER + R4_BARE)
                 self.assertEqual(r.returncode, 1, r.stdout)
-                self.assertIn(f"an appended **{marker}:** would sit BEFORE the anchor",
-                              r.stderr)
+                self.assertIn(f"an appended **{marker}:** is a field no gate and no "
+                              "report may read", r.stderr)
 
     def test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through(self):
         """A refusal is only acceptable while its remedy is reachable, so the
@@ -5921,6 +5964,298 @@ class TestAFieldAppendedBeforeTheAnchorIsRefused(QueueTest):
         r = self.run_tk("edit", "T001", "--project", "tk")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("**Project:** tk.", self.body())
+
+
+# --- T169: the class anchor goes AHEAD of the chain the item already carries --
+#
+# `real_fields` measures every field from the **Class:** the chain begins at, and
+# `edit --class` wrote that anchor at the END of the first line. So an item with no
+# class but with REAL fields — exactly what `migrate` produces when it folds a
+# continuation line up — came out of its own repair with every field stranded
+# before the anchor, unreadable to every gate and every report, for ever. Measured
+# end to end, three commands, each exiting 0 and printing success:
+#
+#   migrate                        "1 item(s) with fields off the first line: folded up"
+#   pack                           "no **Class:** at all: `tk-queue edit <id> --class ...`"
+#   edit T031 --class AUTONOMOUS   "T031 updated"
+#   pack                           T031  ?          <- the Effort the file states is M
+#
+# The remedy in the second line is `pack`'s own, which is what made the trap a
+# straight road rather than a corner. The anchor now goes ahead of the run, which
+# is the position `compose_item` writes it in — the POSITION, not the whole item:
+# `add` also stamps a **Born:** the repair never writes and normalises the field
+# ORDER the repair preserves, so "byte-identical to one `add` would have written",
+# which this comment and a test name both used to claim, is false and was measured
+# false. And the price, an item whose own prose wears a field's shape being
+# promoted with the rest, is announced on stderr rather than guessed at.
+#
+# The first review of this slice measured two things the anchor alone did not
+# close, and both are below:
+#
+#   the promotion feeds the SAME call   the anchor makes every promoted segment a
+#                                       real field for the rest of `cmd_edit`'s flag
+#                                       loop, so `--class X --project tk` OVERWROTE
+#                                       four words of a title and `--class X --risk
+#                                       none` DELETED a segment whole, each rc 0
+#   the trap survived one shape         a class-less item still UNFOLDED gets the
+#                                       anchor appended to a chain-less first line,
+#                                       which strands the continuation fields AND
+#                                       stops `migrate` from ever folding them —
+#                                       the same dead end, reached by the same
+#                                       `pack` remedy, in the other order
+
+T169_FOLDED = ("- [ ] **T031** — item legado sem classe **Effort:** M. "
+               "**Criterion:** A: x. **Source:** 2026-08-13\n")
+T169_UNFOLDED = ("- [ ] **T031** — item legado sem classe\n"
+                 "  **Effort:** M. **Criterion:** A: x. **Source:** 2026-08-13\n")
+T169_BARE = "- [ ] **T032** — legado sem campo nenhum.\n"
+T169_PROSE = ("- [ ] **T033** — item, cita o **Project:** de outra fila inteira. "
+              "**Effort:** M.\n")
+
+
+class TestTheClassLandsAheadOfTheChain(QueueTest):
+
+    def test_the_anchor_goes_ahead_of_the_fields_already_on_the_line(self):
+        """The file first, whole: where the anchor LANDS is the finding, and the
+        `?` is only how a reader meets it."""
+        self.seed(T169_FOLDED)
+        r = self.run_tk("edit", "T031", "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(), HEADER + T169_FOLDED.replace(
+            "sem classe **Effort:**", "sem classe **Class:** AUTONOMOUS. **Effort:**"))
+        pack = self.run_tk("pack").stdout
+        self.assertIn("T031  M", pack)
+        self.assertNotIn("T031  ?", pack)
+
+    def test_the_anchor_lands_where_add_puts_it_and_the_item_is_not_identical(self):
+        """The anchor's POSITION is what the repair shares with `add`, and the
+        prefix is read off a REAL `add` rather than a literal — a literal cannot
+        drift when `compose_item` does, which is the whole failure a test named
+        for that function is supposed to catch.
+
+        The second half is the correction: "byte-identical to one `add` would have
+        written" was asserted by this test's old name and by the source comment,
+        and it is false. `add` stamps **Born:** and writes the fields in
+        `compose_item`'s order; the repair writes neither. Asserted, so the claim
+        cannot come back."""
+        self.seed(T169_FOLDED)
+        self.assertEqual(self.run_tk("edit", "T031", "--class", "AUTONOMOUS").returncode, 0)
+        self.assertEqual(
+            self.body(),
+            HEADER + "- [ ] **T031** — item legado sem classe **Class:** AUTONOMOUS. "
+                     "**Effort:** M. **Criterion:** A: x. **Source:** 2026-08-13\n")
+        repaired = next(l for l in self.body().splitlines() if "**T031**" in l)
+        r = self.run_tk("add", "item legado sem classe", "--class", "AUTONOMOUS",
+                        "--effort", "M", "--criterion", "A: x")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        added = next(l for l in self.body().splitlines() if "**T032**" in l)
+        body = lambda line: line.split("** — ", 1)[1]
+        # everything `compose_item` writes up to the field AFTER the anchor: the
+        # item's text, then `**Class:** AUTONOMOUS. ` — the repair must open the
+        # same way, whatever compose_item does to that prefix later
+        lead = body(added).split("**Effort:**")[0]
+        self.assertEqual(lead, "item legado sem classe **Class:** AUTONOMOUS. ")
+        self.assertTrue(body(repaired).startswith(lead), body(repaired))
+        # and the rest is NOT the same item
+        self.assertNotEqual(body(repaired), body(added))
+        self.assertIn("**Born:**", added)
+        self.assertNotIn("**Born:**", repaired)
+
+    def test_a_promotion_ENDS_the_call_instead_of_feeding_the_next_flag(self):
+        """The destruction the anchor opened, in one command, measured both ways.
+
+        The anchor promotes the run, and every later iteration of the flag loop
+        then reads that run as real fields — so the same command that made the
+        item's own prose a **Project:** goes on to overwrite it, and `--risk none`
+        deletes it whole. Before this refusal both exited 0 and printed "updated".
+        The warning cannot stand in for the refusal: it fires in the same run and
+        its remedy is `cancel` + re-add, which is advice about a copy that is
+        already gone."""
+        for flags, gone in ((("--project", "tk"), "de outra fila inteira"),
+                            (("--risk", "none"), "de outra fila inteira")):
+            with self.subTest(flags=flags):
+                self.seed(T169_PROSE)
+                r = self.run_tk("edit", "T033", "--class", "AUTONOMOUS", *flags)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("Nothing was changed", r.stderr)
+                self.assertIn("**Project:**, **Effort:**", r.stderr)
+                # the file, whole: this command rewrites user data and the defect
+                # it replays survives any narrower assertion
+                self.assertEqual(self.body(), HEADER + T169_PROSE)
+                self.assertIn(gone, self.body())
+
+    def test_the_refusals_remedy_runs_and_the_two_commands_land_the_field(self):
+        """A refusal is only acceptable while its remedy is reachable, so the two
+        commands the message prints are run in order and the field lands.
+
+        The population is the one where the promoted run really IS fields — the
+        folded legacy item — because that is the item for which the answer is
+        "run them apart", not `cancel` + re-add."""
+        self.seed(T169_FOLDED)
+        r = self.run_tk("edit", "T031", "--class", "AUTONOMOUS", "--effort", "L")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        printed = re.findall(r"`tk-queue ([^`]+)`", r.stderr)
+        argv = shlex.split(printed[0].replace("<id>", "T031"))
+        first = self.run_tk(*argv)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertIn("warning:", first.stderr)
+        second = self.run_tk("edit", "T031", "--effort", "L")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn("**Class:** AUTONOMOUS. **Effort:** L.", self.body())
+        self.assertIn("T031  L", self.run_tk("pack").stdout)
+
+    def test_the_class_alone_is_still_taken_by_the_same_item(self):
+        """The over-refusal direction of the rule above: refusing the whole call
+        whenever a promotion happens would lock `--class` out of the population it
+        was written for."""
+        self.seed(T169_PROSE)
+        r = self.run_tk("edit", "T033", "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("de outra fila inteira", self.body())
+
+    def test_the_promotion_warning_waits_for_the_write_to_commit(self):
+        """Compose, check, act — the order every other gate in this file keeps.
+        Printed before the write, the warning announced in the PAST TENSE a
+        promotion `check_ceiling` then refused: exit 1, file untouched, and a
+        caller told the class had gone ahead of a run it never moved.
+
+        `--text` is the flag that reaches this, and after the refusal above it is
+        the only one that does: it is measured against the BLOCK ceiling and it is
+        not one of the flags the loop locates in the chain, so it rides along with
+        `--class` where `--project` and `--risk` are now refused."""
+        self.seed(T169_PROSE)
+        r = self.run_tk("edit", "T033", "--text", "x" * 700, "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("ceiling", r.stderr.lower())
+        self.assertNotIn("went AHEAD", r.stderr)
+        self.assertEqual(self.body(), HEADER + T169_PROSE)
+
+    def test_a_class_less_item_still_UNFOLDED_is_refused_and_told_the_order(self):
+        """The trap on the shape the anchor did not reach, read off `pack` and run
+        verbatim — the order this time is `pack` FIRST, which is the order `pack`
+        itself induces and the one the old test never exercised.
+
+        With nothing on the first line to sit ahead of, the anchor is APPENDED
+        there and the item's real fields stay on the continuation line: unreadable
+        to every gate, and now unfoldable, since `fold_chain_onto_first_line`
+        returns early on an item whose chain reaches a **Class:**. Measured before
+        this refusal: `pack` printed `edit <id> --class AUTONOMOUS`, that command
+        exited 0 with no warning at all, and `pack` then listed T031 ELIGIBLE with
+        Effort `?` — a candidate for an unattended package whose own fields nothing
+        can read."""
+        self.seed(T169_UNFOLDED, log="")
+        pack = self.run_tk("pack").stdout
+        self.assertIn("T031  item legado sem classe  — no **Class:** field, and its "
+                      "fields sit off the first line", pack)
+        printed = next(l for l in pack.splitlines() if l.startswith("- no **Class:**"))
+        first, second = [shlex.split(c.replace("<id>", "T031"))
+                         for c in re.findall(r"`tk-queue ([^`]+)`", printed)]
+        # the class, run before the fold the line names, is REFUSED — and the file
+        # is exactly as it was
+        early = self.run_tk(*second)
+        self.assertEqual(early.returncode, 1, early.stdout)
+        self.assertIn("Fold first", early.stderr)
+        self.assertEqual(self.body(), HEADER + T169_UNFOLDED)
+        # and the printed order works
+        self.assertEqual(self.run_tk(*first).returncode, 0)
+        self.assertEqual(self.run_tk(*second).returncode, 0)
+        after = self.run_tk("pack").stdout
+        self.assertIn("T031  M", after)
+        self.assertNotIn("T031  ?", after)
+
+    def test_the_claims_diagnosis_names_the_fold_before_the_class(self):
+        """`claim` prescribes `edit --class` for a class-less item, and that command
+        is now refused for this shape — a remedy that is itself refused is the dead
+        end this file has already paid for once."""
+        self.seed(T169_UNFOLDED)
+        r = self.run_tk("claim", "T031", "--as", "afk-host")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("`tk-queue migrate`", r.stderr)
+        argv = shlex.split(re.search(r"`tk-queue (migrate)`", r.stderr).group(1))
+        self.assertEqual(self.run_tk(*argv).returncode, 0)
+        self.assertEqual(self.run_tk("edit", "T031", "--class", "AUTONOMOUS").returncode, 0)
+        again = self.run_tk("claim", "T031", "--as", "afk-host")
+        self.assertEqual(again.returncode, 0, again.stderr)
+
+    def test_an_item_whose_note_merely_QUOTES_a_marker_is_covered_too(self):
+        """The other half of the same shape, and the reason the refusal does not
+        promise the fold: a continuation line that is prose quoting a marker is
+        refused by `migrate` as well, so the message names `cancel` + re-add as the
+        way out and both commands say the same thing."""
+        seeded = ("- [ ] **T031** — item legado sem classe\n"
+                  "  ver a **Risk:** nota antiga, que ninguém escreveu como campo\n")
+        self.seed(seeded, log="")
+        r = self.run_tk("edit", "T031", "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("`cancel` and re-add", r.stderr)
+        self.assertEqual(self.body(), HEADER + seeded)
+        # `migrate` will not fold it either — the message never promised it would
+        m = self.run_tk("migrate")
+        self.assertEqual(m.returncode, 0, m.stderr)
+        self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_the_whole_trap_from_the_continuation_line_through_packs_own_remedy(self):
+        """The three commands as they were measured, with the repair read OFF
+        `pack`'s output and run verbatim — a remedy a command prints is code, and
+        this one produced the unreadable item it was printed to prevent.
+
+        The age is asserted too: **Source:** is in that stranded run, so `migrate`
+        could not backdate the item either, and `list` showed `?` beside the `?`
+        `pack` showed."""
+        self.seed(T169_UNFOLDED, log="")
+        self.assertEqual(self.run_tk("migrate").returncode, 0)
+        pack = self.run_tk("pack").stdout
+        self.assertIn("T031  item legado sem classe  — no **Class:** field", pack)
+        printed = next(l for l in pack.splitlines() if "no **Class:** at all" in l)
+        argv = shlex.split(re.search(r"`tk-queue (.+?)`", printed).group(1)
+                           .replace("<id>", "T031"))
+        again = self.run_tk(*argv)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertIn("T031  M", self.run_tk("pack").stdout)
+        # and the **Source:** the fold left unreadable is reachable again
+        self.assertEqual(self.run_tk("migrate").returncode, 0)
+        self.assertRegex(self.run_tk("list").stdout, r"T031  AUTONOMOUS\s+\d+d")
+
+    def test_a_field_already_on_the_line_is_WRITABLE_after_the_repair(self):
+        """Readable is not the whole claim: the position rule gates the writers
+        too, so the repaired item must accept an ordinary `--effort`."""
+        self.seed(T169_FOLDED)
+        self.assertEqual(self.run_tk("edit", "T031", "--class", "AUTONOMOUS").returncode, 0)
+        r = self.run_tk("edit", "T031", "--effort", "L")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Effort:** L.", self.body())
+        self.assertNotIn("**Effort:** M.", self.body())
+        self.assertIn("T031  L", self.run_tk("pack").stdout)
+
+    def test_an_item_with_no_chain_still_gets_its_class_APPENDED(self):
+        """The over-refusal direction, and the population the flag was written for:
+        with nothing on the line to sit ahead of, the anchor is appended and becomes
+        the chain. Nothing is announced, because nothing was promoted."""
+        self.seed(T169_BARE)
+        r = self.run_tk("edit", "T032", "--class", "BLOCKED")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + T169_BARE.rstrip("\n") + " **Class:** BLOCKED.\n")
+        self.assertNotIn("warning", r.stderr)
+
+    def test_the_promotion_is_ANNOUNCED_and_names_the_segments(self):
+        """The price of the position, paid out loud. This item's title quotes
+        `**Project:**` and the anchor makes those four words a Project value, so the
+        warning names every segment the anchor now leads — the caller reads its own
+        prose in that list and knows to `cancel` + re-add instead."""
+        self.seed(T169_PROSE)
+        r = self.run_tk("edit", "T033", "--class", "AUTONOMOUS")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("warning:", r.stderr)
+        self.assertIn("**Project:**, **Effort:**", r.stderr)
+        self.assertIn("`cancel` + re-add", r.stderr)
+        # and the warning is not decoration: this is exactly what it warned about.
+        # `list` groups by **Project:**, so the item is now filed under a project
+        # called `de` and its title is cut at the marker
+        listing = self.run_tk("list").stdout
+        self.assertIn("## de", listing)
+        self.assertIn("T033  AUTONOMOUS", listing)
+        self.assertNotIn("de outra fila inteira", listing)
 
 
 # --- review#5: the setext protection was asymmetric -------------------------
