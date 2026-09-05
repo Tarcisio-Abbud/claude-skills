@@ -50,8 +50,7 @@ duplicating, delete what proved wrong, make relative dates absolute, link with `
 **Pending items go through `tk-queue`** — contract, commands and the pointer rule:
 `../../reference/queue.md`. Decide each new item's `--criterion` here rather than leaving
 "done" as the next closer's self-report, and ask a DECISION's decision here: with the
-user still in the room the item registers AUTONOMOUS. That queue is what `/tk:kickoff`
-dispatches at the next session's open.
+user still in the room the item registers AUTONOMOUS.
 
 An item survives into the queue only when at least ONE **survival gate** holds, and the
 item RECORDS which one — in its own text ("waiting on the vendor's token"), except where
@@ -72,12 +71,17 @@ present, offer the conversion as a check of its own (the check IS the authorizat
 close with `done --how "<the routine>"`; unattended, a DECISION carrying the routine
 ready to paste. Never discarded: a discard answers a question, this one needs a routine.
 
+**Consolidate, before the report, what an unattended package queued.** It triaged each
+finding alone, so overlap shows only in the SET: fold items in the same FILE, and items that
+are two halves of one RULE. `edit --text` on the survivor FIRST and `cancel --why` on the
+source after — the block ceiling refuses the union once the source's text is gone.
+
 **Encode into the system:** a correction the user repeated or a check they did by hand is
 a system signal, not an instance signal — propose encoding it (project skill, hook rule,
 test) so it holds in every future iteration.
 **Done when:** every durable fact has a memory file (pointer in `MEMORY.md`), every open
-item names its survival gate, no RECURRING item is parked, and every recurring correction
-has an encoding proposed or discarded.
+item names its survival gate, no RECURRING item is parked, what a package queued was
+consolidated, and every recurring correction has an encoding proposed or discarded.
 
 ## 3. Update the repo documentation
 
@@ -134,8 +138,7 @@ in this conversation — a task mid-flight, open hypotheses, a campaign spanning
 items. That file is written and removed only by `tk-queue handoff <id> --objective "..."
 --state "..." --blockers "..."`; run the `edit` it prints (rule: `../verify/SKILL.md`,
 *The item points at the briefing*), and a campaign gets ONE handoff file, pointed at by
-every item in it. The file carries **CONCLUSIONS, never a reading list**: this session
-holds them hot; every successor pays full price to rediscover them.
+every item in it. The file carries **CONCLUSIONS, never a reading list**.
 
 **The next step — ALWAYS close by recommending ONE path**, the why in 1–2 sentences, by
 where the understanding lives: written down, `/clear` is cheap; conversation-only,
