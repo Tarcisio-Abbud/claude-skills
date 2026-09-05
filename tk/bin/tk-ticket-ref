@@ -145,6 +145,16 @@ def item_block(memdir, wanted):
     one answers a miss with `sys.exit`, and a library call that exits the process
     cannot be reported by the caller that made it. The reading rules are the
     same three functions, so nothing about WHICH block is found differs.
+
+    A MISS IS A REFUSAL, and its wording is `tk-queue.missing_item_message` —
+    the one reader of why an id is not open. This used to say "no open item
+    carries the id", which is the flat answer that function exists to replace:
+    it reads as "never existed", and the id was very often CLOSED. Every item of
+    an unattended package is, by the time the merge gate asks verdict 5 about it
+    (`AFK.md` step 5 closes the item last, after the pull request exists), so the
+    checker answered the whole package with a diagnosis pointing at a list the
+    item had already left. Raised rather than exited, so the caller reports it as
+    the row it owes.
     """
     content = tk_queue.read(os.path.join(memdir, "next-steps.md"))
     if content is None:
@@ -152,8 +162,15 @@ def item_block(memdir, wanted):
     for kind, text in tk_queue.split_blocks(content):
         if kind == "item-open" and tk_queue.item_id(text) == wanted:
             return text, tk_queue.item_label(text)
-    fail(f"no open item carries the id T{wanted:03d} in {memdir}/next-steps.md — "
-         "`tk-queue list` shows the ones that are there.")
+    code = "closed" if tk_queue.id_in_done_log(memdir, wanted) else "not-open"
+    raise Refusal(code, tk_queue.missing_item_message(memdir, content, wanted))
+
+
+# The two codes above, named once. For THIS bin they are still the run that could
+# not be made — no item, no reference, and nothing about the item to repair — so
+# they keep exit 2 rather than joining the refusals. What changed is the message
+# and that a caller can report them; the checker does, as a red row.
+ABSENT_CODES = ("closed", "not-open")
 
 
 Clone = collections.namedtuple("Clone", "path source")
@@ -336,13 +353,16 @@ def qualify(ref, slug, label):
 
 def emit(args):
     memdir = queue_dir(args.dir)
-    block, label = item_block(memdir, args.id)
+    label = f"T{args.id:03d}"
     try:
+        block, label = item_block(memdir, args.id)
         ref = item_ticket(block, label)
         clone = item_clone(block, label, args.repo)
         qualified = qualify(ref, tracker_slug(clone, label), label)
     except Refusal as refusal:
         print(f"{prog()}: {refusal.code}: {refusal.message}", file=sys.stderr)
+        if refusal.code in ABSENT_CODES:
+            return EXIT_FAILED
         return EXIT_NO_TICKET if refusal.code == "no-ticket" else EXIT_REFUSED
     print(f"{CLOSING_KEYWORD} {qualified}" if args.closing_line else qualified)
     return EXIT_OK

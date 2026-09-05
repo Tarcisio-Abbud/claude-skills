@@ -159,6 +159,50 @@ MUTATIONS = [
      ["TestTheReferenceReader."
       "test_an_id_no_open_item_carries_is_a_failed_run_not_a_refusal"], READER),
 
+    # --- T338: the id that is not open ---------------------------------------
+    ("T338 an id that LEFT the queue is reported as one that was never allocated",
+     '    code = "closed" if tk_queue.id_in_done_log(memdir, wanted) else "not-open"',
+     '    code = "not-open"',
+     ["TestTheReferenceReader."
+      "test_an_id_that_left_the_queue_is_named_as_closed_not_as_never_seen",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_a_closed_item_is_a_red_verdict_naming_the_log_it_left_for",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_the_red_row_names_the_ordering_that_produced_it"],
+     READER),
+
+    ("T338 the miss is announced flat again, not through the one reader of the four "
+     "cases, so a closed item reads as one that never existed",
+     "    raise Refusal(code, tk_queue.missing_item_message(memdir, content, wanted))",
+     '    raise Refusal(code, f"no open item carries the id T{wanted:03d}")',
+     ["TestTheReferenceReader."
+      "test_an_id_that_left_the_queue_is_named_as_closed_not_as_never_seen",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_a_closed_item_is_a_red_verdict_naming_the_log_it_left_for",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_an_id_the_queue_never_allocated_is_red_under_its_own_code"],
+     READER),
+
+    ("T338 the checker stops at the reader's refusal instead of reporting the row it "
+     "owes, so the gate's digest quotes nothing",
+     '        return report([("ticket", FAILED, detail)], f"T{args.id:03d}")',
+     "        fail(detail)",
+     ["TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_a_closed_item_is_a_red_verdict_naming_the_log_it_left_for",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_the_red_row_names_the_ordering_that_produced_it",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_an_id_the_queue_never_allocated_is_red_under_its_own_code"],
+     CHECKER),
+
+    ("T338 the row carries the refusal and no remedy, so the reader is told the "
+     "verdict cannot be answered and not what to do instead",
+     '            detail += "\\n" + CLOSED_REMEDY',
+     "            pass",
+     ["TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_the_red_row_names_the_ordering_that_produced_it"],
+     CHECKER),
+
     ("T238 a claimed item is skipped, the way `pack` skips it — and the gate loses its "
      "ticket",
      '        if kind == "item-open" and tk_queue.item_id(text) == wanted:',
@@ -362,8 +406,8 @@ MUTATIONS = [
       "test_every_bin_the_dispatch_prose_names_is_on_disk"], KICKOFF),
 
     ("T238 the unattended dispatch goes back to reading the tracker's config itself",
-     "`../../bin/tk-ticket-ref <id> --closing-line`, which reads the owner from the clone "
-     "the item's\n**Repo:** field names",
+     '`../../bin/tk-ticket-ref <id> --dir "<queue dir>" --closing-line`, which reads the '
+     "owner from\nthe clone the item's **Repo:** field names",
      "the owner half resolved HERE (`git config tk.tracker`) from the clone the item's\n"
      "**Repo:** field names",
      ["TestTheDispatchProseNamesTheCommands."

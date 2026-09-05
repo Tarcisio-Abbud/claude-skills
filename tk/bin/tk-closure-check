@@ -59,6 +59,16 @@ with `--base` and `--default-branch` answers the same five conditions from
 values on hand, which is what makes the check runnable BEFORE the pull request
 exists — the moment when rewriting the body costs nothing.
 
+AN ITEM THAT LEFT THE QUEUE IS RED, NOT A CRASH. `AFK.md` step 5 closes a lane's
+item after the pull request exists, and the merge gate asks verdict 5 later
+still — so every item of an unattended package is already in the done-log when
+this runs. The reader finds it there and says which log line to read, and the
+row is FAILED: the item's **Ticket:** field left the queue with the item, and a
+log line does not carry it, so the five conditions have no subject. An id the
+queue never allocated is reported the same way. A verdict that could not be
+answered is not a verdict that passed, and a gate that stops with no row leaves
+the reader of an exit code alone with it.
+
 EXIT CODES: 0 verdict 5 is green · 1 red, and the failing conditions are named ·
 2 the run could not be made.
 """
@@ -341,9 +351,24 @@ def escape(block, body, label):
                    ("item", OK, block.splitlines()[0].strip())], label)
 
 
+# What the reader's refusal cannot know: WHY verdict 5 wanted the item. The
+# remedy is an ordering one, and it is the same for every closed item.
+CLOSED_REMEDY = (
+    "The five conditions have no subject: the item's **Ticket:** field left the queue "
+    "with the item, and the log line does not carry it. Ask verdict 5 BEFORE the close — "
+    "the pull request's body is written at `AFK.md` step 5 stage 6 and the item closes at "
+    "stage 7 — or answer it by hand against the reference that body carries.")
+
+
 def check(args):
     memdir = reader.queue_dir(args.dir)
-    block, label = reader.item_block(memdir, args.id)
+    try:
+        block, label = reader.item_block(memdir, args.id)
+    except reader.Refusal as refusal:
+        detail = f"{refusal.code}: {refusal.message}"
+        if refusal.code == "closed":
+            detail += "\n" + CLOSED_REMEDY
+        return report([("ticket", FAILED, detail)], f"T{args.id:03d}")
 
     try:
         ticket = reader.item_ticket(block, label)
