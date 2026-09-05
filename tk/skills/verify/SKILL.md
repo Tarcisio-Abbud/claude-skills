@@ -39,8 +39,7 @@ fixture.
 **A criterion anchors on content, never on a line number or an absolute count** — a reformat
 moves the line, a sibling slice moves the count. Anchor by a grep of the sentence. Write an
 unavoidable count paired with the sha of the tree it ran on, the shape
-`../merge-gate/SKILL.md` gives a green suite. A criterion passed only because a reflow
-refilled its line, and two lane tickets named a count their lane had already passed.
+`../merge-gate/SKILL.md` gives a green suite.
 
 ## Prove it can fail
 
@@ -60,7 +59,7 @@ rather than an outcome.
 | **Failed 3×** | the criterion fits the promise and executes, and three attempts fail to satisfy it — for type B, the artefact could not be produced. | the item becomes a DECISION carrying its attempt history, and leaves the package |
 | **Rotten criterion** | the criterion cannot execute, or executes and proves something other than what the item promised. | a DECISION naming the contradiction and proposing the criterion that carries the same guarantee; the delivered code is left as it stands |
 
-## A rotten criterion has two shapes
+## A rotten criterion has three shapes
 
 - **Unsatisfiable by construction** — no delivery could pass it. Say so **in writing before
   doing the work**: name the contradiction and the criterion that would carry the same
@@ -68,6 +67,8 @@ rather than an outcome.
 - **Satisfiable but wrong** — it passes while measuring something else (the AST where the
   promise was behaviour; the suite where the promise was equivalence). Same outcome, same
   remedy.
+- **Anchored on a moving target** — a line number or an absolute count, which *The anchor
+  outlives the tree* forbids. A reflow then decides it, not the promise.
 
 Both are honest outcomes and count as a finished run.
 

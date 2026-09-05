@@ -15,7 +15,8 @@ item. Any session where an item is born or dies calls the script on the spot.
 
 **The commands, the flags and each field's shape live in `tk-queue --help` and the
 subcommands' own `--help`** — this file carries only what those helps do not confess.
-`<id>` is accepted as displayed (`T006`) or bare (`6`).
+`<id>` is accepted as displayed (`T006`) or bare (`6`). What a `--criterion` may ANCHOR on is
+one of those: `../skills/verify/SKILL.md`, *The anchor outlives the tree*.
 
 ## Priority, claims and two writers
 
@@ -66,9 +67,8 @@ The short fields are the only ones exempt from the block ceiling, deliberately: 
 meant a legacy oversized item needed `--force` merely to gain a project tag, which trains
 the caller to type `--force` and disarms the guard where it matters. It is safe only
 because those fields are small AND replaced rather than appended. Neither ceiling holds
-alone: with only the block ceiling, one exempt field edit took a 100-char item to 1014
-chars; with only the field ceiling, three prose fields in one call took an item past a 700
-block ceiling with no `--force`. `--force` raises both, for the rare exception.
+alone: each has let an item past the other. `--force` raises both, for the
+rare exception.
 
 ## The WIP cap
 
