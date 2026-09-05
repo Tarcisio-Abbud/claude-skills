@@ -214,8 +214,9 @@ READERS = frozenset(("list", "report", "pack"))
 # sites a machine can keep in step cannot drift: the lens campaign found this
 # same claim out of sync across five independent prose sites, a new one each
 # round. The three that remain in prose (the comment above, `queue_lock`'s
-# docstring, and the kickoff SKILL.md) cannot read a constant — they are
-# named here so the next writer knows the full list.
+# docstring, and `tk/reference/queue.md` — the kickoff SKILL.md carried it until
+# the prune of #191 moved the queue contract there) cannot read a constant —
+# they are named here so the next writer knows the full list.
 DRY_RUN_WRITES = ("no queue, no done-log and no briefing — only an empty "
                   "`.tk-queue.lock`, which never carries a byte")
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
@@ -1126,10 +1127,12 @@ def validate_owner(name):
     """argparse's required=True only proves --as was typed; an empty string
     satisfies it and would claim the item for nobody."""
     if not OWNER_RE.match(name or ""):
-        fail(f"--as {name!r} is not a valid owner name: letters, digits, '.', '-' or "
-             "'_', at most 32 chars, no spaces and not empty. The name sits beside the "
-             "timestamp in a one-line field, and one with a blank in it cannot be told "
-             "apart from the moment it was claimed.")
+        fail(f"--as {name!r} is not a valid owner name: it STARTS with a letter or a "
+             "digit, and may then carry letters, digits, '.', '-' or '_', at most 32 "
+             "chars, no spaces and not empty — so '.local' and '_alpha' are refused for "
+             "their first character alone. The name sits beside the timestamp in a "
+             "one-line field, and one with a blank in it cannot be told apart from the "
+             "moment it was claimed.")
     if clears_field(name):
         fail(f"--as {FIELD_CLEAR!r} is refused: {FIELD_CLEAR!r} is the word that DELETES a "
              "field everywhere in this script, so an item claimed under it would read as "
@@ -2723,10 +2726,26 @@ def compose_item(args, iid):
 
 
 def check_ceiling(item, force):
+    """The ceiling is measured on the BLOCK, and the refusal has to say so.
+
+    A caller reading `item has 1011 chars` beside a text they know to be 641 long
+    reads the number as the text's own, and cuts prose that was never the
+    overflow: the other 370 chars were the field chain. Measured on 2026-09-03 —
+    one round spent shortening the wrong half. So both halves are counted here,
+    and the message names the one the cut has to come out of."""
     limit = CEILING_FORCED if force else CEILING
     if len(item) > limit:
+        chain = field_chain(item)
+        head = item.split("\n", 1)[0]
+        # the field chain is a suffix of the FIRST line (compose_item); everything
+        # else — the head, the text, any continuation line — is the other half
+        fields = len(head) - chain[0].start() if chain else 0
+        text = len(item) - fields
         fail(
-            f"item has {len(item)} chars (ceiling {limit}). An item is a pending "
+            f"the item BLOCK has {len(item)} chars (ceiling {limit}) — the block is the "
+            f"text AND its field chain, not the text alone: {text} chars of text and "
+            f"{fields} of fields, so the cut comes out of the "
+            f"{'text' if text >= fields else 'fields'}. An item is a pending "
             "action, not an essay: move the context to a memory file or wiki page "
             "and link it ([[slug]])." + ("" if force else " --force raises the ceiling to "
             f"{CEILING_FORCED} for the rare exception.")
@@ -4479,32 +4498,78 @@ def main():
                    "belongs to, e.g. 'ambiente', 'tk' (warns on stderr if unseen in this queue)")
     a.add_argument("--source", help="origin (default: today's date)")
     a.add_argument("--ticket", help="the forge ticket this item implements, `<repo>#<n>` "
-                                    "— feeds the `closes` line of its PR")
+                                    "— feeds the `closes` line of its PR. ONE spelling is "
+                                    "stored: repo lower-cased, number without leading "
+                                    "zeros (`Ambiente#0171` is written `ambiente#171`), "
+                                    "`owner/repo#n` refused. The shape is exact on the "
+                                    "way in and asked again on the way out — `pack` marks "
+                                    "a hand-edited one `[?]`")
     a.add_argument("--spec", help="the spec the ticket belongs to, `<repo>#<n>` — decides "
-                                  "the item's LANE in the afk package (see `pack --help`)")
-    a.add_argument("--repo", help="the repository this item's CODE lands in — a URL or an "
-                                  "ABSOLUTE path, never a remote name and never a relative "
-                                  "path. The tracker `--ticket`/`--spec` name is routinely "
-                                  "another repo (see `pack --help`)")
-    a.add_argument("--force", action="store_true")
+                                  "the item's LANE in the afk package (see `pack --help`). "
+                                  "Same one spelling as `--ticket`: two casings of one "
+                                  "repo would be two specs of one ticket each, and two "
+                                  "branches for one spec")
+    a.add_argument("--repo", help="the repository this item's CODE lands in. A WHITELIST "
+                                  "of five shapes: https://<host>/<path>, "
+                                  "ssh://git@<host>/<path>, git@<host>:<path>, "
+                                  "file:///<path>, or an ABSOLUTE path "
+                                  "(/root/.claude/skills, C:\\clones\\repo). A `~/` "
+                                  "address is refused (HOME differs per reader), a "
+                                  "`<user>@` half on an http(s) URL is refused (it would "
+                                  "store a credential this file reprints), and so are a "
+                                  "remote NAME like `origin` and a relative path. The "
+                                  "tracker `--ticket`/`--spec` name is routinely another "
+                                  "repo (see `pack --help`)")
+    a.add_argument("--force", action="store_true",
+                   help=f"raise BOTH ceilings for this one call: the item BLOCK, from "
+                        f"{CEILING} chars to {CEILING_FORCED}, and each field VALUE, "
+                        f"from {FIELD_CEILING_SHORT}/{FIELD_CEILING} to "
+                        f"{FIELD_CEILING_SHORT_FORCED}/{FIELD_CEILING_FORCED} (short "
+                        "fields/prose). It does NOT reach the WIP cap, which has no way "
+                        "through by design")
 
     d = sub.add_parser("done", parents=[common], help="conclude: move the item to the done-log")
     d.add_argument("id", type=parse_id)
     d.add_argument("--how", required=True, help="outcome + pointer: 'PR #82', 'commit abc123', '[[slug]]'")
     d.add_argument("--summary", help="replaces the item text on the log line")
     d.add_argument("--note", help="extra substance when there is NO pointer (the line is the only record)")
-    d.add_argument("--force", action="store_true", help="raise the field ceiling")
+    d.add_argument("--force", action="store_true",
+                   help=f"raise BOTH ceilings for this one call: each field VALUE from "
+                        f"{FIELD_CEILING_SHORT}/{FIELD_CEILING} to "
+                        f"{FIELD_CEILING_SHORT_FORCED}/{FIELD_CEILING_FORCED} (short "
+                        f"fields/prose), and the item BLOCK from {CEILING} to "
+                        f"{CEILING_FORCED}")
 
-    c = sub.add_parser("cancel", parents=[common], help="discard: move the item to the done-log as DESCARTADO")
+    c = sub.add_parser("cancel", parents=[common],
+                       help="discard: move the item to the done-log as DESCARTADO",
+                       description="Discard an item: it moves to the done-log as "
+                       "DESCARTADO. FUSING two items into one, the order is `edit "
+                       "--text` on the survivor FIRST and `cancel` on the source only "
+                       "then. The two commands are not one transaction, and the "
+                       "700-char block ceiling can refuse the edit that carries the "
+                       "union — cancelled first, that content is out of the queue when "
+                       "the refusal arrives. Measured three times in the consolidation "
+                       "of 2026-09-02.")
     c.add_argument("id", type=parse_id)
     c.add_argument("--why", required=True)
     c.add_argument("--summary")
     c.add_argument("--note")
-    c.add_argument("--force", action="store_true", help="raise the field ceiling")
+    c.add_argument("--force", action="store_true",
+                   help=f"raise BOTH ceilings for this one call: each field VALUE from "
+                        f"{FIELD_CEILING_SHORT}/{FIELD_CEILING} to "
+                        f"{FIELD_CEILING_SHORT_FORCED}/{FIELD_CEILING_FORCED} (short "
+                        f"fields/prose), and the item BLOCK from {CEILING} to "
+                        f"{CEILING_FORCED}")
 
     e = sub.add_parser("edit", parents=[common], help="edit fields of an open item")
     e.add_argument("id", type=parse_id)
-    e.add_argument("--text")
+    e.add_argument("--text", help="REPLACES the item's text — everything between the "
+                   "`- [ ] **T<id>** —` head and the first field marker, continuation "
+                   "prose included; it never appends, so a fusion passes the union of "
+                   "both texts. FUSING two items: this `edit` FIRST, then `cancel` the "
+                   "source. The two are not one transaction, and the block ceiling can "
+                   "refuse the edit carrying the union — done in the other order, the "
+                   "source is already in the done-log when the refusal lands")
     e.add_argument("--class", dest="classe",
                    help="replaces the whole class VALUE. On an item that carries "
                    "none the anchor is written AHEAD of any fields already ending "
@@ -4527,15 +4592,22 @@ def main():
                    "or 'none' to DELETE the field — the item then runs wherever the "
                    "queue does")
     e.add_argument("--project", help="assign/change the project tag")
-    e.add_argument("--force", action="store_true")
+    e.add_argument("--force", action="store_true",
+                   help=f"raise BOTH ceilings for this one call: the item BLOCK from "
+                        f"{CEILING} to {CEILING_FORCED}, and each field VALUE from "
+                        f"{FIELD_CEILING_SHORT}/{FIELD_CEILING} to "
+                        f"{FIELD_CEILING_SHORT_FORCED}/{FIELD_CEILING_FORCED} (short "
+                        "fields/prose)")
 
     cl = sub.add_parser("claim", parents=[common],
                         help="take an item, so a sibling session does not work it too")
     cl.add_argument("id", type=parse_id)
     cl.add_argument("--as", dest="owner", required=True,
-                    help="who is taking it — a session or host label (letters, digits, "
-                         "'.', '-', '_', at most 32 chars, no spaces): it is written "
-                         "beside the moment of the claim and both are read back")
+                    help="who is taking it — a session or host label STARTING with a "
+                         "letter or a digit, then letters, digits, '.', '-', '_', at "
+                         "most 32 chars, no spaces ('.local' and '_alpha' are refused "
+                         "for their first character): it is written beside the moment "
+                         "of the claim and both are read back")
 
     rl = sub.add_parser("release", parents=[common],
                         help="hand a claimed item back to the queue without closing it")

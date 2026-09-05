@@ -3084,6 +3084,54 @@ MUTATIONS = [
      "The other reachable way in is a first `add` into a brand-new queue. THAT IS NOT",
      ["TestWipCap.test_the_untested_branch_says_it_is_the_race_and_not_a_first_add"]),
 
+    # --- the CLI's own words: one entry per sentence a reader decides from ---
+    ("T274 the owner refusal drops the first-character rule again",
+     "name: it STARTS with a letter or a ", "name: letters, digits and a ",
+     ["TestTheCommandsSayWhatTheyDo.test_the_owner_grammar_names_the_first_character_rule"]),
+
+    ("T274 claim --help drops the first-character rule again",
+     "a session or host label STARTING with a ", "a session or host label with a ",
+     ["TestTheCommandsSayWhatTheyDo.test_the_owner_grammar_names_the_first_character_rule"]),
+
+    ("T335 edit --text goes back to having no description at all",
+     "REPLACES the item's text — everything between the ",
+     "the item's new text, replacing everything between the ",
+     ["TestTheCommandsSayWhatTheyDo.test_edit_help_says_that_text_replaces_and_what_it_replaces"]),
+
+    ("T340 cancel --help stops naming which command comes first",
+     "--text` on the survivor FIRST and `cancel` on the source only ",
+     "--text` on the survivor and `cancel` on the source only ",
+     ["TestTheCommandsSayWhatTheyDo.test_cancel_and_edit_both_name_the_order_a_fusion_runs_in"]),
+
+    ("T354 the ceiling refusal calls the block the item again",
+     "the item BLOCK has {len(item)} chars", "item has {len(item)} chars",
+     ["TestTheCommandsSayWhatTheyDo.test_the_ceiling_refusal_names_the_block_and_the_half_over_the_line"]),
+
+    ("T354 the refusal names one half whichever one overflowed",
+     "{'text' if text >= fields else 'fields'}. An item is a pending ",
+     "{'text'}. An item is a pending ",
+     ["TestTheCommandsSayWhatTheyDo.test_the_refusal_points_at_the_fields_when_they_are_the_larger_half"]),
+
+    ("homeserver-ambiente#223 add --help stops declaring the canonical spelling",
+     "stored: repo lower-cased, number without leading ",
+     "stored: the repo and the number as given, with leading ",
+     ["TestTheCommandsSayWhatTheyDo.test_add_help_names_the_canonical_spelling_of_a_forge_reference"]),
+
+    ("homeserver-ambiente#223 add --repo help goes back to the summary",
+     "of five shapes: https://<host>/<path>, ",
+     "of shapes, among them ",
+     ["TestTheCommandsSayWhatTheyDo.test_add_help_carries_the_whole_repo_whitelist"]),
+
+    ("homeserver-ambiente#223 --force names one ceiling again",
+     "raise BOTH ceilings for this one call: the item BLOCK, from ",
+     "raise the field ceiling for this one call, and the item BLOCK from ",
+     ["TestTheCommandsSayWhatTheyDo.test_force_names_both_ceilings_it_raises_wherever_it_is_offered"]),
+
+    ("homeserver-ambiente#223 the comment names a prose site the prune moved",
+     "docstring, and `tk/reference/queue.md` — the kickoff SKILL.md carried it until",
+     "docstring, and the kickoff SKILL.md) cannot read a constant. It carried it until",
+     ["TestTheCommandsSayWhatTheyDo.test_the_dry_run_comment_names_the_prose_site_that_exists"]),
+
     # --- T152 the harness's own reader of an entry ------------------------
     # These mutate THIS file. A short anchor would also match inside its own
     # entry literal and be called UNRUNNABLE; an anchor spanning a line break

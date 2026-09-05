@@ -7292,6 +7292,124 @@ class TestWipCap(QueueTest):
 
 
 
+class TestTheCommandsSayWhatTheyDo(QueueTest):
+    """One case per sentence the CLI was missing. Each defect below was a reader
+    deciding how to use a command from a `--help` that did not carry the rule,
+    or from a refusal that named the wrong half of what it measured.
+
+    Every assertion reads the help with its whitespace collapsed: argparse
+    rewraps to the terminal's width, so an expected phrase that spans a line
+    break passes on one machine and fails on the next."""
+
+    def help_for(self, *argv):
+        r = self.run_tk(*argv, "--help")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return " ".join(r.stdout.split())
+
+    def add(self, *argv):
+        return self.run_tk("add", *argv, "--class", "AUTONOMOUS",
+                           "--effort", "S (~20min)", "--criterion", "A: roda")
+
+    # --- T274: the owner grammar, in all three of its spellings -----------
+    def test_the_owner_grammar_names_the_first_character_rule(self):
+        """OWNER_RE demands a letter or a digit at the front, so '.local' and
+        '_alpha' are refused — and neither the refusal nor `claim --help` said
+        why, which leaves the caller retyping a name that cannot pass."""
+        self.seed(item(1, "algo"))
+        for bad in (".local", "_alpha"):
+            with self.subTest(owner=bad):
+                r = self.run_tk("claim", "T001", "--as", bad)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("STARTS with a letter or a digit", r.stderr)
+        self.assertIn("STARTING with a letter or a digit", self.help_for("claim"))
+        # and the same name with a leading letter is taken, so the rule the two
+        # texts now state is the rule the regex actually applies
+        self.assertEqual(self.run_tk("claim", "T001", "--as", "alpha.local").returncode,
+                         0)
+
+    # --- T335 + T340: what `edit --text` destroys, and the fusion order ---
+    def test_edit_help_says_that_text_replaces_and_what_it_replaces(self):
+        """The semantics lived only in the code, so a reader deciding from the
+        help could not know the flag deletes — which is how a document came to
+        prescribe accumulating with a command that substitutes."""
+        h = self.help_for("edit")
+        self.assertIn("REPLACES the item's text", h)
+        self.assertIn("continuation prose included", h)
+        self.assertIn("it never appends", h)
+
+    def test_cancel_and_edit_both_name_the_order_a_fusion_runs_in(self):
+        """Cancel-then-edit loses the content between the two calls: the block
+        ceiling can refuse the edit carrying the union, and by then the source is
+        in the done-log. Three times in the consolidation of 2026-09-02."""
+        cancel = self.help_for("cancel")
+        self.assertIn("`edit --text` on the survivor FIRST", cancel)
+        self.assertIn("not one transaction", cancel)
+        self.assertIn("block ceiling can refuse the edit that carries the union", cancel)
+        self.assertIn("this `edit` FIRST, then `cancel` the source", self.help_for("edit"))
+
+    # --- T354: the refusal names the block, and which half to cut ---------
+    def test_the_ceiling_refusal_names_the_block_and_the_half_over_the_line(self):
+        """`item has 1011 chars` read beside a 641-char text sends the cut into
+        the text when the field chain was the other 370."""
+        self.seed()
+        r = self.add("x " * 400)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("the item BLOCK has", r.stderr)
+        self.assertIn("chars of text and", r.stderr)
+        self.assertIn("the cut comes out of the text", r.stderr)
+
+    def test_the_refusal_points_at_the_fields_when_they_are_the_larger_half(self):
+        self.seed()
+        r = self.run_tk("add", "curto", "--class", "AUTONOMOUS",
+                        "--effort", "M " + "e" * 50,
+                        "--criterion", "A: " + "c" * 190,
+                        "--risk", "r" * 190, "--source", "s" * 190,
+                        "--project", "p" * 50)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("the cut comes out of the fields", r.stderr)
+
+    # --- #223: the four gaps the prune of the kickoff left behind ---------
+    def test_add_help_names_the_canonical_spelling_of_a_forge_reference(self):
+        h = self.help_for("add")
+        self.assertIn("repo lower-cased, number without leading zeros", h)
+        self.assertIn("`Ambiente#0171` is written `ambiente#171`", h)
+        self.assertIn("`owner/repo#n` refused", h)
+        self.assertIn("marks a hand-edited one `[?]`", h)
+
+    def test_add_help_carries_the_whole_repo_whitelist(self):
+        """The help gave the summary — a URL or an absolute path — and the five
+        shapes plus the two refusals lived only in the refusal message, which a
+        reader deciding how to spell the flag never sees."""
+        h = self.help_for("add")
+        for shape in ("https://<host>/<path>", "ssh://git@<host>/<path>",
+                      "git@<host>:<path>", "file:///<path>", "an ABSOLUTE path"):
+            self.assertIn(shape, h)
+        self.assertIn("A `~/` address is refused", h)
+        self.assertIn("`<user>@` half on an http(s) URL is refused", h)
+
+    def test_force_names_both_ceilings_it_raises_wherever_it_is_offered(self):
+        """`done --help` named one ceiling and `add --help` named none, while the
+        flag raises the block ceiling and the field one together."""
+        for command in ("add", "done", "cancel", "edit"):
+            with self.subTest(command=command):
+                h = self.help_for(command)
+                self.assertIn("raise BOTH ceilings", h)
+                self.assertIn("700", h)
+                self.assertIn("2000", h)
+        self.assertIn("does NOT reach the WIP cap", self.help_for("add"))
+
+    def test_the_dry_run_comment_names_the_prose_site_that_exists(self):
+        """The comment listed the kickoff SKILL.md as one of the three prose
+        sites carrying the claim; the prune of #191 moved the queue contract to
+        tk/reference/queue.md, and the comment is the list the next writer keeps
+        in step."""
+        with open(TK, encoding="utf-8") as fh:
+            source = fh.read()
+        block = source[source.index("The ONE statement of what a preview"):
+                       source.index("DRY_RUN_WRITES")]
+        self.assertIn("tk/reference/queue.md", block)
+        self.assertNotIn("the kickoff SKILL.md) cannot read", block)
+
 class TestMutationHarness(unittest.TestCase):
     """The harness is what says this suite protects anything, and until T152
     nothing checked IT. Each test here is a way the harness could go on printing
