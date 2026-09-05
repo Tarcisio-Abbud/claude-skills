@@ -2040,6 +2040,61 @@ MUTATIONS = [
      ["TestAFieldAppendedBeforeTheAnchorIsRefused.test_class_first_in_ONE_call_lands_the_field_inside_the_chain",
       "TestAFieldAppendedBeforeTheAnchorIsRefused.test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through"]),
 
+    # --- T169: where the class anchor LANDS ---------------------------------
+    # The anchor is what real_fields measures from, so writing it at the end of
+    # the line strands every field already there. Each entry below is one of the
+    # positions that shipped or was tried, and the tests read the FILE.
+    ("T169 the class goes back to the END of the line, behind the fields already there",
+     '    at = chain[0].start()\n'
+     '    return (block[:at] + segment + " " + block[at:],\n'
+     '            [canonical_field(m.group(1)) for m in chain])',
+     '    at = len(block.split("\\n", 1)[0].rstrip())\n'
+     '    return (block[:at] + " " + segment + block[at:],\n'
+     '            [canonical_field(m.group(1)) for m in chain])',
+     ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
+      "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written",
+      "TestTheClassLandsAheadOfTheChain."
+      "test_the_whole_trap_from_the_continuation_line_through_packs_own_remedy",
+      "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair",
+      "TestAClassLessChainIsNotAField.test_a_class_less_item_can_still_be_GIVEN_a_class"]),
+
+    # "before the LAST field" is the near miss: it reads as ahead of the chain and
+    # is not, and everything from the run's head up to it stays unreadable
+    ("T169 the class lands after the first field instead of ahead of the run",
+     "    at = chain[0].start()", "    at = chain[0].end()",
+     ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
+      "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written",
+      "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair"]),
+
+    # the period is what tells a field segment from prose, so a class written
+    # without one breaks the chain AT the anchor — the readback is what refuses it
+    ("T169 the class segment is written without its period",
+     '    segment = f"**Class:** {value}."', '    segment = f"**Class:** {value}"',
+     ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
+      "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written"]),
+
+    # an item with nothing on the line has nothing to sit ahead of: the over-refusal
+    # direction, and the population --class was written for
+    ("T169 an item with no chain gets its class inserted at the head of an empty run",
+     "    if not chain:\n"
+     '        head, sep, rest = block.partition("\\n")\n'
+     '        return head.rstrip() + " " + segment + sep + rest, []',
+     "    if False:\n"
+     '        head, sep, rest = block.partition("\\n")\n'
+     '        return head.rstrip() + " " + segment + sep + rest, []',
+     ["TestTheClassLandsAheadOfTheChain.test_an_item_with_no_chain_still_gets_its_class_APPENDED",
+      "TestAFieldAppendedBeforeTheAnchorIsRefused."
+      "test_the_remedy_the_refusal_PRINTS_runs_and_lets_the_field_through"]),
+
+    # the promotion is the PRICE of the position, and a price nobody is told about
+    # is the silence this slice was opened to close
+    ("T169 the segments the anchor promoted go unannounced",
+     "                if promoted:\n"
+     '                    names = ", ".join(f"**{n}:**" for n in promoted)',
+     "                if False:\n"
+     '                    names = ", ".join(f"**{n}:**" for n in promoted)',
+     ["TestTheClassLandsAheadOfTheChain.test_the_promotion_is_ANNOUNCED_and_names_the_segments"]),
+
     # --- review#5: the setext protection only looked at the underline -------
     # The underline was kept and the TITLE above it — which the underline
     # retroactively makes a heading — was absorbed, so the item came out with its
@@ -2961,6 +3016,7 @@ def main():
                                   "TestTheZeroIdIsStillAnId",
                                   "TestFoldFailsSafeOnShapesNobodyEnumerated",
                                   "TestAFieldAppendedBeforeTheAnchorIsRefused",
+                                  "TestTheClassLandsAheadOfTheChain",
                                   "TestASetextTitleIsKeptWithItsUnderline",
                                   "TestClearingOnAClassLessItemIsRefused",
                                   "TestBirthDate", "TestMigrateBackdates",

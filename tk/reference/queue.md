@@ -92,6 +92,13 @@ one field twice inside it) `edit` REFUSES and says so instead of guessing: a ref
 one command, and `--risk none` guessing wrong deletes prose that cannot be recovered. The
 fix for such an item is `cancel` + `add`.
 
+`edit --class` is the one writer that positions itself against the chain instead of
+reading it: the anchor goes AHEAD of any run already ending the item's first line,
+because a class written after that run leaves every field in it unreadable to every
+gate and every report, silently and for good. Where such a run exists the command
+NAMES it on stderr — the anchor makes those segments fields, and prose merely wearing
+a marker is promoted with the rest.
+
 ## Which IDs are taken
 
 The script counts an ID as allocated only where a WRITER puts one: at an item's marker in

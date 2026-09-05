@@ -864,10 +864,12 @@ def real_fields(block, field):
 
     That fallback was written to keep `edit --class` reaching the very items it
     repairs, and it never had to: **Class:** is not IN the chain of a class-less
-    item, so this returns [] for it either way, and `cmd_edit` appends. What the
-    fallback bought was only the destruction above. The class-less item stays
-    repairable, and its other fields stay unreachable until it is repaired — see
-    the refusal in cmd_edit, which says so and names what to run.
+    item, so this returns [] for it either way, and `cmd_edit` writes the anchor
+    itself — AHEAD of whatever run already ends the line, since T169 (see
+    `write_class_segment`). What the fallback bought was only the destruction
+    above. The class-less item stays repairable, and its other fields stay
+    unreachable until it is repaired — see the refusal in cmd_edit, which says so
+    and names what to run.
 
     `qualified_fields` used to add this rule a second time; it now reads it here,
     because two copies is how one of them keeps a position the other dropped.
@@ -3709,7 +3711,8 @@ def cmd_claim(args):
     stamp = now_stamp()
     # appended at the end of the FIRST line, where the chain lives — the same place
     # `edit` puts a field it did not find, and the only place claim_segment reads
-    # one back from
+    # one back from. The class is the one field NOT written here: it is the anchor
+    # the rest are measured from, so it goes ahead of the run (write_class_segment)
     head, sep, rest = block.partition("\n")
     new = head.rstrip() + f" **Claimed:** {args.owner}{CLAIM_SINCE}{stamp}." + sep + rest
     # THE gate, and it is asked of what would be WRITTEN — compose first, then require
