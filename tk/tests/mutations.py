@@ -2322,6 +2322,38 @@ MUTATIONS = [
      ["TestProvenanceFields.test_an_add_without_the_flags_writes_the_item_of_today",
       "TestProvenanceFields.test_the_flags_are_independent"]),
 
+    # --- T300: the lane address is the one field of the group an edit rewrites ---
+    ("T300 the spec flag leaves the edit loop, so it writes nothing",
+     '             (args.project, "Project"), (deferred_flag, "Deferred"),',
+     '             (args.project, "Project"), (deferred_flag, "Deferred"))\n    _ = (',
+     ["TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_field_is_written_on_an_item_that_carried_none",
+      "TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_field_is_REWRITTEN_and_the_old_value_is_gone",
+      "TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_value_is_stored_in_the_one_spelling"]),
+
+    ("T300 the edit door stores the caller's own spelling, ungated",
+     '    args.spec = validate_ref("spec", args.spec)\n'
+     "    new = block",
+     "    new = block",
+     ["TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_a_value_outside_the_ref_shape_is_refused_and_writes_nothing",
+      "TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_value_is_stored_in_the_one_spelling"]),
+
+    # over-trigger direction: the relaxation spreads to the fields it was
+    # deliberately NOT granted to, and a ticket re-pointed at another issue is
+    # the work of another issue
+    ("T300 the relaxation spreads to Ticket, which is provenance and add-only",
+     '    e.add_argument("--project", help="assign/change the project tag")\n'
+     '    e.add_argument("--spec"',
+     '    e.add_argument("--project", help="assign/change the project tag")\n'
+     '    e.add_argument("--ticket")\n'
+     '    e.add_argument("--spec"',
+     ["TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_other_two_fields_of_the_group_still_have_no_flag"]),
+
     ("T172 the lane column leaves the package listing",
      '            eligible.append(f"{label}  {pack_effort(text):<12}  "\n'
      '                            f"{lanes[n]:<20}  {item_title(text)}"',

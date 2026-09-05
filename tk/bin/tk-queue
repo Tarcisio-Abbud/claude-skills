@@ -2433,15 +2433,27 @@ def pack_ref(block, field):
     return canonical_ref(value) if REF_RE.fullmatch(value) else None
 
 
-# NONE OF THE THREE IS AN `edit` FLAG — Ticket, Spec, Repo — and the omission is
+# TWO OF THE THREE ARE NOT `edit` FLAGS — Ticket and Repo — and the omission is
 # deliberate — the same answer CLEARABLE gives about **Claimed:**. Provenance is
 # written once, by whoever imports the ticket, and it is the one thing about an item
 # that cannot change without the item becoming a different item: a ticket re-pointed
-# at another spec is a ticket of another spec, and one re-pointed at another
+# at another issue is the work of another issue, and one re-pointed at another
 # repository is work in another repository. The repair for a typo is the repair
 # for any unreadable chain — `cancel` and re-add, which also puts the wrong
 # `closes` on the record instead of erasing it. `edit --text` keeps all three:
 # it preserves everything from the first field marker on.
+#
+# **Spec:** IS one, and the split is what each field ANSWERS. Ticket and Repo say
+# where the item CAME FROM and where its code lands — facts that cannot change while
+# it stays the same item. Spec says which LANE the package dispatches it in
+# (`pack_lanes`), and a lane is a routing decision over a queue that MOVES: a spec
+# closes, a track is resliced, an accumulated lane is re-elected, and the same ticket
+# belongs under a different one. Add-only there protected nothing and cost the
+# alternative measured on 2026-09-01 — 22 items of this project's own queue could not
+# enter an accumulated lane, and the only route in was to close all 22 as DESCARTADO
+# and re-add them, which erases 22 real birth dates to repair a routing field. The
+# value passes the SAME gate `--spec` passes on the way in (`validate_ref`), so the
+# one spelling per reference this file holds is not what relaxes here.
 
 
 def pack_closes(block):
@@ -3587,6 +3599,11 @@ def cmd_edit(args):
     if args.classe and args.classe not in CLASSES:
         fail(f"--class must be one of {', '.join(CLASSES)}")
     deferred_flag = deferral_for_edit(args, block)
+    # canonicalised the way `cmd_add` canonicalises it, and by the same gate: an
+    # edit writing `Ambiente#0171` into a queue whose adds wrote `ambiente#171`
+    # puts two spellings of one reference in one file, and the lane count that
+    # compares them is a plain `==` only because no door writes the second one
+    args.spec = validate_ref("spec", args.spec)
     new = block
     if args.text:
         head_m = CANONICAL_HEAD_RE.match(block)
@@ -3601,7 +3618,11 @@ def cmd_edit(args):
     flags = ((args.classe, "Class"), (args.effort, "Effort"),
              (args.risk, "Risk"), (args.env, "Env"),
              (args.criterion, "Criterion"),
-             (args.project, "Project"), (deferred_flag, "Deferred"))
+             (args.project, "Project"), (deferred_flag, "Deferred"),
+             # LAST, after every field that already had a flag: an absent field is
+             # APPENDED at the end of the chain by this loop, so a new flag inserted
+             # higher up would move where the older ones land on the same item
+             (args.spec, "Spec"))
     promoted_names = []
     for flag, field in flags:
         if not flag:
@@ -4592,6 +4613,15 @@ def main():
                    "or 'none' to DELETE the field — the item then runs wherever the "
                    "queue does")
     e.add_argument("--project", help="assign/change the project tag")
+    e.add_argument("--spec", help="the spec this ticket belongs to, `<repo>#<n>` — "
+                   "written here, or REWRITTEN. It is the only field of its group with "
+                   "a flag on this command: **Ticket:** and **Repo:** say where the item "
+                   "came from and where its code lands, which cannot change while it "
+                   "stays the same item, and their repair is `cancel` + re-add. **Spec:** "
+                   "is the item's LANE in the afk package (see `pack --help`) — a routing "
+                   "decision over a queue that moves. Same shape and same one spelling as "
+                   "on the way in (`Ambiente#0171` is stored `ambiente#171`); "
+                   f"'{FIELD_CLEAR}' does NOT clear it — a lane is changed, never emptied")
     e.add_argument("--force", action="store_true",
                    help=f"raise BOTH ceilings for this one call: the item BLOCK from "
                         f"{CEILING} to {CEILING_FORCED}, and each field VALUE from "

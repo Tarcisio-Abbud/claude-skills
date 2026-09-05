@@ -3221,6 +3221,82 @@ class TestProvenanceFields(QueueTest):
         self.assertNotIn("**Spec:**", body)
 
 
+class TestTheSpecIsTheOneEditableFieldOfItsGroup(QueueTest):
+    """**Spec:** is an address, not a provenance. It decides the LANE `pack`
+    dispatches the item in, and a lane is a routing decision over a queue that
+    moves — a spec closes, a track is resliced, and the same ticket belongs under
+    another one. **Ticket:** and **Repo:** say where the item came from and where
+    its code lands, which cannot change while it stays the same item, so they keep
+    no flag here at all."""
+
+    def test_the_field_is_written_on_an_item_that_carried_none(self):
+        """Through the reader that consumes it, not by reading the file back
+        alone: two items with no Spec are two `avulso` lanes, and the whole point
+        of writing the field is that `pack` then builds the accumulated one."""
+        self.seed(item(1, "um"), item(2, "dois"))
+        for iid in ("T001", "T002"):
+            r = self.run_tk("edit", iid, "--spec", "repo#171")
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Spec:** repo#171.", self.body())
+        pack = self.run_tk("pack")
+        self.assertEqual(pack.returncode, 0, pack.stderr)
+        self.assertEqual(pack.stdout.count("spec repo#171"), 2, pack.stdout)
+
+    def test_the_field_is_REWRITTEN_and_the_old_value_is_gone(self):
+        """Writing once and refusing the second write would be the add-only rule
+        wearing a flag: the case this exists for is an item already pointed at a
+        spec that closed."""
+        self.seed(ticket_item(1, "um", spec="repo#171"),
+                  ticket_item(2, "dois", spec="repo#171"))
+        r = self.run_tk("edit", "T002", "--spec", "repo#144")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertIn("**Spec:** repo#144.", body)
+        self.assertEqual(body.count("**Spec:**"), 2, "the field was duplicated")
+        self.assertEqual(body.count("repo#171"), 1, "the old value survived")
+
+    def test_the_other_two_fields_of_the_group_still_have_no_flag(self):
+        """`--ticket`, `--repo` and `--source` are refused by argparse itself —
+        the flag does not exist. Relaxing one field may not relax its neighbours:
+        that is the whole content of the split."""
+        for flag, value in (("--ticket", "repo#1"), ("--repo", "/root/x"),
+                            ("--source", "hoje")):
+            with self.subTest(flag=flag):
+                self.seed(ticket_item(1, "um", ticket="repo#9", repo="/root/y"))
+                before = self.body()
+                r = self.run_tk("edit", "T001", flag, value)
+                self.assertNotEqual(r.returncode, 0, f"{flag} was accepted")
+                self.assertIn(flag, r.stderr)
+                self.assertEqual(self.body(), before, "the queue was written anyway")
+
+    def test_a_value_outside_the_ref_shape_is_refused_and_writes_nothing(self):
+        """The same gate the way in takes, and for the same reason: a malformed
+        lane address is a second branch and a second campaign for a spec that
+        already has both. `none` is in the list on purpose — everywhere else in
+        this script that word DELETES a field, and a lane is changed, never
+        emptied."""
+        for junk in ("172", "#172", "repo#", "repo#abc", "owner/repo#172",
+                     "repo#172x", "_repo#1", ".repo#1", "none", "NONE", ""):
+            with self.subTest(junk=junk):
+                self.seed(ticket_item(1, "um", spec="repo#171"))
+                before = self.body()
+                r = self.run_tk("edit", "T001", "--spec", junk)
+                self.assertNotEqual(r.returncode, 0, f"--spec {junk!r} was accepted")
+                self.assertEqual(self.body(), before, "the queue was written anyway")
+
+    def test_the_value_is_stored_in_the_one_spelling(self):
+        """`add` canonicalises and this door has to as well, or one queue holds
+        two spellings of one reference and the lane count that reads them by `==`
+        sees two specs of one ticket each."""
+        self.seed(item(1, "um"), item(2, "dois"))
+        self.assertEqual(self.run_tk("edit", "T001", "--spec",
+                                     "Repo#0171").returncode, 0)
+        self.assertEqual(self.run_tk("edit", "T002", "--spec",
+                                     "repo#171").returncode, 0)
+        self.assertEqual(self.body().count("**Spec:** repo#171."), 2)
+        self.assertEqual(self.run_tk("pack").stdout.count("spec repo#171"), 2)
+
+
 class TestPackLane(PackOutput):
     """The lane is what the afk orchestrator dispatches by, and it is read from
     the QUEUE — never from GitHub, which `pack` does not touch. Tickets of one
