@@ -464,6 +464,127 @@ class TestDefinedTerms(MeasureTest):
         self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
 
 
+class TestTheKitIsTheUniverse(MeasureTest):
+    """The sibling scan over a PLUGIN, where a term is coined one skill away.
+
+    The metric read the target's own directory and stopped there, so
+    **generation**, redefined by `dispatch` against `kickoff/WINDOW.md`, scored
+    zero and only a cold review found it (#219). A kit is recognised by the
+    marker a plugin carries, `.claude-plugin/plugin.json`, and every skill
+    markdown under it joins the target's own directory in the comparison.
+    """
+
+    def kit(self, layout, marker=True):
+        """A plugin on disk — {relative path: text} — and its root."""
+        root = os.path.join(self.tmp, "kit")
+        if marker:
+            os.makedirs(os.path.join(root, ".claude-plugin"), exist_ok=True)
+            with open(os.path.join(root, ".claude-plugin", "plugin.json"),
+                      "w", encoding="utf-8") as f:
+                f.write('{"name": "kit"}\n')
+        for relative, text in layout.items():
+            full = os.path.join(root, relative)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w", encoding="utf-8") as f:
+                f.write(text)
+        return root
+
+    def test_a_term_defined_in_another_skill_of_the_kit_is_reported(self):
+        """The case of #219: restricted to the directory this is 0."""
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/kickoff/WINDOW.md": "**Generation** is one dispatch.\n",
+        })
+        report = self.report(os.path.join(root, "skills", "alpha", "SKILL.md"))
+        self.assertEqual(report["metrics"]["terms_defined_in_sibling"], 1)
+        self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"],
+                         ["skills/kickoff/WINDOW.md"])
+
+    def test_two_skill_files_of_the_same_name_are_told_apart_by_their_path(self):
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/beta/SKILL.md": "**Generation** is one dispatch.\n",
+            "skills/gamma/SKILL.md": "**Generation** is one dispatch.\n",
+        })
+        report = self.report(os.path.join(root, "skills", "alpha", "SKILL.md"))
+        self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"],
+                         ["skills/beta/SKILL.md", "skills/gamma/SKILL.md"])
+
+    def test_the_only_definition_in_the_whole_kit_is_not_reported(self):
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/beta/SKILL.md": "nothing defined here\n",
+        })
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+    def test_a_kit_file_that_is_not_a_skill_keeps_its_own_directory(self):
+        """The universe is the kit's SKILLS. A reference page, a fixture or a
+        test file under the same plugin is measured as it always was — against
+        its own directory, by basename — and the kit's skills never reach it."""
+        root = self.kit({
+            "reference/queue.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "reference/session-finding.md": "**Generation** is one dispatch.\n",
+            "skills/alpha/SKILL.md": "**Handoff** is a briefing.\n",
+        })
+        report = self.report(os.path.join(root, "reference", "queue.md"))
+        self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"],
+                         ["session-finding.md"])
+
+    def test_a_skill_of_the_kit_never_collides_with_a_file_outside_skills(self):
+        root = self.kit({
+            "reference/queue.md": "**Generation** is one dispatch.\n",
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+        })
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+    def test_a_kit_file_symlinked_out_of_the_kit_is_not_read(self):
+        """The boundary moved from the directory to the kit; it did not go."""
+        outside = self.write("**API_KEY** is the token.\n", name="secret.md",
+                             subdir="elsewhere")
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**API_KEY** is the token.\n",
+            "skills/beta/SKILL.md": "nothing defined here\n",
+        })
+        os.symlink(outside, os.path.join(root, "skills", "beta", "leak.md"))
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+    def test_a_kit_file_symlinked_to_another_skill_is_read_once(self):
+        """Both names reach the same real file, and the finding names it once —
+        the count alone would pass on a guard that refused every symlink."""
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/beta/SKILL.md": "**Generation** is one dispatch.\n",
+        })
+        os.symlink(os.path.join(root, "skills", "beta", "SKILL.md"),
+                   os.path.join(root, "skills", "gamma.md"))
+        report = self.report(os.path.join(root, "skills", "alpha", "SKILL.md"))
+        self.assertEqual(report["metrics"]["terms_defined_in_sibling"], 1)
+        self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"],
+                         ["skills/beta/SKILL.md"])
+
+    def test_the_measured_file_is_not_its_own_sibling_under_a_second_name(self):
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+        })
+        os.symlink(os.path.join(root, "skills", "alpha", "SKILL.md"),
+                   os.path.join(root, "skills", "mirror.md"))
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+    def test_a_target_under_no_kit_measures_by_its_own_directory_and_no_error(self):
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/beta/SKILL.md": "**Generation** is one dispatch.\n",
+        }, marker=False)
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        r = self.run_on(path, "--json")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(r.stdout)["metrics"]["terms_defined_in_sibling"], 0)
+
+
 class TestUnpunctuatedRuns(MeasureTest):
     """The table rule, in the other constructs that carry one item per line and
     no full stop. A block of link definitions measured 536 words as one sentence

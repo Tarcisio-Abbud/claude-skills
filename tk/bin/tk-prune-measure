@@ -26,9 +26,10 @@ WHAT IT COUNTS, and where each number comes from:
 - negations, LISTED WITH CONTEXT. A count alone would be a verdict the regex
   cannot support: `never` steering the agent and `never` inside the name of an
   outcome look identical to it, and only the human reading the line can tell.
-- defined terms, and the ones a SIBLING markdown file in the same directory
-  defines too — a term whose meaning is written in two places is a term the
-  reader has to assemble.
+- defined terms, and the ones another markdown file DEFINES TOO — a term whose
+  meaning is written in two places is a term the reader has to assemble. The
+  universe is the whole KIT for a skill of a plugin, and the file's own
+  directory for anything else; `sibling_terms` says why, and what a kit is.
 
 HOW A LINE IS READ. `scan()` walks the body once and hands every later count the
 same list of `Line` records: one line, ONE role, its prose computed once. Roles
@@ -237,6 +238,11 @@ POINTER_MAX = 200
 TERM_IS = re.compile(r"(?:\b(?:an?|the)\s+)?\*\*([^*\n]+)\*\*\s+(?:is|means)\b",
                      re.IGNORECASE)
 TERM_COLON = re.compile(r"^\*\*([^*\n]+)\*\*\s*:")
+
+# What makes a directory the root of a KIT. The sibling scan reaches every skill
+# of the plugin the measured file belongs to, and this file is how it knows
+# where the plugin starts and stops.
+PLUGIN_MARKER = os.path.join(".claude-plugin", "plugin.json")
 
 # One body line, read once: the number a reader scrolls to, the ONE role it
 # plays, and its prose with that role's markers taken off.
@@ -511,12 +517,49 @@ def defined_terms(body):
     return found
 
 
-def sibling_terms(path):
-    """{normalised term: [sibling file names]} for the other markdown beside it."""
+def inside(real, root):
+    """True when a resolved path is the root or sits under it."""
+    return real == root or real.startswith(root + os.sep)
+
+
+def kit_root(path):
+    """The plugin root above this file, when the file is a SKILL of that plugin.
+
+    A KIT is recognised by the marker a plugin carries — `.claude-plugin/
+    plugin.json` — and not by a directory called `skills`: the name is the
+    convention, the marker is the fact, and any tree named the same way would
+    otherwise read as a plugin. The search walks up from the file, so the
+    NEAREST plugin wins when a marketplace holds several.
+
+    ONLY A FILE UNDER `<root>/skills/` GETS THE KIT FOR A UNIVERSE. The metric
+    asks whether another SKILL of the kit already coins the term; a fixture, a
+    reference page or a test file under the same plugin is not one of them, and
+    comparing one against the shipped skills reports a collision nobody can act
+    on. Every other file keeps the directory it always had, and no error is
+    raised for it.
+    """
+    real = os.path.realpath(path)
+    directory = os.path.dirname(real)
+    while True:
+        if os.path.isfile(os.path.join(directory, PLUGIN_MARKER)):
+            skills = os.path.join(directory, "skills")
+            return directory if inside(real, skills) else None
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return None
+        directory = parent
+
+
+def directory_candidates(path):
+    """(name to report it by, path on disk) for the markdown beside `path`.
+
+    The universe of a file that is not a skill of a kit — unchanged, and named
+    by basename, because inside one directory a basename is unambiguous.
+    """
     directory = os.path.dirname(os.path.abspath(path))
     here = os.path.basename(os.path.abspath(path))
     root = os.path.realpath(directory)
-    out = {}
+    out = []
     try:
         names = sorted(os.listdir(directory))
     except OSError:
@@ -532,6 +575,61 @@ def sibling_terms(path):
         # was pointed at and nothing else
         if os.path.dirname(os.path.realpath(full)) != root:
             continue
+        out.append((name, full))
+    return out
+
+
+def kit_candidates(path, root):
+    """(path relative to the kit root, path on disk) for the kit's skill markdown.
+
+    THE BOUNDARY MOVED FROM THE DIRECTORY TO THE KIT, and it did not go. A `.md`
+    whose real destination falls outside the kit is still refused; one that
+    points at another skill of the same kit is read ONCE, because a real file
+    counted twice reports a term as shared with itself. The measured file never
+    answers as its own sibling either, however many names lead to it.
+    """
+    target = os.path.realpath(path)
+    seen = {target: None}
+    for directory, subdirs, names in os.walk(os.path.join(root, "skills")):
+        subdirs.sort()
+        for name in sorted(names):
+            if not name.lower().endswith(".md"):
+                continue
+            full = os.path.join(directory, name)
+            if not os.path.isfile(full):
+                continue
+            real = os.path.realpath(full)
+            if not inside(real, root) or real in seen:
+                continue
+            seen[real] = full
+    # named by the REAL path, not by the link that reached it: the reader of a
+    # finding has to open the file that carries the second definition, and the
+    # alias sends them to a name they cannot edit
+    return sorted((os.path.relpath(real, root), full)
+                  for real, full in seen.items() if full is not None)
+
+
+def sibling_terms(path):
+    """{normalised term: [where else the kit defines it]} for one file.
+
+    THE UNIVERSE IS THE KIT when the file lives in one. Reading the target's own
+    directory and stopping there scored ZERO on the case that named this metric:
+    **generation**, redefined by `dispatch` against `kickoff/WINDOW.md`, sat one
+    skill away and nothing in the report said so (#219).
+
+    A file that is not a skill of a kit keeps the directory it had, named by
+    basename, and no error is raised for it — `kit_root` says which files those
+    are.
+
+    Every name is RELATIVE TO THE KIT ROOT on the kit path. A basename stops
+    telling two findings apart the moment the universe holds nine files called
+    `SKILL.md`.
+    """
+    root = kit_root(path)
+    candidates = (directory_candidates(path) if root is None
+                  else kit_candidates(path, root))
+    out = {}
+    for name, full in candidates:
         try:
             with open(full, "rb") as f:
                 lines = f.read().decode("utf-8-sig", errors="replace").splitlines()

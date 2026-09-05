@@ -411,7 +411,62 @@ MUTATIONS = [
      "    shared = [{\"line\": number, \"term\": term, \"also_in\": []}\n"
      "              for number, term in terms]",
      ["TestDefinedTerms.test_a_term_defined_once_in_its_own_file_is_not_reported_as_shared",
-      "TestDefinedTerms.test_a_term_defined_in_a_sibling_of_the_same_directory_is_reported"]),
+      "TestDefinedTerms.test_a_term_defined_in_a_sibling_of_the_same_directory_is_reported",
+      "TestTheKitIsTheUniverse.test_the_only_definition_in_the_whole_kit_is_not_reported"]),
+
+    # -- the universe is the kit, not the directory (T282, #219) ------------
+    ("T282 no file is ever in a kit, so the universe stops at the directory",
+     "            return directory if inside(real, skills) else None",
+     "            return None",
+     ["TestTheKitIsTheUniverse.test_a_term_defined_in_another_skill_of_the_kit_is_reported"]),
+
+    ("T282 every file under the plugin is a skill of it, fixtures included",
+     "            return directory if inside(real, skills) else None",
+     "            return directory",
+     ["TestTheKitIsTheUniverse.test_a_kit_file_that_is_not_a_skill_keeps_its_own_directory"]),
+
+    ("T282 a kit is any directory with a `skills` in it, marker or no marker",
+     "        if os.path.isfile(os.path.join(directory, PLUGIN_MARKER)):",
+     '        if os.path.isdir(os.path.join(directory, "skills")):',
+     ["TestTheKitIsTheUniverse."
+      "test_a_target_under_no_kit_measures_by_its_own_directory_and_no_error"]),
+
+    ("T282 the kit scan reads the whole plugin, not its skills",
+     '    for directory, subdirs, names in os.walk(os.path.join(root, "skills")):',
+     "    for directory, subdirs, names in os.walk(root):",
+     ["TestTheKitIsTheUniverse."
+      "test_a_skill_of_the_kit_never_collides_with_a_file_outside_skills"]),
+
+    ("T282 the kit boundary is gone, so a link out of the plugin is read",
+     "            if not inside(real, root) or real in seen:\n"
+     "                continue\n"
+     "            seen[real] = full",
+     "            if real in seen:\n"
+     "                continue\n"
+     "            seen[real] = full",
+     ["TestTheKitIsTheUniverse.test_a_kit_file_symlinked_out_of_the_kit_is_not_read"]),
+
+    ("T282 the kit scan keys on the name, so one real file answers under two",
+     "            if not inside(real, root) or real in seen:\n"
+     "                continue\n"
+     "            seen[real] = full",
+     "            if not inside(real, root) or full in seen:\n"
+     "                continue\n"
+     "            seen[full] = full",
+     ["TestTheKitIsTheUniverse.test_a_kit_file_symlinked_to_another_skill_is_read_once",
+      "TestTheKitIsTheUniverse."
+      "test_the_measured_file_is_not_its_own_sibling_under_a_second_name"]),
+
+    ("T282 a kit finding is named by the link that reached it, not by the file",
+     "    return sorted((os.path.relpath(real, root), full)",
+     "    return sorted((os.path.relpath(full, root), full)",
+     ["TestTheKitIsTheUniverse.test_a_kit_file_symlinked_to_another_skill_is_read_once"]),
+
+    ("T282 a kit finding is named by basename, so nine `SKILL.md` read alike",
+     "    return sorted((os.path.relpath(real, root), full)",
+     "    return sorted((os.path.basename(real), full)",
+     ["TestTheKitIsTheUniverse."
+      "test_two_skill_files_of_the_same_name_are_told_apart_by_their_path"]),
 
     # -- targets ------------------------------------------------------------
     ("T185 a metric sitting exactly on its ceiling is marked over",
