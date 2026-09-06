@@ -50,7 +50,7 @@ Where the slice has no PR, the item's note carries it.
 
 Check that the window fits (§5). Announce the **firing receipt**: the item hit, the base, the
 estimated cost. Fire **one** `Agent`, `subagent_type: "tk:lens"`: that definition pins `model:
-opus` and `effort: high`, which the dispatch itself cannot. A site extension naming another tier
+opus` and `effort: high`, an effort no dispatch can carry. A site extension naming another tier
 passes it as `model:`. Findings live in the parent's context, so the parent fires it directly.
 Pick the angle from the slice's class; a slice matching two rows, or none cleanly, takes
 `system`.
@@ -81,8 +81,9 @@ stale words are prose, fixed on the spot like a nit.
 
 Defects force a **correction batch**: fix each one, or reject it with a reason specific to the
 finding, recorded in the inventory. A defect has a fourth exit: a `fixer` dispatched on the spot
-(`../../reference/subagent-policy.md`), committing into the slice's branch. Two conditions hold
-together: the defect is in THIS session's diff, and it carries a criterion a run can check.
+(`../../reference/subagent-policy.md`), committing into the slice's branch in a window of its
+own. Two conditions hold together: the defect is in THIS session's diff, and it carries a
+criterion a run can check.
 
 **One `fixer` cycle per firing**, never resumed: `../kickoff/AFK.md`'s *The fixer cap* counts
 it. One dispatch carries every eligible defect, and what it leaves unclosed goes to ONE item
