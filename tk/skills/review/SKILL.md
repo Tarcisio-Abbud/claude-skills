@@ -118,8 +118,8 @@ The lens ships an **attack inventory**:
 A lens that found nothing ships the inventory too: the artifacts prove the work. An empty
 or one-line inventory is a failure, not approval. Merge stays with the user.
 
-**Done when:** the inventory is in the PR body (unattended: there or on the item's handoff
-briefing), and every finding appears in it.
+**Done when:** the inventory is one comment on the slice's ticket, failing that the PR body,
+rejections first, and every finding is in it.
 
 ## 5. Window and handoff
 
