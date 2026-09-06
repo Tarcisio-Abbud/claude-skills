@@ -26,7 +26,7 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | `/tk:second-opinion` | A fresh Fable subagent judges what the session is discussing right now, from a prompt written for a cold reader. Args: `consensus [turns]` (default) — argued through `SendMessage` until no disputed point remains or the turn budget is spent (3 turns absent `turns`); a spent budget hands the open points to the user; `once` — a single verdict. User-invoked; every run logs the Fable deviation line |
 | `/tk:fleet` | Runs the unattended package of EVERY project on this machine from one command: the roster comes from `tk-roster` and the site file's `fleet-allow`/`fleet-deny`, the machine's local subagent ceiling is divided across the runs by the generated contract block, and one full orchestrator per project runs at `--budget 1`. Largest project first; a slot refills the moment a run returns, with no wait for the wave; a project that fails fails alone. Closes on one consolidated vista in the outbox, gated by `tk-vista-check`. The load is a parameter — `afk` by default, `docs-audit` for a documentation sweep. User-invoked |
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
-| `/tk:prune` | Prunes a skill against the `writing-for-agents` ruler with a bias to subtraction: `tk/bin/tk-prune-measure` supplies the numbers and the ceilings, and the run leaves a report — metrics before and after, a KEEP / MOVE / DROP table with one row per sentence that instructs, splitting suggestions, and the named proof — in `./prune-out/<skill>/`, never in place. User-invoked; args: `<skill-path> [<output-dir>]` |
+| `/tk:prune` | Prunes a skill against the `writing-for-agents` ruler with a bias to subtraction: `tk/bin/tk-prune-measure` supplies the numbers and the ceilings, and the run leaves a report — metrics before and after, a KEEP / MOVE / DROP / CLAUSE / FIT table with one row per sentence that instructs, splitting suggestions, and the named proof — in `./prune-out/<skill>/`, never in place. User-invoked; args: `<skill-path> [<output-dir>]` |
 
 The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract, defined in
 `tk/reference/queue.md`: two files per project in auto-memory — `next-steps.md` (open
@@ -359,8 +359,8 @@ docs/prune/                       the pruning track's committed output: the base
                                   block above: a pruning report on a PRIVATE skill must not
                                   reach this public repo
   <skill>-report.md               one pruning pass over an own skill: the metrics before and
-                                  after, the KEEP / MOVE / DROP table, the splitting
-                                  suggestions and the named proof
+                                  after, the KEEP / MOVE / DROP / CLAUSE / FIT table, the
+                                  splitting suggestions and the named proof
   <skill>.md                      what that pass removed from that skill — every DROPped
                                   sentence and every cut clause, kept where a reader looking
                                   for a retired rule can still find it
