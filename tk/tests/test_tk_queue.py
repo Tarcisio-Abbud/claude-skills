@@ -8903,6 +8903,25 @@ class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
                 self.assertNotIn("folded up", r.stdout)
                 self.assertEqual(self.body(), HEADER + seeded)
 
+    def test_a_break_on_an_INTERIOR_absorbed_line_stops_the_fold_too(self):
+        """The scan is asked of every line the join absorbs, and the pair above
+        proves only the FIRST of them: both of their fixtures put the two spaces
+        at the end of the head line. Measured, with the scan narrowed to the head
+        alone — `range(min(j, len(lines) - 1, 1))` — the whole suite stayed green
+        while a break the author wrote on a continuation line went on dying at the
+        join, under a run reporting the item as folded.
+
+        The walk path on purpose: it is the one that absorbs a paragraph of more
+        than one line, so it is the only one where `k` has anywhere to reach that
+        `k == 0` does not."""
+        seeded = (T174_HEAD + "\n  segunda linha comprida o bastante para a "
+                  "geometria licenciar.  \n" + T174_CHAIN)
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertIn(self.left_alone(self.HARD, "T007"), r.stdout)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertEqual(self.body(), HEADER + seeded)
+
     def test_the_break_is_TWO_spaces_and_not_one(self):
         """The over-refusal direction. One trailing space is not a hard break in
         any Markdown — it is whitespace nobody meant as anything, and a rule that

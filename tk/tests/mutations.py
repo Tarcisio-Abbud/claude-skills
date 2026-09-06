@@ -4007,6 +4007,16 @@ MUTATIONS = [
      "            return FOLD_HARDBREAK_REFUSAL",
      ["TestTheFoldKeepsTheAuthorsLineBreaks.test_a_hard_break_above_an_absorbed_line_stops_the_fold"]),
 
+    # the scan reaches every absorbed line and not just the first: the two
+    # fixtures of the entry above both carry their break at the end of the HEAD,
+    # so this narrowing survived them and a break on a continuation line went on
+    # dying at the join
+    ("T174 only the head line is asked about the hard break",
+     "    for k in range(min(j, len(lines) - 1)):",
+     "    for k in range(min(j, len(lines) - 1, 1)):",
+     ["TestTheFoldKeepsTheAuthorsLineBreaks."
+      "test_a_break_on_an_INTERIOR_absorbed_line_stops_the_fold_too"]),
+
     # the over-refusal direction: one trailing space is whitespace, not a break,
     # and a rule that read it as one would refuse the whole wrapped population
     ("T174 a single trailing space is read as a hard break",
