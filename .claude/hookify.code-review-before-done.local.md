@@ -1,5 +1,5 @@
 ---
-name: code-review-antes-de-pronto
+name: code-review-before-done
 enabled: true
 event: stop
 action: block
@@ -51,25 +51,30 @@ This rule lives in more than one place ON PURPOSE. Two reasons, both measured:
 
   1. hookify globs `.claude/hookify.*.local.md` relative to the PROCESS CWD, and there is no
      single cwd that covers everything. Desktop sessions run in `...\Code`; server sessions
-     working on a repo run in that repo. A rule placed under only one of them silently never
-     fires under the other.
+     working on a repo run in that repo; the vault is a third. A rule placed under only one of
+     them silently never fires under the others.
 
-     The canonical copy is `claude/desktop/` in the private config repo, cloned on this
-     machine at `/workspace/projects/.ambiente`. Three copies track it byte for byte, and an
-     edit to any one of the four goes to all four in the same change:
+     The canonical copy is this file, `claude/desktop/` in the private config repo, cloned on
+     this machine at `/workspace/projects/.ambiente`. NINE copies track it byte for byte, and
+     an edit here is not landed until all nine carry it:
 
-       - `...\Code\.claude\` on the Windows desktop;
-       - `.claude/` in the config repo itself;
-       - `.claude/` in the public skills repo (`Tarcisio-Abbud/claude-skills`), where it is
-         versioned so that repo's worktrees inherit the guard.
+       - `...\Code\.claude\` on the Windows desktop -- the only one the server container
+         cannot reach. `sync-desktop.ps1` mirrors it, naming each rule file one by one and
+         never by glob;
+       - `.claude/` in the config repo itself and `.claude/` in the skills repo
+         (`Tarcisio-Abbud/claude-skills`) -- both VERSIONED, so a rename there is a commit,
+         not just a file write;
+       - `.claude/` in the five project repos under `/workspace/projects/`;
+       - `.claude/` in the Obsidian vault, under `20-Infraestrutura/25-M365-CasaNostra/`.
 
-     Nothing copies them automatically -- `sync-desktop.ps1` deliberately does not -- so the
-     mirroring is by hand, and `diff` is the whole check.
+     `bin/hookify-propagate.py` in the config repo rewrites the eight it can reach and reports
+     the ninth instead of pretending to have written it. It only reports by default and writes
+     under `--write`, because five of those copies are read by live project sessions.
 
-     A fifth text exists and is NOT one of these copies: a shorter translated variant, with no
-     NOTE, still runs in the project repos under `/workspace/projects` and in the vault. It
-     describes the superseded topology and is converted repo by repo. Do not diff against it
-     and conclude the mirrors have drifted.
+     Until 2026-09-05 SIX of those eight carried a shorter Portuguese variant with no NOTE,
+     describing a superseded topology, and the two versioned ones an older English text -- the
+     skills repo's still calling that repo public. The script retires both. Until someone runs
+     it, both still stand: do not diff a copy against this file and conclude the mirrors drifted.
   2. `config_loader.py` and the transcript reader both call `open(path, 'r')` with no
      `encoding=`. On Windows that resolves to cp1252. A rule file carrying one emoji is then
      skipped silently. A transcript carrying one emoji reads as "" -- 7 of 8 real ones tested.

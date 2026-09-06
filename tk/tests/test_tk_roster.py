@@ -5,9 +5,9 @@ keys it adds (`fleet-allow`, `fleet-deny`, parsed in ../bin/tk_site.py).
 Run: python3 -m unittest discover -s tk/tests   (stdlib only, no deps)
 
 Every test here is proved by MUTATION: the defect is put back in the source and
-the test must fail. `mutations_roster.py` in this directory replays each one
-mechanically (a second harness only until `mutations.py` can name a test outside
-`test_tk_queue` — its own docstring says why).
+the test must fail. `mutations.py` in this directory replays each one
+mechanically: its entries name their tests `test_tk_roster.<Class>.<method>`,
+which is what ended the second harness this suite used to carry.
 
 The suite drives the real script as a subprocess with HOME pointed at a
 throwaway tree, so it sweeps fixtures and never the machine's own projects. The

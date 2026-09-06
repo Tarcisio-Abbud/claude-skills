@@ -130,13 +130,18 @@ class TestTheLockIsWellFormed(LockTest):
                  for name, lines, words in rows}
         compared = 0
         for path, locked in self.lock["files"].items():
-            if path not in table:
+            # A file the tree renamed after the lock was written keeps, in `baseline`,
+            # the name the pruning pass measured it under — so the rename does not
+            # quietly drop it out of this comparison. The numbers are the same numbers.
+            name = locked.get("baseline")
+            key = f"tk/skills/{name}" if name else path
+            if key not in table:
                 continue
             compared += 1
             with self.subTest(file=path):
-                self.assertEqual(table[path], (locked["lines"], locked["body_words"]),
-                                 f"{path}: the lock and {self.lock['baseline']} "
-                                 f"disagree — {REGENERATE}")
+                self.assertEqual(table[key], (locked["lines"], locked["body_words"]),
+                                 f"{path} (baseline row `{key}`): the lock and "
+                                 f"{self.lock['baseline']} disagree — {REGENERATE}")
         self.assertGreaterEqual(compared, 13, "the baseline table stopped covering "
                                               "the locked skill files")
 

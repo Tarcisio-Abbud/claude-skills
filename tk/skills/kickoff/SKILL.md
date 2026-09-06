@@ -23,9 +23,9 @@ briefing whose `--state` names a package in flight has paid for steps 1–3 alre
 
 ## 1. Gather the agenda
 
-**Open on a clean tree.** Run `../../bin/tk-hygiene` first — it audits every roster repo for
-`delete_branch_on_merge` and prunes local branches whose remote is gone and which carry no
-commit of their own; safe to run twice, and it asks nothing. Report it in one or two lines. Exit 1 (a repo reads
+**Open on a clean tree.** Run `../../bin/tk-hygiene` first — it audits every repo for
+`delete_branch_on_merge` and prunes what the default has: a local branch whose remote is gone,
+and the lane's `spec/<m>/T<id>` on the remote; safe twice, and it asks nothing. Exit 1 (a repo reads
 `delete_branch_on_merge=false`): queue an item, never a question. Exit 3: name the repo it
 could not audit and carry on. Exit 2: the run did not happen — the audit is unread, not clean.
 
@@ -35,7 +35,7 @@ the index flags as having pending items. Then **open issues and PRs** (`gh issue
 `gh pr list`) when there is a tracker, then the site extensions' sources. Wiki and repo
 docs are NOT agenda sources — a pending item found there is stale doc, not queue.
 
-**Every `tk-queue` call carries `--dir "<queue dir>"`** — the queue dir
+**Every `tk-queue` and `tk-ticket-ref` call carries `--dir "<queue dir>"`** — the queue dir
 `../../reference/queue.md` addresses. Without it the script resolves from the cwd, which an
 earlier `cd` retargets to another project's queue. A `--help` call takes no `--dir`.
 
@@ -89,38 +89,39 @@ recommended dispatch from the palette (step 5).
 
 ## 4. Build the menu
 
-Before asking, show the **full triaged agenda** — ALL items, one line each, with class — so
-the user sees nothing was lost before checking. **Brief each DECISION first, in prose**,
-two to four lines from what the item already carries — its text, its `**Criterion:**`, the
-memory file behind a `[[slug]]` at ONE hop, its handoff. Retransmission, not synthesis:
-context in none of those is a **missing handoff**, and the briefing says exactly that.
+Before asking, show the **full triaged agenda** — ALL items, one line each, with class — so the
+user sees nothing was lost before checking. **Brief each DECISION first, in prose**, two to four
+lines from what the item already carries — its text, its `**Criterion:**`, the memory file behind
+a `[[slug]]` at ONE hop, its handoff. Retransmission, not synthesis: context in none of those is
+a **missing handoff**, and the briefing says exactly that.
 
 Then one multiSelect `AskUserQuestion` with the actionable items (AUTONOMOUS + RECURRING)
-in the queue's own order — that order IS the priority — recommendation first. DECISION
-items become their own questions, the options the choices themselves. Tool limit: 4
+in the queue's own order — that order IS the priority — recommendation first. **Every option
+carries a one-line briefing**: the project, what runs, and what it produces. DECISION items
+become their own questions, the options the choices themselves. Tool limit: 4
 questions × 4 options; the overflow becomes report lines. BLOCKED, EXTERNAL and items
 bound to another environment ("runs on: X", from **Env** — read off the item itself, since
 `tk-queue list --dir "<queue dir>"` does not print it) are never options — the last go to
 block (d), though their DECISIONs stay in the menu: deciding is machine-agnostic.
-**Done when:** the whole agenda was shown, every DECISION was briefed before its question,
-and the user's selection is captured.
+**Done when:** the whole agenda was shown, every option and DECISION was briefed, and the
+user's selection is captured.
 
 ## 5. Dispatch
 
-The menu check IS the authorization — execute in sequence, without re-confirming; read the
-palette in `../dispatch/SKILL.md` before the first dispatch, and `../dispatch/LOOP.md` for
-the `loop.md` contract. Each run carries the contract block from `../../bin/tk-contract
---role <row>`. When its item names a ticket, it also carries the closing line from
-`../../bin/tk-ticket-ref <id> --closing-line`, composed there and never here — it reads the
-owner from the clone the item's **Repo:** field names, so pass `--repo <clone>` when the item
-names none; exit 3 says the item names no ticket, and the run is dispatched saying so. Close
-with: (a) what is running/scheduled, (b) BLOCKED items and what is missing, (c) EXTERNAL items
-and who to chase, (d) items bound to ANOTHER environment, each "runs on: X" with its
-ready-to-paste line — nothing here can run those, so the user is the only path, (e) the
-**session findings** discarded here, one line each — the only trace a discard leaves — and (f)
-the **age** of the items left standing: the oldest get one line each naming what they wait for,
-the cut read off `list`'s own distribution and named in the report. Age is shown, never asked;
-name a DECISION's written deferral beside its age — work the user parked on purpose.
+The menu check IS the authorization — execute in sequence, without re-confirming; read the palette
+in `../dispatch/SKILL.md` before the first dispatch, and `../dispatch/LOOP.md` for the `loop.md`
+contract. Each run carries the contract block from `../../bin/tk-contract --role <row>`. When its
+item names a ticket, it also carries the closing line from
+`../../bin/tk-ticket-ref <id> --dir "<queue dir>" --closing-line`, composed there and never here —
+it reads the owner from the clone the item's **Repo:** field names, so pass `--repo <clone>` when
+the item names none; exit 3 says the item names no ticket, and the run is dispatched saying so.
+Close with: (a) what is running/scheduled, (b) BLOCKED items and what is missing, (c) EXTERNAL
+items and who to chase, (d) items bound to ANOTHER environment, each "runs on: X" with its
+ready-to-paste line, (e) the **session findings** discarded here, one line each — the only trace a
+discard leaves — and (f) the **age** of the items left standing: the oldest get one line each
+naming what they wait for, the cut read off `list`'s own distribution and named in the report. Age
+is shown, never asked; name a DECISION's written deferral beside its age — work the user parked on
+purpose.
 **Done when:** every checked item is running or scheduled, the report covers (b)–(f), and
 `next-steps.md` reflects the post-kickoff queue.
 

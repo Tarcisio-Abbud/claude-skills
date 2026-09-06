@@ -66,17 +66,84 @@ MUTATIONS = [
 
     ("T128 hygiene without a default branch the comparison is made anyway",
      '    if default is None:\n        return [("kept", name, "no default branch '
-     'to measure against")',
+     'to measure against")\n                for name, u, t in rows',
      '    if False:\n        return [("kept", name, "no default branch '
-     'to measure against")',
+     'to measure against")\n                for name, u, t in rows',
      ["TestPrune.test_without_a_default_branch_to_measure_against_nothing_is_pruned"],
      HYGIENE),
 
     ("T128 hygiene git refusing to delete a checked-out branch is reported as a prune",
-     '        if code != 0:\n            out.append(("kept", name,',
-     '        if False:\n            out.append(("kept", name,',
+     '        if code != 0:\n            out.append(("kept", name, '
+     'first_line(err, code, "git branch -D")))',
+     '        if False:\n            out.append(("kept", name, '
+     'first_line(err, code, "git branch -D")))',
      ["TestPrune.test_a_branch_checked_out_in_another_worktree_survives_the_refusal"],
      HYGIENE),
+
+    # --- the content test, for what a squash or a rebase rewrote -----------
+    ("T281 hygiene a branch that fails the ancestry test is never asked about its content",
+     "        held = unmerged_content(repo, name, default)",
+     '        held = "commits of its own"',
+     ["TestPrunedByContent."
+      "test_a_squash_merged_branch_is_pruned_though_no_commit_of_it_is_an_ancestor"],
+     HYGIENE),
+
+    ("T281 hygiene the merge is compared with the BRANCH's tree instead of the default's",
+     'f"{default}^{{tree}}"', 'f"{name}^{{tree}}"',
+     ["TestPrunedByContent."
+      "test_a_squash_merged_branch_is_pruned_though_no_commit_of_it_is_an_ancestor"],
+     HYGIENE),
+
+    ("T281 hygiene a merge that CONFLICTED is read as an answer about content",
+     '    if code != 0:\n        conflict = next(',
+     '    if False:\n        conflict = next(',
+     ["TestPrunedByContent.test_a_branch_that_does_not_merge_into_the_default_is_kept"],
+     HYGIENE),
+
+    ("T281 hygiene a merge that could not be ATTEMPTED is reported as a conflict",
+     "        if conflict:", "        if True:",
+     ["TestPrunedByContent."
+      "test_a_merge_that_could_not_run_is_not_reported_as_a_conflict"],
+     HYGIENE),
+
+    ("T281 hygiene content the default does not have no longer holds a branch back",
+     "    if out.splitlines()[0] != tree:", "    if False:",
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned",
+      "TestTheRepositoryThisBinLivesIn.test_the_branches_of_that_clone_are_pruned_like_any_other"],
+     HYGIENE),
+
+    # --- the second source of repositories ---------------------------------
+    ("T210 hygiene the roster is the only source, so a clone with no queue is unreachable",
+     "    repos = repos_of([path for _, path in swept] + [own_tree()])",
+     "    repos = repos_of([path for _, path in swept])",
+     ["TestTheRepositoryThisBinLivesIn.test_a_clone_with_no_queue_is_audited_when_the_bin_lives_in_it",
+      "TestTheRepositoryThisBinLivesIn.test_the_branches_of_that_clone_are_pruned_like_any_other"],
+     HYGIENE),
+
+    # --- the remote side, and the three guards on an irreversible delete ---
+    ("T342 hygiene every remote branch is a per-ticket one, the lane's own included",
+     "        if PER_TICKET_RE.match(name):", "        if name:",
+     ["TestRemoteResidue.test_the_lane_s_own_branch_is_never_a_candidate"], HYGIENE),
+
+    ("T342 hygiene a remote that moved since the last fetch is acted on anyway",
+     "        if live != sha:", "        if False:",
+     ["TestRemoteResidue.test_a_branch_the_remote_moved_since_the_last_fetch_is_not_touched"],
+     HYGIENE),
+
+    ("T342 hygiene the remote branch is deleted without asking where its work is",
+     "        held = unmerged_content(repo, sha, default)", "        held = None",
+     ["TestRemoteResidue.test_a_per_ticket_branch_still_carrying_its_work_survives"],
+     HYGIENE),
+
+    ("T342 hygiene the remote step never runs, so the orphan stays where it was",
+     "    if not args.no_remote:", "    if False:",
+     ["TestRemoteResidue."
+      "test_a_per_ticket_branch_already_in_the_default_is_deleted_from_the_remote"],
+     HYGIENE),
+
+    ("T342 hygiene --no-remote is parsed and then ignored",
+     "    if not args.no_remote:", "    if True:",
+     ["TestRemoteResidue.test_the_remote_step_can_be_switched_off"], HYGIENE),
 
     # --- what the report is allowed to say ---------------------------------
     ("T128 hygiene the default branch is reported as residue like any other",

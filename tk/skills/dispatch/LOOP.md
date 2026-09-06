@@ -7,9 +7,9 @@ project's queue this way, and check on every later dispatch that it still matche
 ```markdown
 Read the queue at ~/.claude/projects/<cwd-slug>/memory/next-steps.md. Execute ONLY the
 top AUTONOMOUS item — one slice per iteration — and verify the result. Resolve it via
-`tk-queue done <id> --how "<pointer>"` (the script is the queue's only writer; its
-contract is `reference/queue.md` of the `tk` plugin). No AUTONOMOUS item left: end
-the loop and summarize what remains.
+`tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>"` (the script is the queue's
+only writer; its contract is `reference/queue.md` of the `tk` plugin). No AUTONOMOUS
+item left: end the loop and summarize what remains.
 ```
 
 An edit takes effect on the next iteration. The file belongs to the project and is versioned

@@ -50,8 +50,7 @@ duplicating, delete what proved wrong, make relative dates absolute, link with `
 **Pending items go through `tk-queue`** — contract, commands and the pointer rule:
 `../../reference/queue.md`. Decide each new item's `--criterion` here rather than leaving
 "done" as the next closer's self-report, and ask a DECISION's decision here: with the
-user still in the room the item registers AUTONOMOUS. That queue is what `/tk:kickoff`
-dispatches at the next session's open.
+user still in the room the item registers AUTONOMOUS.
 
 An item survives into the queue only when at least ONE **survival gate** holds, and the
 item RECORDS which one — in its own text ("waiting on the vendor's token"), except where
@@ -72,12 +71,17 @@ present, offer the conversion as a check of its own (the check IS the authorizat
 close with `done --how "<the routine>"`; unattended, a DECISION carrying the routine
 ready to paste. Never discarded: a discard answers a question, this one needs a routine.
 
+**Consolidate, before the report, what an unattended package queued.** It triaged each
+finding alone, so overlap shows only in the SET: fold items in the same FILE, and items that
+are two halves of one RULE. `edit --text` on the survivor FIRST and `cancel --why` on the
+source after — the block ceiling refuses the union once the source's text is gone.
+
 **Encode into the system:** a correction the user repeated or a check they did by hand is
 a system signal, not an instance signal — propose encoding it (project skill, hook rule,
 test) so it holds in every future iteration.
 **Done when:** every durable fact has a memory file (pointer in `MEMORY.md`), every open
-item names its survival gate, no RECURRING item is parked, and every recurring correction
-has an encoding proposed or discarded.
+item names its survival gate, no RECURRING item is parked, what a package queued was
+consolidated, and every recurring correction has an encoding proposed or discarded.
 
 ## 3. Update the repo documentation
 
@@ -106,8 +110,9 @@ was stated — and every item closed by this session carries its evidence block.
 
 Settle every version-control decision NOW — this gate is what makes the wrap-up a real
 close. From the inventory, list the pending actions per repo: uncommitted work, unpushed
-branches, PRs to open, PRs awaiting merge. **The gate's whole procedure is
-`MERGE-GATE.md` beside this file — read it whenever that list is non-empty**: the digest,
+branches, PRs to open, PRs awaiting merge. **The gate's whole procedure is the
+`merge-gate` skill, `../merge-gate/SKILL.md` — read it whenever that list is
+non-empty**: the digest,
 its five verdicts of safe-to-merge, the triple check of the closing line, the action
 menu, stack order, and the accumulated lane's per-item form.
 
@@ -116,7 +121,7 @@ here as an action, never as a new item**. Merging its own PR is one line of the 
 and the menu is the authorization. Reclassifying to `DECISION` belongs to an item still
 open from before this session. Where the menu leaves the merge unchecked, the DECISION it
 writes carries that action, and the delivered item stays closed.
-**Done when:** `MERGE-GATE.md`'s own "Done when" holds — every action executed or an
+**Done when:** `../merge-gate/SKILL.md`'s own "Done when" holds — every action executed or an
 explicit DECISION, none merely implied — or the list was empty and that was said.
 `tk-queue list` then names no item this session delivered — a deferred merge sits there as
 that action, never as the item back open.
@@ -130,11 +135,10 @@ writing the close.** It is written for a cold reader, and the structure is what 
 queue item, in executable order, plus the opening sentence of the next session. Escalate
 to the five-field handoff file when the understanding the next session needs lives only
 in this conversation — a task mid-flight, open hypotheses, a campaign spanning several
-items. That file is written and removed only by `tk-queue handoff <id> --objective "..."
---state "..." --blockers "..."`; run the `edit` it prints (rule: `../verify/SKILL.md`,
-*The item points at the briefing*), and a campaign gets ONE handoff file, pointed at by
-every item in it. The file carries **CONCLUSIONS, never a reading list**: this session
-holds them hot; every successor pays full price to rediscover them.
+items. That file is written and removed only by `tk-queue handoff "<id>" --dir "<queue dir>"
+--objective "..." --state "..." --blockers "..."`; run the `edit` it prints (rule:
+`../verify/SKILL.md`, *The item points at the briefing*), and a campaign gets ONE handoff
+file, pointed at by every item in it. The file carries **CONCLUSIONS, never a reading list**.
 
 **The next step — ALWAYS close by recommending ONE path**, the why in 1–2 sentences, by
 where the understanding lives: written down, `/clear` is cheap; conversation-only,
@@ -170,7 +174,7 @@ exception closes the package: the batched question over its parked DECISIONs
   choice becomes a DECISION carrying `--deferred afk` — the flag for a decision nobody
   could ask, against one nobody bothered to ask. A session finding takes the three rungs
   of `../../reference/session-finding.md` instead.
-- Step 5 runs on `MERGE-GATE.md`, *The strict form*: commit and push before any review —
+- Step 5 runs on `../merge-gate/SKILL.md`, *The strict form*: commit and push before any review —
   `afk` IS that authorization — the digest in the PR body, merge only under the hardened
   verdicts; whatever is not merged enters the queue as a DECISION with its digest
   reference ready.

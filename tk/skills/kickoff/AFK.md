@@ -5,8 +5,9 @@ Both build the same **package** — the largest set of queue items this session 
 session running a package is an **orchestrator**: it claims, dispatches, verifies and closes, and
 implements nothing inline. Every run takes its model, effort and venue from the role table in
 `../../reference/subagent-policy.md`, which also fixes the one-line format a departure costs.
-While the package runs the orchestrator ALONE writes the queue, and **every `tk-queue` call
-below carries `--dir "<queue dir>"`** — the queue dir `../../reference/queue.md` addresses.
+While the package runs the orchestrator ALONE writes the queue, and **every `tk-queue` and
+`tk-ticket-ref` call below carries `--dir "<queue dir>"`** — the queue dir
+`../../reference/queue.md` addresses.
 Without it the script resolves from the cwd, which an earlier `cd` retargets to another
 project's queue. A `--help` call takes no `--dir`.
 
@@ -20,69 +21,9 @@ A solo item's pull request and the lane's alike take *The fixer cap* below.
 
 ## A resumed generation starts here
 
-A generation opened by one of `WINDOW.md`'s two vehicles inherits a package mid-flight and builds
-none: the claims it inherited are the whole of its work. It runs this section first, once, and
-only where the handoff names an accumulated lane; a handoff naming solo items alone goes straight
-to step 3's dispatch, and one a planning seam wrote — composed, never claimed — runs step 3 whole
-(a `pack` stopped at the cut enters at step 2 first). Of step 3 this section runs the DISPATCH
-alone: it does not claim (a second claim of an inherited item is refused, even under the same
-label), does not re-run the `git ls-remote` check (the branch it would find is this package's own
-lane), and creates no branch.
-
-**Read the handoff whole before anything else** — `tk-queue done "<id>" --dir "<queue dir>"`
-deletes the briefing of the item it closes, and nothing below re-reads the file. Then four beats
-in order, each reading a tree the one before it settled:
-
-**Reset.** Where the lane's worktree is gone, recreate it: `git worktree prune`, then
-`git worktree add --track -B "spec/<m>-<slug>" "<path>/spec-<m>" "origin/spec/<m>-<slug>"` —
-without `--track -B` the HEAD is detached and its push can report `Everything up-to-date` while
-the remote never moves. Then:
-
-```sh
-git -C "<path>/spec-<m>" fetch --prune origin
-git -C "<path>/spec-<m>" reset --hard "origin/spec/<m>-<slug>"
-```
-
-`--prune`, because the wrap-up gate merges with `--delete-branch` and a plain fetch keeps the
-stale ref — unpruned, this generation resumes a lane already in `main`. Whatever the reset
-discards survives on the item's own pushed branch `spec/<m>/T<id>`.
-
-**Draft.** Read `git -C "<path>/spec-<m>" log --merges --oneline "origin/main..HEAD"` (the range
-is load-bearing — unbounded, the list carries `main`'s own history) against
-`gh pr list --head "spec/<m>-<slug>"`: a `T<id>` merge on the tip with no pull request means the
-predecessor died before its `gh pr create` — open it with step 5 stage 6's command and body.
-
-**Close** every item whose merge is on the tip: the leading `T<id>` of each merge title (a title
-with none — the tail's merge of `origin/main` — closes nothing), then
-`tk-queue list --dir "<queue dir>"` per id. An item still open AND under an inherited claim
-closes with `tk-queue done "<id>" --dir "<queue dir>" --how "PR #<n>"` — the claim is half the
-test, since `done` on an item claimed by another owner succeeds silently, and that item is a
-sibling's. The tip decides over the handoff's item→merge map wherever they disagree. Then write
-a fresh handoff — the closes just deleted the old briefing — and run the `edit` it prints
-(`../verify/SKILL.md`, *The item points at the briefing*).
-
-**Re-dispatch** the item in flight from its pushed WIP branch, into its surviving worktree, else
-`git worktree add --track -B "spec/<m>/T<id>" "<path>/T<id>" "origin/spec/<m>/T<id>"` — never
-`git worktree remove --force`, which discards exactly what the invariant keeps. Never re-dispatch
-an id the close just closed or `tk-queue list --dir "<queue dir>"` no longer shows open: on a
-stale name the lane ends with two merges of one item, and `git revert -m 1` on either leaves the
-other's copy in. An item the handoff shows green owes no run — it enters step 5's cycle at stage
-1. A branch never pushed, or with no commits past the lane's tip, is dispatched fresh, as step 3
-does a ticket.
-
-Then the package carries on: step 3's dispatch sends what the claims still hold, and step 5's
-tail runs after the last of them — budget both as work remaining. A death during the tail is
-redone, not resumed: merge `origin/main` where `git merge-base --is-ancestor origin/main HEAD`
-exits 1; a handoff silent on the review means the review is re-fired whole; the criteria run is
-redone whole either way.
-
-The exits grade different objects, so every row that applies runs. Handoff missing, or no
-`origin/spec/<m>-<slug>` after the prune while `gh pr list --state all` returns `[]`: stop and
-report the branch and the claims — they stay held, so no sibling takes the items. The same absent
-ref with a `MERGED` row: the lane is DELIVERED — close its open claimed items from the merge
-commit's own `<mergeCommit>^1..<mergeCommit>^2` merges, and the tail does not run. A claim held
-by another owner: that item leaves this generation, reported under the dependency gate. Nothing
-here reopens an item, reverts a merge or rewrites anything pushed.
+`RESUME.md` beside this file carries the whole procedure — reset, draft, close, re-dispatch,
+and the exits that grade a package it cannot resume. Read it there, whole, before anything
+below runs; a generation that built its own package skips it.
 
 ## 1. Build the package
 
@@ -111,7 +52,11 @@ a clean false negative), and read the exit code, not only the output — an unre
 lane; the report names it, deletion as the repair. An item printed `[repo: ?]`, or with no address
 you can supply, leaves the package saying so. Then call `pack` again with every hit —
 `tk-queue pack --dir "<queue dir>" --spec-under-way "<repo>#<n>"`, repeatable — and cut from the
-SECOND call's list: the lane passes to the next spec at the floor of two tickets.
+SECOND call's list: the lane passes to the deepest spec at the floor of two tickets. The same
+second call also takes `--blocked "<repo>#<n>"`, repeatable, for a candidate's own **Ticket:**
+the caller found blocked on the tracker: the item leaves the package and its spec's count with
+it, so a spec whose second ticket is blocked drops under the floor instead of holding a lane on
+a ticket nobody can start.
 
 **Cut** from the top of that list until the package fits one session — around 3–6 items or ~2h of
 summed Effort, an opening bid step 6's measurement corrects; what multiplies a lane is the number
@@ -159,9 +104,26 @@ leave on the no-address rung. The address names a repository, not a working tree
 its clone on this machine, and an item whose repository has no clone here leaves the package
 undispatched, named with the reason.
 
-The lane is serial: each ticket dispatches into a worktree of its own on `spec/<m>/T<id>`, cut
-from `origin/spec/<m>-<slug>` fetched at that moment, only after the previous ticket's cycle
-ends. Solo items dispatch beside it, in series within one repository; neither lane passes the
+**Explore the base ONCE, before the first ticket goes out.** One exploration run reads the
+tree the lane's tickets name and writes its notes to `<notes dir>` — a scratch directory of
+this session's own, OUTSIDE the repository, so the lane commits none of it and the tail
+reviews none of it. The distilled contract below covers the ITEM; these notes cover the BASE,
+and without them every implementer of the lane reads the same tree again at its own cost. A
+package with no accumulated lane skips this: one run reads one base.
+
+The lane is serial: each ticket dispatches into a worktree of its own, cut from
+`origin/spec/<m>-<slug>` fetched at that moment, only after the previous ticket's cycle ends.
+Both lines below are what put the upstream on the ticket's OWN branch: cut from the lane's
+branch without `--no-track` it tracks THAT one, and a bare `push` then writes the ticket's work
+in progress into the branch the pull request publishes — refused today only because
+`push.default=simple` reads two different names, a defence `push.default=upstream` removes.
+
+```sh
+git -C "<the lane's repo address>" worktree add --no-track "<path>/T<id>" -b "spec/<m>/T<id>" "origin/spec/<m>-<slug>"
+git -C "<path>/T<id>" push -u origin "spec/<m>/T<id>"
+```
+
+Solo items dispatch beside it, in series within one repository; neither lane passes the
 local ceiling. An item too big for one subagent's context leaves the package carrying its
 briefing (`../verify/SKILL.md` prescribes the form) and its ready-to-paste line.
 
@@ -169,70 +131,32 @@ Each run's prompt carries, produced here and never delegated back: the **contrac
 verbatim from `../../bin/tk-contract --role <row>` — `implementer`, or `implementer-spec` on the
 lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull request — and
 the **item's distilled contract**: the item, the memory file behind its `[[slug]]` at one hop,
-its handoff; context in none of the three is a missing handoff, named in its own line. A solo run
+its handoff; context in none of the three is a missing handoff, named in its own line. A lane
+run also gets the path `<notes dir>` of the exploration above, read and never re-run. A solo run
 also gets its ticket reference for its PR's closing line, composed HERE by
-`../../bin/tk-ticket-ref <id> --closing-line`, which reads the owner from the clone the item's
-**Repo:** field names — pass `--repo <clone>` when the item names none. Exit 3 is the item
+`../../bin/tk-ticket-ref "<id>" --dir "<queue dir>" --closing-line`, which reads the owner from
+the clone the item's **Repo:** field names — pass `--repo <clone>` when the item names none. Exit 3 is the item
 that HAS no ticket; exit 1 is a refusal naming the defect and its remedy; exit 2 is a run that
 could not be made at all. None of the three is a run dispatched without a reference. Count
-each run by the venue signature it returns, never by the flag you passed. On a wave, step 4
-stands between the claim and the first run.
+each run by the venue signature it returns, never by the flag you passed. On a wave, step 4 —
+`AUDIT.md` beside this file — stands between the claim and the first run.
 
 **Done when:** every item is claimed or reported held elsewhere, the lane branch exists and is
-pushed before its first ticket goes out, and every run carries a generated contract block and a
-prompt self-sufficient without the tracker.
+pushed before its first ticket goes out, the base was explored once with its notes outside the
+repository, and every run carries a generated contract block, that path, and a prompt
+self-sufficient without the tracker.
 
 ## 4. Audit the spec and the tickets
 
 A package whose items came from a spec and ticket set written in this flow — a **wave** — is
-audited before any of it is implemented; a package assembled from an aged queue has no spec to
-read, and the block owed to step 6 says so. Skipping is allowed only for a wave of at most two
-tickets judged mechanical and fully specified — a bet with no hedge, stated in the block with
-what was read to judge it — and a wave re-sliced after a REGRILL refuses the bet.
+audited before any of it is implemented. The procedure is `AUDIT.md` beside this file: the
+three lenses, one verifier per finding, the four outcomes and the REGRILL that halts the
+package. Read it there, whole, and hand its block to step 6. Every `--criterion` the audit
+reads is anchored by `../verify/SKILL.md`, *The anchor outlives the tree* — one of its three
+rotten shapes — and this is where the wording is still cheap to change.
 
-Fire the site's dynamic workflow from this session (`~/.claude/tk/dispatch.md` names the
-mechanism; the Agent-tool fallback runs the same graph in series). **Three finders**, one per
-lens — **adversarial**, **blast radius**, **contract** — each checking every acceptance criterion
-against the decision it cites; an empty return is a failure, never an approval — finding nothing,
-a lens lists the attacks it ran. Dedup here, by the DEFECT and not the quoted line. Then **one
-verifier per finding**, mandate to refute, default verdict refuted, declaring
-`high`/`medium`/`low` confidence: `low`, or a correction that edits spec or ticket, goes to
-`verifier-2`; disagreement to `tiebreak`; a verifier that writes gets `isolation: 'worktree'`.
-Rows: `audit-finder`, `verifier-1`, `verifier-2`, `tiebreak`. One question stays with the
-orchestrator: can the first implement session START — repo, tracker configuration, credentials,
-the fixture its criterion runs against?
-
-Exactly one outcome per surviving finding: **resolve here** — the correction fits the spec or the
-tickets, the orchestrator edits them recording what the text said before (correcting the audited
-documents, not the resolving the session-finding ladder forbids); **backlog** —
-`tk-queue add --dir "<queue dir>"` with the gate named, as *A session finding, unattended*
-prescribes; **refuted** — one line naming the verifier and how; **REGRILL** — the spec's own
-premise is hit, and the package halts with no run fired. A **rotten criterion** (term:
-`../verify/SKILL.md`) routes by which document is wrong: the criterion alone misses the promise →
-resolve here, through `verifier-2` before it is applied; criterion and spec agree and together
-miss → REGRILL.
-
-```sh
-tk-queue add "REGRILL: <the promise the audit could not close> — package halted before the first implement" \
-  --dir "<queue dir>" --class DECISION --deferred afk --effort "M (~40min)" \
-  --criterion "B: the user re-grills the promise, and the wave is re-sliced from the spec that grill leaves"
-tk-queue handoff "<id>" --dir "<queue dir>" --objective "<what the re-grill has to settle>" \
-  --state "<the finding, its verifier's verdict, and where the spec and the tickets stand>" \
-  --blockers "<what the package stopped holding, and every claim it released>"
-```
-
-Every `<...>` is a metavariable — substitute before running, `<id>` being the id the `add`
-printed; the quoting is load-bearing, since a shell reads a bare `<id>` as a redirect. **Then run
-the `edit` the handoff prints** (`../verify/SKILL.md`, *The item points at the briefing*),
-release what the package was holding per step 3, and hand the halt to step 6.
-`../../tests/test_afk_audit.py` proves this recipe and its gate; whether the step ran is what the
-block is for.
-
-**Done when:** the block step 6 is owed names one of four states — **ran**, each finding under
-its outcome with its verifier's verdict; **skipped**, with the judgement; **partial** — the
-lenses delivered and the verifier died: re-dispatch it, else every unverdicted finding goes to
-backlog as *unverified by the audit*, counted; or **failed** — a lens nobody could make run, and
-the wave is unaudited.
+**Done when:** `AUDIT.md`'s own "Done when" holds — the block step 6 is owed names one of its
+four states.
 
 ## 5. Verify every delivery
 
@@ -261,7 +185,11 @@ orchestrator's own work, in order:
 6. **On the FIRST green merge of the package, open the draft pull request**
    (`gh pr create --draft --base main`). The body is the orchestrator's and nobody else writes
    it: per closed item it gains `Fixes <owner>/<repo>#<n>`, one line per ticket; the spec is
-   named WITHOUT a keyword, so only the user closes it.
+   named WITHOUT a keyword, so only the user closes it. **Ask verdict 5 for that item HERE**,
+   against the body just written — `../../bin/tk-closure-check "<id>" --dir "<queue dir>"
+   --pr <n>` — and record its answer for the gate's digest. After stage 7 the item's
+   **Ticket:** field has left the queue with it. The check then has no subject, and answers
+   red for every item of the package.
 7. **Close the item last** — `tk-queue done "<id>" --dir "<queue dir>" --how "PR #<n>"`, after
    the push and after the pull request exists: the push before the `done` is what lets a resumed
    generation recover either death shape without losing work or merging an item twice.
@@ -274,7 +202,7 @@ its branch stays until the lane's pull request merges.
 ### The lane's tail
 
 Runs once per package, where an accumulated lane survived, in the lane's worktree. Every exit
-ends in one place — the pull request out of draft, carrying `../wrap-up/MERGE-GATE.md`'s per-item
+ends in one place — the pull request out of draft, carrying `../merge-gate/SKILL.md`'s per-item
 digest; that gate decides the merge, and nothing here reopens an item, reverts a merge or
 rewrites anything pushed. In order:
 
@@ -286,9 +214,15 @@ rewrites anything pushed. In order:
    takes `../review/SKILL.md` §1's rule, handing over the inputs of
    `../../reference/slice-rules.md` "Before the PR", Spec reading the lane's own tickets, body
    AND comments; code takes the lens first, the two axes after. A `fixer` applies confirmed
-   findings and pushes, `T<id>` leading a fix that belongs to one item; a finding nobody here can
-   close goes to the digest, and the pull request waits on it. *The fixer cap* decides how many
-   correction cycles this review runs.
+   findings and pushes. A fix belonging to ONE item is committed on that item's own branch
+   `spec/<m>/T<id>` — its worktree recreated as `RESUME.md`'s *Re-dispatch* does, the branch
+   having outlived it —
+   and merged into the lane again with `T<id>` leading the title. Committed on the lane instead
+   it sits outside every merge the item owns, and the user's `git revert -m 1` of that merge
+   leaves the correction behind, conflicting against code it no longer patches. A fix spanning
+   items, or repairing the lane's own merge of `origin/main`, belongs to no item and stays on the
+   lane's branch, named in the digest. A finding nobody here can close goes to the digest, and the pull request waits on
+   it. *The fixer cap* decides how many correction cycles this review runs.
 3. **The whole suite and every lane criterion, on the final tree**, tip and `origin/main` shas
    recorded for the digest's Tests line. A red criterion is reported with the merges that landed
    after its item, never repaired by reverting; the closed items stay closed.
@@ -297,7 +231,8 @@ Then mark the pull request ready and remove the lane's worktree — the gate's `
 fails on a branch still checked out.
 
 **Done when:** every item carries one verify outcome with its evidence block, every lane item
-reached the branch by a pushed `T<id>` merge before its `done` and every red one is absent from
+reached the branch by a pushed `T<id>` merge before its `done`, verdict 5 was asked of each
+while it was still open, and every red one is absent from
 it, the tail ran its three steps on the final tree and left the pull request out of draft with
 the worktree removed, and every claim left with its item or was released.
 

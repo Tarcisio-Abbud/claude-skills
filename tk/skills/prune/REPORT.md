@@ -1,6 +1,8 @@
 # The pruning report
 
-One markdown file per pruning pass, named `prune-report.md`, whose first line is its own path.
+One markdown file per pruning pass: `prune-report.md` in the output directory, copied to its
+committed home `docs/prune/<skill-name>-report.md` by the pruning PR. Its first line is its own
+path.
 
 1. **Numbers** — the bin's metrics for every file read, before and after.
 2. **Table** — one row per table unit (step 4 of `SKILL.md`), plus a CLAUSE row per cut clause.
@@ -15,8 +17,8 @@ The table carries four columns:
 |---|---|
 | where | the file and the line the sentence sits at |
 | sentence | the sentence, quoted; on a CLAUSE row, the clause alone |
-| verdict | KEEP, MOVE, DROP or CLAUSE |
-| why | what the row owes — the run served, the destination with its rewritten pointers, or the reason dropped or cut |
+| verdict | KEEP, MOVE, DROP, CLAUSE or FIT — a sentence a fix deleted to fit a ceiling, never omitted |
+| why | what the row owes — the run served, the destination with its rewritten pointers, the reason dropped or cut, the fix a FIT paid for |
 
 ## Where a MOVE goes
 

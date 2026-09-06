@@ -126,6 +126,15 @@ class Fixture(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stderr)
         return re.search(r"added (T[0-9]+)", run.stdout).group(1)
 
+    def close(self, item, how="PR #52"):
+        """The item leaves the queue exactly as a package closes it — through the
+        real script, so the done-log entry is the one a real close writes."""
+        run = subprocess.run(
+            [sys.executable, QUEUE, "done", item, "--dir", self.mem, "--how", how],
+            capture_output=True, text=True, env=self.env(), cwd=self.tmp)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        return item
+
     def queue_text(self):
         with open(os.path.join(self.mem, "next-steps.md"), encoding="utf-8") as f:
             return f.read()
@@ -351,6 +360,58 @@ class TestTheReferenceReader(Fixture):
         run = self.read("T404")
         self.assertEqual(run.returncode, 2, run.stdout + run.stderr)
         self.assertIn("T404", run.stderr)
+
+    def test_an_id_that_left_the_queue_is_named_as_closed_not_as_never_seen(self):
+        """The four cases of a missing id are not one answer, and this bin used to
+        give the flat one — `no open item carries the id`, which reads as "never
+        existed" and sends the reader to a list the item has already left."""
+        item = self.close(self.add(ticket=f"{REPO}#7"))
+        run = self.read(item)
+        self.assertEqual(run.returncode, 2, run.stdout + run.stderr)
+        self.assertIn("closed:", run.stderr)
+        self.assertIn("done-log.md", run.stderr)
+        self.assertNotIn("no open item", run.stderr)
+
+
+class TestVerdictFiveOnAnItemThatIsNotOpen(Fixture):
+    """T338 — every item of an unattended package is closed by the time the merge
+    gate asks verdict 5 about it: `AFK.md` step 5 opens the pull request at stage 6
+    and closes the item at stage 7, and the gate runs after both. The checker
+    answered the whole package by exiting with no row at all."""
+
+    def body(self):
+        return f"What this slice does.\n\nFixes {OWNER}/{REPO}#7\n"
+
+    def test_a_closed_item_is_a_red_verdict_naming_the_log_it_left_for(self):
+        item = self.close(self.add(ticket=f"{REPO}#7"))
+        run = self.check(item, self.body())
+        self.assertNotEqual(run.returncode, 0,
+                            "verdict 5 answered nothing and exited like a green run:\n"
+                            + run.stdout + run.stderr)
+        self.assertIn("ticket  FAILED  closed:", run.stdout,
+                      "the run left no row — a reader of the exit code alone has "
+                      "nothing to read, and the digest quotes nothing")
+        self.assertIn("done-log.md", run.stdout,
+                      "the checker does not say where the item went")
+        self.assertIn(f"verdict-5: RED for {item}", run.stdout)
+
+    def test_the_red_row_names_the_ordering_that_produced_it(self):
+        """A refusal with no remedy is a wall. The remedy here is an order, not a
+        flag: the body exists at stage 6 and the item closes at stage 7."""
+        item = self.close(self.add(ticket=f"{REPO}#7"))
+        run = self.check(item, self.body())
+        self.assertIn("BEFORE the close", run.stdout)
+        self.assertIn("stage 6", run.stdout)
+
+    def test_an_id_the_queue_never_allocated_is_red_under_its_own_code(self):
+        """The two ways an id is not open are told apart, so the reader is not sent
+        to the done-log for an item that was never there."""
+        self.add(ticket=f"{REPO}#7")
+        run = self.check("T404", self.body())
+        self.assertNotEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ticket  FAILED  not-open:", run.stdout)
+        self.assertIn("never allocated", run.stdout)
+        self.assertNotIn("done-log.md", run.stdout)
 
 
 class TestTheClosureChecker(Fixture):
@@ -674,7 +735,7 @@ class TestTheMergeGateStatesTheRuleTheCheckerEnforces(unittest.TestCase):
     enforces a set the row does not name proves the row's older, looser rule."""
 
     def setUp(self):
-        with open(os.path.join(SKILLS, "wrap-up", "MERGE-GATE.md"), encoding="utf-8") as f:
+        with open(os.path.join(SKILLS, "merge-gate", "SKILL.md"), encoding="utf-8") as f:
             self.text = f.read()
         self.row = next(line for line in self.text.splitlines()
                         if line.startswith("| 5 |") and "Closure" in line)
@@ -705,6 +766,53 @@ class TestTheMergeGateStatesTheRuleTheCheckerEnforces(unittest.TestCase):
         checker's help, and a row silent on that condition proves the older,
         four-condition rule the checker has already left behind."""
         self.assertIn("OTHER closing line", self.row)
+
+
+class TestVerdictFiveIsAskedWhileTheItemIsStillOpen(unittest.TestCase):
+    """The ordering the checker's own remedy names, asserted where it is run.
+
+    An unattended package closes each lane item at step 5 stage 7, and the merge
+    gate asks verdict 5 after that — so the checker meets an item whose
+    **Ticket:** field left the queue with it, and answers red for every item of
+    the package. `merge-gate/SKILL.md` turns any red into a merge that is not
+    offered, so the gate could never pass a lane. The prose has to run the check
+    at stage 6, while the item is still open, and carry its answer forward."""
+
+    def setUp(self):
+        with open(os.path.join(SKILLS, "kickoff", "AFK.md"), encoding="utf-8") as f:
+            self.text = f.read()
+        self.step = self.text.split("## 5. Verify every delivery")[1].split("\n## 6.")[0]
+
+    def test_the_step_that_verifies_is_still_there(self):
+        self.assertIn("## 5. Verify every delivery", self.text,
+                      "AFK.md has no step 5 — every assertion below reads a section that "
+                      "is gone")
+
+    def test_the_close_stage_runs_the_checker(self):
+        self.assertIn("tk-closure-check", self.step,
+                      "step 5 never runs the checker, so verdict 5 is first asked by the "
+                      "gate — after stage 7 has closed the item")
+
+    def test_the_check_is_asked_before_the_item_closes(self):
+        """Position is the whole rule: the same command after the `done` reads a
+        closed item and is red by construction."""
+        check = self.step.index("tk-closure-check")
+        close = self.step.index("**Close the item last**")
+        self.assertLess(check, close,
+                        "the checker is prescribed after the close, which is the ordering "
+                        "the defect is made of")
+
+    def test_the_step_says_why_the_order_matters(self):
+        self.assertIn("**Ticket:** field has left the queue", self.step,
+                      "the stage orders the check and does not say what breaks without it, "
+                      "so a session reordering the stages loses the reason")
+
+    def test_the_completeness_check_counts_the_verdict(self):
+        """A stage nothing checks is a stage a tight package skips."""
+        done = self.step.split("**Done when:**")[1]
+        self.assertIn("verdict 5 was asked of each", done,
+                      "step 5's `Done when` does not count the verdict, so the stage can "
+                      "be skipped with the check still green")
 
 
 if __name__ == "__main__":

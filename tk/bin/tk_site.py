@@ -39,7 +39,26 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
                         Unset means NO cap, which is what every queue had before
                         the gate: a ceiling nobody chose is not a ceiling, and a
                         number shipped in the plugin would refuse every add on
-                        the first machine already above it.
+                        the first machine already above it. The word `auto`
+                        DERIVES it instead: (per-queue - discount) x the number
+                        of queues the roster counts, so the total follows a
+                        roster that grows rather than tightening on everyone the
+                        day a project is added. `auto` needs the per-queue key.
+  max-open-items-per-queue
+                        optional. The same cap asked of ONE queue, and the brake
+                        that the total alone is not: the total does not see
+                        CONCENTRATION, and 194 of 280 open items sat in two
+                        queues on the day this was measured (2026-09-04). ONE
+                        number for every queue on the roster, deliberately not a
+                        map: a map is configuration nobody maintains, and every
+                        new queue would be born without an entry.
+  max-open-items-discount
+                        optional, and only read by `max-open-items = auto`.
+                        per-queue x N is the WORST case — every queue at its
+                        maximum at once. The discount says "some queues may be
+                        at the cap, not all of them", so the total bites when
+                        the AVERAGE occupancy passes (per-queue - discount).
+                        Zero is allowed and means the worst case exactly.
   fleet-allow           optional. If present, the ONLY projects the fleet may
                         sweep. Absent means every queue on the machine enters.
   fleet-deny            optional. Projects the fleet must not touch. Applied
@@ -88,7 +107,17 @@ REQUIRED = ("identity", "environments")
 # `max-open-items` by `tk-queue add`. They share this tuple because they share
 # the validation — a ceiling that is not a number, or is zero, is refused here
 # once rather than in each reader.
-CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items")
+CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items",
+            "max-open-items-per-queue")
+# The WIP keys, spelled once. `max-open-items` is the only ceiling that also
+# takes a WORD, and the other two are read by nothing but the gate it feeds.
+WIP_TOTAL = "max-open-items"
+WIP_PER_QUEUE = "max-open-items-per-queue"
+# NOT in CEILINGS: every key there is refused at zero, and zero is a legitimate
+# discount — it is the worst case, `per-queue x N`, asked for deliberately.
+WIP_DISCOUNT = "max-open-items-discount"
+# The value that DERIVES the total from the roster instead of pinning it.
+WIP_AUTO = "auto"
 # The fleet's allow/denylist. Both optional, both comma-separated like
 # `environments`, and both read by the roster sweep rather than by this module,
 # which only says whether the file is trustworthy.
@@ -117,7 +146,7 @@ class SiteError(Exception):
 
 class Site:
     def __init__(self, path, identity, environments, ceilings,
-                 fleet_allow=(), fleet_deny=()):
+                 fleet_allow=(), fleet_deny=(), open_items_auto=False):
         self.path = path
         self.identity = identity          # str, always a member of environments
         self.environments = environments  # tuple, in the file's own order
@@ -128,17 +157,23 @@ class Site:
         # refused below instead of read as this same tuple
         self.fleet_allow = fleet_allow
         self.fleet_deny = fleet_deny
+        # `max-open-items = auto`: the total is DERIVED from the per-queue cap
+        # and the roster's size, and this module does not derive it — counting
+        # queues is the roster's question, and a second sweep here would be a
+        # second answer to it. So the flag travels and `tk-queue`'s gate, which
+        # already has the queue list in hand, does the arithmetic.
+        self.open_items_auto = open_items_auto
 
 
 def project_slug(path):
     """The directory under ~/.claude/projects that holds `path`'s queue.
 
-    The rule is `tk-queue`'s — it derives its own queue directory from the
-    working directory this way, inline in memory_dir(). It lives here because
-    two readers of the site file now need it (this module, to validate a
-    fleet list; the roster sweep, to run it backwards), and a rule copied per
-    reader is a rule that stops agreeing. The copy still in tk-queue is one
-    import away from this one, and merges the day that file is free to edit.
+    The rule is the queue directory's: `tk-queue`'s memory_dir() derives its own
+    from the working directory by CALLING this, this module runs it to validate a
+    fleet list, and the roster sweep runs it BACKWARDS to recover the directory
+    each name encodes. It lives here because a rule copied per reader is a rule
+    that stops agreeing — the copy tk-queue used to carry inline was folded into
+    this one, so there is one encoder and one decoder for "which queue is this".
 
     It is ONE-WAY: `/w/p/x-y` and `/w/p/x/y` produce the same name.
     """
@@ -219,6 +254,23 @@ def parse(text, path):
             "where NOTHING counts as local — every item would look like another "
             "machine's. Add it to `environments`, or fix the spelling.")
     ceilings = {}
+    # asked BEFORE the numeric loop, and taken out of `pairs` on the way, because
+    # `auto` is the one ceiling value that is not a number: left in, it would be
+    # refused by the loop below with a message about whole numbers
+    open_items_auto = pairs.get(WIP_TOTAL) == WIP_AUTO
+    if open_items_auto:
+        del pairs[WIP_TOTAL]
+        if WIP_PER_QUEUE not in pairs:
+            raise SiteError(
+                f"{path}: `{WIP_TOTAL} = {WIP_AUTO}` derives the total from "
+                f"`{WIP_PER_QUEUE}`, and that key is not in this file. Write it, or "
+                f"give `{WIP_TOTAL}` a number.")
+    if WIP_DISCOUNT in pairs:
+        raw = pairs[WIP_DISCOUNT]
+        if not re.fullmatch(r"[0-9]+", raw):
+            raise SiteError(f"{path}: {WIP_DISCOUNT} must be a whole number of items, "
+                            f"not {raw!r}.")
+        ceilings[WIP_DISCOUNT] = int(raw)
     for key in CEILINGS:
         if key not in pairs:
             continue
@@ -230,6 +282,18 @@ def parse(text, path):
             raise SiteError(f"{path}: {key} is {value} — a ceiling of zero lets nothing "
                             "run at all. Use 1 or more, or drop the line to leave it unset.")
         ceilings[key] = int(value)
+    # Asked after both are known, and refused rather than clamped: a discount at
+    # or above the per-queue cap derives a total of zero or less, which is a
+    # machine that may open no item at all — and it would arrive as an `add`
+    # refused with a number nobody wrote anywhere.
+    per_queue = ceilings.get(WIP_PER_QUEUE)
+    discount = ceilings.get(WIP_DISCOUNT)
+    if per_queue is not None and discount is not None and discount >= per_queue:
+        raise SiteError(
+            f"{path}: {WIP_DISCOUNT} is {discount} and {WIP_PER_QUEUE} is {per_queue}, "
+            f"so the derived total is {(per_queue - discount)} per queue — zero or less, "
+            "and no item could ever be opened. The discount says some queues may be at "
+            "the cap, not that none may be.")
     lists = {}
     for key in FLEET_LISTS:
         raw = pairs.get(key)
@@ -258,7 +322,8 @@ def parse(text, path):
         lists[key] = tuple(entries)
     return Site(path, identity, tuple(names), ceilings,
                 fleet_allow=lists.get("fleet-allow", ()),
-                fleet_deny=lists.get("fleet-deny", ()))
+                fleet_deny=lists.get("fleet-deny", ()),
+                open_items_auto=open_items_auto)
 
 
 def read_text(path, kind, utf8_hint=""):

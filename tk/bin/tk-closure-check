@@ -5,7 +5,7 @@ Given a pull request and the queue item it belongs to, it says whether merging
 that pull request will close THAT ticket, and exits non-zero naming WHICH
 condition failed.
 
-WHY THIS IS CODE AND NOT PROSE. `../skills/wrap-up/MERGE-GATE.md` states the
+WHY THIS IS CODE AND NOT PROSE. `../skills/merge-gate/SKILL.md` states the
 verdict, and a session reading it checked the body by eye. Every eye-check
 measured so far asked PRESENCE where the rule asks IDENTITY: a body copy-pasted
 from the previous slice carries a well-formed closing line for the wrong ticket
@@ -58,6 +58,16 @@ NO NETWORK IN THE OFFLINE MODE. `--pr` asks `gh` through PATH; `--body-file`
 with `--base` and `--default-branch` answers the same five conditions from
 values on hand, which is what makes the check runnable BEFORE the pull request
 exists — the moment when rewriting the body costs nothing.
+
+AN ITEM THAT LEFT THE QUEUE IS RED, NOT A CRASH. `AFK.md` step 5 closes a lane's
+item after the pull request exists, and the merge gate asks verdict 5 later
+still — so every item of an unattended package is already in the done-log when
+this runs. The reader finds it there and says which log line to read, and the
+row is FAILED: the item's **Ticket:** field left the queue with the item, and a
+log line does not carry it, so the five conditions have no subject. An id the
+queue never allocated is reported the same way. A verdict that could not be
+answered is not a verdict that passed, and a gate that stops with no row leaves
+the reader of an exit code alone with it.
 
 EXIT CODES: 0 verdict 5 is green · 1 red, and the failing conditions are named ·
 2 the run could not be made.
@@ -316,17 +326,20 @@ def report(rows, label):
     return EXIT_GREEN
 
 
-def refused(refusal, label):
+def refused(refusal, label, remedy=None):
     """A refusal from the reader, as the pre-condition row. The `[?]` item, the
     unconfigured clone, the path that is no clone and the ticket in another
     repository all reach verdict 5 the same way: red, with the defect and its
     remedy named. Verdict 5 had no exit for any of them, which left them
-    permanently red and unactionable."""
-    return report([("ticket", FAILED, f"{refusal.code}: {refusal.message}")], label)
+    permanently red and unactionable. `remedy` appends what the reader's own
+    refusal cannot know — one writer of the row, so the two callers cannot
+    drift on its wording."""
+    detail = f"{refusal.code}: {refusal.message}"
+    return report([("ticket", FAILED, detail + ("\n" + remedy if remedy else ""))], label)
 
 
 def escape(block, body, label):
-    """Verdict 5 for an item that names no ticket — MERGE-GATE's own escape, and
+    """Verdict 5 for an item that names no ticket — the merge gate's own escape, and
     it is the ITEM that gives it. Every closing line is named, not the first: a
     body carrying two of them closes two tickets this item never claimed."""
     closing = [m for m in mentions(body) if m[0].lower() in reader.KEYWORDS]
@@ -341,9 +354,22 @@ def escape(block, body, label):
                    ("item", OK, block.splitlines()[0].strip())], label)
 
 
+# What the reader's refusal cannot know: WHY verdict 5 wanted the item. The
+# remedy is an ordering one, and it is the same for every closed item.
+CLOSED_REMEDY = (
+    "The five conditions have no subject: the item's **Ticket:** field left the queue "
+    "with the item, and the log line does not carry it. Ask verdict 5 BEFORE the close — "
+    "the pull request's body is written at `AFK.md` step 5 stage 6 and the item closes at "
+    "stage 7 — or answer it by hand against the reference that body carries.")
+
+
 def check(args):
     memdir = reader.queue_dir(args.dir)
-    block, label = reader.item_block(memdir, args.id)
+    try:
+        block, label = reader.item_block(memdir, args.id)
+    except reader.Refusal as refusal:
+        return refused(refusal, f"T{args.id:03d}",
+                       CLOSED_REMEDY if refusal.code == "closed" else None)
 
     try:
         ticket = reader.item_ticket(block, label)

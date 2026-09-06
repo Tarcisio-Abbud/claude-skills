@@ -20,12 +20,13 @@ Updates from then on: `claude plugin marketplace update claude-skills`.
 | `/tk:kickoff` | Session open (mirror of /tk:wrap-up): opens on `tk-hygiene` and the week's closed items (`tk-queue report --since`), then the pending-items agenda verified against reality and triaged — **Effort, Risk and Env** on every item, and an item half here and half elsewhere SLICED, one item per machine. Each DECISION is **briefed in prose before the menu**, retransmitting what the item already carries (its text, its `Criterion`, the memory behind a `[[slug]]` at one hop, its handoff) rather than summarising it. The close reports (a) what is running or scheduled, (b) BLOCKED, (c) EXTERNAL, (d) items bound to ANOTHER environment with their ready-to-paste line, (e) the **session findings** discarded here and (f) the age of what is left standing. A session finding is triaged where it is found, on the three-rung ladder of `tk/reference/session-finding.md` — resolve now, queue with a gate, discard — read in that order, the first that holds being the recommendation. Args: `afk` — builds the package of autonomous, risk-free items and fires it with zero menus; `pack` — same package, one confirmation showing the summed Effort; `--budget N` — the orchestrator generations either mode may spend |
 | `/tk:wrap-up` | Session close: parallel inventory gating the later steps, memory + docs + tests, a **versioning gate** settling every commit/push/merge decision in one menu (every PR preceded by a **digest** — what is being merged, and whether it may be, then the five verdicts of **safe-to-merge**), and one explicit recommendation (/clear, /compact, /tk:docs-audit). An item survives into the queue only under one of three **survival gates** — decision · effort · dependency — and records which one; what passes none is resolved in the session. The close follows a **fixed template** (`tk/skills/wrap-up/REPORT.md`), which wins over any response-style preference. Arg: `afk` — no menus; the work is committed and pushed before any review, and each item ends merged under the strict five verdicts or at an open PR carrying its evidence block |
 | `/tk:dispatch` | Matches a task to its execution mechanism (/goal, /loop, Monitor, dynamic workflow, /schedule, ticket flow, subagent) and delivers the ready-to-paste line — model-invoked, fires on its own in conversation |
+| `/tk:merge-gate` | The versioning gate's own procedure, reached by three consumers and invocable on its own: the **digest** a pull request is judged on — its five trail sections, the per-file summary, the evidence block — and the five verdicts of **safe-to-merge**, with the triple check of the closing line (`tk/bin/tk-closure-check`), the action menu, the stack's merge order, the accumulated lane's per-item form and the strict form an unattended close runs. Read by `/tk:wrap-up` step 5 and by the afk tail; fired on its own for a merge settled outside a close |
 | `/tk:verify` | Turns the item's acceptance criterion into the ruler of the delivery: north star after each slice, hard gate at the end (three failed attempts → DECISION with its handoff), a distinct outcome for a rotten criterion, and the evidence block the caller re-runs — written once, in the PR body or on the item that closes without one — model-invoked |
 | `/tk:review` | One lens over a delivered code or data slice — the second pair of eyes, fired on the committed slice before the repo's mandatory two-axis review: a single subagent on the site's strongest tier, fired once, its angle picked from the slice's class; the severity ruler (nit/defect); the design signal a repeated mechanism raises, answered by the parent where the repo handles no business data and by the user otherwise; and the attack inventory it ships whether or not it found anything — model-invoked. Prose an agent follows takes the mandatory review alone, with ONE exception — where the changed paragraphs prescribe commands, a lens may fire, and it reports only what RUNNING a prescribed command proved. The trigger items live in the site's CLAUDE.md, or wherever the extension points; `~/.claude/tk/review.md` carries the provenance of every threshold and the site's user-data directories |
 | `/tk:second-opinion` | A fresh Fable subagent judges what the session is discussing right now, from a prompt written for a cold reader. Args: `consensus [turns]` (default) — argued through `SendMessage` until no disputed point remains or the turn budget is spent (3 turns absent `turns`); a spent budget hands the open points to the user; `once` — a single verdict. User-invoked; every run logs the Fable deviation line |
 | `/tk:fleet` | Runs the unattended package of EVERY project on this machine from one command: the roster comes from `tk-roster` and the site file's `fleet-allow`/`fleet-deny`, the machine's local subagent ceiling is divided across the runs by the generated contract block, and one full orchestrator per project runs at `--budget 1`. Largest project first; a slot refills the moment a run returns, with no wait for the wave; a project that fails fails alone. Closes on one consolidated vista in the outbox, gated by `tk-vista-check`. The load is a parameter — `afk` by default, `docs-audit` for a documentation sweep. User-invoked |
 | `/tk:docs-audit` | Documentation audit against the code: finds stale docs, fixes, verifies, opens a PR. Also audits the project's **auto-memory** — proposes pruning the memories whose fact stopped holding (the user deletes), promotes what turned canonical to the repo docs or the site's wiki, and cuts `MEMORY.md` back to one line per file; the two `tk-queue` files are exempt |
-| `/tk:prune` | Prunes a skill against the `writing-for-agents` ruler with a bias to subtraction: `tk/bin/tk-prune-measure` supplies the numbers and the ceilings, and the run leaves a report — metrics before and after, a KEEP / MOVE / DROP table with one row per sentence that instructs, splitting suggestions, and the named proof — in `./prune-out/<skill>/`, never in place. User-invoked; args: `<skill-path> [<output-dir>]` |
+| `/tk:prune` | Prunes a skill against the `writing-for-agents` ruler with a bias to subtraction: `tk/bin/tk-prune-measure` supplies the numbers and the ceilings, and the run leaves a report — metrics before and after, a KEEP / MOVE / DROP / CLAUSE / FIT table with one row per sentence that instructs, splitting suggestions, and the named proof — in `./prune-out/<skill>/`, never in place. User-invoked; args: `<skill-path> [<output-dir>]` |
 
 The `/tk:kickoff` ↔ `/tk:wrap-up` pair shares the canonical queue contract, defined in
 `tk/reference/queue.md`: two files per project in auto-memory — `next-steps.md` (open
@@ -41,10 +42,13 @@ over the project's `loop.md`, and `/tk:fleet` across every project at once — s
 
 A **digest** is written for every PR the versioning gate handles, before its menu
 opens — what is being merged and whether it may be, made readable where it is read, with
-every citation-by-number resolved to the sentence it names. The wrap-up skill's
-`MERGE-GATE.md` says how to write it.
+every citation-by-number resolved to the sentence it names. The `merge-gate` skill says
+how to write it, and `/tk:wrap-up` step 5 is one of its three consumers.
 **`tk/bin/tk-collisions`** supplies the one section prose cannot: it merges every pair of open
-branches for real, because the forge's `mergeable` field is blind between two PRs.
+branches for real, because the forge's `mergeable` field is blind between two PRs. With
+`--against`, it instead builds one UNION per other branch on top of the assumed-landed pivot,
+graded by a suite command — the collision no pairwise merge sees, where a test one branch adds
+grades a file another branch edits.
 
 Every subagent an orchestrator dispatches gets its model, reasoning effort, **venue**
 (local × cloud), whether the role opens a pull request of its own and whether it owes the
@@ -160,13 +164,17 @@ tk/
   skills/review/BRIEF.md          branch file: the block the lens is handed, and the
                                   one line per angle that fills its `Attack:` field
   skills/prune/REPORT.md          branch file: the five parts of a pruning report
-  skills/wrap-up/MERGE-GATE.md    branch file: the gate's whole procedure — the digest,
-                                  the five verdicts of safe-to-merge, the triple check
-                                  of the closing line, the action menu, and the strict
-                                  form the unattended close runs
   skills/wrap-up/REPORT.md        branch file: the fixed closing template, read by every
                                   skill that closes on it
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
+  skills/kickoff/RESUME.md        branch file: what a generation that inherited a
+                                  package mid-flight runs before anything else —
+                                  reset, draft, close, re-dispatch, and the exits
+                                  that grade a package it cannot resume
+  skills/kickoff/AUDIT.md         branch file: the wave audit AFK.md step 4 routes
+                                  to — the three lenses, one verifier per finding,
+                                  the four outcomes, and the REGRILL that halts a
+                                  package before its first run
   skills/kickoff/WINDOW.md        branch file: what the package does when it runs
                                   out of window rather than out of work — the
                                   checkpoint invariant, the quota wall's handoff,
@@ -205,13 +213,20 @@ tk/
                                   from memory, and carrying no copy of either
   bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
                                   where their projects are, minus the site file's lists
-  bin/tk-hygiene                  audits delete_branch_on_merge across the roster's repos
-                                  and prunes local branches whose remote is gone and which
-                                  carry no commit of their own. Exit 0 green, 1 a box still
-                                  off, 2 a repo it could not reach
+  bin/tk-hygiene                  audits delete_branch_on_merge across every repo it
+                                  reaches — the roster's, plus the clone it is installed
+                                  in — and prunes what the default branch already has, by
+                                  ancestry or after a squash: a local branch whose remote
+                                  is gone, and a lane's spec/<m>/T<id> left on the remote,
+                                  which no PR's head ever was and the forge never deletes.
+                                  `--no-remote` skips that second one, the only step here
+                                  that reaches the network for git. Exit 0 green, 1 a box
+                                  still off, 3 a repo it could not audit, 2 the run did
+                                  not happen
   bin/tk-collisions               merges each pair of open branches for real, so a pair
-                                  that cannot both land is named before either does. No
-                                  network: the refs must already be local
+                                  that cannot both land is named before either does; with
+                                  `--against`, one UNION per other branch instead, graded by
+                                  `--suite`. No network: the refs must already be local
   bin/tk-vista-check              the gate on a vista: refuses a page that fetches anything,
                                   and one missing a block, a risk tag or a proof link
   bin/tk-prune-measure            measures one markdown file for a pruning pass: length,
@@ -277,12 +292,13 @@ tk/
                                   defects in it, four on the wall's prose, and one on the
                                   map pairing each window's label with its length
   tests/mutations.py              puts each defect back; every test must fall
+  tests/anchor_check.py           the cheap half of that, over every harness in the
+                                  directory: each anchor still matches its source
+                                  exactly once, in a second instead of in minutes
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
                                   names, since a green score counts only the mutants
                                   someone wrote
-  tests/mutations_roster.py       the same, for the roster suite — folds into that
-                                  runner, which already takes the suite as an argument
   tests/mutations_collisions.py   entries only: it enters through that runner's seam,
                                   which is what the seam was written for
   tests/mutations_vista.py        entries only: it folds into the same runner, through the
@@ -343,15 +359,15 @@ docs/prune/                       the pruning track's committed output: the base
                                   block above: a pruning report on a PRIVATE skill must not
                                   reach this public repo
   <skill>-report.md               one pruning pass over an own skill: the metrics before and
-                                  after, the KEEP / MOVE / DROP table, the splitting
-                                  suggestions and the named proof
+                                  after, the KEEP / MOVE / DROP / CLAUSE / FIT table, the
+                                  splitting suggestions and the named proof
   <skill>.md                      what that pass removed from that skill — every DROPped
                                   sentence and every cut clause, kept where a reader looking
                                   for a retired rule can still find it
 .claude/                          this repo's own agent config; versioned for the reason
                                   given below, and named file by file in `.gitignore` like
                                   the two blocks above
-  hookify.code-review-antes-de-pronto.local.md
+  hookify.code-review-before-done.local.md
                                   the stop rule that reminds a session which committed
                                   code to run the two-axis review before calling it done
 githooks/
@@ -382,8 +398,7 @@ nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answer
 rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard through
 `python3 githooks/tests/mutations_private_values.py`, the tracker wrapper through
 `python3 bin/tests/mutations_tracker_gh.py`, `tk-vista-check` through
-`python3 tk/tests/mutations_vista.py`, the roster through
-`python3 tk/tests/mutations_roster.py`, `tk-hygiene` through
+`python3 tk/tests/mutations_vista.py`, `tk-hygiene` through
 `python3 tk/tests/mutations_hygiene.py`, `tk-prune-measure` through
 `python3 tk/tests/mutations_prune.py`, the two manifests through
 `python3 tk/tests/mutations_manifests.py`, the wall's step 2 through
@@ -400,6 +415,13 @@ mutates prose, the bin AND its own TEST FILE, the last being the only way to pro
 reader that lives in the suite: its statusline check must let the prose SAY the number is
 not there while refusing an instruction to go and read it there — and the `tk-quota` one
 mutates the wall's prose, since a command the wall does not name is a command nobody runs.
+
+Every one of those anchors is a literal substring of its source, and it has to match
+exactly once. `python3 tk/tests/anchor_check.py` asks that of every harness in the
+directory in under a second, so an edit that reflows a source is checked where it is made
+— the answer used to arrive only at the end of a six-minute run, which is how `main` once
+shipped an anchor that had quietly stopped matching. It says the entries can still be
+APPLIED, never that a test notices when they are: that stays the full harnesses' answer.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`, then advertise it in BOTH
 manifests — a `<name> (…)` clause in `tk/.claude-plugin/plugin.json` and a `/tk:<name>`
