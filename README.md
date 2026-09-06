@@ -213,7 +213,8 @@ tk/
                                   which no PR's head ever was and the forge never deletes.
                                   `--no-remote` skips that second one, the only step here
                                   that reaches the network for git. Exit 0 green, 1 a box
-                                  still off, 2 a repo it could not reach
+                                  still off, 3 a repo it could not audit, 2 the run did
+                                  not happen
   bin/tk-collisions               merges each pair of open branches for real, so a pair
                                   that cannot both land is named before either does. No
                                   network: the refs must already be local
