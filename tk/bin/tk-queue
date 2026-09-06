@@ -2280,10 +2280,24 @@ def item_title(text, limit=100):
 
     Where the title ENDS is the POSITION rule, not the raw chain: `Item.title`
     stops at the first segment of the run, and a segment ahead of the **Class:**
-    anchor is the item own prose wearing a field name (real_fields). Stopping
+    anchor is the item's own prose wearing a field name (real_fields). Stopping
     there put the cut back one marker earlier, on exactly the population the two
-    rules above are about. So every segment before the anchor is title again, and
-    a chain that names no class anchors nothing and moves no boundary.
+    rules above are about. So every segment before the anchor is title again.
+
+    Where the two rules DISAGREE, said rather than left for the next reader to
+    measure: a chain that names no class has no anchor, so `real_fields` reads
+    none of it as a field — and the title still stops where the chain begins, one
+    marker earlier than the position rule alone would put it. That is a choice and
+    not an oversight. Nothing there tells the legacy item whose writer put real
+    fields on the line and never a class — `— a legacy item **Effort:** S.
+    **Criterion:** A: x.`, the shape PACK_SAMPLE documents — from the item whose
+    sentence merely quotes a marker, and the parse's own partition is the boundary
+    that needs no guess between them. The reader is not left guessing either way:
+    `list` prints the class as `?` and `pack` excludes the item naming the missing
+    field. Measured over the 19 real queues of 2026-09-06: 271 open items, 21 with
+    no class, and NOT ONE of those carrying a chain at all — so the disagreement
+    has no population today, and the cost of reading it the other way is the
+    legacy line above, columned with its fields inside the title.
 
     `item_text` is the other projection, for the two callers that must have the
     prose too. Both read the SAME parse: the display and the remedy disagreeing
@@ -2896,12 +2910,17 @@ would read an address as a ticket the first time an item carried a repo and no
 ticket. Effort is raw and never summed, because summing free text is the hidden
 heuristic this queue's order deliberately has none of. Both groups are appended
 rather than given a column for the reason the claim is in `list`: almost no item
-carries one.
-Excluded: ID, text, and the reason, which always carries the VALUE the filter
-read (`Env is 'desktop', this machine is server`; `Risk: <the line>`): a marker
-absorbed out of an item's prose then reads as an obviously wrong line instead of
-a silently missing item. Repairs are listed once per defect SHAPE, whatever the
-number of items carrying it.
+carries one. `[duplicate ID <n>]` closes an eligible line when more than one open
+item carries that number — the same mark `list` prints, and the ID column is as
+wide as the widest LABEL of the run, so `T0001` beside `T001` moves no column.
+Excluded: ID, text, the duplicate mark where there is one, and the reason, which
+always carries the VALUE the filter read (`Env is 'desktop', this machine is
+server`; `Risk: <the line>`): a marker absorbed out of an item's prose then reads
+as an obviously wrong line instead of a silently missing item. The mark comes
+BEFORE the reason on this line, because the reason ends the line by contract and
+a mark past it reads as part of the reason. Repairs are listed once per defect
+SHAPE, whatever the number of items carrying it, and the sentence saying only the
+FIRST item under a duplicated ID is reachable is one of them.
 
 Exclusion rules, in the order they are asked; the FIRST that applies is the
 reason. Every field is read at the position a WRITER puts it — after **Class:**,
@@ -5253,7 +5272,10 @@ def absorption_audit(lines, j):
                 folded while doing it. There is no preserving answer: a join is
                 exactly the operation that destroys a line break. Asked over the
                 lines the join touches that have a line under them — a break at the
-                very end of the block breaks nothing.
+                very end of the block breaks nothing. That range starts at the HEAD
+                line, index 0, and not at 1 like the geometry loop below it: the
+                head is joined ONTO rather than absorbed, but the first absorbed
+                line lands right after its break, so the break dies there too.
 
     What it does NOT catch, said plainly rather than left for the next reader to
     measure: a shape that is unenumerated AND opens like a sentence AND is not a
