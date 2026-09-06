@@ -4063,9 +4063,27 @@ MUTATIONS = [
     # the over-refusal direction: one trailing space is whitespace, not a break,
     # and a rule that read it as one would refuse the whole wrapped population
     ("T174 a single trailing space is read as a hard break",
-     'HARD_BREAK_RE = re.compile(r" {2,}\\Z")',
-     'HARD_BREAK_RE = re.compile(r" {1,}\\Z")',
+     'HARD_BREAK_RE = re.compile(r"(?: {2,}|\\\\)\\Z")',
+     'HARD_BREAK_RE = re.compile(r"(?: {1,}|\\\\)\\Z")',
      ["TestTheFoldKeepsTheAuthorsLineBreaks.test_the_break_is_TWO_spaces_and_not_one"]),
+
+    # --- C-14: the break's OTHER spelling, the visible one ------------------
+
+    ("C-14 the rule goes back to reading only the invisible spelling of the "
+     "break, so a trailing backslash dies at the join again",
+     'HARD_BREAK_RE = re.compile(r"(?: {2,}|\\\\)\\Z")',
+     'HARD_BREAK_RE = re.compile(r"(?: {2,})\\Z")',
+     ["TestTheFoldKeepsTheAuthorsLineBreaks."
+      "test_the_OTHER_spelling_of_the_break_stops_the_fold_too"]),
+
+    # and its over-refusal direction: a backslash asks for a break only where it
+    # ENDS the line, and queues carry them mid-sentence
+    ("C-14 the break stops having to end the line, so a path or an escape in the "
+     "middle of a sentence refuses the item",
+     'HARD_BREAK_RE = re.compile(r"(?: {2,}|\\\\)\\Z")',
+     'HARD_BREAK_RE = re.compile(r"(?: {2,}|\\\\)")',
+     ["TestTheFoldKeepsTheAuthorsLineBreaks."
+      "test_a_backslash_INSIDE_the_line_is_not_a_break"]),
 
     # and the other over-refusal: a break needs a line UNDER it to break before,
     # so the block's LAST line is out of the question by construction

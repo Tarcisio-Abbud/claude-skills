@@ -8944,10 +8944,12 @@ class TestThePackShowsWhatTheListShows(QueueTest):
 # here on this branch before the slice that closes them:
 #
 #   the hard break   two spaces ending a line are CommonMark asking for a line
-#                    break. The join strips them and the item comes back one
-#                    paragraph, reported as folded. There is no preserving
-#                    answer — a join is the operation that destroys a line break
-#                    — so the fold declines and names the item.
+#                    break, and so is a backslash ending it — the visible
+#                    spelling of the same request, which the rule read only in
+#                    its invisible one until C-14. The join strips either and the
+#                    item comes back one paragraph, reported as folded. There is
+#                    no preserving answer — a join is the operation that destroys
+#                    a line break — so the fold declines and names the item.
 #   the underline    a setext underline promotes the WHOLE paragraph above it.
 #                    `opens_a_block` protects only the line directly above, so a
 #                    title hard-wrapped over two lines had its earlier lines
@@ -8976,9 +8978,9 @@ class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
         return (f"{len(labels)} item(s) left exactly as they are: {why} — "
                 + ", ".join(labels) + ". Close each with `cancel` and re-add it clean.\n")
 
-    HARD = ("a line the join would absorb ends in a HARD line break (two spaces), "
-            "which is a break the author wrote and the join cannot carry — the item "
-            "is left with its rendering intact")
+    HARD = ("a line the join would absorb ends in a HARD line break (two spaces, or "
+            "a backslash), which is a break the author wrote and the join cannot "
+            "carry — the item is left with its rendering intact")
     SETEXT = ("a setext underline promotes the WHOLE paragraph above it, and the join "
               "would absorb part of that paragraph into the first line and leave the "
               "rest under the underline — half a heading in each place")
@@ -9022,6 +9024,45 @@ class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
         self.assertIn(self.left_alone(self.HARD, "T007"), r.stdout)
         self.assertNotIn("folded up", r.stdout)
         self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_the_OTHER_spelling_of_the_break_stops_the_fold_too(self):
+        """C-14. CommonMark gives a trailing backslash as the second spelling of
+        the hard break, and it is the one an author reaches for precisely because
+        two trailing spaces are invisible in an editor. Read only in the
+        invisible spelling, the visible one died at the join in silence, under a
+        line reporting the item as folded.
+
+        Both fold paths, for the reason the spaces fixture gives: they join by
+        two different routes and the break dies on either."""
+        for name, tail in (
+                ("dobra por caminhada", "  segunda linha comprida o bastante para a "
+                                        "geometria licenciar.\n" + T174_CHAIN),
+                ("dobra da linha quebrada", "  segunda linha comprida o bastante. "
+                                            "**Class:** AUTONOMOUS. **Effort:** S. "
+                                            "**Criterion:** A: x.\n")):
+            with self.subTest(caminho=name):
+                seeded = T174_HEAD + "\\\n" + tail
+                self.seed(seeded)
+                r = self.migrate()
+                self.assertIn(self.left_alone(self.HARD, "T007"), r.stdout)
+                self.assertNotIn("folded up", r.stdout)
+                self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_a_backslash_INSIDE_the_line_is_not_a_break(self):
+        """The over-refusal direction of the same spelling, and the one that
+        would cost the fold real items: a backslash only asks for a break where
+        it ENDS the line. Queues carry them mid-sentence — an escape, a Windows
+        path, a regex quoted in prose — and a rule that read those as the
+        author's break would refuse the population the fold exists for."""
+        seeded = (T174_HEAD + "\n  segunda linha com C:\\Users\\algo no meio dela, "
+                  "comprida o bastante para a geometria licenciar.\n" + T174_CHAIN)
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T007\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + T174_HEAD + " segunda linha com C:\\Users\\algo no "
+                         "meio dela, comprida o bastante para a geometria licenciar. "
+                         "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
 
     def test_the_break_is_TWO_spaces_and_not_one(self):
         """The over-refusal direction. One trailing space is not a hard break in

@@ -5103,9 +5103,9 @@ FOLD_PROSE_MARKER_REFUSAL = (
     "would promote the item's own prose to a field — quote that marker in a code "
     "span (`**Class:**`) and the fold reads the rest as the chain it is")
 FOLD_HARDBREAK_REFUSAL = (
-    "a line the join would absorb ends in a HARD line break (two spaces), which is "
-    "a break the author wrote and the join cannot carry — the item is left with its "
-    "rendering intact")
+    "a line the join would absorb ends in a HARD line break (two spaces, or a "
+    "backslash), which is a break the author wrote and the join cannot carry — the "
+    "item is left with its rendering intact")
 FOLD_SETEXT_REFUSAL = (
     "a setext underline promotes the WHOLE paragraph above it, and the join would "
     "absorb part of that paragraph into the first line and leave the rest under the "
@@ -5207,13 +5207,29 @@ def opens_a_block(lines, j):
     return "|" in stripped and bool(TABLE_DELIMITER_RE.match(nxt.strip()))
 
 
-# two or more spaces ending a line are CommonMark's hard line break — the author
-# asking for a `<br>` where a wrap would render a space. Spaces only, and never a
-# tab: the spec counts spaces, and a tab there is trailing whitespace nobody meant
-# as anything. It is not in BLOCK_START_RE because it opens no block; it is a
-# property of the break ABOVE the next line, which is why `absorption_audit` and
-# not `opens_a_block` is what asks about it.
-HARD_BREAK_RE = re.compile(r" {2,}\Z")
+# CommonMark's hard line break, in BOTH its spellings — the author asking for a
+# `<br>` where a wrap would render a space. Two or more spaces ending the line,
+# and a backslash ending it: the spec gives the second as the visible spelling
+# of the first, for exactly the reason that trailing spaces are invisible in an
+# editor, and an author who wants the break to SHOW in the source writes it that
+# way. Reading only the spaces meant the visible spelling died at the join in
+# silence, under a line reporting the item as folded — the same defect the
+# spaces arm exists to stop, on the shape an author who cared enough to be
+# explicit wrote.
+#
+# Never a tab, in either arm: the spec counts spaces, and a tab there is
+# trailing whitespace nobody meant as anything.
+#
+# What this OVER-refuses is a line ending in an escaped backslash (`\\`), which
+# renders as a lone backslash and breaks nothing, and a Windows path that ends a
+# line. Both are the recoverable direction — a refusal costs one command, and a
+# flattened queue file has no other copy — and neither is worth counting
+# backslashes for.
+#
+# It is not in BLOCK_START_RE because it opens no block; it is a property of the
+# break ABOVE the next line, which is why `absorption_audit` and not
+# `opens_a_block` is what asks about it.
+HARD_BREAK_RE = re.compile(r"(?: {2,}|\\)\Z")
 
 
 def promoted_by_setext(lines, j):
