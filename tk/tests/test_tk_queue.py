@@ -6218,9 +6218,9 @@ class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
         return r
 
     def prose_refusal(self, *labels):
-        return (f"{len(labels)} item(s) left exactly as they are: a line between the "
-                "head and the chain is not the hard-wrapped prose the fold may absorb, "
-                "and absorbing a shape nobody recognised is how structure is lost in "
+        return (f"{len(labels)} item(s) left exactly as they are: a line the join "
+                "would absorb is not the hard-wrapped prose the fold may take, and "
+                "absorbing a shape nobody recognised is how structure is lost in "
                 "silence — " + ", ".join(labels)
                 + ". Close each with `cancel` and re-add it clean.\n")
 
@@ -6330,6 +6330,30 @@ class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
         self.assertEqual(self.body(), HEADER + seeded)
         self.assertNotIn("folded up", r.stdout)
         self.assertIn(self.prose_refusal("T012"), r.stdout)
+
+    # --- C-15: the refusal is read by items of BOTH paths ------------------
+
+    def test_the_refusal_names_no_line_between_a_head_and_a_chain_that_share_one(self):
+        """The sentence used to open "a line between the head and the chain",
+        which is the WALK's geometry and only the walk's: there the chain owns
+        its own lines and the absorbed prose sits between the two. This item has
+        no such line — its chain shares a line with the prose it wrapped out of,
+        so the line the audit refuses IS the one carrying the chain — and the
+        reader of `casa-nostra-m365` T010 went looking in their item for a line
+        that does not exist in it. The reason was right; the address was written
+        for the older path.
+
+        Refused on geometry: the head is 30 columns wide, so the break under it
+        is one the author made and no wrapped paragraph looks like that."""
+        seeded = ("- [ ] **T010** — cabeca curta\n"
+                  "  a segunda linha traz a cadeia toda. **Class:** AUTONOMOUS. "
+                  "**Effort:** S. **Criterion:** A: x.\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertIn(self.prose_refusal("T010"), r.stdout)
+        self.assertNotIn("between the head and the chain", r.stdout)
 
     def test_a_wrapped_line_that_merely_resumes_with_a_word_and_a_colon_is_prose(self):
         """The over-refusal the corpus caught before this shipped, replayed on an

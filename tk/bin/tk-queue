@@ -5087,9 +5087,17 @@ def cmd_report(args):
 FOLD_REFUSAL = "folding would have to GUESS which text is a field value"
 FOLD_SPLIT_REFUSAL = ("a **Field:** marker would stay off the first line, and a chain "
                       "the fold only half lifts is not a chain any gate can read")
-FOLD_PROSE_REFUSAL = ("a line between the head and the chain is not the hard-wrapped prose "
-                      "the fold may absorb, and absorbing a shape nobody recognised is how "
-                      "structure is lost in silence")
+# "a line the join would absorb", the same words FOLD_HARDBREAK_REFUSAL locates
+# its line with, and not "a line between the head and the chain": that geometry
+# is the WALK's alone. The wrapped path joins a chain that shares its line with
+# the prose it wrapped out of, so there is nothing between the head and the
+# chain there — the refused line often IS the one carrying the chain. Measured
+# on `casa-nostra-m365` T010, which read the sentence, looked for a line that
+# does not exist in its item, and could not tell which line to repair. The
+# reason was right and only the address was written for the older path.
+FOLD_PROSE_REFUSAL = ("a line the join would absorb is not the hard-wrapped prose the fold "
+                      "may take, and absorbing a shape nobody recognised is how structure "
+                      "is lost in silence")
 FOLD_PROSE_MARKER_REFUSAL = (
     "a **Field:** marker sits outside the chain the join would produce, so the fold "
     "would promote the item's own prose to a field — quote that marker in a code "

@@ -4046,6 +4046,20 @@ MUTATIONS = [
      ["TestTheFoldKeepsTheAuthorsLineBreaks."
       "test_a_break_on_an_INTERIOR_absorbed_line_stops_the_fold_too"]),
 
+    # --- C-15: the refusal is read by items of BOTH fold paths --------------
+
+    ("C-15 the prose refusal goes back to naming a line between the head and the "
+     "chain, a geometry the wrapped path does not have",
+     'FOLD_PROSE_REFUSAL = ("a line the join would absorb is not the hard-wrapped '
+     'prose the fold "\n                      "may take, and absorbing a shape nobody '
+     'recognised is how structure "\n                      "is lost in silence")',
+     'FOLD_PROSE_REFUSAL = ("a line between the head and the chain is not the '
+     'hard-wrapped prose "\n                      "the fold may absorb, and absorbing '
+     'a shape nobody recognised is how "\n                      "structure is lost in '
+     'silence")',
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_the_refusal_names_no_line_between_a_head_and_a_chain_that_share_one"]),
+
     # the over-refusal direction: one trailing space is whitespace, not a break,
     # and a rule that read it as one would refuse the whole wrapped population
     ("T174 a single trailing space is read as a hard break",
