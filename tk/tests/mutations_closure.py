@@ -204,6 +204,39 @@ MUTATIONS = [
       "test_the_red_row_names_the_ordering_that_produced_it"],
      CHECKER),
 
+    # --- the ordering that makes verdict 5 answerable at all ----------------
+    ("cold review: stage 6 stops asking verdict 5, so the gate asks it first — after "
+     "stage 7 closed the item",
+     ' **Ask verdict 5 for that item HERE**,\n   against the body just written — `../../bin/tk-closure-check "<id>" --dir "<queue dir>"\n   --pr <n>` — and record its answer for the gate\'s digest. After stage 7 the item\'s\n   **Ticket:** field has left the queue with it. The check then has no subject, and answers\n   red for every item of the package.',
+     "",
+     ["TestVerdictFiveIsAskedWhileTheItemIsStillOpen.test_the_close_stage_runs_the_checker",
+      "TestVerdictFiveIsAskedWhileTheItemIsStillOpen."
+      "test_the_check_is_asked_before_the_item_closes",
+      "TestVerdictFiveIsAskedWhileTheItemIsStillOpen.test_the_step_says_why_the_order_matters"],
+     AFK),
+
+    ("cold review: the stage names the check and drops the reason, so a session reordering "
+     "the stages cannot see what it costs",
+     "After stage 7 the item's\n   **Ticket:** field has left the queue with it. The check "
+     "then has no subject, and answers\n   red for every item of the package.",
+     "It is the last moment the item is still open.",
+     ["TestVerdictFiveIsAskedWhileTheItemIsStillOpen.test_the_step_says_why_the_order_matters"],
+     AFK),
+
+    ("cold review: step 5's completeness check stops counting the verdict, so a tight "
+     "package skips the stage with the check still green",
+     ", verdict 5 was asked of each\nwhile it was still open,",
+     ",",
+     ["TestVerdictFiveIsAskedWhileTheItemIsStillOpen."
+      "test_the_completeness_check_counts_the_verdict"],
+     AFK),
+
+    ("cold review: step 5 is renamed, so every assertion above reads a section that is gone",
+     "## 5. Verify every delivery",
+     "## 5. Verification",
+     ["TestVerdictFiveIsAskedWhileTheItemIsStillOpen.test_the_step_that_verifies_is_still_there"],
+     AFK),
+
     ("T238 a claimed item is skipped, the way `pack` skips it — and the gate loses its "
      "ticket",
      '        if kind == "item-open" and tk_queue.item_id(text) == wanted:',
@@ -407,7 +440,7 @@ MUTATIONS = [
       "test_every_bin_the_dispatch_prose_names_is_on_disk"], KICKOFF),
 
     ("T238 the unattended dispatch goes back to reading the tracker's config itself",
-     '`../../bin/tk-ticket-ref <id> --dir "<queue dir>" --closing-line`, which reads the '
+     '`../../bin/tk-ticket-ref "<id>" --dir "<queue dir>" --closing-line`, which reads the '
      "owner from\nthe clone the item's **Repo:** field names",
      "the owner half resolved HERE (`git config tk.tracker`) from the clone the item's\n"
      "**Repo:** field names",

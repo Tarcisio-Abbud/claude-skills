@@ -768,5 +768,52 @@ class TestTheMergeGateStatesTheRuleTheCheckerEnforces(unittest.TestCase):
         self.assertIn("OTHER closing line", self.row)
 
 
+class TestVerdictFiveIsAskedWhileTheItemIsStillOpen(unittest.TestCase):
+    """The ordering the checker's own remedy names, asserted where it is run.
+
+    An unattended package closes each lane item at step 5 stage 7, and the merge
+    gate asks verdict 5 after that — so the checker meets an item whose
+    **Ticket:** field left the queue with it, and answers red for every item of
+    the package. `merge-gate/SKILL.md` turns any red into a merge that is not
+    offered, so the gate could never pass a lane. The prose has to run the check
+    at stage 6, while the item is still open, and carry its answer forward."""
+
+    def setUp(self):
+        with open(os.path.join(SKILLS, "kickoff", "AFK.md"), encoding="utf-8") as f:
+            self.text = f.read()
+        self.step = self.text.split("## 5. Verify every delivery")[1].split("\n## 6.")[0]
+
+    def test_the_step_that_verifies_is_still_there(self):
+        self.assertIn("## 5. Verify every delivery", self.text,
+                      "AFK.md has no step 5 — every assertion below reads a section that "
+                      "is gone")
+
+    def test_the_close_stage_runs_the_checker(self):
+        self.assertIn("tk-closure-check", self.step,
+                      "step 5 never runs the checker, so verdict 5 is first asked by the "
+                      "gate — after stage 7 has closed the item")
+
+    def test_the_check_is_asked_before_the_item_closes(self):
+        """Position is the whole rule: the same command after the `done` reads a
+        closed item and is red by construction."""
+        check = self.step.index("tk-closure-check")
+        close = self.step.index("**Close the item last**")
+        self.assertLess(check, close,
+                        "the checker is prescribed after the close, which is the ordering "
+                        "the defect is made of")
+
+    def test_the_step_says_why_the_order_matters(self):
+        self.assertIn("**Ticket:** field has left the queue", self.step,
+                      "the stage orders the check and does not say what breaks without it, "
+                      "so a session reordering the stages loses the reason")
+
+    def test_the_completeness_check_counts_the_verdict(self):
+        """A stage nothing checks is a stage a tight package skips."""
+        done = self.step.split("**Done when:**")[1]
+        self.assertIn("verdict 5 was asked of each", done,
+                      "step 5's `Done when` does not count the verdict, so the stage can "
+                      "be skipped with the check still green")
+
+
 if __name__ == "__main__":
     unittest.main()

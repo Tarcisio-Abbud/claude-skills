@@ -130,7 +130,7 @@ the **item's distilled contract**: the item, the memory file behind its `[[slug]
 its handoff; context in none of the three is a missing handoff, named in its own line. A lane
 run also gets the path `<notes dir>` of the exploration above, read and never re-run. A solo run
 also gets its ticket reference for its PR's closing line, composed HERE by
-`../../bin/tk-ticket-ref <id> --dir "<queue dir>" --closing-line`, which reads the owner from
+`../../bin/tk-ticket-ref "<id>" --dir "<queue dir>" --closing-line`, which reads the owner from
 the clone the item's **Repo:** field names — pass `--repo <clone>` when the item names none. Exit 3 is the item
 that HAS no ticket; exit 1 is a refusal naming the defect and its remedy; exit 2 is a run that
 could not be made at all. None of the three is a run dispatched without a reference. Count
@@ -181,7 +181,11 @@ orchestrator's own work, in order:
 6. **On the FIRST green merge of the package, open the draft pull request**
    (`gh pr create --draft --base main`). The body is the orchestrator's and nobody else writes
    it: per closed item it gains `Fixes <owner>/<repo>#<n>`, one line per ticket; the spec is
-   named WITHOUT a keyword, so only the user closes it.
+   named WITHOUT a keyword, so only the user closes it. **Ask verdict 5 for that item HERE**,
+   against the body just written — `../../bin/tk-closure-check "<id>" --dir "<queue dir>"
+   --pr <n>` — and record its answer for the gate's digest. After stage 7 the item's
+   **Ticket:** field has left the queue with it. The check then has no subject, and answers
+   red for every item of the package.
 7. **Close the item last** — `tk-queue done "<id>" --dir "<queue dir>" --how "PR #<n>"`, after
    the push and after the pull request exists: the push before the `done` is what lets a resumed
    generation recover either death shape without losing work or merging an item twice.
@@ -223,7 +227,8 @@ Then mark the pull request ready and remove the lane's worktree — the gate's `
 fails on a branch still checked out.
 
 **Done when:** every item carries one verify outcome with its evidence block, every lane item
-reached the branch by a pushed `T<id>` merge before its `done` and every red one is absent from
+reached the branch by a pushed `T<id>` merge before its `done`, verdict 5 was asked of each
+while it was still open, and every red one is absent from
 it, the tail ran its three steps on the final tree and left the pull request out of draft with
 the worktree removed, and every claim left with its item or was released.
 
