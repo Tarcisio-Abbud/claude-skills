@@ -5033,6 +5033,14 @@ FOLD_PROSE_MARKER_REFUSAL = (
     "a **Field:** marker sits outside the chain the join would produce, so the fold "
     "would promote the item's own prose to a field — quote that marker in a code "
     "span (`**Class:**`) and the fold reads the rest as the chain it is")
+FOLD_HARDBREAK_REFUSAL = (
+    "a line the join would absorb ends in a HARD line break (two spaces), which is "
+    "a break the author wrote and the join cannot carry — the item is left with its "
+    "rendering intact")
+FOLD_SETEXT_REFUSAL = (
+    "a setext underline promotes the WHOLE paragraph above it, and the join would "
+    "absorb part of that paragraph into the first line and leave the rest under the "
+    "underline — half a heading in each place")
 FOLD_BLOCK_REFUSAL = ("a continuation line OPENS a Markdown block, and the wrapped fold has "
                       "no chain to lift over it — joining would flatten a list the author "
                       "wrote, so it declines instead of choosing which lines survive")
@@ -5130,6 +5138,38 @@ def opens_a_block(lines, j):
     return "|" in stripped and bool(TABLE_DELIMITER_RE.match(nxt.strip()))
 
 
+# two or more spaces ending a line are CommonMark's hard line break — the author
+# asking for a `<br>` where a wrap would render a space. Spaces only, and never a
+# tab: the spec counts spaces, and a tab there is trailing whitespace nobody meant
+# as anything. It is not in BLOCK_START_RE because it opens no block; it is a
+# property of the break ABOVE the next line, which is why `absorption_audit` and
+# not `opens_a_block` is what asks about it.
+HARD_BREAK_RE = re.compile(r" {2,}\Z")
+
+
+def promoted_by_setext(lines, j):
+    """Whether `lines[j]` is paragraph text that a setext underline directly below
+    turns into a heading — the ONE reason `opens_a_block` stops the walk that the
+    fold may not simply obey.
+
+    `opens_a_block` answers True for that line, and the walk then keeps it and
+    everything under it. That is the right answer when the line is the whole
+    paragraph. It is the wrong one when the paragraph runs FURTHER UP, because the
+    underline promotes all of it and the walk absorbs the earlier lines into the
+    head — half the heading on the first line, half still under the underline. The
+    limit was declared in `opens_a_block` and had no test; this is the question
+    that makes it decidable.
+
+    The shape question is asked of the same function with the LOOKAHEAD removed —
+    `lines[: j + 1]` leaves no next line for it to read — rather than by respelling
+    what paragraph text is. A second spelling of that is how a shape one of them
+    enumerated stops being a shape to the other.
+    """
+    nxt = lines[j + 1] if j + 1 < len(lines) else ""
+    return (bool(SETEXT_UNDERLINE_RE.match(nxt.strip()))
+            and not opens_a_block(lines[: j + 1], j))
+
+
 # the column below which a line break was the AUTHOR's and not a wrapper's. 72 is
 # the narrowest column anyone hard-wraps prose to; every break the fold absorbs
 # across the real queues is 93 columns or wider, and the flattened shapes measured
@@ -5206,6 +5246,14 @@ def absorption_audit(lines, j):
                 width the author and not a wrapper chose). The one structural shape
                 the whitelist cannot reach, because it opens with a letter; it
                 needed its own question and gets one.
+      hard break no absorbed line ends in one. Two trailing spaces are the author
+                asking Markdown for a line break where a wrap renders a space, so
+                the join does not merely relocate the text — it changes how the
+                item RENDERS, in the user's own prose, and reports the item as
+                folded while doing it. There is no preserving answer: a join is
+                exactly the operation that destroys a line break. Asked over the
+                lines the join touches that have a line under them — a break at the
+                very end of the block breaks nothing.
 
     What it does NOT catch, said plainly rather than left for the next reader to
     measure: a shape that is unenumerated AND opens like a sentence AND is not a
@@ -5219,6 +5267,9 @@ def absorption_audit(lines, j):
     cannot license is left exactly as it is and named in the report, because a
     refusal costs one command and a flattened queue file has no other copy.
     """
+    for k in range(min(j, len(lines) - 1)):
+        if HARD_BREAK_RE.search(lines[k]):
+            return FOLD_HARDBREAK_REFUSAL
     for k in range(1, j):
         prev, line = lines[k - 1], lines[k]
         stripped = line.strip()
@@ -5412,6 +5463,14 @@ def fold_chain_onto_first_line(block):
     j = 1
     while j < first and not opens_a_block(lines, j):
         j += 1
+    # the walk stopped at a line a setext underline promotes, with at least one
+    # line above it already inside the absorbed run: the underline promotes the
+    # WHOLE paragraph, so the join would put part of that heading on the first
+    # line and leave the rest under the underline. At j == 1 nothing is absorbed
+    # and the heading is whole where it stands, which is the shape
+    # TestASetextTitleIsKeptWithItsUnderline pins and this may not disturb
+    if 1 < j < first and promoted_by_setext(lines, j):
+        return None, FOLD_SETEXT_REFUSAL
     refusal = absorption_audit(lines, j)
     if refusal:
         return None, refusal

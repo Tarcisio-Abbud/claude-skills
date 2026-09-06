@@ -8835,6 +8835,164 @@ class TestThePackShowsWhatTheListShows(QueueTest):
         self.assertIn("handoff-T001.md kept — still reached by T0001\n", r.stdout)
 
 
+# --- T174: what the fold does to the user's own RENDERING --------------------
+#
+# Two limits of the fold were declared in the source and had no test, so nothing
+# said whether either was still true — and each is a silent change of how the
+# item RENDERS, made under a line reporting the item as folded. Both are measured
+# here on this branch before the slice that closes them:
+#
+#   the hard break   two spaces ending a line are CommonMark asking for a line
+#                    break. The join strips them and the item comes back one
+#                    paragraph, reported as folded. There is no preserving
+#                    answer — a join is the operation that destroys a line break
+#                    — so the fold declines and names the item.
+#   the underline    a setext underline promotes the WHOLE paragraph above it.
+#                    `opens_a_block` protects only the line directly above, so a
+#                    title hard-wrapped over two lines had its earlier lines
+#                    absorbed into the head and its last one left under the
+#                    underline: half a heading in each place.
+#
+# Every test here asserts the WHOLE file. This command rewrites the queue, which
+# holds the user's own prose and has no other copy, and both defects survive any
+# narrower assertion — the FIELDS end up right either way, which is all a
+# substring check ever looked at.
+
+T174_HEAD = ("- [ ] **T007** — primeira linha do titulo que passa bem da coluna de "
+             "dobra para que a geometria licencie a absorcao")
+T174_CHAIN = "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n"
+
+
+class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def left_alone(self, why, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: {why} — "
+                + ", ".join(labels) + ". Close each with `cancel` and re-add it clean.\n")
+
+    HARD = ("a line the join would absorb ends in a HARD line break (two spaces), "
+            "which is a break the author wrote and the join cannot carry — the item "
+            "is left with its rendering intact")
+    SETEXT = ("a setext underline promotes the WHOLE paragraph above it, and the join "
+              "would absorb part of that paragraph into the first line and leave the "
+              "rest under the underline — half a heading in each place")
+
+    # --- the hard break ---------------------------------------------------
+
+    def test_a_hard_break_above_an_absorbed_line_stops_the_fold(self):
+        """Both fold paths, because they join by two different routes and the
+        break dies on either. The walk relocates a chain that owns its own lines;
+        the wrapped path undoes the hard wrap that split the chain itself. A
+        fixture exercising one leaves the other free to go on flattening."""
+        for name, tail in (
+                ("dobra por caminhada", "  segunda linha comprida o bastante para a "
+                                        "geometria licenciar.\n" + T174_CHAIN),
+                ("dobra da linha quebrada", "  segunda linha comprida o bastante. "
+                                            "**Class:** AUTONOMOUS. **Effort:** S. "
+                                            "**Criterion:** A: x.\n")):
+            with self.subTest(caminho=name):
+                seeded = T174_HEAD + "  \n" + tail
+                self.seed(seeded)
+                r = self.migrate()
+                self.assertIn(self.left_alone(self.HARD, "T007"), r.stdout)
+                self.assertNotIn("folded up", r.stdout)
+                self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_the_break_is_TWO_spaces_and_not_one(self):
+        """The over-refusal direction. One trailing space is not a hard break in
+        any Markdown — it is whitespace nobody meant as anything, and a rule that
+        read it as an author's break would refuse the wrapped population the fold
+        exists for, on files editors leave trailing spaces in every day."""
+        seeded = (T174_HEAD + " \n  segunda linha comprida o bastante para a "
+                  "geometria licenciar.\n" + T174_CHAIN)
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T007\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + T174_HEAD + " segunda linha comprida o bastante para "
+                         "a geometria licenciar. **Class:** AUTONOMOUS. **Effort:** S. "
+                         "**Criterion:** A: x.\n")
+
+    def test_a_break_at_the_END_of_the_block_breaks_nothing(self):
+        """The other over-refusal, and the one that would cost the fold real items:
+        a hard break needs a line UNDER it to break before. Trailing spaces on the
+        block's LAST line are the end of the item, and refusing there would take a
+        whole population out over whitespace that renders as nothing.
+
+        The fixture is the wrapped path on purpose. It is the only one that ever
+        asks about the last line — the walk asks only as far as the paragraph it
+        absorbs, which stops above the field run — so a walk fixture here would
+        leave the rule unmeasured and read as if it had been proved."""
+        self.seed(T174_HEAD + "\n  segunda linha comprida o bastante para a "
+                  "geometria licenciar. **Class:** AUTONOMOUS. **Effort:** S. "
+                  "**Criterion:** A: x.  \n")
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T007\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + T174_HEAD + " segunda linha comprida o bastante "
+                         "para a geometria licenciar. **Class:** AUTONOMOUS. "
+                         "**Effort:** S. **Criterion:** A: x.\n")
+
+    # --- the setext underline ---------------------------------------------
+
+    def test_a_paragraph_an_underline_promotes_is_not_split_by_the_fold(self):
+        """Both spellings of the underline, and TWO lines above it — which is what
+        makes the paragraph reach past the line `opens_a_block` protects. Measured
+        on this branch: the middle line went up into the head with the chain, the
+        last one stayed under the underline, and the run reported `folded up`."""
+        for name, rule in (("igual", "  ===============\n"),
+                           ("hifen", "  ---------------\n")):
+            with self.subTest(sublinhado=name):
+                seeded = (T174_HEAD + "\n"
+                          "  segunda linha do mesmo paragrafo, escrita comprida o bastante "
+                          "para quebrar na coluna de wrap e nao antes dela\n"
+                          "  terceira linha do mesmo paragrafo, tambem comprida o "
+                          "bastante, que fica logo acima do risco do sublinhado\n"
+                          + rule + T174_CHAIN)
+                self.seed(seeded)
+                r = self.migrate()
+                self.assertIn(self.left_alone(self.SETEXT, "T007"), r.stdout)
+                self.assertNotIn("folded up", r.stdout)
+                self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_a_heading_that_is_WHOLE_where_it_stands_is_still_folded_around(self):
+        """The over-refusal direction, and the shape
+        TestASetextTitleIsKeptWithItsUnderline already pins: with the underlined
+        line directly under the head, nothing of the promoted paragraph is
+        absorbed and the fold has nothing to split. A rule that refused here would
+        take back a population the fold was measured handling correctly."""
+        middle = "  Titulo da secao\n  ===============\n"
+        self.seed(R5_LONG_HEAD + middle + R4_CHAIN)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+        self.assertEqual(self.body(), HEADER + R5_FOLDED_HEAD + middle)
+
+    def test_the_walk_still_stops_at_a_block_that_is_no_heading(self):
+        """What decides the refusal has to be the SETEXT question and not "the
+        walk stopped early". The walk stops at every Markdown block, and folding
+        AROUND one — prose absorbed into the head, the block left with its own
+        line — is the behaviour this command was measured getting right. A rule
+        that fired wherever the walk stopped would refuse that whole population.
+
+        A bullet, then, with a wrapped line above it: the walk stops at the same
+        place the underline stops it, and nothing here is a promoted heading."""
+        second = ("segunda linha do mesmo paragrafo, escrita comprida o bastante "
+                  "para quebrar na coluna de wrap e nao antes dela")
+        bullet = "  - um item de lista que o usuario escreveu\n"
+        self.seed(T174_HEAD + "\n  " + second + "\n" + bullet + T174_CHAIN)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T007\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + T174_HEAD + " " + second
+                         + " **Class:** AUTONOMOUS. **Effort:** S. "
+                         "**Criterion:** A: x.\n" + bullet)
+
+
 class TestMutationHarness(unittest.TestCase):
     """The harness is what says this suite protects anything, and until T152
     nothing checked IT. Each test here is a way the harness could go on printing

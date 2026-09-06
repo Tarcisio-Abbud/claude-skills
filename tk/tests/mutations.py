@@ -3993,6 +3993,70 @@ MUTATIONS = [
      '            out.append(f"T{iid:03d}" if iid is not None else "an unnumbered item")',
      ["TestThePackShowsWhatTheListShows.test_a_kept_briefing_names_its_holder_by_the_items_own_spelling"]),
 
+
+    # --- T174: what the fold does to the user's own RENDERING ---------------
+    # Two limits declared in the source with no test. Each is a silent change of
+    # how the item renders, made under a line reporting the item as folded.
+
+    ("T174 the hard line break the author wrote dies at the join again",
+     "    for k in range(min(j, len(lines) - 1)):\n"
+     "        if HARD_BREAK_RE.search(lines[k]):\n"
+     "            return FOLD_HARDBREAK_REFUSAL",
+     "    for k in range(0):\n"
+     "        if HARD_BREAK_RE.search(lines[k]):\n"
+     "            return FOLD_HARDBREAK_REFUSAL",
+     ["TestTheFoldKeepsTheAuthorsLineBreaks.test_a_hard_break_above_an_absorbed_line_stops_the_fold"]),
+
+    # the over-refusal direction: one trailing space is whitespace, not a break,
+    # and a rule that read it as one would refuse the whole wrapped population
+    ("T174 a single trailing space is read as a hard break",
+     'HARD_BREAK_RE = re.compile(r" {2,}\\Z")',
+     'HARD_BREAK_RE = re.compile(r" {1,}\\Z")',
+     ["TestTheFoldKeepsTheAuthorsLineBreaks.test_the_break_is_TWO_spaces_and_not_one"]),
+
+    # and the other over-refusal: a break needs a line UNDER it to break before,
+    # so the block's LAST line is out of the question by construction
+    ("T174 a break on the block's last line refuses the item too",
+     "    for k in range(min(j, len(lines) - 1)):",
+     "    for k in range(min(j, len(lines))):",
+     ["TestTheFoldKeepsTheAuthorsLineBreaks.test_a_break_at_the_END_of_the_block_breaks_nothing"]),
+
+    ("T174 the fold splits the paragraph a setext underline promotes",
+     "    if 1 < j < first and promoted_by_setext(lines, j):\n"
+     "        return None, FOLD_SETEXT_REFUSAL",
+     "    if False and promoted_by_setext(lines, j):\n"
+     "        return None, FOLD_SETEXT_REFUSAL",
+     ["TestTheFoldKeepsTheAuthorsLineBreaks.test_a_paragraph_an_underline_promotes_is_not_split_by_the_fold"]),
+
+    # the over-refusal direction, on the shape the round before this one settled:
+    # with the underlined line directly under the head nothing of the promoted
+    # paragraph is absorbed, and the fold has nothing to split
+    ("T174 an underline directly under the head refuses the item as well",
+     "    if 1 < j < first and promoted_by_setext(lines, j):",
+     "    if 0 < j < first and promoted_by_setext(lines, j):",
+     ["TestTheFoldKeepsTheAuthorsLineBreaks.test_a_heading_that_is_WHOLE_where_it_stands_is_still_folded_around",
+      "TestASetextTitleIsKeptWithItsUnderline."
+      "test_the_title_the_underline_promotes_keeps_its_own_line"]),
+
+    # what makes the refusal a SETEXT rule and not a "the walk stopped early" one:
+    # without the shape question every item the fold goes AROUND is refused, and
+    # that population is what the command was measured getting right
+    ("T174 any line the walk stops at is treated as a promoted heading",
+     "    nxt = lines[j + 1] if j + 1 < len(lines) else \"\"\n"
+     "    return (bool(SETEXT_UNDERLINE_RE.match(nxt.strip()))\n"
+     "            and not opens_a_block(lines[: j + 1], j))",
+     "    return True",
+     ["TestTheFoldKeepsTheAuthorsLineBreaks."
+      "test_the_walk_still_stops_at_a_block_that_is_no_heading"]),
+
+    # the lookahead is what makes it the line UNDER that decides; asked of the
+    # line itself, an underline the walk stopped ON would answer for the line
+    # above it and the shape reading would protect the wrong one
+    ("T174 the promoted line is read without removing the lookahead",
+     "            and not opens_a_block(lines[: j + 1], j))",
+     "            and not opens_a_block(lines, j))",
+     ["TestTheFoldKeepsTheAuthorsLineBreaks.test_a_paragraph_an_underline_promotes_is_not_split_by_the_fold"]),
+
 ]
 
 
