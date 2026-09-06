@@ -53,10 +53,12 @@ LABELS = {
     "sentences_over_30": "sentences over 30 words",
     "description_words": "description words",
     "inline_evidence": "inline evidence",
+    "narrated_outcomes": "narrated outcomes",
     "pointers": "pointers to other files",
     "negations": "negations",
     "defined_terms": "defined terms",
     "terms_defined_in_sibling": "terms defined in a sibling too",
+    "environment_copies": "environment copies",
 }
 
 
@@ -235,6 +237,49 @@ class TestTheSentenceUnit(MeasureTest):
     def test_an_em_dash_alone_is_not_a_word(self):
         self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
                           + "\none — two\n", "body_words", 2)
+
+    def test_a_full_stop_inside_bold_ends_the_sentence_it_closes(self):
+        """The stop the author wrote is the stop the author meant, whatever
+        emphasis closes over it. Written `**… .**`, the period is followed by an
+        asterisk instead of a space, and the two sentences either side of it
+        were counted as ONE — seen on a legitimate draft (T209), which rose from
+        20 long sentences to 22 and came back only when the period was moved
+        outside the bold."""
+        self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
+                          + "\n**The gate refuses it.** The next step runs.\n",
+                          "sentences", 2)
+
+    def test_a_full_stop_inside_bold_does_not_inflate_the_long_sentence_counts(self):
+        """The count is not the damage; the two numbers riding on it are. Joined,
+        the pair below reads as one 32-word sentence and marks
+        `sentences_over_30`."""
+        text = (QUIET.replace("The steps below run in order.\n", "")
+                + "\n**" + "word " * 16 + "stop.** " + "word " * 15 + "end.\n")
+        m = self.metrics_of(text)
+        self.assertEqual(m["sentences"], 2)
+        self.assertEqual(m["sentences_over_30"], 0)
+        self.assertEqual(m["max_sentence_words"], 17)
+
+    def test_a_full_stop_inside_italics_ends_the_sentence_too(self):
+        self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
+                          + "\n_The gate refuses it._ The next step runs.\n",
+                          "sentences", 2)
+
+    def test_a_full_stop_inside_a_code_span_does_not_end_a_sentence(self):
+        """The emphasis markers close over PROSE and the stop inside them is the
+        author's; a backtick closes over CODE, where a trailing dot belongs to
+        the token — `git log.` names a command, not a sentence. The bin cannot
+        tell one from the other, so the marker it does not follow is the one
+        whose contents are not prose."""
+        self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
+                          + "\nRun `git log.` and read what it prints.\n",
+                          "sentences", 1)
+
+    def test_a_stop_before_bold_that_opens_the_next_sentence_still_splits(self):
+        # the run of markers after the stop is optional, not required
+        self.assertMetric(QUIET.replace("The steps below run in order.\n", "")
+                          + "\nThe gate refuses it. **The next step runs.**\n",
+                          "sentences", 2)
 
 
 class TestTheChunkBoundary(MeasureTest):
@@ -415,6 +460,16 @@ class TestDefinedTerms(MeasureTest):
         self.assertEqual(report["metrics"]["terms_defined_in_sibling"], 1)
         self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"], ["REFERENCE.md"])
 
+    def test_a_sibling_that_defines_the_term_twice_is_named_once(self):
+        """The counter counts the TARGET's terms, so it never saw this; the
+        finding did, and named one file twice — `also in b.md, b.md` reports
+        two files that do not exist."""
+        self.write("# B\n\n**Widget**: a thing.\n\n**Widget**: and again.\n",
+                   name="b.md")
+        found = self.report(self.write("# A\n\n**Widget**: a thing.\n")
+                            )["terms_defined_in_sibling"]
+        self.assertEqual([e["also_in"] for e in found], [["b.md"]])
+
     def test_the_sibling_comparison_ignores_case(self):
         self.write("**Session FINDING**: what a session learned.\n",
                    name="REFERENCE.md", subdir="skill")
@@ -464,6 +519,127 @@ class TestDefinedTerms(MeasureTest):
         self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
 
 
+class TestTheKitIsTheUniverse(MeasureTest):
+    """The sibling scan over a PLUGIN, where a term is coined one skill away.
+
+    The metric read the target's own directory and stopped there, so
+    **generation**, redefined by `dispatch` against `kickoff/WINDOW.md`, scored
+    zero and only a cold review found it (#219). A kit is recognised by the
+    marker a plugin carries, `.claude-plugin/plugin.json`, and every skill
+    markdown under it joins the target's own directory in the comparison.
+    """
+
+    def kit(self, layout, marker=True):
+        """A plugin on disk — {relative path: text} — and its root."""
+        root = os.path.join(self.tmp, "kit")
+        if marker:
+            os.makedirs(os.path.join(root, ".claude-plugin"), exist_ok=True)
+            with open(os.path.join(root, ".claude-plugin", "plugin.json"),
+                      "w", encoding="utf-8") as f:
+                f.write('{"name": "kit"}\n')
+        for relative, text in layout.items():
+            full = os.path.join(root, relative)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w", encoding="utf-8") as f:
+                f.write(text)
+        return root
+
+    def test_a_term_defined_in_another_skill_of_the_kit_is_reported(self):
+        """The case of #219: restricted to the directory this is 0."""
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/kickoff/WINDOW.md": "**Generation** is one dispatch.\n",
+        })
+        report = self.report(os.path.join(root, "skills", "alpha", "SKILL.md"))
+        self.assertEqual(report["metrics"]["terms_defined_in_sibling"], 1)
+        self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"],
+                         ["skills/kickoff/WINDOW.md"])
+
+    def test_two_skill_files_of_the_same_name_are_told_apart_by_their_path(self):
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/beta/SKILL.md": "**Generation** is one dispatch.\n",
+            "skills/gamma/SKILL.md": "**Generation** is one dispatch.\n",
+        })
+        report = self.report(os.path.join(root, "skills", "alpha", "SKILL.md"))
+        self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"],
+                         ["skills/beta/SKILL.md", "skills/gamma/SKILL.md"])
+
+    def test_the_only_definition_in_the_whole_kit_is_not_reported(self):
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/beta/SKILL.md": "nothing defined here\n",
+        })
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+    def test_a_kit_file_that_is_not_a_skill_keeps_its_own_directory(self):
+        """The universe is the kit's SKILLS. A reference page, a fixture or a
+        test file under the same plugin is measured as it always was — against
+        its own directory, by basename — and the kit's skills never reach it."""
+        root = self.kit({
+            "reference/queue.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "reference/session-finding.md": "**Generation** is one dispatch.\n",
+            "skills/alpha/SKILL.md": "**Handoff** is a briefing.\n",
+        })
+        report = self.report(os.path.join(root, "reference", "queue.md"))
+        self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"],
+                         ["session-finding.md"])
+
+    def test_a_skill_of_the_kit_never_collides_with_a_file_outside_skills(self):
+        root = self.kit({
+            "reference/queue.md": "**Generation** is one dispatch.\n",
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+        })
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+    def test_a_kit_file_symlinked_out_of_the_kit_is_not_read(self):
+        """The boundary moved from the directory to the kit; it did not go."""
+        outside = self.write("**API_KEY** is the token.\n", name="secret.md",
+                             subdir="elsewhere")
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**API_KEY** is the token.\n",
+            "skills/beta/SKILL.md": "nothing defined here\n",
+        })
+        os.symlink(outside, os.path.join(root, "skills", "beta", "leak.md"))
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+    def test_a_kit_file_symlinked_to_another_skill_is_read_once(self):
+        """Both names reach the same real file, and the finding names it once —
+        the count alone would pass on a guard that refused every symlink."""
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/beta/SKILL.md": "**Generation** is one dispatch.\n",
+        })
+        os.symlink(os.path.join(root, "skills", "beta", "SKILL.md"),
+                   os.path.join(root, "skills", "gamma.md"))
+        report = self.report(os.path.join(root, "skills", "alpha", "SKILL.md"))
+        self.assertEqual(report["metrics"]["terms_defined_in_sibling"], 1)
+        self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"],
+                         ["skills/beta/SKILL.md"])
+
+    def test_the_measured_file_is_not_its_own_sibling_under_a_second_name(self):
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+        })
+        os.symlink(os.path.join(root, "skills", "alpha", "SKILL.md"),
+                   os.path.join(root, "skills", "mirror.md"))
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        self.assertEqual(self.report(path)["metrics"]["terms_defined_in_sibling"], 0)
+
+    def test_a_target_under_no_kit_measures_by_its_own_directory_and_no_error(self):
+        root = self.kit({
+            "skills/alpha/SKILL.md": QUIET + "\n**Generation** is one dispatch.\n",
+            "skills/beta/SKILL.md": "**Generation** is one dispatch.\n",
+        }, marker=False)
+        path = os.path.join(root, "skills", "alpha", "SKILL.md")
+        r = self.run_on(path, "--json")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(r.stdout)["metrics"]["terms_defined_in_sibling"], 0)
+
+
 class TestUnpunctuatedRuns(MeasureTest):
     """The table rule, in the other constructs that carry one item per line and
     no full stop. A block of link definitions measured 536 words as one sentence
@@ -491,7 +667,10 @@ class TestInlineEvidence(MeasureTest):
         self.assertMetric(QUIET + "\nThe sweep ran on 2026-06-03.\n", "inline_evidence", 1)
 
     def test_the_word_measured_is_evidence(self):
-        self.assertMetric(QUIET + "\nThe gap was measured against the tree.\n",
+        # WITH the measurement it names. The bare word was evidence until T284:
+        # it is also how a skill writes the rule about evidence, and
+        # `TestEvidenceInBothDirections` carries that case
+        self.assertMetric(QUIET + "\nThe gap was measured at 12 words.\n",
                           "inline_evidence", 1)
 
     def test_a_count_followed_by_times_is_evidence(self):
@@ -507,7 +686,7 @@ class TestInlineEvidence(MeasureTest):
     def test_the_evidence_is_listed_in_the_order_a_reader_reads_it(self):
         # the three rules are scanned one after another, so without the sort a
         # date on a later line is listed before a `measured` on an earlier one
-        text = QUIET + "\nThe gap was measured here.\nThe sweep ran on 2026-06-03.\n"
+        text = QUIET + "\nThe gap was measured at 12 words.\nThe sweep ran on 2026-06-03.\n"
         report = self.report(self.write(text))
         self.assertEqual([e["line"] for e in report["inline_evidence"]], [8, 9])
 
@@ -515,6 +694,157 @@ class TestInlineEvidence(MeasureTest):
         report = self.report(self.fixture("bloated"))
         self.assertEqual(sorted({e["kind"] for e in report["inline_evidence"]}),
                          ["count", "iso date", "measured"])
+
+
+class TestEvidenceInBothDirections(MeasureTest):
+    """The inline-evidence counter missed in BOTH directions on one file, and
+    the two misses are the two cases below (T284).
+
+    The pruning pass over `verify/SKILL.md` (2026-08-31) read `inline evidence 1`
+    where the file held the opposite of that number: the one it counted was the
+    bare word in ordinary prose, and the one piece of real evidence — a clause
+    narrating what happened the one time a minimal fixture was trusted — it never
+    saw. A pass cannot decide what leaves a file on a counter that wrong.
+
+    THE TWO CASES ANSWER ON DIFFERENT ROWS, and that is the fix rather than a
+    dodge. `inline_evidence` carries a ceiling of zero, so what enters it is a
+    verdict; a narrated outcome is a shape a regex can find and cannot weigh —
+    `A criterion passed only because a reflow refilled its line` is a war story
+    and `an item the ladder had placed third` is a rule — so it is REPORTED with
+    its line, beside the negations, and marked against nothing.
+    """
+
+    FALSE_POSITIVE = ("The one thing that reaches the user is what was **measured**, which is why the criterion travels intact.")
+    FALSE_NEGATIVE = ("Run the criterion against the shape the data really has: a criterion read as satisfied on a minimal fixture has passed while the same command failed on the populated form.")
+
+    def test_the_word_measured_alone_is_not_inline_evidence(self):
+        """The false positive: prose about what a report must carry, holding no
+        measurement of its own."""
+        self.assertMetric(QUIET + "\n" + self.FALSE_POSITIVE + "\n",
+                          "inline_evidence", 0)
+
+    def test_the_word_measured_beside_a_number_is_inline_evidence(self):
+        self.assertMetric(QUIET + "\nThe gap was measured at 12 words.\n",
+                          "inline_evidence", 1)
+
+    def test_the_word_measured_beside_a_date_is_inline_evidence(self):
+        # two findings on the line: the date is one of its own
+        self.assertMetric(QUIET + "\nMeasured against the tree of 2026-08-31.\n",
+                          "inline_evidence", 2)
+
+    def test_a_clause_narrating_what_happened_is_reported(self):
+        """The false negative: no date, no count, no `measured` — a perfect
+        tense, which is how prose stops instructing and starts recounting."""
+        report = self.report(self.write(QUIET + "\n" + self.FALSE_NEGATIVE + "\n"))
+        self.assertEqual(report["metrics"]["narrated_outcomes"], 1)
+        self.assertEqual(report["narrated_outcomes"][0]["match"], "has passed")
+        self.assertIn("minimal fixture", report["narrated_outcomes"][0]["context"])
+
+    def test_a_rule_in_the_present_tense_is_not_a_narrated_outcome(self):
+        # `restored` is a participle and the sentence still instructs: what
+        # separates the two is the auxiliary in front of it, not the ending
+        self.assertMetric(QUIET + "\nA criterion that passes with the defect "
+                          "restored proves nothing.\n", "narrated_outcomes", 0)
+
+    def test_a_participle_belonging_to_a_noun_is_not_a_narrated_outcome(self):
+        # `has an encoding proposed` — two words between the auxiliary and the
+        # participle, and the participle belongs to the noun. Real line, from
+        # `wrap-up/SKILL.md`
+        self.assertMetric(QUIET + "\nEvery finding has an encoding proposed "
+                          "by the close.\n", "narrated_outcomes", 0)
+
+    def test_the_two_cases_of_the_verify_file_are_green_side_by_side(self):
+        """The regression the item asks for: both sentences in one file, each
+        answering on its own row and neither answering on the other's."""
+        m = self.metrics_of(QUIET + "\n" + self.FALSE_POSITIVE
+                            + "\n\n" + self.FALSE_NEGATIVE + "\n")
+        self.assertEqual(m["inline_evidence"], 0)
+        self.assertEqual(m["narrated_outcomes"], 1)
+
+    def test_a_narrated_outcome_is_marked_against_no_target(self):
+        """Reported, never marked: which perfect tense recounts a run and which
+        one states a rule is the reader's call, and a target that fails
+        `writing-for-agents` is not a target."""
+        marked = {m["metric"] for m in
+                  self.report(self.write(QUIET + "\n" + self.FALSE_NEGATIVE + "\n"),
+                              "--targets")["targets"]}
+        self.assertNotIn("narrated_outcomes", marked)
+
+    def test_the_text_report_lists_the_narrated_outcomes_with_their_lines(self):
+        out = self.run_on(self.write(QUIET + "\n" + self.FALSE_NEGATIVE + "\n"),
+                          ).stdout
+        self.assertIn("narrated outcomes (1)", out)
+        self.assertIn("has passed", out)
+
+
+class TestTheEnvironmentBoundary(MeasureTest):
+    """What the bin may run, and what it may not do when the run goes wrong.
+
+    `scan_environment` reads a tool's `--help` out of a SUBPROCESS, which is the
+    only place this bin leaves its own process. Both cases below were found by
+    the cold review of the lane that added it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.bin = os.path.join(self.tmp, "bin")
+        os.makedirs(self.bin)
+        previous = os.environ.get("TK_PRUNE_BIN")
+        os.environ["TK_PRUNE_BIN"] = self.bin
+        self.addCleanup(self.restore_bin, previous)
+
+    def restore_bin(self, previous):
+        if previous is None:
+            os.environ.pop("TK_PRUNE_BIN", None)
+        else:
+            os.environ["TK_PRUNE_BIN"] = previous
+
+    def tool(self, name, source):
+        path = os.path.join(self.bin, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(source)
+        os.chmod(path, 0o755)
+        return path
+
+    def test_a_help_that_is_not_utf8_is_measured_rather_than_traced_back(self):
+        """The bin promises to exit 0 for every measurement. A help carrying a
+        byte the locale cannot decode raised inside `subprocess.run`, and a
+        `UnicodeDecodeError` is a `ValueError` — it passed every `except` on the
+        way out and the whole run ended in a traceback."""
+        self.tool("tk-badhelp",
+                  "#!/usr/bin/env python3\n"
+                  "import sys\n"
+                  "sys.stdout.buffer.write(b'usage: tk-badhelp [-h]\\n\\n"
+                  "refuses \\xff an empty mandatory field\\n')\n")
+        r = self.run_on(self.write(QUIET + "\n- `tk-badhelp <id>` refuses an "
+                                           "empty mandatory field.\n"))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_only_a_subcommand_the_usage_names_reaches_the_subprocess(self):
+        """The allowlist of `kit_tools` covers the EXECUTABLE. The prefetch sent
+        `argv[1]` straight from the markdown, so a file writing a tool name
+        followed by `rmdash` ran that tool with an argument no author of this
+        kit ever wrote.
+
+        Both directions in ONE assertion: `done` is in the tool's own braced
+        usage and its help is read, `rmdash` is not and never runs. A test that
+        only forbade would pass on a bin that stopped passing arguments at all.
+        """
+        log = os.path.join(self.tmp, "argv.log")
+        self.tool("tk-probe",
+                  "#!/usr/bin/env python3\n"
+                  "import sys\n"
+                  "open(%r, 'a').write(' '.join(sys.argv[1:]) + chr(10))\n"
+                  "sys.stdout.write('usage: tk-probe [-h] {done,list} ...\\n')\n"
+                  % log)
+        self.run_on(self.write(QUIET + "\n- run `tk-probe rmdash` and it "
+                                       "refuses an empty mandatory field.\n"
+                                       "- run `tk-probe done` and it refuses "
+                                       "an empty mandatory field.\n"))
+        with open(log, encoding="utf-8") as f:
+            ran = sorted(line.split() for line in f.read().splitlines())
+        self.assertEqual(ran, [["--help"], ["done", "--help"]])
 
 
 class TestPointers(MeasureTest):
@@ -584,6 +914,194 @@ class TestNegations(MeasureTest):
         context = report["negations"][0]["context"]
         self.assertLessEqual(len(context), 102)
         self.assertIn("never", context)
+
+
+class TestEnvironmentCopies(MeasureTest):
+    """Prose that caches the `--help` of a tool it names (T293).
+
+    The environment is the source of truth and a sentence repeating it grows a
+    second copy to keep in sync. It is the class with the highest recurrence the
+    pruning track measured: six of the twelve clauses one pass cut off `verify`
+    were this, and whole sections of `kickoff`.
+
+    THE FIXTURE OWNS ITS HELP. `TK_PRUNE_BIN` points the resolution at a stub
+    written here, so these numbers do not move when the real tool grows a flag —
+    and so the proof by mutation exists at all: editing the stub's help must
+    unmark the sentence that copies it.
+
+    The blocks are the pre-pruning `verify/SKILL.md`'s own steps, wrapped the
+    way that file wraps them.
+    """
+
+    STUB = '#!/usr/bin/env python3\n"""A stand-in for the queue gate, so the fixture measures a help it owns."""\nimport sys\n\nHANDOFF = (\n    "usage: tk-queue handoff [-h] --objective OBJECTIVE --state STATE id\\n\\n"\n    "write the item briefing\\n\\n"\n    "options:\\n"\n    "  --objective OBJECTIVE  where this front is going\\n"\n    "  --state STATE          what is done and decided\\n\\n"\n    "An empty mandatory field is refused, and the file is deleted when the item closes.\\n")\n\nHELP = {\n    (): "usage: tk-queue [-h] {done,handoff,release,edit} ...\\n\\n"\n        "tk-queue - the gate over a project queue.\\n",\n    ("handoff",): HANDOFF,\n    ("done",): "usage: tk-queue done [-h] [--dir DIR] --how HOW [--note NOTE] "\n               "[--force] id\\n\\nconclude the item\\n",\n    ("release",): "usage: tk-queue release [-h] id\\n\\nhand the item back\\n",\n    ("edit",): "usage: tk-queue edit [-h] [--force] id\\n\\nchange an open item\\n",\n}\n\nif __name__ == "__main__":\n    argv = tuple(a for a in sys.argv[1:] if a != "--help")\n    sys.stdout.write(HELP.get(argv, HELP[()]))\n'
+    CLAUSE = 'An empty mandatory field is refused, and the file is deleted when the item closes.'
+
+    # invocation whole on the opening line, description wrapped under it
+    STEP_ONE = ("- Write the briefing with the script — `tk-queue handoff <id> "
+                '--objective "..." --state "..."`.\n'
+                "  It writes the file beside the queue files, refuses a briefing\n"
+                "  whose mandatory fields are empty, and is what makes it deleted\n"
+                "  when the item closes.\n")
+    # the same step with its invocation BROKEN across the line, as the real file
+    # wraps it: the code span opens on one line and closes on the next
+    WRAPPED = ("- Write the briefing with the script — `tk-queue handoff <id>\n"
+               '  --objective "..."`. It writes the file beside the queue files,\n'
+               "  refuses a briefing whose mandatory fields are empty, and is\n"
+               "  what makes it deleted when the item closes.\n")
+    DONE = ('- `tk-queue done <id> --how "..." --force` — `--how` is required, and\n'
+            "  `--force` raises the ceiling without removing it, so that form\n"
+            "  keeps the output to a single line.\n")
+    NAMED_ONLY = ('- `tk-queue done <id> --how "..."` — the pointer to the delivery goes\n'
+                  "  in `--how`, and the outcome goes in front of it.\n")
+    NO_TOOL = ("- It writes the file beside the queue files, refuses a briefing\n"
+               "  whose mandatory fields are empty, and is what makes it deleted\n"
+               "  when the item closes.\n")
+    RELEASE = ("- `tk-queue release <id>` when the item was claimed, so the dead\n"
+               "  package ownership does not outlive it.\n")
+    FORCE = ("- `tk-queue edit <id> --class DECISION` — the `--force` flag is required\n"
+             "  where the link would cross the size ceiling of an open row.\n")
+
+    INVOCATION_LINE = 8              # the line a block opens on
+
+    def setUp(self):
+        super().setUp()
+        self.bin = os.path.join(self.tmp, "bin")
+        os.makedirs(self.bin, exist_ok=True)
+        self.stub(self.STUB)
+        previous = os.environ.get("TK_PRUNE_BIN")
+        os.environ["TK_PRUNE_BIN"] = self.bin
+        self.addCleanup(self.restore_bin, previous)
+
+    def restore_bin(self, previous):
+        if previous is None:
+            os.environ.pop("TK_PRUNE_BIN", None)
+        else:
+            os.environ["TK_PRUNE_BIN"] = previous
+
+    def stub(self, text):
+        path = os.path.join(self.bin, "tk-" + "queue")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.chmod(path, 0o755)
+
+    def copies(self, *blocks):
+        return self.report(self.write(QUIET + "\n" + "\n".join(blocks))
+                           )["environment_copies"]
+
+    def test_a_sentence_restating_the_help_of_the_tool_it_names_is_a_copy(self):
+        found = self.copies(self.STEP_ONE)
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["tool"].split()[-1], "handoff")
+        self.assertGreaterEqual(len(found[0]["shared"]), 4)
+
+    def test_the_sentence_that_only_invokes_the_tool_is_not_a_copy(self):
+        """The step opens by TYPING the command, and what it types carries the
+        help's own words. Held out of the comparison, that sentence describes
+        four things and shares two; left in, every call site is a copy."""
+        found = self.copies(self.STEP_ONE)
+        self.assertEqual(len(found), 1, found)
+        self.assertGreater(found[0]["line"], self.INVOCATION_LINE)
+
+    def test_the_tool_is_read_off_a_code_span_broken_across_a_line(self):
+        """The real file wraps that invocation, so the span opens on one line
+        and closes on the next — a pattern needing both ends reads the two
+        halves as neither, and the block resolves to no tool at all."""
+        found = self.copies(self.WRAPPED)
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["tool"].split()[-1], "handoff")
+
+    def test_the_tool_is_inherited_by_the_lines_under_the_one_that_named_it(self):
+        found = self.copies(self.STEP_ONE)
+        self.assertGreater(found[0]["line"], self.INVOCATION_LINE)
+
+    def test_a_sentence_claiming_an_obligation_the_usage_marks_is_a_copy(self):
+        """The second reading: not four stems, one fact. `--how` sits outside
+        the brackets of the usage, and the sentence says it is required."""
+        found = self.copies(self.DONE)
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["fact"], "--how required")
+        self.assertLess(len(found[0]["shared"]), 4)
+
+    def test_naming_a_required_flag_without_claiming_it_is_not_a_copy(self):
+        """The fact is the CLAIM, not the flag: prose may route a reader to
+        `--how` without restating what the usage says about it."""
+        self.assertEqual(self.copies(self.NAMED_ONLY), [])
+
+    def test_a_flag_the_usage_marks_optional_carries_no_fact(self):
+        """The mirror class (#223): the help does NOT know what the prose
+        knows, and the metric must not bend to it. `--force` is bracketed."""
+        self.assertEqual(self.copies(self.FORCE), [])
+
+    def test_a_sentence_that_only_names_the_tool_is_not_a_copy(self):
+        self.assertEqual(self.copies(self.RELEASE), [])
+
+    # ONE SENTENCE OF WRAPPED PROSE, written twice. A list item ends a sentence
+    # at the end of its own line, so this case only exists in a paragraph: here
+    # the span opens on the sentence's SECOND line, and in `SPAN_FIRST` on its
+    # first. Nothing else about the two differs.
+    SPAN_LATER = ("The orchestrator writes the briefing with\n"
+                  "`tk-queue handoff <id>`, which refuses a briefing whose\n"
+                  "mandatory fields are empty and is what makes it deleted\n"
+                  "when the item closes.\n")
+    SPAN_FIRST = ("`tk-queue handoff <id>` is how the orchestrator writes the\n"
+                  "briefing, which refuses a briefing whose mandatory fields are\n"
+                  "empty and is what makes it deleted when the item closes.\n")
+
+    def test_a_sentence_is_attributed_by_a_span_of_its_own_after_its_first_line(self):
+        """The brief attributes a sentence to the tool named IN THE SENTENCE or
+        earlier in the same block. The line map answered only the second half —
+        it is keyed by line, and a sentence is filed under the line it OPENS on
+        — so one sentence marked with its invocation first and did not with the
+        same invocation wrapped onto the line below. That is a difference the
+        author's line breaks make and the sentence's meaning does not."""
+        later = self.copies(self.SPAN_LATER)
+        self.assertEqual([e["tool"].split()[-1] for e in later], ["handoff"])
+        self.assertEqual([e["tool"] for e in self.copies(self.SPAN_FIRST)],
+                         [e["tool"] for e in later])
+
+    def test_a_later_block_does_not_inherit_the_tool_of_an_earlier_one(self):
+        """Two steps of one list, no blank line between them, and the second
+        names no tool at all: without the block boundary it would answer for
+        the `handoff` of the first, and describe its help word for word."""
+        found = self.copies(self.STEP_ONE, self.NO_TOOL)
+        self.assertEqual([e["tool"].split()[-1] for e in found], ["handoff"])
+
+    def test_editing_the_help_unmarks_the_sentence_that_copied_it(self):
+        """The proof by mutation, run against the ENVIRONMENT rather than the
+        code: take the clause out of the stub's help and the sentence stops
+        sharing enough of it to be a copy. It is also what proves the fixture
+        reads the stub at all rather than the tool installed beside the bin."""
+        self.assertEqual(len(self.copies(self.STEP_ONE)), 1)
+        self.stub(self.STUB.replace(self.CLAUSE, "It conducts a front."))
+        self.assertEqual(self.copies(self.STEP_ONE), [])
+
+    def test_a_tool_the_kit_does_not_carry_is_not_resolved(self):
+        """The allowlist is the derived directory: a name the prose invents
+        resolves to nothing, and the file measures all the same."""
+        m = self.metrics_of(QUIET + "\n"
+                            + self.STEP_ONE.replace("tk-queue handoff", "tk-nowhere"))
+        self.assertEqual(m["environment_copies"], 0)
+
+    def test_environment_copies_are_marked_against_no_target(self):
+        """Listed, never marked: whether a copy should go is the pruning
+        table's question, and the mirror class is a different ticket."""
+        marked = {m["metric"] for m in
+                  self.report(self.write(QUIET + "\n" + self.STEP_ONE),
+                              "--targets")["targets"]}
+        self.assertNotIn("environment_copies", marked)
+
+    def test_the_text_report_lists_the_copies_with_their_tool(self):
+        out = self.run_on(self.write(QUIET + "\n" + self.DONE)).stdout
+        self.assertIn("environment copies (1)", out)
+        self.assertIn("--how required", out)
+
+    def test_the_criterion_of_the_item_read_over_the_four_steps(self):
+        """Criterion A as the brief rewrote it: the environment clauses mark,
+        the step that only names does not, and the `--force` one — the mirror
+        class — does not either."""
+        found = self.copies(self.STEP_ONE, self.DONE, self.RELEASE, self.FORCE)
+        self.assertEqual([e["tool"].split()[-1] for e in found],
+                         ["handoff", "done"])
 
 
 class TestTargets(MeasureTest):
