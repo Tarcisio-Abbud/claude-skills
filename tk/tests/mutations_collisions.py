@@ -31,9 +31,11 @@ MUTATIONS = [
 
     ("a merge that succeeded is taken for one that failed",
      '    run = git(repo, "merge-tree", "--write-tree", a, b)\n'
-     "    if run.returncode == 0:\n        return [], []",
+     "    tree = run.stdout.split(\"\\n\", 1)[0].strip() or None\n"
+     "    if run.returncode == 0:",
      '    run = git(repo, "merge-tree", "--write-tree", a, b)\n'
-     "    if run.returncode == 2:\n        return [], []",
+     "    tree = run.stdout.split(\"\\n\", 1)[0].strip() or None\n"
+     "    if run.returncode == 2:",
      ["TestCollisions.test_branches_that_touch_different_files_are_reported_clean"],
      SCRIPT),
 
@@ -59,10 +61,12 @@ MUTATIONS = [
     # branches touched one file, so call it a collision
     ("the merge is replaced by `did both branches touch this file`",
      '    run = git(repo, "merge-tree", "--write-tree", a, b)\n'
-     "    if run.returncode == 0:\n        return [], []",
+     "    tree = run.stdout.split(\"\\n\", 1)[0].strip() or None\n"
+     "    if run.returncode == 0:\n        return tree, [], []",
      '    run = git(repo, "diff", "--name-only", a, b)\n'
-     "    return sorted(set(run.stdout.split())), []\n"
-     "    if run.returncode == 0:\n        return [], []",
+     "    return None, sorted(set(run.stdout.split())), []\n"
+     "    tree = run.stdout.split(\"\\n\", 1)[0].strip() or None\n"
+     "    if run.returncode == 0:\n        return tree, [], []",
      ["TestCollisions.test_two_branches_editing_one_file_apart_are_clean"],
      SCRIPT),
 
@@ -96,6 +100,81 @@ MUTATIONS = [
     ("a merge that could not run at all is reported as a clean pair",
      "    if not paths and not messages:", "    if False:",
      ["TestCollisionFailures.test_a_merge_that_could_not_run_is_never_reported_as_clean"],
+     SCRIPT),
+
+    # --- the union half (`--against`) ------------------------------------
+
+    ("the suite never runs, which is the pairwise blindness restored",
+     "            pair[\"suite\"] = run_suite(repo, tree, args.suite)",
+     '            pair["suite"] = {"returncode": 0, "tail": ""}',
+     ["TestUnion.test_a_test_one_branch_adds_grades_a_file_the_other_branch_edits"],
+     SCRIPT),
+
+    ("the union is the PAIR, so a base that moved is not in the tree",
+     "    landed = commit_of(repo, tree, base, pivot)", "    landed = pivot",
+     ["TestUnion.test_the_union_is_taken_over_the_base_and_not_between_the_pair"],
+     SCRIPT),
+
+    ("a red union is counted as one that lands",
+     '           if p["conflicts"] or (p["suite"] and p["suite"]["returncode"] != 0)]',
+     '           if p["conflicts"]]',
+     ["TestUnion.test_a_test_one_branch_adds_grades_a_file_the_other_branch_edits"],
+     SCRIPT),
+
+    ("a conflicted union hands its half-merged tree to the suite anyway",
+     "    tree, paths, messages = measure(repo, landed, other)\n"
+     "    if paths or messages:\n        return None, paths, messages\n"
+     "    return tree, [], []",
+     "    tree, paths, messages = measure(repo, landed, other)\n"
+     "    return tree, paths, messages",
+     ["TestUnion.test_a_textual_conflict_in_the_union_is_reported_without_a_suite_run"],
+     SCRIPT),
+
+    ("the temporary worktree is left registered in the repository",
+     "    finally:\n"
+     '        git(repo, "worktree", "remove", "--force", path)\n'
+     "        shutil.rmtree(path, ignore_errors=True)",
+     "    finally:\n        shutil.rmtree(path, ignore_errors=True)",
+     ["TestUnion.test_the_temporary_worktree_is_removed_even_when_the_union_is_red"],
+     SCRIPT),
+
+    ("--against is accepted with no base and no suite",
+     "        if missing:", "        if False:",
+     ["TestUnionFailures.test_against_without_a_suite_stops_the_run",
+      "TestUnionFailures.test_against_without_a_base_stops_the_run"],
+     SCRIPT),
+
+    ("a suite named without a pivot is ignored instead of refused",
+     "    elif args.base or args.suite:", "    elif False:",
+     ["TestUnionFailures.test_a_suite_without_a_pivot_stops_the_run"],
+     SCRIPT),
+
+    ("the pivot is unioned with itself",
+     "    others = [ref for ref in args.refs if ref != pivot]",
+     "    others = list(args.refs)",
+     ["TestUnion.test_the_pivot_itself_is_never_unioned_with_itself"],
+     SCRIPT),
+
+    ("a suite the shell could not start is read as a red union",
+     "        if run.returncode in (126, 127):", "        if False:",
+     ["TestUnionFailures.test_a_suite_that_could_not_be_run_is_never_reported_as_green"],
+     SCRIPT),
+
+    ("the pivot and the base are not checked to name a commit",
+     "    for ref in args.refs + [r for r in (args.against, args.base) if r]:",
+     "    for ref in args.refs:",
+     ["TestUnionFailures.test_a_pivot_that_names_no_commit_stops_the_run"],
+     SCRIPT),
+
+    ("a union the suite passed is reported as one that cannot land",
+     '        if pair["suite"]["returncode"] != 0:', "        if True:",
+     ["TestUnion.test_a_union_whose_suite_passes_is_reported_green"],
+     SCRIPT),
+
+    ("the union answer carries the pair without the failure that named it",
+     '                "tail": tail_of(run.stdout + run.stderr)}',
+     '                "tail": ""}',
+     ["TestUnion.test_json_carries_the_suite_result_of_every_union"],
      SCRIPT),
 ]
 

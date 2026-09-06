@@ -7,6 +7,11 @@ Every test here is proved by MUTATION: the defect goes back into the source and
 the test must fail. `mutations_collisions.py` beside this file replays each one,
 on the runner `mutations_tk_contract.py` exposes.
 
+TWO HALVES, and the second is why `--against` exists: the pairwise tests
+below prove a TEXTUAL conflict is found, and `TestUnion` proves the semantic
+one is — a test one branch adds grading a file another branch edits, with
+every merge clean.
+
 The suite drives the real script as a subprocess and reads its EXIT CODE and its
 printed answer — never an internal. It gets a real git repository built in a
 throwaway directory, because the whole point of the script is that it PERFORMS
@@ -43,7 +48,9 @@ class CollisionTest(unittest.TestCase):
 
     def commit(self, message, files):
         for name, text in files.items():
-            with open(os.path.join(self.repo, name), "w", encoding="utf-8") as f:
+            path = os.path.join(self.repo, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(text)
         self.git("add", "-A")
         self.git("commit", "-qm", message)
@@ -159,6 +166,189 @@ class TestCollisionFailures(CollisionTest):
         self.assertEqual(r.returncode, 2, r.stdout)
         self.assertIn("without naming a conflict", r.stderr)
         self.assertNotIn("clean", r.stdout)
+
+
+# --- the union of two branches, and the suite that grades it ---------------
+#
+# The pairwise path above answers "do these two branches conflict TEXTUALLY".
+# The class below is the collision it cannot see: a test one branch adds
+# grades a file the other branch edits, every merge is clean, and the second
+# merge to land leaves the base red. Measured on claude-skills #66 × #68
+# (2026-09-01), where `tk-collisions` reported 0 colliding pairs.
+
+LOCK_TEST = '''\
+import os
+import unittest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class TestLock(unittest.TestCase):
+    def test_doc_is_at_most_three_lines(self):
+        with open(os.path.join(ROOT, "doc.md"), encoding="utf-8") as f:
+            self.assertLessEqual(len(f.read().splitlines()), 3)
+'''
+
+SUITE = "python3 -m unittest discover tests"
+
+
+class UnionTest(CollisionTest):
+    """A repository where `main` carries the graded file and a `tests/` dir.
+
+    `tests/` is on main, and importable, so that ONE suite command runs on
+    every branch of the fixture — `unittest discover` on a directory that
+    does not exist exits 1, which would make "each branch alone is green"
+    untestable with the command the gate really uses."""
+
+    def setUp(self):
+        super().setUp()
+        self.commit("doc", {"doc.md": "one\ntwo\nthree\n",
+                            "tests/__init__.py": "",
+                            ".gitignore": "__pycache__/\n"})
+
+    def union(self, *refs, against="a", base="main", suite=SUITE, extra=()):
+        return self.collisions(*refs, extra=("--against", against,
+                                             "--base", base,
+                                             "--suite", suite, *extra))
+
+    def suite_on(self, ref):
+        """The suite run in a checkout of ONE branch — "each alone green"."""
+        self.git("checkout", "-q", ref)
+        try:
+            return subprocess.run(SUITE, shell=True, cwd=self.repo,
+                                  capture_output=True, text=True, timeout=120)
+        finally:
+            self.git("checkout", "-q", "main")
+
+    def worktrees(self):
+        return self.git("worktree", "list").stdout.strip().splitlines()
+
+
+class TestUnion(UnionTest):
+    def test_a_test_one_branch_adds_grades_a_file_the_other_branch_edits(self):
+        """The acceptance criterion of T295, and the reason `--against` exists."""
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        self.branch("b", {"doc.md": "one\ntwo\nthree\nfour\nfive\n"})
+
+        for ref in ("a", "b"):
+            alone = self.suite_on(ref)
+            self.assertEqual(alone.returncode, 0, alone.stderr)
+
+        # what the pairwise path answers today: no textual conflict at all
+        pairwise = self.collisions("a", "b")
+        self.assertEqual(pairwise.returncode, 0, pairwise.stdout)
+        self.assertIn("clean     a × b", pairwise.stdout)
+
+        union = self.union("b")
+        self.assertEqual(union.returncode, 1, union.stdout + union.stderr)
+        self.assertIn("a × b", union.stdout)
+        self.assertIn("test_doc_is_at_most_three_lines", union.stdout)
+
+    def test_a_union_whose_suite_passes_is_reported_green(self):
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        self.branch("c", {"other.md": "y\n"})
+        r = self.union("c")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("green     a × c", r.stdout)
+
+    def test_the_union_is_taken_over_the_base_and_not_between_the_pair(self):
+        """`merge-tree a b` starts from `merge-base(a, b)` — the base as it
+        was when the two branched. Once the base has moved, that tree is
+        missing whatever landed meanwhile, INCLUDING the test that grades the
+        file. Here the lock test lands on main after both branches are cut,
+        so only `merge(merge(main, a), b)` can see the collision."""
+        self.branch("a", {"note.md": "a\n"})
+        self.branch("b", {"doc.md": "one\ntwo\nthree\nfour\nfive\n"})
+        self.commit("lock", {"tests/test_lock.py": LOCK_TEST})
+
+        pairwise = self.collisions("a", "b")
+        self.assertEqual(pairwise.returncode, 0, pairwise.stdout)
+
+        union = self.union("b")
+        self.assertEqual(union.returncode, 1, union.stdout + union.stderr)
+        self.assertIn("test_doc_is_at_most_three_lines", union.stdout)
+
+    def test_a_textual_conflict_in_the_union_is_reported_without_a_suite_run(self):
+        """A conflicted merge leaves no tree to run anything in, so the
+        finding is the conflict the pairwise path already names."""
+        self.branch("a", {"doc.md": "one\nA CHANGED IT\nthree\n"})
+        self.branch("b", {"doc.md": "one\nB CHANGED IT\nthree\n"})
+        marker = os.path.join(self.tmp, "the-suite-ran")
+
+        r = self.union("b", suite=f"touch {marker}")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("COLLIDES  a × b", r.stdout)
+        self.assertIn("doc.md", r.stdout)
+        self.assertFalse(os.path.exists(marker),
+                         "the suite ran over a union that does not exist")
+
+    def test_the_pivot_itself_is_never_unioned_with_itself(self):
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        r = self.union("a")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("no union to measure", r.stdout)
+
+    def test_json_carries_the_suite_result_of_every_union(self):
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        self.branch("b", {"doc.md": "one\ntwo\nthree\nfour\nfive\n"})
+        r = self.union("b", extra=("--json",))
+        data = json.loads(r.stdout)
+        self.assertEqual(data["counts"], {"measured": 1, "colliding": 1})
+        pair = data["pairs"][0]
+        self.assertEqual([pair["a"], pair["b"]], ["a", "b"])
+        self.assertNotEqual(pair["suite"]["returncode"], 0)
+        self.assertIn("test_doc_is_at_most_three_lines", pair["suite"]["tail"])
+
+    def test_the_temporary_worktree_is_removed_even_when_the_union_is_red(self):
+        """The union is MATERIALISED — the one promise the pairwise path does
+        not make. A worktree left behind would be registered in the real repo
+        the gate runs in."""
+        before = self.worktrees()
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        self.branch("b", {"doc.md": "one\ntwo\nthree\nfour\nfive\n"})
+        r = self.union("b")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(self.worktrees(), before)
+
+
+class TestUnionFailures(UnionTest):
+    def test_against_without_a_suite_stops_the_run(self):
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        r = self.collisions("b", extra=("--against", "a", "--base", "main"))
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("--suite", r.stderr)
+
+    def test_against_without_a_base_stops_the_run(self):
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        r = self.collisions("a", extra=("--against", "a", "--suite", SUITE))
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("--base", r.stderr)
+
+    def test_a_suite_without_a_pivot_stops_the_run(self):
+        """Silently ignoring it would report the pairwise answer under the
+        name of the union the caller asked for."""
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        r = self.collisions("main", "a", extra=("--suite", SUITE))
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("--against", r.stderr)
+
+    def test_a_pivot_that_names_no_commit_stops_the_run(self):
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        r = self.collisions("a", extra=("--against", "feat/never-fetched",
+                                        "--base", "main", "--suite", SUITE))
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("names no commit", r.stderr)
+
+    def test_a_suite_that_could_not_be_run_is_never_reported_as_green(self):
+        """A command the shell cannot find exits 127, and reading that as a
+        red union would be a finding nobody can act on — while reading it as
+        green is the silent lie this script exists to stop telling."""
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        self.branch("c", {"other.md": "y\n"})
+        r = self.union("c", suite="tk-no-such-command-exists")
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("did not run", r.stderr)
+        self.assertNotIn("green", r.stdout)
 
 
 if __name__ == "__main__":
