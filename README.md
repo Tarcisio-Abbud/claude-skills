@@ -45,7 +45,10 @@ opens — what is being merged and whether it may be, made readable where it is 
 every citation-by-number resolved to the sentence it names. The `merge-gate` skill says
 how to write it, and `/tk:wrap-up` step 5 is one of its three consumers.
 **`tk/bin/tk-collisions`** supplies the one section prose cannot: it merges every pair of open
-branches for real, because the forge's `mergeable` field is blind between two PRs.
+branches for real, because the forge's `mergeable` field is blind between two PRs. With
+`--against`, it instead builds one UNION per other branch on top of the assumed-landed pivot,
+graded by a suite command — the collision no pairwise merge sees, where a test one branch adds
+grades a file another branch edits.
 
 Every subagent an orchestrator dispatches gets its model, reasoning effort, **venue**
 (local × cloud), whether the role opens a pull request of its own and whether it owes the
@@ -221,8 +224,9 @@ tk/
                                   still off, 3 a repo it could not audit, 2 the run did
                                   not happen
   bin/tk-collisions               merges each pair of open branches for real, so a pair
-                                  that cannot both land is named before either does. No
-                                  network: the refs must already be local
+                                  that cannot both land is named before either does; with
+                                  `--against`, one UNION per other branch instead, graded by
+                                  `--suite`. No network: the refs must already be local
   bin/tk-vista-check              the gate on a vista: refuses a page that fetches anything,
                                   and one missing a block, a risk tag or a proof link
   bin/tk-prune-measure            measures one markdown file for a pruning pass: length,
