@@ -351,7 +351,7 @@ docs/prune/                       the pruning track's committed output: the base
 .claude/                          this repo's own agent config; versioned for the reason
                                   given below, and named file by file in `.gitignore` like
                                   the two blocks above
-  hookify.code-review-antes-de-pronto.local.md
+  hookify.code-review-before-done.local.md
                                   the stop rule that reminds a session which committed
                                   code to run the two-axis review before calling it done
 githooks/
