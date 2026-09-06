@@ -271,6 +271,50 @@ MUTATIONS = [
      '            "id": a.get("data-vista-card", "").strip(),',
      ["TestFiveBlocks.test_a_card_with_an_empty_id_is_named_by_its_position"], CHECK),
 
+    # -- the five verdicts -------------------------------------------------
+    ("T212 the verdicts a card gives are never collected",
+     "        if verdict and self.open_cards:", "        if False:",
+     ["TestVerdicts.test_a_card_missing_one_verdict_is_refused_naming_it",
+      "TestVerdicts.test_every_missing_verdict_is_named_on_its_own",
+      "TestVerdicts.test_a_verdict_outside_the_vocabulary_is_refused"], CHECK),
+
+    ("T212 a card that gives one verdict need not give the rest",
+     "        given = card[\"vereditos\"]\n        if given:", 
+     "        given = card[\"vereditos\"]\n        if False:",
+     ["TestVerdicts.test_a_card_missing_one_verdict_is_refused_naming_it",
+      "TestVerdicts.test_every_missing_verdict_is_named_on_its_own",
+      "TestVerdicts.test_a_verdict_outside_the_vocabulary_is_refused",
+      "TestShippedTemplate.test_deleting_a_verdict_from_the_template_is_refused_naming_it"],
+     CHECK),
+
+    ("T212 every card owes the five verdicts, PR or not",
+     "        given = card[\"vereditos\"]\n        if given:",
+     "        given = card[\"vereditos\"]\n        if True:",
+     ["TestVerdicts.test_a_card_giving_no_verdict_is_accepted",
+      "TestSelfContained.test_the_smallest_qualifying_page_is_accepted"], CHECK),
+
+    ("T212 only the last missing verdict is named",
+     "            for name in VERDICTS:\n                if name not in given:",
+     "            for name in VERDICTS[-1:]:\n                if name not in given:",
+     ["TestVerdicts.test_every_missing_verdict_is_named_on_its_own"], CHECK),
+
+    ("T212 any word at all is a verdict",
+     "                if name not in VERDICTS:", "                if False:",
+     ["TestVerdicts.test_a_verdict_outside_the_vocabulary_is_refused"], CHECK),
+
+    ("T212 the vocabulary loses the verdict added last",
+     'VERDICTS = ("tests", "review", "criterion", "reversal", "closure")',
+     'VERDICTS = ("tests", "review", "criterion", "reversal")',
+     ["TestVerdicts.test_a_card_giving_all_five_verdicts_is_accepted",
+      "TestShippedTemplate.test_the_template_is_refused_for_its_placeholder_and_nothing_else"],
+     CHECK),
+
+    ("T212 the shipped template loses one of the five verdicts",
+     '          <li data-vista-veredito="reversal"><b>Reversal</b> \u2014 the way back, in one line</li>\n',
+     "",
+     ["TestShippedTemplate.test_the_template_is_refused_for_its_placeholder_and_nothing_else"],
+     TEMPLATE),
+
     # -- what the reader sees ---------------------------------------------
     ("T139 text outside every element is never collected",
      "        elif not self.stack and data.strip():", "        elif False:",

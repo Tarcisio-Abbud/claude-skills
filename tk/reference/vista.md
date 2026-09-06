@@ -91,8 +91,10 @@ its markers stay as they are here.
 A card for a PR offered as merge carries the **five safe-to-merge verdicts** in its body —
 tests, review, criterion, reversal, closure — one line each, marked
 `data-vista-veredito="tests"` and so on. The checker does not require them: a card is a PR here and an item in a consolidated report,
-and only the first kind has verdicts to give. A human reads them; a red one is named in the
-card.
+and only the first kind has verdicts to give. It does require them **all or none** — a card
+that gives any of the five gives the other four, each named from that closed vocabulary,
+because a list of four reads as complete and the missing verdict is the one nobody checked. A
+human reads them; a red one is named in the card.
 
 **A type-B item is judged here, and answered elsewhere.** Its card carries the artefact and the
 one-line claim it makes, since the verdict is the user's to give — and it gives that verdict
@@ -114,8 +116,9 @@ It fails on an external resource (a `src`, a `<link href>`, an `@import`, a CSS 
 generated text is prose — a relative path, an empty `src`), on any script at all (a `<script>`,
 an `on*` handler, a `javascript:` or `vbscript:` URL read the way a browser reads it, a
 `<meta http-equiv="refresh">`), on a missing block, on a card whose outcome is outside the vocabulary or which has
-no risk tag or no real proof link, on text printed outside the `<body>` a page declared, and on
-a page with no `prefers-color-scheme: dark` rule.
+no risk tag or no real proof link, on a card that gives some of the five verdicts and not the
+rest (or one outside their vocabulary), on text printed outside the `<body>` a page declared,
+and on a page with no `prefers-color-scheme: dark` rule.
 
 **A red gate does not hold the run.** The vista is a companion; the digest is the close. So a
 run that gets a refusal keeps going and reports one of four states, never silence:
