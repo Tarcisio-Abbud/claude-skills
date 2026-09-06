@@ -3714,6 +3714,11 @@ def deferral_for_edit(args, block):
     # would let prose satisfy the gate; clearing it would delete that prose. An
     # edit that touches neither flag never consults the deferral, so it stays
     # allowed: over-refusing here would make the item uneditable instead.
+    #
+    # T165: since review#3 added the generic marker-outside-the-chain guard
+    # further down in `cmd_edit`, all four call shapes below refuse WITHOUT this
+    # one too (measured) — it is kept only because ITS message names the real
+    # problem (the deferral's position) instead of the generic one.
     if stray and (args.classe or args.deferred is not None):
         fail(f"{label} carries a **Deferred:** marker away from the position a "
              "deferral is written in (right after **Class:**) — in the item's own prose, "
@@ -4184,14 +4189,16 @@ def cmd_report(args):
 
 
 # --- the fold: a field chain that sits off the first line, lifted onto it ---
-# 31 of the 155 open items across the real queues carry the LEGACY shape — the
-# item's text on the first line and its `**Field:** value.` chain on a
+# A real minority of the open items across the real queues carry the LEGACY
+# shape — a fraction measured once, at write time, and never a fixed count:
+# the queues keep growing, so a number written here would go stale on its own
+# — the item's text on the first line and its `**Field:** value.` chain on a
 # continuation line. field_chain reads the run that ENDS THE FIRST LINE and
 # nothing else (its docstring says why), so to every gate those items have no
 # fields at all: `pack` excludes them, `claim` refuses them, every per-field
 # `edit` is refused on them. `migrate` is where the repair belongs — it is
-# already the command that rewrites legacy shapes into what the readers expect,
-# and the per-item alternative is retyping the item's whole text into
+# already the command that rewrites legacy shapes into what the readers
+# expect, and the per-item alternative is retyping the item's whole text into
 # `edit --text`, once per item, by hand.
 
 # printed with the IDs it applies to, never per item: the shapes each covers are
