@@ -81,10 +81,10 @@ shape in prose, and the last match is then the note, edited and reported as the 
 segment ahead of the anchor is prose, and so is any marker inside a **code span** — the way
 OUT for an item whose text quotes one. Unquoted, the mutating commands refuse it and ask
 for a rephrase; ambiguity left over is REFUSED, never guessed, because `--risk none`
-guessing wrong deletes prose that cannot be recovered. `migrate` is the repair, and it
-writes NO done-log line: it folds a chain off the first line onto it, writes a class value
-in Portuguese as the enum, and names every item it declines, with the reason. Only what it
-declines needs `cancel` + re-add.
+guessing wrong deletes prose that cannot be recovered. `migrate` is the repair, and the
+repair writes NO done-log line: it folds a chain off the first line onto it, writes a
+class value in Portuguese as the enum, and names every item it declines, with the
+reason. Only what it declines needs `cancel` + re-add.
 
 One `parse_item` reads the block — head, title, chain, prose — and one `render_item` writes
 it back byte for byte; nothing else reads it by regex. That ambiguity answered twice, by

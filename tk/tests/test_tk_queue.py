@@ -5275,6 +5275,14 @@ class TestMigrateFold(QueueTest):
                          "**Source:** 2026-08-13\n")
         self.assertIn("1 item(s) with fields off the first line: folded up, where every "
                       "gate reads them — T002\n", r.stdout)
+        # DESIGN-L13 §3's idempotence proof, on the WRAPPED path: the chain now
+        # ends the first line, so the second run has nothing to lift and has to
+        # say so. The suite's other second-run test seeds the walk's shape and
+        # never reached this one
+        after = self.body()
+        again = self.migrate()
+        self.assertEqual(self.body(), after)
+        self.assertNotIn("with fields off the first line", again.stdout)
 
     def test_a_chain_that_opens_MID_LINE_is_folded_too(self):
         """The commonest of the fifteen: the chain shares its line with the prose
@@ -8516,6 +8524,16 @@ class TestAClassValueInPortuguese(QueueTest):
         p = self.run_tk("pack")
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertNotIn("which is none of", p.stdout)
+        # DESIGN-L13 §3's idempotence proof, on THIS path: an enum is not a
+        # spelling the map carries, so a second run has to leave the bytes alone
+        # AND say nothing — a report naming work on a file it did not touch is
+        # what the caller acts on. The suite's other second-run test seeds the
+        # walk's shape, so it never reached the translation
+        after = self.body()
+        again = self.run_tk("migrate")
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(self.body(), after)
+        self.assertNotIn("with a class value in Portuguese", again.stdout)
 
     def test_a_value_no_mapping_carries_is_left_and_NAMED(self):
         """The other half, and the one that makes this a migration rather than a
