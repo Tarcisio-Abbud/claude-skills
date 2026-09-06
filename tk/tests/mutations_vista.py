@@ -279,7 +279,7 @@ MUTATIONS = [
       "TestVerdicts.test_a_verdict_outside_the_vocabulary_is_refused"], CHECK),
 
     ("T212 a card that gives one verdict need not give the rest",
-     "        given = card[\"vereditos\"]\n        if given:", 
+     "        given = card[\"vereditos\"]\n        if given:",
      "        given = card[\"vereditos\"]\n        if False:",
      ["TestVerdicts.test_a_card_missing_one_verdict_is_refused_naming_it",
       "TestVerdicts.test_every_missing_verdict_is_named_on_its_own",

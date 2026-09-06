@@ -132,13 +132,16 @@ run that gets a refusal keeps going and reports one of four states, never silenc
 
 ## What the gate does not measure
 
-A green run means the four things above, and a report may claim no more than that:
+A green run means the five things above, and a report may claim no more than that:
 
 - **Legibility.** The gate sees that the page ANSWERS the dark scheme, not that either palette
   is readable — `--ink` equal to `--bg` inside that block passes. Legibility is measured by
   RENDERING the file in both schemes before delivering it, which is a step, not a regex.
 - **Block 1's content.** A `stats` marker around an empty list passes. The markers say where the
   blocks are; what is in them is the writer's.
+- **Whether a card owes verdicts at all.** A card is a PR here and an item in a consolidated
+  report, and only the first kind has verdicts to give, so a card giving none passes. What the
+  gate refuses is a card that gives some of them.
 - **Where a link leads.** `<a href>` is exempt by design and only the placeholder rule touches
   it. A link to the wrong PR is a green page.
 - **One way.** That nothing is read back from a vista is a rule of the flow, held by prose here
