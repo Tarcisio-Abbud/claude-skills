@@ -1818,7 +1818,7 @@ MUTATIONS = [
     # field RUN), so it passes with this one off — naming it would claim a proof
     # this run cannot make. The pair below is what decides that shape
     ("T121 the fold stops asking the reader what the folded line gives back",
-     "    if ([seg.rstrip() for seg in run]\n"
+     "    if ([seg.rstrip() for seg in already + run]\n"
      "            != [f.text.rstrip() for f in chain]):",
      "    if False:",
      ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
@@ -1828,9 +1828,9 @@ MUTATIONS = [
     # mutant is that second path with its four gates removed — which is exactly
     # the blind join the first version of this entry restored
     ("T121 the fold trusts the join on a block it can read no field run out of",
-     "        return fold_wrapped(lines, block)\n    # the lines BETWEEN",
+     "        return fold_wrapped(lines, block)\n    # what the first line ALREADY carries",
      "        return ((\" \".join(ln.strip() for ln in lines)\n"
-     "                 + block[len(block.rstrip(\"\\n\")):]), None)\n    # the lines BETWEEN",
+     "                 + block[len(block.rstrip(\"\\n\")):]), None)\n    # what the first line ALREADY carries",
      ["TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
       "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED",
       "TestMigrateFold.test_a_line_that_opens_a_block_stops_the_wrapped_fold"]),
@@ -1838,9 +1838,9 @@ MUTATIONS = [
     # the whitespace half of that comparison, on its own: a chain WRAPPED over two
     # continuation lines is whole, and refusing it repairs an item the fold could lift
     ("T121 the readback counts the blank at a line joint as a changed value",
-     "    if ([seg.rstrip() for seg in run]\n"
+     "    if ([seg.rstrip() for seg in already + run]\n"
      "            != [f.text.rstrip() for f in chain]):",
-     "    if [seg for seg in run] != [f.text for f in chain]:",
+     "    if [seg for seg in already + run] != [f.text for f in chain]:",
      ["TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too"]),
 
     # a fold that lifts nothing still rewrites the user's line and reports it as
@@ -1850,13 +1850,39 @@ MUTATIONS = [
      "    if False:\n        # not a refusal yet",
      ["TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
 
-    # the weaker question the guard deliberately does not ask: "does ANY chain end
-    # the first line" answers YES for a **Class:** whose value sits on the next one,
-    # and that item — the shape the repairs text calls unfoldable — is passed over
-    # in SILENCE, which is the outcome the report exists to prevent
-    ("T121 the skip asks for any chain instead of one that reaches the class",
-     "    if chain_class(block) is not None:", "    if field_chain(block):",
-     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_folded_NOW"]),
+    # the weaker question the head-chain readout deliberately does not ask: "does
+    # ANY chain end the first line" answers YES for a marker the item quotes in
+    # its OWN prose, so those segments enter the expected chain, the readback they
+    # were added to matches, and the fold writes a field the item never carried —
+    # the one direction this function is forbidden to take. Until C-16 the same
+    # question was asked one guard earlier, as the run's first exit
+    ("T121 the head's chain is read off ANY chain instead of one that reaches the class",
+     "               if chain_class(block) is not None else [])",
+     "               if field_chain(block) else [])",
+     ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
+
+    # --- C-16: a field orphaned UNDER a chain the gates already read ---------
+
+    ("C-16 the run ends at a chain that reaches the class again, so a field "
+     "orphaned under a chain the gates already read is passed over in silence",
+     "    if not fields_off_first_line(block):",
+     "    if chain_class(block) is not None or not fields_off_first_line(block):",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_the_orphan_is_lifted_and_every_other_line_keeps_its_place"]),
+
+    ("C-16 the readback forgets the chain the first line brought, so lifting an "
+     "orphan onto it reads as a fold that invented a field",
+     "    if ([seg.rstrip() for seg in already + run]",
+     "    if ([seg.rstrip() for seg in run]",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_the_orphan_is_lifted_and_every_other_line_keeps_its_place"]),
+
+    ("C-16 a head that already carries a chain absorbs prose again, which lands "
+     "between that chain and the field being lifted",
+     "    while j < first and not already and not opens_a_block(lines, j):",
+     "    while j < first and not opens_a_block(lines, j):",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_the_orphan_is_lifted_and_every_other_line_keeps_its_place"]),
 
     ("T121 an item with no field off the first line is dragged into the fold's report",
      "    if not fields_off_first_line(block):", "    if False:",
@@ -1906,7 +1932,7 @@ MUTATIONS = [
 
     # the defect itself: every intervening line absorbed, bullets included
     ("review#3 the fold absorbs every line between the head and the chain",
-     "    j = 1\n    while j < first and not opens_a_block(lines, j):\n        j += 1",
+     "    j = 1\n    while j < first and not already and not opens_a_block(lines, j):\n        j += 1",
      "    j = first",
      ["TestFoldKeepsTheItemsMarkdown."
       "test_a_bulleted_list_between_the_head_and_the_chain_survives_the_fold",
@@ -1943,7 +1969,7 @@ MUTATIONS = [
     # hard-wrapped sentence, which Markdown renders identically joined. Kept as
     # its own line, the chain lands inside the unclosed parenthesis the wrap left
     ("review#3 nothing is absorbed, so a wrapped sentence is cut by the chain",
-     "    while j < first and not opens_a_block(lines, j):",
+     "    while j < first and not already and not opens_a_block(lines, j):",
      "    while j < first and False:",
      ["TestFoldKeepsTheItemsMarkdown.test_a_hard_wrapped_sentence_is_still_absorbed_into_the_head",
       "TestFoldKeepsTheItemsMarkdown."
@@ -3852,8 +3878,8 @@ MUTATIONS = [
     # --- T301 slice 4: the wrapped fold, and the class VALUE ---------------
     # Every entry here restores a rewrite of the user's only copy of an item.
     ("T159 the second fold path is gone, and the wrapped chain stays unreadable",
-     "        return fold_wrapped(lines, block)\n    # the lines BETWEEN",
-     "        return None, FOLD_REFUSAL\n    # the lines BETWEEN",
+     "        return fold_wrapped(lines, block)\n    # what the first line ALREADY carries",
+     "        return None, FOLD_REFUSAL\n    # what the first line ALREADY carries",
      ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_folded_NOW",
       "TestMigrateFold.test_a_chain_that_opens_MID_LINE_is_folded_too"]),
 

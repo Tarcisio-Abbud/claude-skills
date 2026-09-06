@@ -5520,19 +5520,24 @@ def fold_chain_onto_first_line(block):
     tell the rest of a split chain from prose that merely quotes a marker, and
     lifting half a chain leaves an item that reads as repaired and is not.
     """
-    if chain_class(block) is not None:
-        # the item is already in the shape every gate reads — its chain ends the
-        # first line AND reaches its **Class:**. Asked as the weaker "does any
-        # chain end the first line", a legacy item whose **Class:** trails that
-        # line with its VALUE on the next one answered YES and was passed over in
-        # SILENCE: the one shape the repairs text names as unfoldable, and the one
-        # a report exists to name
-        return None, None
     lines = block.rstrip("\n").split("\n")
     if not fields_off_first_line(block):
-        # no field marker sits off the first line. An item with no fields at all
-        # is a different defect with a different repair (`edit --class`), and
-        # reporting it here would name the fold for a shape the fold is not about
+        # nothing to lift, and this is the ONE question that says so: no field
+        # marker sits off the first line. An item with no fields at all is a
+        # different defect with a different repair (`edit --class`), and
+        # reporting it here would name the fold for a shape the fold is not about.
+        #
+        # It used to be asked twice, and the first asking was about the CLASS: a
+        # chain reaching **Class:** ended the run, on the grounds that the item
+        # was already in the shape every gate reads. True of the class, and of
+        # nothing else — a SECOND field left on a continuation line sits outside
+        # the chain, where no gate reads it either, and that item was passed over
+        # in silence. Measured on `estudo-remuneracao-CN` T004, whose **Born:**
+        # has been below the chain since it was written: `list` shows its age as
+        # `?`, every `migrate` skips it, and no command anywhere says why. Once
+        # the orphan is what decides, the class question answers nothing this one
+        # does not, so it is gone rather than kept as decoration — the same
+        # treatment the two prose readbacks at the end of this function got.
         return None, None
     run, first = [], len(lines)
     for line in reversed(lines[1:]):
@@ -5545,11 +5550,25 @@ def fold_chain_onto_first_line(block):
         # not a refusal yet: the walk found no run of field LINES, which is what
         # the second path is for
         return fold_wrapped(lines, block)
+    # what the first line ALREADY carries — the chain the exit at the top passes
+    # over when nothing is orphaned below it. Empty for the population the walk
+    # was written for, a head of plain prose. Read only where the head's chain
+    # is one the gates themselves read — it names exactly one **Class:** — so an
+    # item whose chain no gate can read (naming none, or two) keeps taking the
+    # path it took before, with the readback answering for the run alone.
+    already = ([f.text for f in field_chain(block)]
+               if chain_class(block) is not None else [])
     # the lines BETWEEN the head and the field run, split where the paragraph
     # stops: the wrapped ones are absorbed, and everything from the first block
-    # onwards keeps its own line, in its own place, with its own indentation
+    # onwards keeps its own line, in its own place, with its own indentation.
+    #
+    # A head that already carries a chain absorbs NOTHING, and the window is
+    # empty rather than narrowed by a shape question: a line joined onto that
+    # line lands between the chain and the run being lifted, which breaks the
+    # very chain the fold is relocating. There is nothing to weigh — every line
+    # below the head keeps its place, and only the orphaned field moves.
     j = 1
-    while j < first and not opens_a_block(lines, j):
+    while j < first and not already and not opens_a_block(lines, j):
         j += 1
     # the walk stopped at a line a setext underline promotes, with at least one
     # line above it already inside the absorbed run: the underline promotes the
@@ -5574,7 +5593,11 @@ def fold_chain_onto_first_line(block):
     # whose chain merely spanned two continuation lines. Absorbed PROSE, the
     # thing this gate is for, is not whitespace and still shows.
     chain = field_chain(folded)
-    if ([seg.rstrip() for seg in run]
+    # `already` is in the expected chain for the same reason it emptied the
+    # absorption window above: the segments the first line brought are part of
+    # what the join gives back, and a readback that left them out would read
+    # every orphan lifted onto a chain as a fold that invented a field
+    if ([seg.rstrip() for seg in already + run]
             != [f.text.rstrip() for f in chain]):
         # the join gave back a chain the run does not account for — a segment
         # came from the head, so this is the wrapped shape, not a relocation

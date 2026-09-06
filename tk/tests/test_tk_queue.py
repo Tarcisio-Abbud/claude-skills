@@ -9154,6 +9154,62 @@ class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
                          "**Criterion:** A: x.\n" + bullet)
 
 
+# --- C-16: a field orphaned UNDER a chain the gates already read -------------
+#
+# The fold's first question was "does the chain reach **Class:**", and a YES
+# ended the run: the item is in the shape every gate reads. True of the CLASS,
+# and of nothing else — a second field left on a continuation line sits outside
+# the chain, so no gate reads it, no repair is printed for it, and the run says
+# nothing. Measured on `estudo-remuneracao-CN` T004, whose **Born:** has been
+# below the chain since it was written: `list` shows its age as `?`, every
+# `migrate` passes it over, and no command anywhere says why.
+
+C16_HEAD = ("- [ ] **T004** — titulo do item, escrito comprido o bastante para que a "
+            "quebra abaixo dele caia numa coluna de wrap **Class:** AUTONOMOUS. "
+            "**Effort:** S. **Criterion:** A: x.")
+
+
+class TestAFieldOrphanedUnderAChainThatIsAlreadyRead(QueueTest):
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def test_the_orphan_is_lifted_and_every_other_line_keeps_its_place(self):
+        """Three shapes of what can sit between the chain and the orphan, because
+        the fold treats them as three: nothing, a wrapped paragraph, and a line
+        that opens a Markdown block.
+
+        The head already carries a chain, so NOTHING is absorbed in any of them —
+        a line joined onto that line would land between the chain and the field
+        being lifted, breaking the very chain the fold is relocating. The whole
+        file is asserted: this command rewrites the user's only copy, and every
+        defect this fold has produced survived a narrower check.
+
+        The age is asserted on both sides of the run because it is the symptom
+        the item was reported by: `?` while the field sits outside the chain, and
+        the number the moment it joins it."""
+        born = (datetime.date.today() - datetime.timedelta(days=12)).isoformat()
+        orphan = f"  **Born:** {born}\n"
+        for name, middle in (
+                ("nada entre os dois", ""),
+                ("prosa quebrada no wrap",
+                 "  uma linha de prosa comprida o bastante para que a geometria "
+                 "licenciasse a absorcao dela\n"),
+                ("uma linha que abre bloco", "  - um item de lista do usuario\n")):
+            with self.subTest(entre=name):
+                self.seed(C16_HEAD + "\n" + middle + orphan)
+                self.assertIn("T004  AUTONOMOUS     ?", self.run_tk("list").stdout)
+                r = self.migrate()
+                self.assertIn("folded up, where every gate reads them — T004\n",
+                              r.stdout)
+                self.assertEqual(self.body(),
+                                 HEADER + C16_HEAD + f" **Born:** {born}\n" + middle)
+                self.assertIn("T004  AUTONOMOUS   12d", self.run_tk("list").stdout)
+
+
 class TestMutationHarness(unittest.TestCase):
     """The harness is what says this suite protects anything, and until T152
     nothing checked IT. Each test here is a way the harness could go on printing
