@@ -11,9 +11,11 @@ the evidence, not the hours the session spent arriving at its position. That is 
 it is why the opinion comes from a **fresh** subagent on `fable` — a fork would inherit this
 context and its blind spots.
 
-Arguments: `$mode` is `consensus` (empty defaults to it) or `once`; any other value, stop and
-show the hint. `$turns` is the **turn budget** for `consensus`: the number of subagent replies,
-the first opinion included; empty defaults to 3.
+Arguments: `$mode` is `consensus` (empty defaults to it) or `once`. `$turns` is the **turn
+budget** for `consensus`: the number of subagent replies, the first opinion included; empty
+defaults to 3. Both are POSITIONAL, so prose typed after the command lands in them. An
+unrecognised value takes the default rather than stopping the skill: run `consensus` at 3, and
+open the report with one line naming what was ignored.
 
 ## Steps
 
