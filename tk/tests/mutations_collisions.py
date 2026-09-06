@@ -181,6 +181,35 @@ MUTATIONS = [
      '                "tail": ""}',
      ["TestUnion.test_json_carries_the_suite_result_of_every_union"],
      SCRIPT),
+
+    # --- what the cold review of PR #92 found untested ---------------------
+
+    ("the conflict of the FIRST merge, base against pivot, is not caught",
+     '    tree, paths, messages = measure(repo, base, pivot)\n'
+     "    if paths or messages:\n"
+     '        return {"commit": None, "pair": (base, pivot),',
+     '    tree, paths, messages = measure(repo, base, pivot)\n'
+     "    if False:\n"
+     '        return {"commit": None, "pair": (base, pivot),',
+     ["TestUnion.test_a_pivot_that_cannot_land_on_the_base_is_named_against_the_base"],
+     SCRIPT),
+
+    ("a base-against-pivot conflict is blamed on the innocent branch",
+     '        return {"commit": None, "pair": (base, pivot),',
+     '        return {"commit": None, "pair": (pivot, other),',
+     ["TestUnion.test_a_pivot_that_cannot_land_on_the_base_is_named_against_the_base"],
+     SCRIPT),
+
+    ("the union the suite runs in is an orphan, with no history behind it",
+     '    return {"commit": commit_of(repo, tree, landed, other),',
+     '    return {"commit": commit_of(repo, tree),',
+     ["TestUnion.test_the_union_the_suite_runs_in_carries_the_history_of_both_branches"],
+     SCRIPT),
+
+    ("a cleanup git refused is passed over in silence",
+     "        if remove.returncode != 0:", "        if False:",
+     ["TestUnion.test_a_cleanup_git_refuses_is_reported_instead_of_passed_over"],
+     SCRIPT),
 ]
 
 

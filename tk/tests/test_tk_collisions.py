@@ -299,6 +299,54 @@ class TestUnion(UnionTest):
         self.assertNotEqual(pair["suite"]["returncode"], 0)
         self.assertIn("test_doc_is_at_most_three_lines", pair["suite"]["tail"])
 
+    def test_a_pivot_that_cannot_land_on_the_base_is_named_against_the_base(self):
+        """The FIRST of the two merges can conflict too, and then the finding
+        is about `base × pivot` — a merge `other` never entered. Naming the
+        pair the caller asked about would blame an innocent branch, once per
+        other branch on the command line."""
+        self.branch("a", {"doc.md": "one\nA CHANGED IT\nthree\n"})
+        self.commit("main moved", {"doc.md": "one\nMAIN CHANGED IT\nthree\n"})
+        self.branch("b", {"other.md": "y\n"})
+        marker = os.path.join(self.tmp, "the-suite-ran")
+
+        r = self.union("b", suite=f"touch {marker}")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("COLLIDES  main × a", r.stdout)
+        self.assertNotIn("a × b", r.stdout)
+        self.assertIn("doc.md", r.stdout)
+        self.assertFalse(os.path.exists(marker),
+                         "the suite ran over a union that does not exist")
+
+    def test_the_union_the_suite_runs_in_carries_the_history_of_both_branches(self):
+        """The union is a COMMIT, not a loose tree, and its parents are the
+        two sides. A suite that asks git anything about history — a three-dot
+        diff, a changed-files-only runner — reads an orphan without them."""
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        self.branch("c", {"other.md": "y\n"})
+        # The answer prints the suite COMMAND above its tail, so a literal
+        # marker the command spells would be found whether or not the suite
+        # ever echoed it. Only a value computed in the union proves anything.
+        r = self.union("c", suite='echo "base=$(git merge-base --is-ancestor '
+                                  'main HEAD; echo $?)"; '
+                                  'echo "pivot=$(git merge-base --is-ancestor '
+                                  'a HEAD; echo $?)"; exit 1')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("base=0", r.stdout)
+        self.assertIn("pivot=0", r.stdout)
+
+    def test_a_cleanup_git_refuses_is_reported_instead_of_passed_over(self):
+        """Removing the worktree can FAIL, and then the measured repository
+        keeps a registration nobody asked for. Reporting it does not move the
+        exit code: a cleanup that failed is not a finding about the branches."""
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        self.branch("c", {"other.md": "y\n"})
+
+        r = self.union("c", suite="rm -f .git; exit 0")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("green     a × c", r.stdout)
+        self.assertIn("still registered", r.stderr)
+        self.assertIn("worktree prune", r.stderr)
+
     def test_the_temporary_worktree_is_removed_even_when_the_union_is_red(self):
         """The union is MATERIALISED — the one promise the pairwise path does
         not make. A worktree left behind would be registered in the real repo
