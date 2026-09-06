@@ -1939,11 +1939,13 @@ MUTATIONS = [
      ["TestResolvedItemKeepsItsOwnSpelling.test_the_done_log_records_the_item_under_its_own_spelling",
       "TestResolvedItemKeepsItsOwnSpelling.test_cancel_writes_the_same_name_into_the_log"]),
 
+    # anchored on the LOG READ that now follows it (T301 slice 5), not on the
+    # guard that used to: the replay check sits between the two
     ("T121 done/cancel name the item by the number typed, not by the block",
      "    label = item_label(block)\n"
-     "    ensure_single_line(outcome=outcome, summary=args.summary)",
+     '    log = read(os.path.join(memdir, "done-log.md")) or DONE_LOG_TEMPLATE',
      '    label = f"T{args.id:03d}"\n'
-     "    ensure_single_line(outcome=outcome, summary=args.summary)",
+     '    log = read(os.path.join(memdir, "done-log.md")) or DONE_LOG_TEMPLATE',
      ["TestResolvedItemKeepsItsOwnSpelling.test_the_done_log_records_the_item_under_its_own_spelling",
       "TestResolvedItemKeepsItsOwnSpelling.test_cancel_writes_the_same_name_into_the_log"]),
 
@@ -3774,6 +3776,39 @@ MUTATIONS = [
      "        spans.append((opener_start, len(line)))\n"
      "        i += 1",
      ["TestAMarkerInACodeSpanIsNotAField.test_an_odd_backtick_leaves_the_field_a_field"]),
+
+    # --- T301 slice 5: the close whose log half landed, and whose queue half
+    # did not. Every entry here restores a SECOND write of a record that has one
+    # copy and outlives the item it describes.
+    ("T170 a close over an id the log already carries writes a second entry",
+     "    if interrupted_close(log, iid=args.id):", "    if False:",
+     ["TestAnInterruptedCloseIsFinishedNotRepeated."
+      "test_done_and_cancel_finish_the_queue_write_without_a_second_line"]),
+
+    ("T170 the replay check reads the loose legacy ID too, so a `[ ]` line "
+     "parked in the log reads as an interrupted close",
+     "        return iid in ids_at(log, LOG_ID_RE)",
+     "        return iid in ids_at(log, LOG_ID_RE, ITEM_ID_RE)",
+     ["TestAnInterruptedCloseIsFinishedNotRepeated."
+      "test_a_legacy_open_box_parked_in_the_log_is_not_an_interrupted_close"]),
+
+    ("T216 `migrate` moves a block the log already carries a second time",
+     "            (replayed if interrupted_close(log, moved=text) else fresh).append(text)",
+     "            fresh.append(text)",
+     ["TestAnInterruptedCloseIsFinishedNotRepeated."
+      "test_a_migrate_replayed_after_a_crash_writes_no_second_copy"]),
+
+    ("T216 the block is matched ANYWHERE in the log, not on line boundaries",
+     '    return ("\\n" + moved.strip("\\n") + "\\n") in ("\\n" + log + "\\n")',
+     "    return moved.strip() in log",
+     ["TestAnInterruptedCloseIsFinishedNotRepeated."
+      "test_a_block_the_log_only_PREFIXES_is_still_moved"]),
+
+    ("T216 the rerun reports the blocks it FOUND as blocks it wrote",
+     '    print(f"{len(fresh)} [x] item(s) → done-log; IDs assigned up to T{nid:03d}")',
+     '    print(f"{len(done)} [x] item(s) → done-log; IDs assigned up to T{nid:03d}")',
+     ["TestAnInterruptedCloseIsFinishedNotRepeated."
+      "test_a_migrate_replayed_after_a_crash_writes_no_second_copy"]),
 ]
 
 

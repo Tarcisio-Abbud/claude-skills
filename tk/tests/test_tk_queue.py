@@ -153,7 +153,10 @@ class TestPrefixedId(QueueTest):
     def test_done_accepts_the_displayed_form(self):
         for form in ("T006", "t006", "006", "6", "T6"):
             with self.subTest(form=form):
-                self.seed(item(6, "item seis"))
+                # the LOG is reseeded too: five closes of one ID against one log
+                # is five replays of the first, and since T301 slice 5 a replay
+                # is recognised and writes no second entry
+                self.seed(item(6, "item seis"), log="")
                 r = self.run_tk("done", form, "--how", "PR #1")
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertIn("T006 → done-log as FEITO", r.stdout)
@@ -8345,6 +8348,95 @@ class TestAMarkerInACodeSpanIsNotAField(QueueTest):
                          ["Class", "Effort", "Risk", "Criterion", "Project", "Source"])
         self.assertIn("`**Risk:** alto`", self.tk.parse_item(self.QUOTED).title)
         self.assertEqual(self.tk.render_item(self.tk.parse_item(self.QUOTED)), self.QUOTED)
+
+
+
+# --- T170/T216: the close whose LOG half landed and whose QUEUE half did not --
+#
+# `close_item` writes the done-log and then the queue, through two separate
+# `write_atomic` calls with nothing spanning them; `cmd_migrate` does the same.
+# `reference/queue.md` accepts that window on purpose — "log written first, so a
+# crash between the two writes can duplicate a line but never lose the item" —
+# and the correction belongs on the REPLAY side, which is what this class pins.
+#
+# Measured on the script before this slice: with an entry for T001 already in
+# the log and T001 still open, a second `done` wrote a SECOND line and printed
+# "done-log as FEITO"; a second `migrate` re-inserted every moved block right
+# under the migration header, duplicating the lines AND putting the newer copies
+# above the older ones, so the log's order stopped being its history.
+
+class TestAnInterruptedCloseIsFinishedNotRepeated(QueueTest):
+    """The queue half is finished, the log half is never written twice."""
+
+    def today(self):
+        return datetime.date.today().isoformat()
+
+    def test_done_and_cancel_finish_the_queue_write_without_a_second_line(self):
+        """T170. Both commands close through `close_item`, so neither can keep a
+        silence the other lost — and the WHOLE done-log is the assertion, because
+        an `assertNotIn` on the second line would pass just as happily on a log
+        this command had rewritten some other way."""
+        log = "- 2026-08-01 — FEITO — T001 um — PR #1\n"
+        for cmd, extra in (("done", ("--how", "PR #2")), ("cancel", ("--why", "n/a"))):
+            with self.subTest(cmd=cmd):
+                self.seed(item(1, "um"), log=log)
+                r = self.run_tk(cmd, "1", *extra)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("tk-queue: warning: T001 already has a done-log entry",
+                              r.stderr)
+                self.assertEqual(self.body("done-log.md"), log)
+                # the queue as any other close leaves it: excise collapses the
+                # blank line the removed item had held open
+                self.assertEqual(self.body(), HEADER.rstrip("\n") + "\n")
+                self.assertEqual(r.stdout, "T001 → out of the queue; its done-log "
+                                           "entry was already written\n")
+
+    def test_a_legacy_open_box_parked_in_the_log_is_not_an_interrupted_close(self):
+        """The constraint the detection is built on. `done_log_ids` also sees a
+        `- [ ] **T005**` parked in done-log.md — a deliberate tolerance, so an ID
+        left there is never handed out twice. Asking THAT question here invents
+        an interrupted close for an item whose entry was never written, and the
+        close then leaves the queue with no record of the item anywhere."""
+        self.seed(item(5, "cinco"), log="- [ ] **T005** — caixa aberta parada no log\n")
+        r = self.run_tk("done", "5", "--how", "PR #1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("already has a done-log entry", r.stderr)
+        self.assertEqual(r.stdout, f"T005 → done-log as FEITO ({self.today()})\n")
+        self.assertIn(f"- {self.today()} — FEITO — T005 cinco — PR #1",
+                      self.body("done-log.md"))
+
+    def test_a_migrate_replayed_after_a_crash_writes_no_second_copy(self):
+        """T216, the crash reconstructed. `migrate` saves the log and then the
+        queue, so a kill between the two leaves every moved block in BOTH files —
+        and restoring next-steps to what it was IS that state, byte for byte.
+        Both whole files are asserted: the duplication showed up as much in the
+        log's ORDER as in its length."""
+        seeded = ("- [x] legado feito, movido verbatim\n\n"
+                  "- [x] **T004** — outro legado, com ID\n\n" + item(1, "um"))
+        self.seed(seeded)
+        first = self.run_tk("migrate")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        after_queue, after_log = self.body(), self.body("done-log.md")
+        self.write("next-steps.md", HEADER + seeded)   # the crash: log yes, queue no
+        second = self.run_tk("migrate")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn("tk-queue: warning: 2 [x] item(s) are already in", second.stderr)
+        self.assertEqual(self.body("done-log.md"), after_log)
+        self.assertEqual(self.body(), after_queue)
+        self.assertIn("0 [x] item(s) → done-log", second.stdout)
+
+    def test_a_block_the_log_only_PREFIXES_is_still_moved(self):
+        """Line-anchored equality, never any substring. A legacy `- [x] feito`
+        whose text merely OPENS a longer line already in the log would otherwise
+        be read as already moved: it would leave the queue and its record would
+        never be written — losing the item, which is the one outcome the window
+        in `queue.md` is accepted for never causing."""
+        self.seed("- [x] feito\n\n" + item(1, "um"),
+                  log="- [x] feito junto com o outro tracker\n")
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("1 [x] item(s) → done-log", r.stdout)
+        self.assertIn("- [x] feito\n", self.body("done-log.md"))
 
 
 class TestMutationHarness(unittest.TestCase):

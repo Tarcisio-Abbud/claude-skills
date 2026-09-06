@@ -2168,11 +2168,46 @@ def log_entry_tag(entry_text):
     return m.group(1) if m else None
 
 
-def append_done_line(memdir, line, today):
+def interrupted_close(log, iid=None, moved=None):
+    """Whether this item's done-log half is ALREADY written — the queue half of
+    a close that a crash interrupted.
+
+    Both closing paths write the log FIRST and the queue second, through two
+    separate `write_atomic` calls with nothing spanning them. `reference/queue.md`
+    accepts that window on purpose: a crash between the two writes "can duplicate
+    a line but never lose the item". Duplicating is what the rerun then does, in
+    silence, and the log is the only record the item leaves — so the rerun is
+    recognised on the way in, finishes the queue half, and writes no second line.
+    Inverting the order instead (queue first) closes the window by trading it for
+    a worse one: a crash there LOSES the item.
+
+    Each caller asks by the position IT writes, and the two are not one shape:
+
+    - `done` and `cancel` write an ENTRY, so they ask by `iid`, read through
+      LOG_ID_RE — the ID column of an entry, and nothing else. `done_log_ids` is
+      the wrong question here: it also sees a legacy `- [ ] **T005**` parked in
+      the log, a deliberate tolerance that stops an ID being handed out twice,
+      and reading it HERE invents an interrupted close for an item whose entry
+      was never written. That close then leaves the queue with no record at all —
+      losing the item, which is the outcome the accepted window never causes.
+    - `migrate` moves the block VERBATIM, with no entry head, so there is no ID
+      column for LOG_ID_RE to find (measured: the second run duplicated every
+      moved line and re-inserted it ABOVE the first copy, so the log's order
+      stopped being its history). It asks by the block's own TEXT, anchored at
+      both ends to a line boundary — a bare substring test would read a block
+      whose text merely OPENS a longer line already in the log as already moved,
+      and that is the losing direction again.
+    """
+    if iid is not None:
+        return iid in ids_at(log, LOG_ID_RE)
+    return ("\n" + moved.strip("\n") + "\n") in ("\n" + log + "\n")
+
+
+def append_done_line(memdir, content, line, today):
+    """`content` is the done-log the caller already read under the lock — the
+    same read `interrupted_close` was asked of. Re-reading here would answer the
+    two halves of one decision from two snapshots of one file."""
     path = os.path.join(memdir, "done-log.md")
-    content = read(path)
-    if content is None:
-        content = DONE_LOG_TEMPLATE
     month_header = f"## {today[:7]}"
     if month_header not in content:
         content = content.rstrip("\n") + f"\n\n{month_header}\n"
@@ -4146,6 +4181,21 @@ def cmd_handoff(args):
               f"{shlex.quote(fixed)}{forced}`.", file=sys.stderr)
 
 
+def finish_close(memdir, content, block, start, iid):
+    """The QUEUE half of a close: the item leaves next-steps, and whatever
+    briefing it left behind goes with it.
+
+    Both routes out of `close_item` end here — the one that has just written the
+    log line, and the replay that found it already written — so an interrupted
+    close is finished by exactly the code that finishes an ordinary one.
+    """
+    remove_block(memdir, content, block, start)
+    # excise is pure and remove_block recomputes it from these same three values,
+    # so this is the queue that was just written — not a second read of it
+    handoff_collect(memdir, excise(content, block, start),
+                    handoff_candidates(iid, block))
+
+
 def close_item(args, marker, outcome, marker_flag):
     memdir = memory_dir(args.dir)
     content, block, start = find_open_item(memdir, args.id)
@@ -4154,6 +4204,19 @@ def close_item(args, marker, outcome, marker_flag):
     # entry under a name no item ever carried — ungreppable, and readable as
     # another item's history
     label = item_label(block)
+    log = read(os.path.join(memdir, "done-log.md")) or DONE_LOG_TEMPLATE
+    # Asked BEFORE the flag guards below, and that order is the point: on a
+    # replay the outcome is discarded unwritten, so a refusal over its shape or
+    # its length would leave the queue half-closed with no command able to
+    # finish it. The flags are reported as discarded instead.
+    if interrupted_close(log, iid=args.id):
+        warn_once(f"{label} already has a done-log entry and is still open in "
+                  "next-steps.md — the queue half of a close a crash interrupted. "
+                  "Finishing that half; the entry already in the log stands, and "
+                  f"no second one is written (--{marker_flag} is discarded).")
+        print(f"{label} → out of the queue; its done-log entry was already written")
+        finish_close(memdir, content, block, start, args.id)
+        return
     ensure_single_line(outcome=outcome, summary=args.summary)
     # --summary and the outcome share the log entry's FIRST line with the project
     # tag appended below, so a marker in them can be read as that tag. --note is
@@ -4178,13 +4241,11 @@ def close_item(args, marker, outcome, marker_flag):
         line += f" **Project:** {tag}."
     if args.note:
         line += "\n  " + args.note.replace("\n", "\n  ")
-    append_done_line(memdir, line, today)
-    remove_block(memdir, content, block, start)
+    append_done_line(memdir, log, line, today)
+    # before the queue half, as it has always been: this line and the briefing's
+    # own are ONE report, and the item leaving the log is what it leads with
     print(f"{label} → done-log as {marker} ({today})")
-    # excise is pure and remove_block recomputes it from these same three values,
-    # so this is the queue that was just written — not a second read of it
-    handoff_collect(memdir, excise(content, block, start),
-                    handoff_candidates(args.id, block))
+    finish_close(memdir, content, block, start, args.id)
 
 
 def cmd_done(args):
@@ -5110,17 +5171,31 @@ def cmd_migrate(args):
         fail("next-steps.md not found in " + memdir)
     blocks = split_blocks(content)
     done = [t for k, t in blocks if k == "item-done"]
+    fresh, replayed = [], []
     nid = max_id(memdir)
     if done:
         log_path = os.path.join(memdir, "done-log.md")
         log = read(log_path) or DONE_LOG_TEMPLATE
         header = "## Migrado do next-steps (histórico pré-log)"
-        migrated = "\n".join(t.rstrip("\n") for t in done)
-        if header in log:
-            log = log.replace(header, header + "\n\n" + migrated + "\n", 1)
-        else:
-            log = log.rstrip("\n") + f"\n\n{header}\n\nMovidos verbatim em {datetime.date.today().isoformat()}; itens carregam as próprias datas.\n\n{migrated}\n"
-        save(log_path, log)
+        # A crash between this write and the queue write below leaves every moved
+        # block in BOTH files, and the rerun is what repairs that — so it moves
+        # only what the log does not already carry. Measured before the check
+        # existed: the rerun wrote a second copy of every block and put it ABOVE
+        # the first, so the log stopped being a history in order.
+        for text in done:
+            (replayed if interrupted_close(log, moved=text) else fresh).append(text)
+        if replayed:
+            warn_once(f"{len(replayed)} [x] item(s) are already in {log_path} and still "
+                      "in next-steps.md — the queue half of a `migrate` a crash "
+                      "interrupted. Finishing that half; the log is not written again, "
+                      "and its order is left as it stands.")
+        if fresh:
+            migrated = "\n".join(t.rstrip("\n") for t in fresh)
+            if header in log:
+                log = log.replace(header, header + "\n\n" + migrated + "\n", 1)
+            else:
+                log = log.rstrip("\n") + f"\n\n{header}\n\nMovidos verbatim em {datetime.date.today().isoformat()}; itens carregam as próprias datas.\n\n{migrated}\n"
+            save(log_path, log)
     out, dropped_prev = [], False
     folded, left_alone = [], []
     backdated, undated = [], []
@@ -5167,7 +5242,9 @@ def cmd_migrate(args):
     if dropped_prev:  # file ended on a removed block
         new_content = new_content.rstrip("\n") + "\n"
     save(path, new_content)
-    print(f"{len(done)} [x] item(s) → done-log; IDs assigned up to T{nid:03d}")
+    # `fresh`, never `done`: a rerun after a crash moves nothing, and a count of
+    # what it FOUND would report a write it did not make
+    print(f"{len(fresh)} [x] item(s) → done-log; IDs assigned up to T{nid:03d}")
     # Both lines carry the IDs, and the second one is the whole reason this
     # command may rewrite the file at all: a run that folded most of a queue and
     # stayed silent about the items it could not would be reporting success for a
