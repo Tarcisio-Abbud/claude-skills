@@ -4308,11 +4308,20 @@ def cmd_edit(args):
         head_m = CANONICAL_HEAD_RE.match(block)
         if not head_m:
             fail(f"{label} has a non-canonical head — use cancel + add instead of --text")
-        # keep everything from the FIRST field marker on, whichever field that is —
-        # anchoring on Class alone would silently drop Effort/Risk/Source of items
-        # that never carried a Class field
-        tail_m = re.search(r"\*\*(?:" + ANY_FIELD + r"):\*\*.*", block, re.S)
-        tail = tail_m.group(0) if tail_m else ""
+        # keep everything from the first READABLE field marker on, whichever field
+        # that is — anchoring on Class alone would silently drop Effort/Risk/Source
+        # of items that never carried a Class field.
+        #
+        # `markers`, not a regex of its own, and that is the whole code-span rule
+        # reaching the writer that cuts the line. Measured on the shape this slice
+        # exists to serve — an item whose text QUOTES a marker: the raw regex cut
+        # the tail inside the code span, so the opening backtick stayed in the text
+        # being replaced and the closing one did not. `--text` then wrote the
+        # quotation back as a REAL marker sitting before the chain, duplicated the
+        # prose around it, and pushed the item out of `pack` into the very
+        # cancel-and-re-add dead end the rule exists to open a way out of.
+        marks = markers(block)
+        tail = block[marks[0][1]:] if marks else ""
         new = head_m.group(0) + args.text.strip() + (" " + tail if tail else "\n")
     flags = ((args.classe, "Class"), (args.effort, "Effort"),
              (args.risk, "Risk"), (args.env, "Env"),
@@ -4346,7 +4355,12 @@ def cmd_edit(args):
             fail(f"{label} carries {len(in_chain)} **{field}:** fields in its field "
                  f"chain, so `--{field.lower()}` is ambiguous. Nothing was changed. Close "
                  "it with `cancel` and re-add it clean.")
-        if not found and re.search(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*", new):
+        # `markers`, not a regex of its own: a marker the reader does not read is
+        # not a marker this guard may refuse over. Quoted, it used to block
+        # `--project tk` on an item that merely CITES the field and carries no real
+        # one, prescribing cancel-and-re-add — the opposite of what quoting the
+        # prose is for.
+        if not found and markers(new, field):
             # the class-less item gets its own sentence, because the generic one
             # below would send the caller looking for a **Class:** the item has
             # not got. `--class` is exempt: it is the flag that GIVES the item
