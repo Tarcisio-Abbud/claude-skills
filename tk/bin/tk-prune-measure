@@ -272,7 +272,13 @@ POINTER_MAX = 200
 # would be load-bearing and no mutation could tell either of them was gone.
 TERM_IS = re.compile(r"(?:\b(?:an?|the)\s+)?\*\*([^*\n]+)\*\*\s+(?:is|means)\b",
                      re.IGNORECASE)
-TERM_COLON = re.compile(r"^\*\*([^*\n]+)\*\*\s*:")
+# The parenthesis is the aside the house form carries between the term and the
+# colon — `**generation** (`../kickoff/WINDOW.md`): …`, which is the very line
+# that named this metric (#219) and the one definition it could not see. ONE
+# parenthesis and nothing else: `[^:\n]*` here would read `**Read it** and then
+# start here:` as coining a term, and a skill's prose opens that way line after
+# line.
+TERM_COLON = re.compile(r"^\*\*([^*\n]+)\*\*\s*(?:\([^()\n]*\)\s*)?:")
 
 # What makes a directory the root of a KIT. The sibling scan reaches every skill
 # of the plugin the measured file belongs to, and this file is how it knows

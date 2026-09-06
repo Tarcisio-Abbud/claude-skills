@@ -451,6 +451,23 @@ class TestDefinedTerms(MeasureTest):
     def test_bold_in_the_middle_of_a_line_is_not_a_definition(self):
         self.assertMetric(QUIET + "\nRead it and **then**: start.\n", "defined_terms", 0)
 
+    def test_a_pointer_between_the_bold_and_the_colon_still_opens_a_definition(self):
+        """The shape of #219, verbatim from `dispatch/SKILL.md`: the term, the
+        file that owns it in parentheses, then the colon. The colon form asked
+        for the colon immediately after the bold, so `generation` — the very
+        term that named the sibling metric — was the one definition the metric
+        could not see, and the file scored zero for it on the shipped tree."""
+        self.assertMetric(QUIET + "\n**generation** (`../kickoff/WINDOW.md`): a "
+                          "scheduled fire opens one.\n", "defined_terms", 1)
+
+    def test_prose_between_the_bold_and_the_colon_is_not_a_definition(self):
+        """What the widening must NOT become. A parenthesised aside is admitted
+        and nothing else: anything at all up to the colon reads `**Read it** and
+        then start here:` as coining the term `Read it`, and a skill's prose
+        opens that way line after line."""
+        self.assertMetric(QUIET + "\n**Read it** and then start here: the file.\n",
+                          "defined_terms", 0)
+
     def test_a_term_defined_in_a_sibling_of_the_same_directory_is_reported(self):
         self.write("**Session finding**: what a session learned.\n",
                    name="REFERENCE.md", subdir="skill")

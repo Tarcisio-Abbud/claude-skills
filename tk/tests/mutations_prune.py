@@ -418,15 +418,15 @@ MUTATIONS = [
      ["TestDefinedTerms.test_the_house_form_without_an_article_is_a_definition"]),
 
     ("T185 bold and a colon is not a definition",
-     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*:")',
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
      'TERM_COLON = re.compile(r"(?!x)x")',
      ["TestDefinedTerms.test_bold_and_a_colon_opening_a_line_is_a_definition",
       "TestDefinedTerms.test_bold_and_a_colon_inside_a_list_item_opens_that_line_too",
       "TestTheBloatedFixture.test_the_five_defined_terms_are_found"]),
 
     ("T185 bold and a colon anywhere in a line is a definition",
-     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*:")',
-     'TERM_COLON = re.compile(r"\\*\\*([^*\\n]+)\\*\\*\\s*:")',
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
+     'TERM_COLON = re.compile(r"\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
      ["TestDefinedTerms.test_bold_in_the_middle_of_a_line_is_not_a_definition"]),
 
     ("T185 a list marker is left in place, so a definition opening a bullet is missed",
@@ -620,6 +620,16 @@ MUTATIONS = [
      '    lines += section("environment copies", report["environment_copies"],',
      '    lines += section("environment copies", [],',
      ["TestEnvironmentCopies.test_the_text_report_lists_the_copies_with_their_tool"]),
+
+    ("T282 the colon form is blind to the aside between the term and the colon (#219)",
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*:")',
+     ["TestDefinedTerms.test_a_pointer_between_the_bold_and_the_colon_still_opens_a_definition"]),
+
+    ("T282 anything at all may sit between the term and the colon",
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*[^:\\n]*:")',
+     ["TestDefinedTerms.test_prose_between_the_bold_and_the_colon_is_not_a_definition"]),
 
     ("T284/T293 the help promises fewer families than the report carries",
      '                    "shape, description words, inline evidence, narrated outcomes, "',
