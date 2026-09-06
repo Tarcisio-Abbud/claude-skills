@@ -70,7 +70,7 @@ rather than an outcome.
 - **Anchored on a moving target** — a line number or an absolute count, which *The anchor
   outlives the tree* forbids. A reflow then decides it, not the promise.
 
-Both are honest outcomes and count as a finished run.
+All three are honest outcomes and count as a finished run.
 
 ## Three attempts, then the queue
 

@@ -185,8 +185,9 @@ MUTATIONS = [
 
     ("T338 the checker stops at the reader's refusal instead of reporting the row it "
      "owes, so the gate's digest quotes nothing",
-     '        return report([("ticket", FAILED, detail)], f"T{args.id:03d}")',
-     "        fail(detail)",
+     '        return refused(refusal, f"T{args.id:03d}",\n'
+     '                       CLOSED_REMEDY if refusal.code == "closed" else None)',
+     '        fail(f"{refusal.code}: {refusal.message}")',
      ["TestVerdictFiveOnAnItemThatIsNotOpen."
       "test_a_closed_item_is_a_red_verdict_naming_the_log_it_left_for",
       "TestVerdictFiveOnAnItemThatIsNotOpen."
@@ -197,8 +198,8 @@ MUTATIONS = [
 
     ("T338 the row carries the refusal and no remedy, so the reader is told the "
      "verdict cannot be answered and not what to do instead",
-     '            detail += "\\n" + CLOSED_REMEDY',
-     "            pass",
+     '                       CLOSED_REMEDY if refusal.code == "closed" else None)',
+     "                       None)",
      ["TestVerdictFiveOnAnItemThatIsNotOpen."
       "test_the_red_row_names_the_ordering_that_produced_it"],
      CHECKER),

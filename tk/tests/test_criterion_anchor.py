@@ -88,6 +88,9 @@ class TheRuleItself(unittest.TestCase):
         self.assertIn(SECTION, said,
                       "the third shape names no rule, so what counts as a moving target is "
                       "the verifier's guess")
+        self.assertNotIn("Both are honest outcomes", said,
+                         "the section's closing sentence still counts two shapes, so the "
+                         "list contradicts its own summary")
 
 
 class TheSitesThatReachIt(unittest.TestCase):

@@ -4,7 +4,7 @@
 Run: python3 -m unittest discover -s tk/tests   (stdlib only, no deps)
 
 The audit was step 4 of `AFK.md` until it was split out into its own branch file
-(homeserver-ambiente#225); the recipe travelled with it and this file was re-anchored in the
+(ambiente#225); the recipe travelled with it and this file was re-anchored in the
 same commit, which is what keeps a split from being a silent deletion of the proof.
 
 What it proves: the `tk-queue` recipe the audit PRESCRIBES for a REGRILL is lifted out of
@@ -192,7 +192,7 @@ class AfkAuditTest(QueueFixture):
                          "a command from another section was folded into the recipe")
 
     def test_the_extraction_reads_the_audit_file_not_the_step_that_routes_to_it(self):
-        """The split (homeserver-ambiente#225) left a routing step behind in AFK.md.
+        """The split (ambiente#225) left a routing step behind in AFK.md.
 
         Nothing of AFK.md may reach the recipe list: before the split the whole file
         was in scope, and a fence added anywhere in it would have been executed here.

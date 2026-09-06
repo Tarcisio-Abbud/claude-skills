@@ -207,7 +207,8 @@ rewrites anything pushed. In order:
    `../../reference/slice-rules.md` "Before the PR", Spec reading the lane's own tickets, body
    AND comments; code takes the lens first, the two axes after. A `fixer` applies confirmed
    findings and pushes. A fix belonging to ONE item is committed on that item's own branch
-   `spec/<m>/T<id>` — its worktree recreated by step 3's recipe, the branch having outlived it —
+   `spec/<m>/T<id>` — its worktree recreated as `RESUME.md`'s *Re-dispatch* does, the branch
+   having outlived it —
    and merged into the lane again with `T<id>` leading the title. Committed on the lane instead
    it sits outside every merge the item owns, and the user's `git revert -m 1` of that merge
    leaves the correction behind, conflicting against code it no longer patches. A fix spanning

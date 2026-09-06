@@ -326,13 +326,16 @@ def report(rows, label):
     return EXIT_GREEN
 
 
-def refused(refusal, label):
+def refused(refusal, label, remedy=None):
     """A refusal from the reader, as the pre-condition row. The `[?]` item, the
     unconfigured clone, the path that is no clone and the ticket in another
     repository all reach verdict 5 the same way: red, with the defect and its
     remedy named. Verdict 5 had no exit for any of them, which left them
-    permanently red and unactionable."""
-    return report([("ticket", FAILED, f"{refusal.code}: {refusal.message}")], label)
+    permanently red and unactionable. `remedy` appends what the reader's own
+    refusal cannot know — one writer of the row, so the two callers cannot
+    drift on its wording."""
+    detail = f"{refusal.code}: {refusal.message}"
+    return report([("ticket", FAILED, detail + ("\n" + remedy if remedy else ""))], label)
 
 
 def escape(block, body, label):
@@ -365,10 +368,8 @@ def check(args):
     try:
         block, label = reader.item_block(memdir, args.id)
     except reader.Refusal as refusal:
-        detail = f"{refusal.code}: {refusal.message}"
-        if refusal.code == "closed":
-            detail += "\n" + CLOSED_REMEDY
-        return report([("ticket", FAILED, detail)], f"T{args.id:03d}")
+        return refused(refusal, f"T{args.id:03d}",
+                       CLOSED_REMEDY if refusal.code == "closed" else None)
 
     try:
         ticket = reader.item_ticket(block, label)
