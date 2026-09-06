@@ -1249,6 +1249,43 @@ class TestUsage(MeasureTest):
         self.assertIn(path, self.run_on(path).stdout)
         self.assertEqual(self.report(path)["path"], path)
 
+    # The phrase of the help that names each metric. Written out, because the
+    # help is prose and the labels are columns; its COMPLETENESS is derived from
+    # `LABELS`, which the class above pins to the bin's own row order. So a
+    # metric added to the bin with no phrase here reddens the test below rather
+    # than joining the three that lived unnamed in the help for a whole track.
+    HELP_PHRASES = {
+        "lines": "length",
+        "body_words": "length",
+        "sentences": "sentence shape",
+        "mean_sentence_words": "sentence shape",
+        "max_sentence_words": "sentence shape",
+        "sentences_over_30": "sentence shape",
+        "description_words": "description words",
+        "inline_evidence": "inline evidence",
+        "narrated_outcomes": "narrated outcomes",
+        "pointers": "pointers",
+        "negations": "negations",
+        "defined_terms": "defined terms",
+        "terms_defined_in_sibling": "terms defined in a sibling too",
+        "environment_copies": "environment copies",
+    }
+
+    def test_the_help_names_every_family_of_measurement_the_report_carries(self):
+        """`--help` is where a caller learns what the bin measures before running
+        it, and it promised six families while the report carried nine: the
+        narrated outcomes, the sibling terms and the environment copies were
+        added after the sentence was written and nothing said so."""
+        # collapsed first: argparse rewraps the description to the terminal
+        # width, so a phrase asserted raw dies at whichever word the wrap fell on
+        text = " ".join(self.run_on("--help").stdout.split())
+        for key in LABELS:
+            with self.subTest(metric=key):
+                self.assertIn(key, self.HELP_PHRASES,
+                              f"{key} is measured and no phrase names it here")
+                self.assertIn(self.HELP_PHRASES[key], text,
+                              f"the help does not name {key}:\n{text}")
+
 
 class TestTheFenceIndent(MeasureTest):
     """The margin a fence is measured against is the fence that opened the block,

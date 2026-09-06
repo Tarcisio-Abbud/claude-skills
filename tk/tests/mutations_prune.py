@@ -621,6 +621,11 @@ MUTATIONS = [
      '    lines += section("environment copies", [],',
      ["TestEnvironmentCopies.test_the_text_report_lists_the_copies_with_their_tool"]),
 
+    ("T284/T293 the help promises fewer families than the report carries",
+     '                    "shape, description words, inline evidence, narrated outcomes, "',
+     '                    "shape, inline evidence, "',
+     ["TestUsage.test_the_help_names_every_family_of_measurement_the_report_carries"]),
+
     # -- targets ------------------------------------------------------------
     ("T185 a metric sitting exactly on its ceiling is marked over",
      '                              ("ok" if value <= TARGETS[key] else "over")})',

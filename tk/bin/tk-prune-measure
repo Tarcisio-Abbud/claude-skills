@@ -1342,7 +1342,9 @@ def main(argv=None):
     p = argparse.ArgumentParser(
         prog="tk-prune-measure",
         description="Measures one markdown file for a pruning pass: length, sentence "
-                    "shape, inline evidence, pointers, negations and defined terms.",
+                    "shape, description words, inline evidence, narrated outcomes, "
+                    "pointers, negations, defined terms, terms defined in a sibling "
+                    "too, and environment copies.",
         epilog="Exits 0 for every measurement — it measures, it does not judge. "
                "A path that does not exist, or a directory, exits 2.")
     p.add_argument("file", metavar="FILE.md",
