@@ -28,7 +28,8 @@ at a persistent directory so the weights survive.
 |---|---|---|
 | `--engine parakeet\|whisper` | `parakeet` | `whisper` for a language Parakeet does not cover |
 | `--lang` | `pt` | any code the chosen engine supports |
-| `--chunk` | `30` | lower it on a box that OOMs |
+| `--chunk` | `30` | lower it on a box that OOMs (parakeet only) |
+| `--glob` | every audio extension | pick a subset by name — `'PTT-*.opus'`. It REPLACES the extension filter, so the pattern alone decides what is read |
 | `--out` | `transcript.jsonl` beside the target | give it a FILE path ending `.jsonl` — `transcript.md` takes that stem. Without it the run writes into the user's own audio folder |
 
 Writes `transcript.jsonl` (one line per file: `file`, `dur`, `engine`, `text`) and a readable

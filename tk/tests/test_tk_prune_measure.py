@@ -451,6 +451,23 @@ class TestDefinedTerms(MeasureTest):
     def test_bold_in_the_middle_of_a_line_is_not_a_definition(self):
         self.assertMetric(QUIET + "\nRead it and **then**: start.\n", "defined_terms", 0)
 
+    def test_a_pointer_between_the_bold_and_the_colon_still_opens_a_definition(self):
+        """The shape of #219, verbatim from `dispatch/SKILL.md`: the term, the
+        file that owns it in parentheses, then the colon. The colon form asked
+        for the colon immediately after the bold, so `generation` — the very
+        term that named the sibling metric — was the one definition the metric
+        could not see, and the file scored zero for it on the shipped tree."""
+        self.assertMetric(QUIET + "\n**generation** (`../kickoff/WINDOW.md`): a "
+                          "scheduled fire opens one.\n", "defined_terms", 1)
+
+    def test_prose_between_the_bold_and_the_colon_is_not_a_definition(self):
+        """What the widening must NOT become. A parenthesised aside is admitted
+        and nothing else: anything at all up to the colon reads `**Read it** and
+        then start here:` as coining the term `Read it`, and a skill's prose
+        opens that way line after line."""
+        self.assertMetric(QUIET + "\n**Read it** and then start here: the file.\n",
+                          "defined_terms", 0)
+
     def test_a_term_defined_in_a_sibling_of_the_same_directory_is_reported(self):
         self.write("**Session finding**: what a session learned.\n",
                    name="REFERENCE.md", subdir="skill")
@@ -1249,6 +1266,43 @@ class TestUsage(MeasureTest):
         self.assertIn(path, self.run_on(path).stdout)
         self.assertEqual(self.report(path)["path"], path)
 
+    # The phrase of the help that names each metric. Written out, because the
+    # help is prose and the labels are columns; its COMPLETENESS is derived from
+    # `LABELS`, which the class above pins to the bin's own row order. So a
+    # metric added to the bin with no phrase here reddens the test below rather
+    # than joining the three that lived unnamed in the help for a whole track.
+    HELP_PHRASES = {
+        "lines": "length",
+        "body_words": "length",
+        "sentences": "sentence shape",
+        "mean_sentence_words": "sentence shape",
+        "max_sentence_words": "sentence shape",
+        "sentences_over_30": "sentence shape",
+        "description_words": "description words",
+        "inline_evidence": "inline evidence",
+        "narrated_outcomes": "narrated outcomes",
+        "pointers": "pointers",
+        "negations": "negations",
+        "defined_terms": "defined terms",
+        "terms_defined_in_sibling": "terms defined in a sibling too",
+        "environment_copies": "environment copies",
+    }
+
+    def test_the_help_names_every_family_of_measurement_the_report_carries(self):
+        """`--help` is where a caller learns what the bin measures before running
+        it, and it promised six families while the report carried nine: the
+        narrated outcomes, the sibling terms and the environment copies were
+        added after the sentence was written and nothing said so."""
+        # collapsed first: argparse rewraps the description to the terminal
+        # width, so a phrase asserted raw dies at whichever word the wrap fell on
+        text = " ".join(self.run_on("--help").stdout.split())
+        for key in LABELS:
+            with self.subTest(metric=key):
+                self.assertIn(key, self.HELP_PHRASES,
+                              f"{key} is measured and no phrase names it here")
+                self.assertIn(self.HELP_PHRASES[key], text,
+                              f"the help does not name {key}:\n{text}")
+
 
 class TestTheFenceIndent(MeasureTest):
     """The margin a fence is measured against is the fence that opened the block,
@@ -1581,12 +1635,22 @@ class TestTheShippedSkills(MeasureTest):
 
     def test_the_table_heavy_skill_does_not_measure_as_one_enormous_sentence(self):
         """`dispatch` is the real file the sentence unit exists for: its palette
-        is one table, its rows carry no full stop, and by the punctuation rule
-        alone it measures over 50 words per sentence. This is that claim held
-        against the shipped file rather than against a fixture built to show it."""
+        is one table and its rows carry no full stop, so by the punctuation rule
+        alone the whole palette is ONE sentence of 206 words. This is that claim
+        held against the shipped file rather than against a fixture built to show
+        it.
+
+        THE LONGEST SENTENCE IS THE ASSERTION, not the mean. The mean was what
+        this test asked for years and it proved nothing: with the table's hard
+        break removed the file measures 20.0 words per sentence, and with EVERY
+        hard break removed it measures 24.6 — both under the 25 the assertion
+        allowed, so the mutant that puts the defect back walked straight past.
+        The mean cannot separate the two worlds, because collapsing rows into one
+        long sentence removes sentences as fast as it adds words. The maximum
+        can: 25 words on the shipped tree against 206 with the break gone."""
         m = self.report(os.path.join(HERE, os.pardir, "skills", "dispatch",
                                      "SKILL.md"))["metrics"]
-        self.assertLess(m["mean_sentence_words"], 25)
+        self.assertLess(m["max_sentence_words"], 50)
 
 
 if __name__ == "__main__":
