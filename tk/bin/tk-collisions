@@ -4,6 +4,17 @@
 Merges every PAIR of refs for real, into a tree nobody keeps, and names the
 pair that cannot both land before either does.
 
+WITH `--against`, it answers the harder question, the one a merge gate asks:
+once THIS branch has landed, does each of the others still land GREEN? A test
+one branch adds can grade a file another branch edits while every merge is
+textually clean — the collision is SEMANTIC, and no merge sees it. So the
+union `merge(merge(--base, --against), other)` is built, checked out into a
+TEMPORARY detached worktree, and `--suite` is run in it. That worktree is the
+one thing this script materialises, it lives only while the suite runs, and a
+`finally` removes it whether the suite came back green, red or not at all. A
+removal that git itself refuses is reported on stderr, naming the leftover and
+`git worktree prune`; it is never passed over in silence.
+
 WHY NOT ASK THE FORGE: `mergeable`/`mergeStateStatus` answer only "does this PR
 merge into its base", which is blind between two PRs. Two branches can each be
 green against `main` and still conflict with each other.
@@ -11,25 +22,48 @@ green against `main` and still conflict with each other.
 NO NETWORK. The refs must already be local — branches of open PRs live under
 `origin/` until fetched.
 
-EXIT CODES: 0 no pair collides · 1 a pair collides (a FINDING, not a crash) ·
-2 the run could not be made.
+EXIT CODES: 0 nothing collides · 1 a FINDING, not a crash — a pair that
+conflicts textually, or a union whose suite came back red · 2 the run could
+not be made.
 """
 
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 EXIT_OK = 0
 EXIT_FINDING = 1
 EXIT_FAILED = 2
+
+# The last lines of a red suite, carried into the answer. Enough for the
+# failure header, the assertion and unittest's own footer; a whole suite log
+# would drown the pair it belongs to.
+SUITE_TAIL_LINES = 20
+
+# The union commit belongs to the tool, not to whoever runs it — and pinning
+# the identity here keeps a repository with no `user.email` configured from
+# failing a run that never asked for one.
+IDENTITY = ("-c", "user.name=tk-collisions",
+            "-c", "user.email=tk-collisions@invalid")
 
 
 def fail(msg):
     """Stop with code 2. Distinct from a finding: the run did not happen."""
     print(f"tk-collisions: {msg}", file=sys.stderr)
     sys.exit(EXIT_FAILED)
+
+
+def warn(msg):
+    """Say what was left behind, without changing the answer.
+
+    Cleanup that failed is not a finding about the branches and not a run
+    that did not happen, so it moves neither exit code — but staying silent
+    would leave state in the measured repository that nobody was told about."""
+    print(f"tk-collisions: {msg}", file=sys.stderr)
 
 
 def git(repo, *argv):
@@ -62,10 +96,15 @@ def conflicts_of(out):
 
 
 def measure(repo, a, b):
-    """One pair, merged for real into a tree nobody keeps."""
+    """One pair, merged for real into a tree nobody keeps.
+
+    Returns that tree's OID beside the conflicts, because `--against` merges
+    the result AGAIN, onto the next branch. `merge-tree --write-tree` prints
+    the OID on its first line whether or not the merge conflicted."""
     run = git(repo, "merge-tree", "--write-tree", a, b)
+    tree = run.stdout.split("\n", 1)[0].strip() or None
     if run.returncode == 0:
-        return [], []
+        return tree, [], []
     paths, messages = conflicts_of(run.stdout)
     if not paths and not messages:
         # `merge-tree` exits 1 for a conflict AND for a merge it could not even
@@ -75,17 +114,181 @@ def measure(repo, a, b):
         fail(f"`git merge-tree --write-tree {a} {b}` failed without naming a "
              f"conflict, so nothing was measured: "
              f"{(run.stderr or run.stdout).strip() or 'no output'}")
-    return paths, messages
+    return tree, paths, messages
+
+
+def tail_of(output):
+    """The last lines of a suite's output, which is where it says why."""
+    return "\n".join(output.strip().splitlines()[-SUITE_TAIL_LINES:])
+
+
+def commit_of(repo, tree, *parents):
+    """A commit nobody keeps, wrapping a merged TREE.
+
+    The tree alone is not enough twice over: `merge-tree` needs COMMITS to
+    find a merge base for the second merge, and `git worktree add` checks out
+    a commit. The PARENTS are not decoration either: a suite that asks git
+    anything about history — a three-dot diff, a changed-files-only runner —
+    reads an orphan when the union has none."""
+    if not tree:
+        fail("`git merge-tree --write-tree` returned success but named no "
+             "tree, so there is nothing to wrap and nothing was measured.")
+    argv = [*IDENTITY, "commit-tree", tree, "-m", "tk-collisions union"]
+    for parent in parents:
+        argv += ["-p", parent]
+    run = git(repo, *argv)
+    if run.returncode != 0:
+        fail(f"`git commit-tree {tree}` could not wrap the merged tree, so "
+             f"the union was not measured: "
+             f"{(run.stderr or run.stdout).strip() or 'no output'}")
+    return run.stdout.strip()
+
+
+def union_of(repo, base, pivot, other):
+    """The commit that exists after `pivot` lands on `base` and `other` follows.
+
+    NOT `merge-tree pivot other`: that merge starts from
+    `merge-base(pivot, other)`, the base as it stood when the two branched.
+    Once the base has moved, that tree is missing everything that landed
+    meanwhile — including the very test that grades the file, which is the
+    collision this option was written to find. So the base is merged in
+    first: `merge(merge(base, pivot), other)`.
+
+    A conflict in EITHER step is the textual finding the pairwise path
+    already reports, and it leaves no tree for a suite to run in. Which two
+    refs could not be merged is part of the answer: a pivot that cannot even
+    land on the base is a finding about `base × pivot`, and naming the pair
+    the caller asked about instead would blame a branch that is innocent."""
+    tree, paths, messages = measure(repo, base, pivot)
+    if paths or messages:
+        return {"commit": None, "pair": (base, pivot),
+                "paths": paths, "messages": messages}
+    landed = commit_of(repo, tree, base, pivot)
+    tree, paths, messages = measure(repo, landed, other)
+    if paths or messages:
+        return {"commit": None, "pair": (pivot, other),
+                "paths": paths, "messages": messages}
+    return {"commit": commit_of(repo, tree, landed, other),
+            "pair": (pivot, other), "paths": [], "messages": []}
+
+
+def run_suite(repo, commit, cmd):
+    """`cmd`, run with the union as its working directory.
+
+    NO TIMEOUT. A real gate runs one suite per open PR, minutes each, in the
+    foreground; a wrapper that killed a slow one would report a union it
+    never measured. A shell that cannot even start the command (126, 127) is
+    a run that did not happen, never a red union."""
+    path = tempfile.mkdtemp(prefix="tk-collisions-union.")
+    try:
+        add = git(repo, "worktree", "add", "--detach", path, commit)
+        if add.returncode != 0:
+            fail(f"the union {commit} could not be checked out into {path}, "
+                 f"so the suite was not run: "
+                 f"{(add.stderr or add.stdout).strip() or 'no output'}")
+        try:
+            run = subprocess.run(cmd, shell=True, cwd=path,
+                                 capture_output=True, text=True)
+        except OSError as e:
+            fail(f"the suite could not be run in the union: {e}")
+        if run.returncode in (126, 127):
+            fail(f"`{cmd}` did not run in the union (the shell exited "
+                 f"{run.returncode}), so nothing was measured: "
+                 f"{(run.stderr or run.stdout).strip() or 'no output'}")
+        return {"returncode": run.returncode,
+                "tail": tail_of(run.stdout + run.stderr)}
+    finally:
+        remove = git(repo, "worktree", "remove", "--force", path)
+        shutil.rmtree(path, ignore_errors=True)
+        if remove.returncode != 0:
+            warn(f"the temporary worktree {path} is still registered in "
+                 f"{repo}: `git worktree remove` exited {remove.returncode} "
+                 f"({(remove.stderr or remove.stdout).strip() or 'no output'}). "
+                 f"Its directory is gone, so `git -C {repo} worktree prune` "
+                 f"reclaims the entry.")
+
+
+def unions(args):
+    """One union per other branch, against the pivot `--against` names."""
+    repo, pivot = args.repo, args.against
+    others = [ref for ref in args.refs if ref != pivot]
+    if not others:
+        message = (f"only the pivot named ({pivot}), so there is no union to "
+                   "measure — a lone PR lands on nobody")
+        print(json.dumps({"pairs": [], "note": message}, ensure_ascii=False, indent=2)
+              if args.json else f"## unions — {message}")
+        return EXIT_OK
+
+    pairs = []
+    for other in others:
+        union = union_of(repo, args.base, pivot, other)
+        a, b = union["pair"]
+        pair = {"a": a, "b": b,
+                "conflicts": bool(union["paths"] or union["messages"]),
+                "paths": union["paths"], "messages": union["messages"],
+                "suite": None}
+        if union["commit"] is not None:
+            pair["suite"] = run_suite(repo, union["commit"], args.suite)
+        pairs.append(pair)
+
+    hit = [p for p in pairs
+           if p["conflicts"] or (p["suite"] and p["suite"]["returncode"] != 0)]
+    if args.json:
+        print(json.dumps({"repo": repo, "against": pivot, "base": args.base,
+                          "suite_command": args.suite, "pairs": pairs,
+                          "counts": {"measured": len(pairs), "colliding": len(hit)}},
+                         ensure_ascii=False, indent=2))
+        return EXIT_FINDING if hit else EXIT_OK
+
+    print(f"## unions — {len(pairs)} branch(es) merged onto {pivot} over "
+          f"{args.base}, {len(hit)} that cannot land\n")
+    for pair in pairs:
+        if pair["conflicts"]:
+            print(f"COLLIDES  {pair['a']} × {pair['b']}")
+            for path in pair["paths"]:
+                print(f"          {path}")
+            for message in pair["messages"]:
+                print(f"          {message}")
+            continue
+        if pair["suite"]["returncode"] != 0:
+            print(f"RED       {pair['a']} × {pair['b']} — the union merges "
+                  f"clean and `{args.suite}` exits "
+                  f"{pair['suite']['returncode']} in it")
+            for line in pair["suite"]["tail"].splitlines():
+                print(f"          {line}")
+            continue
+        print(f"green     {pair['a']} × {pair['b']}")
+    print("\nThe pivot lands FIRST here, by assumption. Another merge order "
+          "is another run.")
+    return EXIT_FINDING if hit else EXIT_OK
 
 
 def collisions(args):
     repo = args.repo
     if git(repo, "rev-parse", "--git-dir").returncode != 0:
         fail(f"{repo} is not a git repository.")
-    for ref in args.refs:
+
+    if args.against:
+        missing = [flag for flag, value in (("--base", args.base),
+                                            ("--suite", args.suite)) if not value]
+        if missing:
+            fail(f"--against needs {' and '.join(missing)}: the union is "
+                 "`merge(merge(--base, --against), REF)` and only --suite "
+                 "says whether it is green.")
+    elif args.base or args.suite:
+        given = " and ".join(flag for flag, value in (("--base", args.base),
+                                                      ("--suite", args.suite)) if value)
+        fail(f"{given} means nothing without --against, and answering the "
+             "pairwise question under the name of the union would be the "
+             "silence this script exists to break.")
+
+    for ref in args.refs + [r for r in (args.against, args.base) if r]:
         if git(repo, "rev-parse", "--verify", "--quiet", ref + "^{commit}").returncode != 0:
             fail(f"{ref} names no commit in {repo}. Branches of open PRs live "
                  "under `origin/` until they are checked out — fetch first.")
+
+    if args.against:
+        return unions(args)
 
     if len(args.refs) < 2:
         message = (f"one branch named ({args.refs[0]}), so there is no pair to "
@@ -97,7 +300,7 @@ def collisions(args):
     pairs = []
     for i, a in enumerate(args.refs):
         for b in args.refs[i + 1:]:
-            paths, messages = measure(repo, a, b)
+            _, paths, messages = measure(repo, a, b)
             pairs.append({"a": a, "b": b, "conflicts": bool(paths or messages),
                           "paths": paths, "messages": messages})
 
@@ -128,11 +331,30 @@ def main(argv=None):
         prog="tk-collisions",
         description="Merge every pair of branches for real, and name the pair "
                     "that cannot both land. The forge cannot answer this: its "
-                    "`mergeable` field is blind between two PRs.")
+                    "`mergeable` field is blind between two PRs. With "
+                    "--against, one UNION per other branch instead, graded by "
+                    "--suite: the collision no merge can see, where a test one "
+                    "branch adds grades a file another branch edits.")
     parser.add_argument("refs", nargs="+", metavar="REF",
                         help="the branches of the open PRs, usually `origin/<branch>`")
     parser.add_argument("--repo", default=".", metavar="DIR",
                         help="the repository (default: .)")
+    parser.add_argument("--against", metavar="REF",
+                        help="the PIVOT: the branch assumed to land FIRST. "
+                             "Turns the run from every pair into one UNION "
+                             "per other ref — `merge(merge(--base, pivot), "
+                             "ref)` — each checked out and graded by --suite. "
+                             "N-1 runs, not N²")
+    parser.add_argument("--base", metavar="REF",
+                        help="the branch the pivot lands ON, usually "
+                             "`origin/main`. Required with --against: without "
+                             "it the union misses whatever the base gained "
+                             "since the branches were cut")
+    parser.add_argument("--suite", metavar="CMD",
+                        help="the shell command that says whether a union is "
+                             "green, run with the union as its working "
+                             "directory. Required with --against, and given "
+                             "no timeout")
     parser.add_argument("--json", action="store_true",
                         help="the same answer, for a reader")
     return collisions(parser.parse_args(argv))
