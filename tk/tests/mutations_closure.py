@@ -469,8 +469,8 @@ MUTATIONS = [
       "test_the_file_does_not_say_a_closing_keyword_the_forge_honours_counts"], GATE),
 
     ("T238 the verdict row stops naming the command that answers it",
-     "`../../bin/tk-closure-check <id> --pr <n>` asks all five and names the ones that "
-     "failed.",
+     "`../../bin/tk-closure-check \"<id>\" --dir \"<queue dir>\" --pr \"<n>\"` asks all "
+     "five and names the ones that failed.",
      "Ask all five, and name the ones that failed.",
      ["TestTheMergeGateStatesTheRuleTheCheckerEnforces."
       "test_the_verdict_row_names_the_checker_that_asks_the_conditions"], GATE),

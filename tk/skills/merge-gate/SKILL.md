@@ -55,7 +55,7 @@ line each:
 | 2 | **Review** | the review flow ran, and every finding is fixed, or accepted with its justification written down |
 | 3 | **Criterion** | the item's criterion was re-run here and passed |
 | 4 | **Reversal** | the way back is named in one line (revert, flag, restore) |
-| 5 | **Closure** | the PR body carries a closing line under an English keyword the forge honours — `Fixes`, `Closes`, `Resolves` and their `fix`/`fixed` forms, that set and no other — naming **the ticket this item names**, owner half and all, no OTHER closing line in the body, and the PR targets its own repository's default branch. Owner-qualified, the keyword closes ACROSS repositories. `../../bin/tk-closure-check <id> --pr <n>` asks all five and names the ones that failed. The escape is the item naming no ticket, with the digest quoting it to show that — a verdict an agent can satisfy by asserting it is not a verdict |
+| 5 | **Closure** | the PR body carries a closing line under an English keyword the forge honours — `Fixes`, `Closes`, `Resolves` and their `fix`/`fixed` forms, that set and no other — naming **the ticket this item names**, owner half and all, no OTHER closing line in the body, and the PR targets its own repository's default branch. Owner-qualified, the keyword closes ACROSS repositories. `../../bin/tk-closure-check "<id>" --dir "<queue dir>" --pr "<n>"` asks all five and names the ones that failed. The escape is the item naming no ticket, with the digest quoting it to show that — a verdict an agent can satisfy by asserting it is not a verdict |
 
 Five green → merge is the recommended action. Any red → the digest says which one, and the
 merge is not offered. A small diff (guidance: ≲150 lines) is still shown whole in the
@@ -71,19 +71,19 @@ stays amber until that option is checked, so it is never the recommended-first o
 ## Verdict 5, read off the PR body alone
 
 The closing keyword lives in the body alone: a ticket linked any other way stays open
-behind a merged PR. **Run `../../bin/tk-closure-check <id> --pr <n>`**, which asks the
-five below of the fetched body. Read them here, because the reds are what the digest
-reports, and a line that is merely PRESENT proves none of the five. It reads the clone
-from the item's own **Repo:** field, so pass `--repo <clone>` when the item names none:
+behind a merged PR. **Run `../../bin/tk-closure-check "<id>" --dir "<queue dir>" --pr "<n>"`**,
+which asks the five below of the fetched body. Read them here, because the reds are what
+the digest reports, and a line that is merely PRESENT proves none of the five. It reads the
+clone from the item's own **Repo:** field, so pass `--repo <clone>` when the item names none:
 
 1. **The keyword is one the forge honours.** The set is ENGLISH and closed —
    `close`/`closes`/`closed`, `fix`/`fixes`/`fixed`, `resolve`/`resolves`/`resolved`. A
    Portuguese `Fecha #n` is present, cites the right ticket, and closes NOTHING.
 2. **The reference is this item's ticket.** Compare it against the one
-   `../../bin/tk-ticket-ref <id>` composes — number from the item's own `Ticket:` field,
-   repository and owner from the tracker, which is the PAIR and not two halves checked
-   apart. A body copy-pasted from the previous slice carries a well-formed closing line
-   for the WRONG ticket.
+   `../../bin/tk-ticket-ref "<id>" --dir "<queue dir>"` composes — number from the item's
+   own `Ticket:` field, repository and owner from the tracker, which is the PAIR and not
+   two halves checked apart. A body copy-pasted from the previous slice carries a
+   well-formed closing line for the WRONG ticket.
 3. **The owner half is there, and it is the tracker's.** `<repo>#<n>` with no owner
    resolves against the repository the PR sits on, not the tracker — so it closes an
    unrelated issue of that repo, or nothing. An owner naming another account is present,
@@ -98,10 +98,11 @@ from the item's own **Repo:** field, so pass `--repo <clone>` when the item name
    closes nothing, silently. Re-check after any retarget, a step this gate itself
    performs — it turns verdict 5 from green to red without touching the body.
 
-**An item whose `Ticket:` no reader may use is RED, with its remedy named.** `pack` prints
-`[?]` where the ticket goes. Provenance is add-only — no `edit --ticket` exists — so the
-repair is `tk-queue cancel <id>` and a fresh `add` carrying the right reference. Until
-`../../bin/tk-ticket-ref <id>` runs clean the item has no closing line to dispatch with.
+**An item whose `Ticket:` no reader may use is RED, with its remedy named.** Provenance is
+add-only — no `edit --ticket` exists — so the repair is
+`tk-queue cancel "<id>" --dir "<queue dir>"` and a fresh `add` carrying the right reference.
+Until `../../bin/tk-ticket-ref "<id>" --dir "<queue dir>"` runs clean the item has no
+closing line to dispatch with.
 
 ## The menu, and what stays behind
 
@@ -117,8 +118,8 @@ the authorization. Execute what was checked, following the project's conventions
 item via the full `add` line, since `--effort` and `--criterion` are required:
 
 ```
-tk-queue add "<the action>" --class DECISION --deferred "<why it waits for the user>" \
-         --effort "<S/M/L + estimate>" --criterion "<A: a command | B: the user's verdict>"
+tk-queue add "<the action>" --dir "<queue dir>" --class DECISION --effort "<S/M/L + estimate>" \
+         --deferred "<why it waits for the user>" --criterion "<A: a command | B: the user's verdict>"
 ```
 
 A merge carries its digest reference (forge link + review status); any other action

@@ -95,9 +95,10 @@ never a substitute for it.
 ## The evidence block
 
 Lives in the **body of the PR**. A session with no PR puts it on the item as it closes:
-`tk-queue done <id> --how "<pointer>" --note "<the block>" --force`. That `--force` raises the
-field ceiling without removing it. Either way the block is written once, here: a wrap-up digest,
-a reviewer or the next session reads and displays it rather than re-deriving it.
+`tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>" --note "<the block>" --force`. That
+`--force` raises the field ceiling without removing it. Either way the block is written once,
+here: a wrap-up digest, a reviewer or the next session reads and displays it rather than
+re-deriving it.
 
 ```
 ### Verify — <item id>

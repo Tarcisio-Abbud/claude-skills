@@ -44,5 +44,5 @@ Three rungs are left, read in order:
    that exists, `tk-queue handoff` into its briefing.
 
 Every finding is listed in the close under the rung that took it, for the user's **veto** on
-their return. `tk-queue cancel "<id>" --why "<the veto>"` is that veto, one command against a
-finding otherwise lost to nobody's judgement.
+their return. `tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"` is that veto,
+one command against a finding otherwise lost to nobody's judgement.
