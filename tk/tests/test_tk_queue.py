@@ -431,6 +431,83 @@ class TestMissingItemMessage(QueueTest):
         self.assert_no_duplicate_invited(r.stderr)
 
 
+# --- C-17: the diagnostic answers from ONE snapshot of each file -------------
+#
+# The writing side of this rule was already spelled twice — `append_done_line`
+# and `remove_block` both take the content the caller read under the lock and
+# say why re-reading would be wrong. The READING side did not follow it: the
+# error path asked the done-log whether the ID was closed, and then asked the
+# same file, in a second read, what the highest ID handed out was. One decision,
+# two snapshots — and a close landing between the two reads is enough to make
+# the two answers disagree.
+
+class TestTheDiagnosticReadsEachFileOnce(QueueTest):
+    """A file that changes between the two reads is not a hypothetical here: the
+    queue takes an exclusive lock, the done-log does not, and every close writes
+    the log FIRST and the queue second (see `interrupted_close`) — so the window
+    this path reads across is exactly the one another writer is inside of."""
+
+    QUEUE = HEADER + item(5, "cinco")
+    # the second snapshot: the close of T009 landed between the two reads
+    CLOSED_LATER = "- 2026-08-01 — FEITO — T009 nove — PR #1\n"
+
+    def reader(self, snapshots):
+        """A `read` that serves each file a QUEUE of snapshots, last one
+        repeating, and counts the calls per file."""
+        self.reads = {}
+
+        def read(path):
+            name = os.path.basename(path)
+            self.reads[name] = self.reads.get(name, 0) + 1
+            texts = snapshots.get(name, [None])
+            return texts.pop(0) if len(texts) > 1 else texts[0]
+        return read
+
+    def message(self, wanted, snapshots):
+        tk = load_tk()
+        tk.read = self.reader(snapshots)
+        return tk.missing_item_message(self.mem, self.QUEUE, wanted)
+
+    def test_a_close_landing_between_the_reads_blames_no_writer(self):
+        """T009 was never in the caller's queue, and the done-log the path read
+        does not carry it either — "never allocated" is what that state says.
+        Read twice, the ID check saw the log without T009 and `max_id` saw the
+        log WITH it, so the ID came back inside the allocated range and out came
+        "another writer very likely removed or clobbered it" — the confident
+        wrong diagnosis, from the path that exists to stop confident wrong
+        diagnoses, about a writer that clobbered nothing."""
+        msg = self.message(9, {"next-steps.md": [self.QUEUE],
+                               "done-log.md": ["", self.CLOSED_LATER]})
+        self.assertIn("was never allocated", msg)
+        self.assertIn("the highest ID in use is T005", msg)
+        self.assertNotIn("Another writer", msg)
+        self.assertNotIn("already left the queue", msg)
+
+    def test_neither_queue_file_is_read_a_second_time(self):
+        """The rule itself, asked of the reads and not of the message: the
+        done-log is read once here, and the queue not at all — the caller walked
+        it already and handed it in. Counting is what keeps the rule from being
+        satisfied by luck on a fixture whose two snapshots happen to agree.
+
+        The log carries an ID that is NOT the one asked about, on purpose: a log
+        holding T009 answers the first question with a return, and every read
+        below that question then goes unmeasured."""
+        self.message(9, {"next-steps.md": [self.QUEUE],
+                         "done-log.md": ["- 2026-08-01 — FEITO — T007 sete — x\n"]})
+        self.assertEqual(self.reads.get("done-log.md"), 1)
+        self.assertIsNone(self.reads.get("next-steps.md"))
+
+    def test_the_sibling_bins_still_ask_holding_a_directory_alone(self):
+        """`tk-ticket-ref` calls `id_in_done_log(memdir, wanted)` with no content
+        in hand, and `add` calls `max_id(memdir)` the same way. Threading the
+        text through may not cost them the read they depend on."""
+        tk = load_tk()
+        tk.read = self.reader({"next-steps.md": [self.QUEUE],
+                               "done-log.md": [self.CLOSED_LATER]})
+        self.assertTrue(tk.id_in_done_log(self.mem, 9))
+        self.assertEqual(tk.max_id(self.mem), 9)
+
+
 # --- T088: an ID is ALLOCATED at a position, not wherever the text says it ---
 
 class TestIdAllocationScope(QueueTest):
@@ -6141,9 +6218,9 @@ class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
         return r
 
     def prose_refusal(self, *labels):
-        return (f"{len(labels)} item(s) left exactly as they are: a line between the "
-                "head and the chain is not the hard-wrapped prose the fold may absorb, "
-                "and absorbing a shape nobody recognised is how structure is lost in "
+        return (f"{len(labels)} item(s) left exactly as they are: a line the join "
+                "would absorb is not the hard-wrapped prose the fold may take, and "
+                "absorbing a shape nobody recognised is how structure is lost in "
                 "silence — " + ", ".join(labels)
                 + ". Close each with `cancel` and re-add it clean.\n")
 
@@ -6253,6 +6330,30 @@ class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
         self.assertEqual(self.body(), HEADER + seeded)
         self.assertNotIn("folded up", r.stdout)
         self.assertIn(self.prose_refusal("T012"), r.stdout)
+
+    # --- C-15: the refusal is read by items of BOTH paths ------------------
+
+    def test_the_refusal_names_no_line_between_a_head_and_a_chain_that_share_one(self):
+        """The sentence used to open "a line between the head and the chain",
+        which is the WALK's geometry and only the walk's: there the chain owns
+        its own lines and the absorbed prose sits between the two. This item has
+        no such line — its chain shares a line with the prose it wrapped out of,
+        so the line the audit refuses IS the one carrying the chain — and the
+        reader of `casa-nostra-m365` T010 went looking in their item for a line
+        that does not exist in it. The reason was right; the address was written
+        for the older path.
+
+        Refused on geometry: the head is 30 columns wide, so the break under it
+        is one the author made and no wrapped paragraph looks like that."""
+        seeded = ("- [ ] **T010** — cabeca curta\n"
+                  "  a segunda linha traz a cadeia toda. **Class:** AUTONOMOUS. "
+                  "**Effort:** S. **Criterion:** A: x.\n")
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertIn(self.prose_refusal("T010"), r.stdout)
+        self.assertNotIn("between the head and the chain", r.stdout)
 
     def test_a_wrapped_line_that_merely_resumes_with_a_word_and_a_colon_is_prose(self):
         """The over-refusal the corpus caught before this shipped, replayed on an
@@ -8843,10 +8944,12 @@ class TestThePackShowsWhatTheListShows(QueueTest):
 # here on this branch before the slice that closes them:
 #
 #   the hard break   two spaces ending a line are CommonMark asking for a line
-#                    break. The join strips them and the item comes back one
-#                    paragraph, reported as folded. There is no preserving
-#                    answer — a join is the operation that destroys a line break
-#                    — so the fold declines and names the item.
+#                    break, and so is a backslash ending it — the visible
+#                    spelling of the same request, which the rule read only in
+#                    its invisible one until C-14. The join strips either and the
+#                    item comes back one paragraph, reported as folded. There is
+#                    no preserving answer — a join is the operation that destroys
+#                    a line break — so the fold declines and names the item.
 #   the underline    a setext underline promotes the WHOLE paragraph above it.
 #                    `opens_a_block` protects only the line directly above, so a
 #                    title hard-wrapped over two lines had its earlier lines
@@ -8875,9 +8978,9 @@ class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
         return (f"{len(labels)} item(s) left exactly as they are: {why} — "
                 + ", ".join(labels) + ". Close each with `cancel` and re-add it clean.\n")
 
-    HARD = ("a line the join would absorb ends in a HARD line break (two spaces), "
-            "which is a break the author wrote and the join cannot carry — the item "
-            "is left with its rendering intact")
+    HARD = ("a line the join would absorb ends in a HARD line break (two spaces, or "
+            "a backslash), which is a break the author wrote and the join cannot "
+            "carry — the item is left with its rendering intact")
     SETEXT = ("a setext underline promotes the WHOLE paragraph above it, and the join "
               "would absorb part of that paragraph into the first line and leave the "
               "rest under the underline — half a heading in each place")
@@ -8921,6 +9024,45 @@ class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
         self.assertIn(self.left_alone(self.HARD, "T007"), r.stdout)
         self.assertNotIn("folded up", r.stdout)
         self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_the_OTHER_spelling_of_the_break_stops_the_fold_too(self):
+        """C-14. CommonMark gives a trailing backslash as the second spelling of
+        the hard break, and it is the one an author reaches for precisely because
+        two trailing spaces are invisible in an editor. Read only in the
+        invisible spelling, the visible one died at the join in silence, under a
+        line reporting the item as folded.
+
+        Both fold paths, for the reason the spaces fixture gives: they join by
+        two different routes and the break dies on either."""
+        for name, tail in (
+                ("dobra por caminhada", "  segunda linha comprida o bastante para a "
+                                        "geometria licenciar.\n" + T174_CHAIN),
+                ("dobra da linha quebrada", "  segunda linha comprida o bastante. "
+                                            "**Class:** AUTONOMOUS. **Effort:** S. "
+                                            "**Criterion:** A: x.\n")):
+            with self.subTest(caminho=name):
+                seeded = T174_HEAD + "\\\n" + tail
+                self.seed(seeded)
+                r = self.migrate()
+                self.assertIn(self.left_alone(self.HARD, "T007"), r.stdout)
+                self.assertNotIn("folded up", r.stdout)
+                self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_a_backslash_INSIDE_the_line_is_not_a_break(self):
+        """The over-refusal direction of the same spelling, and the one that
+        would cost the fold real items: a backslash only asks for a break where
+        it ENDS the line. Queues carry them mid-sentence — an escape, a Windows
+        path, a regex quoted in prose — and a rule that read those as the
+        author's break would refuse the population the fold exists for."""
+        seeded = (T174_HEAD + "\n  segunda linha com C:\\Users\\algo no meio dela, "
+                  "comprida o bastante para a geometria licenciar.\n" + T174_CHAIN)
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T007\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + T174_HEAD + " segunda linha com C:\\Users\\algo no "
+                         "meio dela, comprida o bastante para a geometria licenciar. "
+                         "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
 
     def test_the_break_is_TWO_spaces_and_not_one(self):
         """The over-refusal direction. One trailing space is not a hard break in
@@ -9010,6 +9152,117 @@ class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
                          HEADER + T174_HEAD + " " + second
                          + " **Class:** AUTONOMOUS. **Effort:** S. "
                          "**Criterion:** A: x.\n" + bullet)
+
+
+# --- C-16: a field orphaned UNDER a chain the gates already read -------------
+#
+# The fold's first question was "does the chain reach **Class:**", and a YES
+# ended the run: the item is in the shape every gate reads. True of the CLASS,
+# and of nothing else — a second field left on a continuation line sits outside
+# the chain, so no gate reads it, no repair is printed for it, and the run says
+# nothing. Measured on `estudo-remuneracao-CN` T004, whose **Born:** has been
+# below the chain since it was written: `list` shows its age as `?`, every
+# `migrate` passes it over, and no command anywhere says why.
+
+C16_HEAD = ("- [ ] **T004** — titulo do item, escrito comprido o bastante para que a "
+            "quebra abaixo dele caia numa coluna de wrap **Class:** AUTONOMOUS. "
+            "**Effort:** S. **Criterion:** A: x.")
+
+
+class TestAFieldOrphanedUnderAChainThatIsAlreadyRead(QueueTest):
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def test_the_orphan_is_lifted_and_every_other_line_keeps_its_place(self):
+        """Three shapes of what can sit between the chain and the orphan, because
+        the fold treats them as three: nothing, a wrapped paragraph, and a line
+        that opens a Markdown block.
+
+        The head already carries a chain, so NOTHING is absorbed in any of them —
+        a line joined onto that line would land between the chain and the field
+        being lifted, breaking the very chain the fold is relocating. The whole
+        file is asserted: this command rewrites the user's only copy, and every
+        defect this fold has produced survived a narrower check.
+
+        The age is asserted on both sides of the run because it is the symptom
+        the item was reported by: `?` while the field sits outside the chain, and
+        the number the moment it joins it."""
+        born = (datetime.date.today() - datetime.timedelta(days=12)).isoformat()
+        orphan = f"  **Born:** {born}\n"
+        for name, middle in (
+                ("nada entre os dois", ""),
+                ("prosa quebrada no wrap",
+                 "  uma linha de prosa comprida o bastante para que a geometria "
+                 "licenciasse a absorcao dela\n"),
+                ("uma linha que abre bloco", "  - um item de lista do usuario\n")):
+            with self.subTest(entre=name):
+                self.seed(C16_HEAD + "\n" + middle + orphan)
+                self.assertIn("T004  AUTONOMOUS     ?", self.run_tk("list").stdout)
+                r = self.migrate()
+                self.assertIn("folded up, where every gate reads them — T004\n",
+                              r.stdout)
+                self.assertEqual(self.body(),
+                                 HEADER + C16_HEAD + f" **Born:** {born}\n" + middle)
+                self.assertIn("T004  AUTONOMOUS   12d", self.run_tk("list").stdout)
+
+    def left_alone(self, why, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: {why} — "
+                + ", ".join(labels) + ". Close each with `cancel` and re-add it clean.\n")
+
+    SECOND_CLASS = ("the lift would put a SECOND **Class:** in the chain, and a chain "
+                    "naming two classes is one no gate reads at all — the item is left "
+                    "with the class it already has")
+    ORPHAN_BREAK = ("the line the field is lifted out from under ends in a HARD line "
+                    "break (two spaces, or a backslash), and the lift leaves that break "
+                    "with nothing to break before — the item is left with its rendering "
+                    "intact")
+
+    def test_an_orphan_repeating_the_head_s_CLASS_is_left_and_REPORTED(self):
+        """The lift may cost the item line breaks by refusing; it may never cost
+        it its class. The head names one class, the orphan names another, and the
+        chain the lift would write names TWO — which `chain_class` refuses to
+        read, so `list` and every gate would answer `?` for an item that answers
+        AUTONOMOUS today.
+
+        The class is asserted on BOTH sides of the run, not just the file: a
+        refusal that left the file byte-identical and the class unreadable would
+        pass a file assertion, and the class is the whole of what this guard is
+        for."""
+        seeded = C16_HEAD + "\n  **Class:** DECISION. **Born:** 2026-01-01.\n"
+        self.seed(seeded)
+        self.assertIn("T004  AUTONOMOUS", self.run_tk("list").stdout)
+        r = self.migrate()
+        self.assertIn(self.left_alone(self.SECOND_CLASS, "T004"), r.stdout)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn("T004  AUTONOMOUS", self.run_tk("list").stdout)
+
+    def test_a_break_the_orphan_is_lifted_out_from_UNDER_stops_the_lift(self):
+        """Both spellings, because the rule reads both and a fixture for one
+        leaves the other free to go on flattening.
+
+        This is not the break `absorption_audit` asks about. With a head that
+        already carries a chain the window is empty, so the audit reaches
+        `lines[0]` alone — and the line the orphan sat under keeps its place and
+        still loses its break, because what it broke before has moved onto the
+        first line. Measured with the guard removed: the item folded, `migrate`
+        printed it as folded up, and the author's `<br>` was gone from the user's
+        only copy."""
+        prosa = ("  uma linha de prosa comprida o bastante para que a geometria "
+                 "licenciasse a absorcao dela")
+        for name, quebra in (("dois espacos", "  "), ("contrabarra", "\\")):
+            with self.subTest(grafia=name):
+                seeded = (C16_HEAD + "\n" + prosa + quebra + "\n"
+                          + "  **Born:** 2026-01-01.\n")
+                self.seed(seeded)
+                r = self.migrate()
+                self.assertIn(self.left_alone(self.ORPHAN_BREAK, "T004"), r.stdout)
+                self.assertNotIn("folded up", r.stdout)
+                self.assertEqual(self.body(), HEADER + seeded)
 
 
 class TestMutationHarness(unittest.TestCase):

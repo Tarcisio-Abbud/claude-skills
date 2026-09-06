@@ -803,7 +803,20 @@ def ids_at(content, *positions):
     return {int(m.group(2)) for rx in positions for m in rx.finditer(content)}
 
 
-def done_log_ids(memdir):
+def read_done_log(memdir):
+    """The done-log's text, or "" where the file is not there yet — the one read
+    every question about the IDs that log has HANDED OUT goes through, so a
+    caller already holding the content hands it on instead of taking a second
+    snapshot of the same file.
+
+    Not every read of the file: `close` and `migrate` open it to WRITE, and there
+    a missing file is DONE_LOG_TEMPLATE and not "" — an empty string would give
+    those two a log with no header to insert under. Claiming all of them would be
+    a sentence a reader could check and find false."""
+    return read(os.path.join(memdir, "done-log.md")) or ""
+
+
+def done_log_ids(memdir, log=None):
     """Every ID the done-log has really handed out: an entry's ID column, and
     the marker's ID slot on a legacy [x] line moved verbatim by `migrate`.
 
@@ -811,13 +824,31 @@ def done_log_ids(memdir):
     `add` gets, `id_in_done_log` decides whether a missing one was closed. Two
     copies of this loop is how one of them would keep a position the other had
     already dropped.
+
+    `log` is that file's text when the caller already read it — the same rule
+    `append_done_line` and `remove_block` state for the writing side, asked here
+    of the reading one. `missing_item_message` puts BOTH questions above to this
+    log in one breath, and reading the file once per question answers one
+    decision from two snapshots: a close landing between the two reads leaves
+    the first saying "not closed" and the second saying "allocated", and the
+    diagnosis that comes out sends the caller hunting a writer that clobbered
+    nothing. Without it the file is read here, for the caller that holds a
+    directory and nothing else.
     """
-    return ids_at(read(os.path.join(memdir, "done-log.md")) or "", LOG_ID_RE, ITEM_ID_RE)
+    return ids_at(read_done_log(memdir) if log is None else log,
+                  LOG_ID_RE, ITEM_ID_RE)
 
 
-def max_id(memdir):
-    open_items = read(os.path.join(memdir, "next-steps.md")) or ""
-    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir), default=0)
+def max_id(memdir, open_items=None, log=None):
+    """The highest ID either file has handed out.
+
+    Both texts may come from the caller, for the reason `done_log_ids` gives:
+    the error path already holds the queue it just walked and the log it just
+    asked about, and re-reading either here would let this answer come from a
+    different state of the file than the answer beside it."""
+    if open_items is None:
+        open_items = read(os.path.join(memdir, "next-steps.md")) or ""
+    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir, log), default=0)
 
 
 def ensure_single_line(**fields):
@@ -2424,9 +2455,13 @@ def remove_block(memdir, content, block, start):
     write_atomic(os.path.join(memdir, "next-steps.md"), excise(content, block, start))
 
 
-def id_in_done_log(memdir, wanted_id):
+def id_in_done_log(memdir, wanted_id, log=None):
     """Whether the ID really was closed — asked of the positions a close writes
     (see done_log_ids), never of the log's free text.
+
+    `log` is the done-log's text when the caller already read it, and `memdir`
+    is what answers for the caller that did not — the sibling bins ask this
+    question holding a directory alone.
 
     Anywhere else the ID is prose. This queue's own log carries a --note saying
     "atribuiu IDs até T022" and an outcome naming a sibling ticket "T054" that
@@ -2434,7 +2469,7 @@ def id_in_done_log(memdir, wanted_id):
     and answers "already left the queue", a confident wrong diagnosis from the
     error path that exists to prevent confident wrong diagnoses.
     """
-    return wanted_id in done_log_ids(memdir)
+    return wanted_id in done_log_ids(memdir, log)
 
 
 def missing_item_message(memdir, content, wanted_id):
@@ -2442,8 +2477,14 @@ def missing_item_message(memdir, content, wanted_id):
     answer, and a flat "no open item" is the one that does damage: it reads as
     "never existed", so the caller adds the item again and the queue ends up
     with two. Every branch below says what to do instead of re-adding.
+
+    ONE snapshot of each file answers all four. `content` is the queue the caller
+    already walked, and the done-log is read once here and handed to both readers
+    that ask about it — the rule `done_log_ids` spells out, and the reason this
+    path reads neither file a second time for itself.
     """
     label = f"T{wanted_id:03d}"
+    log = read_done_log(memdir)
     for kind, text in split_blocks(content):
         if kind == "item-done" and item_id(text) == wanted_id:
             # THIS branch found the item, so it is named by its own spelling —
@@ -2452,10 +2493,10 @@ def missing_item_message(memdir, content, wanted_id):
             return (f"{item_label(text)} is in next-steps.md but already ticked [x], "
                     "so it never reached the done-log. Run `tk-queue migrate` to move "
                     "it, then read the log line — do NOT add a replacement item.")
-    if id_in_done_log(memdir, wanted_id):
+    if id_in_done_log(memdir, wanted_id, log):
         return (f"{label} already left the queue — it is in done-log.md. Read that line "
                 "before acting, and do NOT add a replacement item.")
-    top = max_id(memdir)
+    top = max_id(memdir, content, log)
     if wanted_id > top:
         return (f"{label} was never allocated in {memdir} — the highest ID in use is "
                 f"T{top:03d}. Check the ID with `tk-queue list`.")
@@ -3084,6 +3125,22 @@ def pack_classless_reason(block):
     return "the field chain breaks before **Class:**, so no gate reads it", REPAIR_CANCEL
 
 
+# The ticket the CALLER found blocked on the tracker. Same source as
+# `--spec-under-way` (LANE_UNDER_WAY, spelled with the lane reasons below) — a
+# question this command cannot ask, opening no network connection — and so the
+# same shape of reason: the value, and the flag that supplied it, because a
+# reason that did not name the flag would read as a fact the queue holds.
+# ENGLISH, unlike the two lane reasons it is printed beside, because it is read
+# next to `blocked by T006, still open` in the same excluded block: one names an
+# item this queue holds, the other a ticket on a forge, and two spellings of
+# "blocked" in two languages is the collision to avoid.
+#
+# Spelled HERE, above its one reader, and not down among the lane reasons it is
+# printed beside: it sat some seventy lines BELOW that reader, so the message of
+# the rung was reachable only by a reader who already knew it existed.
+TICKET_BLOCKED = "ticket %s is blocked on the forge; declared by --blocked"
+
+
 def pack_exclusion(iid, block, identity, open_ids=frozenset(),
                    blocked=frozenset()):
     """(why this item stays OUT of the package, the repair) — or None when it is a
@@ -3276,15 +3333,6 @@ LANE_TAKEN = "lane de spec ocupada por %s; esta é %s"
 # supplied this one, and a reason that did not say so would read as a fact the
 # queue holds.
 LANE_UNDER_WAY = "lane de spec ocupada por %s; declarada em curso por --spec-under-way"
-# The ticket the CALLER found blocked on the tracker. Same source as
-# `--spec-under-way` above — a question this command cannot ask, opening no
-# network connection — and so the same shape of reason: the value, and the flag
-# that supplied it, because a reason that did not name the flag would read as a
-# fact the queue holds. ENGLISH, unlike the two lane reasons beside it, because
-# it is read next to `blocked by T006, still open` in the same excluded block:
-# one names an item this queue holds, the other a ticket on a forge, and two
-# spellings of "blocked" in two languages is the collision to avoid.
-TICKET_BLOCKED = "ticket %s is blocked on the forge; declared by --blocked"
 # how many tickets of one spec earn the accumulated lane. Below it the ticket is
 # dispatched as an ordinary PR: a draft PR, a merge per item and a three-step
 # tail cost more than a single item is worth. A FLOOR, never a filter — the lone
@@ -5045,17 +5093,25 @@ def cmd_report(args):
 FOLD_REFUSAL = "folding would have to GUESS which text is a field value"
 FOLD_SPLIT_REFUSAL = ("a **Field:** marker would stay off the first line, and a chain "
                       "the fold only half lifts is not a chain any gate can read")
-FOLD_PROSE_REFUSAL = ("a line between the head and the chain is not the hard-wrapped prose "
-                      "the fold may absorb, and absorbing a shape nobody recognised is how "
-                      "structure is lost in silence")
+# "a line the join would absorb", the same words FOLD_HARDBREAK_REFUSAL locates
+# its line with, and not "a line between the head and the chain": that geometry
+# is the WALK's alone. The wrapped path joins a chain that shares its line with
+# the prose it wrapped out of, so there is nothing between the head and the
+# chain there — the refused line often IS the one carrying the chain. Measured
+# on `casa-nostra-m365` T010, which read the sentence, looked for a line that
+# does not exist in its item, and could not tell which line to repair. The
+# reason was right and only the address was written for the older path.
+FOLD_PROSE_REFUSAL = ("a line the join would absorb is not the hard-wrapped prose the fold "
+                      "may take, and absorbing a shape nobody recognised is how structure "
+                      "is lost in silence")
 FOLD_PROSE_MARKER_REFUSAL = (
     "a **Field:** marker sits outside the chain the join would produce, so the fold "
     "would promote the item's own prose to a field — quote that marker in a code "
     "span (`**Class:**`) and the fold reads the rest as the chain it is")
 FOLD_HARDBREAK_REFUSAL = (
-    "a line the join would absorb ends in a HARD line break (two spaces), which is "
-    "a break the author wrote and the join cannot carry — the item is left with its "
-    "rendering intact")
+    "a line the join would absorb ends in a HARD line break (two spaces, or a "
+    "backslash), which is a break the author wrote and the join cannot carry — the "
+    "item is left with its rendering intact")
 FOLD_SETEXT_REFUSAL = (
     "a setext underline promotes the WHOLE paragraph above it, and the join would "
     "absorb part of that paragraph into the first line and leave the rest under the "
@@ -5063,6 +5119,19 @@ FOLD_SETEXT_REFUSAL = (
 FOLD_BLOCK_REFUSAL = ("a continuation line OPENS a Markdown block, and the wrapped fold has "
                       "no chain to lift over it — joining would flatten a list the author "
                       "wrote, so it declines instead of choosing which lines survive")
+# the two refusals the LIFT owns — the shape where the first line already carries
+# a chain the gates read, so the run is relocated onto it and nothing between the
+# two is absorbed. Neither may borrow FOLD_HARDBREAK_REFUSAL's sentence: that one
+# addresses a line the join ABSORBS, and here the line keeps its place. Naming a
+# geometry the item does not have is the defect C-15 repaired.
+FOLD_SECOND_CLASS_REFUSAL = (
+    "the lift would put a SECOND **Class:** in the chain, and a chain naming two "
+    "classes is one no gate reads at all — the item is left with the class it "
+    "already has")
+FOLD_ORPHAN_BREAK_REFUSAL = (
+    "the line the field is lifted out from under ends in a HARD line break (two "
+    "spaces, or a backslash), and the lift leaves that break with nothing to break "
+    "before — the item is left with its rendering intact")
 
 
 # every line-shape that OPENS a Markdown block, from CommonMark's block-start
@@ -5157,13 +5226,29 @@ def opens_a_block(lines, j):
     return "|" in stripped and bool(TABLE_DELIMITER_RE.match(nxt.strip()))
 
 
-# two or more spaces ending a line are CommonMark's hard line break — the author
-# asking for a `<br>` where a wrap would render a space. Spaces only, and never a
-# tab: the spec counts spaces, and a tab there is trailing whitespace nobody meant
-# as anything. It is not in BLOCK_START_RE because it opens no block; it is a
-# property of the break ABOVE the next line, which is why `absorption_audit` and
-# not `opens_a_block` is what asks about it.
-HARD_BREAK_RE = re.compile(r" {2,}\Z")
+# CommonMark's hard line break, in BOTH its spellings — the author asking for a
+# `<br>` where a wrap would render a space. Two or more spaces ending the line,
+# and a backslash ending it: the spec gives the second as the visible spelling
+# of the first, for exactly the reason that trailing spaces are invisible in an
+# editor, and an author who wants the break to SHOW in the source writes it that
+# way. Reading only the spaces meant the visible spelling died at the join in
+# silence, under a line reporting the item as folded — the same defect the
+# spaces arm exists to stop, on the shape an author who cared enough to be
+# explicit wrote.
+#
+# Never a tab, in either arm: the spec counts spaces, and a tab there is
+# trailing whitespace nobody meant as anything.
+#
+# What this OVER-refuses is a line ending in an escaped backslash (`\\`), which
+# renders as a lone backslash and breaks nothing, and a Windows path that ends a
+# line. Both are the recoverable direction — a refusal costs one command, and a
+# flattened queue file has no other copy — and neither is worth counting
+# backslashes for.
+#
+# It is not in BLOCK_START_RE because it opens no block; it is a property of the
+# break ABOVE the next line, which is why `absorption_audit` and not
+# `opens_a_block` is what asks about it.
+HARD_BREAK_RE = re.compile(r"(?: {2,}|\\)\Z")
 
 
 def promoted_by_setext(lines, j):
@@ -5454,19 +5539,24 @@ def fold_chain_onto_first_line(block):
     tell the rest of a split chain from prose that merely quotes a marker, and
     lifting half a chain leaves an item that reads as repaired and is not.
     """
-    if chain_class(block) is not None:
-        # the item is already in the shape every gate reads — its chain ends the
-        # first line AND reaches its **Class:**. Asked as the weaker "does any
-        # chain end the first line", a legacy item whose **Class:** trails that
-        # line with its VALUE on the next one answered YES and was passed over in
-        # SILENCE: the one shape the repairs text names as unfoldable, and the one
-        # a report exists to name
-        return None, None
     lines = block.rstrip("\n").split("\n")
     if not fields_off_first_line(block):
-        # no field marker sits off the first line. An item with no fields at all
-        # is a different defect with a different repair (`edit --class`), and
-        # reporting it here would name the fold for a shape the fold is not about
+        # nothing to lift, and this is the ONE question that says so: no field
+        # marker sits off the first line. An item with no fields at all is a
+        # different defect with a different repair (`edit --class`), and
+        # reporting it here would name the fold for a shape the fold is not about.
+        #
+        # It used to be asked twice, and the first asking was about the CLASS: a
+        # chain reaching **Class:** ended the run, on the grounds that the item
+        # was already in the shape every gate reads. True of the class, and of
+        # nothing else — a SECOND field left on a continuation line sits outside
+        # the chain, where no gate reads it either, and that item was passed over
+        # in silence. Measured on `estudo-remuneracao-CN` T004, whose **Born:**
+        # has been below the chain since it was written: `list` shows its age as
+        # `?`, every `migrate` skips it, and no command anywhere says why. Once
+        # the orphan is what decides, the class question answers nothing this one
+        # does not, so it is gone rather than kept as decoration — the same
+        # treatment the two prose readbacks at the end of this function got.
         return None, None
     run, first = [], len(lines)
     for line in reversed(lines[1:]):
@@ -5479,11 +5569,25 @@ def fold_chain_onto_first_line(block):
         # not a refusal yet: the walk found no run of field LINES, which is what
         # the second path is for
         return fold_wrapped(lines, block)
+    # what the first line ALREADY carries — the chain the exit at the top passes
+    # over when nothing is orphaned below it. Empty for the population the walk
+    # was written for, a head of plain prose. Read only where the head's chain
+    # is one the gates themselves read — it names exactly one **Class:** — so an
+    # item whose chain no gate can read (naming none, or two) keeps taking the
+    # path it took before, with the readback answering for the run alone.
+    already = ([f.text for f in field_chain(block)]
+               if chain_class(block) is not None else [])
     # the lines BETWEEN the head and the field run, split where the paragraph
     # stops: the wrapped ones are absorbed, and everything from the first block
-    # onwards keeps its own line, in its own place, with its own indentation
+    # onwards keeps its own line, in its own place, with its own indentation.
+    #
+    # A head that already carries a chain absorbs NOTHING, and the window is
+    # empty rather than narrowed by a shape question: a line joined onto that
+    # line lands between the chain and the run being lifted, which breaks the
+    # very chain the fold is relocating. There is nothing to weigh — every line
+    # below the head keeps its place, and only the orphaned field moves.
     j = 1
-    while j < first and not opens_a_block(lines, j):
+    while j < first and not already and not opens_a_block(lines, j):
         j += 1
     # the walk stopped at a line a setext underline promotes, with at least one
     # line above it already inside the absorbed run: the underline promotes the
@@ -5496,6 +5600,14 @@ def fold_chain_onto_first_line(block):
     refusal = absorption_audit(lines, j)
     if refusal:
         return None, refusal
+    if already and 1 < first and HARD_BREAK_RE.search(lines[first - 1]):
+        # the audit above asks about the lines the join ABSORBS, and with a head
+        # that already carries a chain it absorbs none: `j` is 1, so it reaches
+        # the head alone. The line the run is lifted out from UNDER keeps its
+        # place and still loses its break, because what the break broke before
+        # has moved onto the first line. Asked here rather than widened into the
+        # audit, whose range is the join's and not the lift's.
+        return None, FOLD_ORPHAN_BREAK_REFUSAL
     kept = lines[j:first]
     if markers("\n".join(kept)):
         return None, FOLD_SPLIT_REFUSAL
@@ -5508,11 +5620,32 @@ def fold_chain_onto_first_line(block):
     # whose chain merely spanned two continuation lines. Absorbed PROSE, the
     # thing this gate is for, is not whitespace and still shows.
     chain = field_chain(folded)
-    if ([seg.rstrip() for seg in run]
+    # `already` is in the expected chain for the same reason it emptied the
+    # absorption window above: the segments the first line brought are part of
+    # what the join gives back, and a readback that left them out would read
+    # every orphan lifted onto a chain as a fold that invented a field
+    if ([seg.rstrip() for seg in already + run]
             != [f.text.rstrip() for f in chain]):
         # the join gave back a chain the run does not account for — a segment
         # came from the head, so this is the wrapped shape, not a relocation
         return fold_wrapped(lines, block)
+    if already and chain_class(folded) is None:
+        # `already` says the head's chain named exactly one class, and the chain
+        # read back above is `already + run`, so None here means the run brought a
+        # SECOND **Class:** — the one answer `chain_class` refuses to guess. The
+        # item is readable as it stands and unreadable folded: `list` and every
+        # gate would show its class as `?` afterwards, in the user's only copy,
+        # under a line reporting the item as folded. The lift may cost the item
+        # its line breaks only by refusing; it may never cost it its class.
+        #
+        # The CLASS alone, and the asymmetry is the point: an orphan repeating
+        # any OTHER field of the head lands in the chain twice, and `edit
+        # --<field>` then refuses that item — loudly, naming the field, with
+        # every value still on the screen. That is the recoverable direction. A
+        # doubled class is the silent one: `list` and `pack` go back to showing
+        # `?` and no command anywhere says why, which is the defect this fold was
+        # widened to repair.
+        return None, FOLD_SECOND_CLASS_REFUSAL
     # Where the PROSE readback used to be. It stood here as two comparisons, and a
     # review measured both unable to fail — so they are gone rather than kept as
     # decoration, and what each was for now sits where it can:

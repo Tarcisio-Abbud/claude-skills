@@ -191,16 +191,44 @@ MUTATIONS = [
      ["TestEmbeddedMarker.test_plain_prose_naming_the_fields_is_not_refused"]),
 
     ("T064/T060 an ID quoted in a --note or an outcome counts as closed again",
-     "    return wanted_id in done_log_ids(memdir)",
+     "    return wanted_id in done_log_ids(memdir, log)",
      '    log = read(os.path.join(memdir, "done-log.md")) or ""\n'
      '    return re.search(r"\\bT%03d\\b" % wanted_id, log) is not None',
      ["TestMissingItemMessage.test_an_id_merely_quoted_in_the_log_is_not_closed"]),
 
+    # --- C-17: one decision, one snapshot of each file ------------------------
+
+    ("C-17 the closed-ID question takes its own second read of the done-log",
+     "    if id_in_done_log(memdir, wanted_id, log):",
+     "    if id_in_done_log(memdir, wanted_id):",
+     ["TestTheDiagnosticReadsEachFileOnce."
+      "test_a_close_landing_between_the_reads_blames_no_writer",
+      "TestTheDiagnosticReadsEachFileOnce.test_neither_queue_file_is_read_a_second_time"]),
+
+    ("C-17 the allocation question re-reads BOTH files instead of taking the "
+     "caller's queue and log",
+     "    top = max_id(memdir, content, log)", "    top = max_id(memdir)",
+     ["TestTheDiagnosticReadsEachFileOnce."
+      "test_a_close_landing_between_the_reads_blames_no_writer",
+      "TestTheDiagnosticReadsEachFileOnce.test_neither_queue_file_is_read_a_second_time"]),
+
+    # the over-narrowing direction of the same change: threading the text through
+    # may not cost the caller that holds a directory ALONE its read, and the
+    # sibling bins are exactly that caller
+    ("C-17 the caller with no content in hand stops getting a read at all",
+     "    return ids_at(read_done_log(memdir) if log is None else log,\n"
+     "                  LOG_ID_RE, ITEM_ID_RE)",
+     '    return ids_at(log or "", LOG_ID_RE, ITEM_ID_RE)',
+     ["TestTheDiagnosticReadsEachFileOnce."
+      "test_the_sibling_bins_still_ask_holding_a_directory_alone"]),
+
     # --- T088: an ID is allocated at a POSITION, not wherever the text says it ---
 
     ("T088 allocation goes back to regexing the whole text of both files",
-     '    open_items = read(os.path.join(memdir, "next-steps.md")) or ""\n'
-     "    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir), default=0)",
+     '    if open_items is None:\n'
+     '        open_items = read(os.path.join(memdir, "next-steps.md")) or ""\n'
+     "    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir, log), "
+     "default=0)",
      '    ids = set()\n'
      '    for name in ("next-steps.md", "done-log.md"):\n'
      '        content = read(os.path.join(memdir, name)) or ""\n'
@@ -222,8 +250,9 @@ MUTATIONS = [
     # allocation hands out an ID already in use — the very failure the whole-file
     # scan existed to prevent, and no test above can see it
     ("T088 open items stop counting as allocations",
-     "    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir), default=0)",
-     "    return max(done_log_ids(memdir), default=0)",
+     "    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir, log), "
+     "default=0)",
+     "    return max(done_log_ids(memdir, log), default=0)",
      ["TestIdAllocationScope.test_an_open_item_still_blocks_reuse_of_its_id"]),
 
     ("T088 done-log entries stop counting as allocations",
@@ -233,9 +262,9 @@ MUTATIONS = [
       "TestMissingItemMessage.test_a_genuinely_closed_id_is_still_recognised"]),
 
     ("T088 a legacy [x] line moved verbatim by migrate stops counting",
-     "    return ids_at(read(os.path.join(memdir, \"done-log.md\")) or \"\", "
-     "LOG_ID_RE, ITEM_ID_RE)",
-     "    return ids_at(read(os.path.join(memdir, \"done-log.md\")) or \"\", LOG_ID_RE)",
+     "    return ids_at(read_done_log(memdir) if log is None else log,\n"
+     "                  LOG_ID_RE, ITEM_ID_RE)",
+     "    return ids_at(read_done_log(memdir) if log is None else log, LOG_ID_RE)",
      ["TestIdAllocationScope.test_a_legacy_x_line_moved_by_migrate_still_blocks_reuse"]),
 
     # --- review#4: the same LINE must answer the same before and after migrate ---
@@ -1789,7 +1818,7 @@ MUTATIONS = [
     # field RUN), so it passes with this one off — naming it would claim a proof
     # this run cannot make. The pair below is what decides that shape
     ("T121 the fold stops asking the reader what the folded line gives back",
-     "    if ([seg.rstrip() for seg in run]\n"
+     "    if ([seg.rstrip() for seg in already + run]\n"
      "            != [f.text.rstrip() for f in chain]):",
      "    if False:",
      ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
@@ -1799,9 +1828,9 @@ MUTATIONS = [
     # mutant is that second path with its four gates removed — which is exactly
     # the blind join the first version of this entry restored
     ("T121 the fold trusts the join on a block it can read no field run out of",
-     "        return fold_wrapped(lines, block)\n    # the lines BETWEEN",
+     "        return fold_wrapped(lines, block)\n    # what the first line ALREADY carries",
      "        return ((\" \".join(ln.strip() for ln in lines)\n"
-     "                 + block[len(block.rstrip(\"\\n\")):]), None)\n    # the lines BETWEEN",
+     "                 + block[len(block.rstrip(\"\\n\")):]), None)\n    # what the first line ALREADY carries",
      ["TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
       "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED",
       "TestMigrateFold.test_a_line_that_opens_a_block_stops_the_wrapped_fold"]),
@@ -1809,9 +1838,9 @@ MUTATIONS = [
     # the whitespace half of that comparison, on its own: a chain WRAPPED over two
     # continuation lines is whole, and refusing it repairs an item the fold could lift
     ("T121 the readback counts the blank at a line joint as a changed value",
-     "    if ([seg.rstrip() for seg in run]\n"
+     "    if ([seg.rstrip() for seg in already + run]\n"
      "            != [f.text.rstrip() for f in chain]):",
-     "    if [seg for seg in run] != [f.text for f in chain]:",
+     "    if [seg for seg in already + run] != [f.text for f in chain]:",
      ["TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too"]),
 
     # a fold that lifts nothing still rewrites the user's line and reports it as
@@ -1821,13 +1850,57 @@ MUTATIONS = [
      "    if False:\n        # not a refusal yet",
      ["TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
 
-    # the weaker question the guard deliberately does not ask: "does ANY chain end
-    # the first line" answers YES for a **Class:** whose value sits on the next one,
-    # and that item — the shape the repairs text calls unfoldable — is passed over
-    # in SILENCE, which is the outcome the report exists to prevent
-    ("T121 the skip asks for any chain instead of one that reaches the class",
-     "    if chain_class(block) is not None:", "    if field_chain(block):",
-     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_folded_NOW"]),
+    # the weaker question the head-chain readout deliberately does not ask: "does
+    # ANY chain end the first line" answers YES for a marker the item quotes in
+    # its OWN prose, so those segments enter the expected chain, the readback they
+    # were added to matches, and the fold writes a field the item never carried —
+    # the one direction this function is forbidden to take. Until C-16 the same
+    # question was asked one guard earlier, as the run's first exit
+    ("T121 the head's chain is read off ANY chain instead of one that reaches the class",
+     "               if chain_class(block) is not None else [])",
+     "               if field_chain(block) else [])",
+     ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
+
+    # --- C-16: a field orphaned UNDER a chain the gates already read ---------
+
+    ("C-16 the run ends at a chain that reaches the class again, so a field "
+     "orphaned under a chain the gates already read is passed over in silence",
+     "    if not fields_off_first_line(block):",
+     "    if chain_class(block) is not None or not fields_off_first_line(block):",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_the_orphan_is_lifted_and_every_other_line_keeps_its_place"]),
+
+    ("C-16 the readback forgets the chain the first line brought, so lifting an "
+     "orphan onto it reads as a fold that invented a field",
+     "    if ([seg.rstrip() for seg in already + run]",
+     "    if ([seg.rstrip() for seg in run]",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_the_orphan_is_lifted_and_every_other_line_keeps_its_place"]),
+
+    ("C-16 a head that already carries a chain absorbs prose again, which lands "
+     "between that chain and the field being lifted",
+     "    while j < first and not already and not opens_a_block(lines, j):",
+     "    while j < first and not opens_a_block(lines, j):",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_the_orphan_is_lifted_and_every_other_line_keeps_its_place"]),
+
+    # the two the LIFT owes on its own: it may cost the item its line breaks and
+    # its class only by REFUSING, never by writing. Both shapes reached neither
+    # outcome before C-16 removed the exit above, so both are silent rewrites of
+    # the user's only copy under a line reporting the item as folded
+    ("C-16 the lift stops asking what the orphan is lifted out from UNDER, so a "
+     "break the author wrote dies with nothing left to break before",
+     "    if already and 1 < first and HARD_BREAK_RE.search(lines[first - 1]):",
+     "    if False and 1 < first and HARD_BREAK_RE.search(lines[first - 1]):",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_a_break_the_orphan_is_lifted_out_from_UNDER_stops_the_lift"]),
+
+    ("C-16 the lift stops asking whether the chain it writes still names ONE "
+     "class, so an orphan repeating the head's class leaves the item classless",
+     "    if already and chain_class(folded) is None:",
+     "    if False and chain_class(folded) is None:",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_an_orphan_repeating_the_head_s_CLASS_is_left_and_REPORTED"]),
 
     ("T121 an item with no field off the first line is dragged into the fold's report",
      "    if not fields_off_first_line(block):", "    if False:",
@@ -1877,7 +1950,7 @@ MUTATIONS = [
 
     # the defect itself: every intervening line absorbed, bullets included
     ("review#3 the fold absorbs every line between the head and the chain",
-     "    j = 1\n    while j < first and not opens_a_block(lines, j):\n        j += 1",
+     "    j = 1\n    while j < first and not already and not opens_a_block(lines, j):\n        j += 1",
      "    j = first",
      ["TestFoldKeepsTheItemsMarkdown."
       "test_a_bulleted_list_between_the_head_and_the_chain_survives_the_fold",
@@ -1914,7 +1987,7 @@ MUTATIONS = [
     # hard-wrapped sentence, which Markdown renders identically joined. Kept as
     # its own line, the chain lands inside the unclosed parenthesis the wrap left
     ("review#3 nothing is absorbed, so a wrapped sentence is cut by the chain",
-     "    while j < first and not opens_a_block(lines, j):",
+     "    while j < first and not already and not opens_a_block(lines, j):",
      "    while j < first and False:",
      ["TestFoldKeepsTheItemsMarkdown.test_a_hard_wrapped_sentence_is_still_absorbed_into_the_head",
       "TestFoldKeepsTheItemsMarkdown."
@@ -3823,8 +3896,8 @@ MUTATIONS = [
     # --- T301 slice 4: the wrapped fold, and the class VALUE ---------------
     # Every entry here restores a rewrite of the user's only copy of an item.
     ("T159 the second fold path is gone, and the wrapped chain stays unreadable",
-     "        return fold_wrapped(lines, block)\n    # the lines BETWEEN",
-     "        return None, FOLD_REFUSAL\n    # the lines BETWEEN",
+     "        return fold_wrapped(lines, block)\n    # what the first line ALREADY carries",
+     "        return None, FOLD_REFUSAL\n    # what the first line ALREADY carries",
      ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_folded_NOW",
       "TestMigrateFold.test_a_chain_that_opens_MID_LINE_is_folded_too"]),
 
@@ -4017,12 +4090,44 @@ MUTATIONS = [
      ["TestTheFoldKeepsTheAuthorsLineBreaks."
       "test_a_break_on_an_INTERIOR_absorbed_line_stops_the_fold_too"]),
 
+    # --- C-15: the refusal is read by items of BOTH fold paths --------------
+
+    ("C-15 the prose refusal goes back to naming a line between the head and the "
+     "chain, a geometry the wrapped path does not have",
+     'FOLD_PROSE_REFUSAL = ("a line the join would absorb is not the hard-wrapped '
+     'prose the fold "\n                      "may take, and absorbing a shape nobody '
+     'recognised is how structure "\n                      "is lost in silence")',
+     'FOLD_PROSE_REFUSAL = ("a line between the head and the chain is not the '
+     'hard-wrapped prose "\n                      "the fold may absorb, and absorbing '
+     'a shape nobody recognised is how "\n                      "structure is lost in '
+     'silence")',
+     ["TestFoldFailsSafeOnShapesNobodyEnumerated."
+      "test_the_refusal_names_no_line_between_a_head_and_a_chain_that_share_one"]),
+
     # the over-refusal direction: one trailing space is whitespace, not a break,
     # and a rule that read it as one would refuse the whole wrapped population
     ("T174 a single trailing space is read as a hard break",
-     'HARD_BREAK_RE = re.compile(r" {2,}\\Z")',
-     'HARD_BREAK_RE = re.compile(r" {1,}\\Z")',
+     'HARD_BREAK_RE = re.compile(r"(?: {2,}|\\\\)\\Z")',
+     'HARD_BREAK_RE = re.compile(r"(?: {1,}|\\\\)\\Z")',
      ["TestTheFoldKeepsTheAuthorsLineBreaks.test_the_break_is_TWO_spaces_and_not_one"]),
+
+    # --- C-14: the break's OTHER spelling, the visible one ------------------
+
+    ("C-14 the rule goes back to reading only the invisible spelling of the "
+     "break, so a trailing backslash dies at the join again",
+     'HARD_BREAK_RE = re.compile(r"(?: {2,}|\\\\)\\Z")',
+     'HARD_BREAK_RE = re.compile(r"(?: {2,})\\Z")',
+     ["TestTheFoldKeepsTheAuthorsLineBreaks."
+      "test_the_OTHER_spelling_of_the_break_stops_the_fold_too"]),
+
+    # and its over-refusal direction: a backslash asks for a break only where it
+    # ENDS the line, and queues carry them mid-sentence
+    ("C-14 the break stops having to end the line, so a path or an escape in the "
+     "middle of a sentence refuses the item",
+     'HARD_BREAK_RE = re.compile(r"(?: {2,}|\\\\)\\Z")',
+     'HARD_BREAK_RE = re.compile(r"(?: {2,}|\\\\)")',
+     ["TestTheFoldKeepsTheAuthorsLineBreaks."
+      "test_a_backslash_INSIDE_the_line_is_not_a_break"]),
 
     # and the other over-refusal: a break needs a line UNDER it to break before,
     # so the block's LAST line is out of the question by construction
