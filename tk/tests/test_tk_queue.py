@@ -5134,6 +5134,14 @@ class TestMigrateFold(QueueTest):
                 "GUESS which text is a field value — " + ", ".join(labels)
                 + ". Close each with `cancel` and re-add it clean.\n")
 
+    def block_left_alone(self, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: a continuation line "
+                "OPENS a Markdown block, and the wrapped fold has no chain to lift over "
+                "it — joining would flatten a list the author wrote, so it declines "
+                "instead of choosing which lines survive — "
+                + ", ".join(labels)
+                + ". Close each with `cancel` and re-add it clean.\n")
+
     def prose_marker_left_alone(self, *labels):
         return (f"{len(labels)} item(s) left exactly as they are: a **Field:** marker "
                 "sits outside the chain the join would produce, so the fold would "
@@ -5286,14 +5294,20 @@ class TestMigrateFold(QueueTest):
         """The second path has no chain to lift OVER a list, so it declines rather
         than choose which lines to flatten. Measured on the queues the first path
         already serves: eight of the eleven items it folded carry prose in between,
-        and a bullet list joined into one line is not recoverable."""
+        and a bullet list joined into one line is not recoverable.
+
+        Reported under its OWN reason. This gate did not decline because it could
+        not tell a field value from a note — that is the other two gates — and a
+        reader who is told it did goes looking for a value to repair in an item
+        whose only trouble is the list."""
         seeded = ("- [ ] **T009** — o item tem uma lista\n"
                   "  - primeiro ponto\n"
                   "  segue a frase e a cadeia. **Class:** BLOCKED.\n")
         self.seed(seeded)
         r = self.migrate()
         self.assertEqual(self.body(), HEADER + seeded)
-        self.assertIn(self.left_alone("T009"), r.stdout)
+        self.assertIn(self.block_left_alone("T009"), r.stdout)
+        self.assertNotIn("GUESS which text is a field value", r.stdout)
 
     def test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED(self):
         """Folded, the note lands inside the last field's value — FIELD_SEGMENT_RE's

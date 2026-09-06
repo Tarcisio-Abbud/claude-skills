@@ -3827,6 +3827,13 @@ MUTATIONS = [
      "    if False:",
      ["TestMigrateFold.test_a_line_that_opens_a_block_stops_the_wrapped_fold"]),
 
+    # the block gate reports under the reason for a GUESSED value, and the reader
+    # goes looking for a field value to repair in an item whose trouble is a list
+    ("review#4 the flattened-block refusal is reported as a guessed field value",
+     "        return None, FOLD_BLOCK_REFUSAL",
+     "        return None, FOLD_REFUSAL",
+     ["TestMigrateFold.test_a_line_that_opens_a_block_stops_the_wrapped_fold"]),
+
     ("T159 a trailing line with no marker is joined into the last field's value",
      "    if not markers(lines[-1]):", "    if False:",
      ["TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED"]),

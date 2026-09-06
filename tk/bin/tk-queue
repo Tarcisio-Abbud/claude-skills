@@ -214,6 +214,8 @@ def class_alias_summary():
     for pt, enum in CLASS_ALIASES.items():
         by_enum.setdefault(enum, []).append(pt)
     return "; ".join(f"{'/'.join(v)} → {k}" for k, v in by_enum.items())
+
+
 # The class that PARKS the queue: nothing moves on a DECISION item until the user
 # is back. So it may not be reached by omission — `add --class DECISION` and any
 # `edit` that sets that class demand `--deferred <justification>`, recorded in the
@@ -4889,6 +4891,9 @@ FOLD_PROSE_MARKER_REFUSAL = (
     "a **Field:** marker sits outside the chain the join would produce, so the fold "
     "would promote the item's own prose to a field — quote that marker in a code "
     "span (`**Class:**`) and the fold reads the rest as the chain it is")
+FOLD_BLOCK_REFUSAL = ("a continuation line OPENS a Markdown block, and the wrapped fold has "
+                      "no chain to lift over it — joining would flatten a list the author "
+                      "wrote, so it declines instead of choosing which lines survive")
 
 
 # every line-shape that OPENS a Markdown block, from CommonMark's block-start
@@ -5145,7 +5150,9 @@ def fold_wrapped(lines, block):
 
       structure   NOTHING may open a Markdown block. Where the walk lifts a chain
                   OVER a list and keeps it, this path has no chain to lift, so it
-                  declines instead of choosing which lines to flatten.
+                  declines instead of choosing which lines to flatten — under its
+                  OWN reason, since "guessing a field value" is not what it did
+                  and a reader repairs the shape the sentence names.
       a marker    the LAST line has to carry one. A trailing note carries none,
                   and joined it lands inside the last field's value — greedy by
                   grammar — so `**Source:** 2026-08-13 nota solta.` becomes what
@@ -5169,7 +5176,7 @@ def fold_wrapped(lines, block):
     of the wrap column is a line the author ENDED, not one an editor wrapped.
     """
     if any(opens_a_block(lines, k) for k in range(1, len(lines))):
-        return None, FOLD_REFUSAL
+        return None, FOLD_BLOCK_REFUSAL
     if not markers(lines[-1]):
         return None, FOLD_REFUSAL
     folded = (" ".join(ln.strip() for ln in lines)
