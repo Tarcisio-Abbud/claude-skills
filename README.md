@@ -282,12 +282,13 @@ tk/
                                   defects in it, four on the wall's prose, and one on the
                                   map pairing each window's label with its length
   tests/mutations.py              puts each defect back; every test must fall
+  tests/anchor_check.py           the cheap half of that, over every harness in the
+                                  directory: each anchor still matches its source
+                                  exactly once, in a second instead of in minutes
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
                                   names, since a green score counts only the mutants
                                   someone wrote
-  tests/mutations_roster.py       the same, for the roster suite — folds into that
-                                  runner, which already takes the suite as an argument
   tests/mutations_collisions.py   entries only: it enters through that runner's seam,
                                   which is what the seam was written for
   tests/mutations_vista.py        entries only: it folds into the same runner, through the
@@ -387,8 +388,7 @@ nothing, so a mutation that survives is a hole, not a pass. `tk-contract` answer
 rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard through
 `python3 githooks/tests/mutations_private_values.py`, the tracker wrapper through
 `python3 bin/tests/mutations_tracker_gh.py`, `tk-vista-check` through
-`python3 tk/tests/mutations_vista.py`, the roster through
-`python3 tk/tests/mutations_roster.py`, `tk-hygiene` through
+`python3 tk/tests/mutations_vista.py`, `tk-hygiene` through
 `python3 tk/tests/mutations_hygiene.py`, `tk-prune-measure` through
 `python3 tk/tests/mutations_prune.py`, the two manifests through
 `python3 tk/tests/mutations_manifests.py`, the wall's step 2 through
@@ -405,6 +405,13 @@ mutates prose, the bin AND its own TEST FILE, the last being the only way to pro
 reader that lives in the suite: its statusline check must let the prose SAY the number is
 not there while refusing an instruction to go and read it there — and the `tk-quota` one
 mutates the wall's prose, since a command the wall does not name is a command nobody runs.
+
+Every one of those anchors is a literal substring of its source, and it has to match
+exactly once. `python3 tk/tests/anchor_check.py` asks that of every harness in the
+directory in under a second, so an edit that reflows a source is checked where it is made
+— the answer used to arrive only at the end of a six-minute run, which is how `main` once
+shipped an anchor that had quietly stopped matching. It says the entries can still be
+APPLIED, never that a test notices when they are: that stays the full harnesses' answer.
 
 New own-authored skill: create `tk/skills/<name>/SKILL.md`, then advertise it in BOTH
 manifests — a `<name> (…)` clause in `tk/.claude-plugin/plugin.json` and a `/tk:<name>`

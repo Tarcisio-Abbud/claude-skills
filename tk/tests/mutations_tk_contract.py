@@ -400,7 +400,7 @@ MUTATIONS = [
 
     ("an entry naming a test that does not exist passes the reverse check",
      "            cls = getattr(module_obj, cls_name, None)\n"
-     "            if cls is None or not hasattr(cls, attr):",
+     "            if cls is None or (attr and not hasattr(cls, attr)):",
      "            cls = getattr(module_obj, cls_name, None)\n            if False:",
      ["TestHarness.test_an_entry_naming_a_test_that_does_not_exist_is_reported"],
      os.path.join("tests", "mutations_tk_contract.py")),
@@ -458,8 +458,11 @@ def misnamed(mutations, module_obj):
     for entry in mutations:
         for name in entry[3]:
             cls_name, _, attr = name.partition(".")
+            # an empty `attr` is an entry naming a whole CLASS, which unittest
+            # loads as readily as one method — older entries do name classes,
+            # and reading those as typos would report a working entry as broken
             cls = getattr(module_obj, cls_name, None)
-            if cls is None or not hasattr(cls, attr):
+            if cls is None or (attr and not hasattr(cls, attr)):
                 bad.append(f"{entry[0]} -> {name}")
     return sorted(bad)
 

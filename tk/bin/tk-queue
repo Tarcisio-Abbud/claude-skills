@@ -193,9 +193,10 @@ DEFERRABLE_CLASS = "DECISION"
 # A reserved value reuses the existing parser: no new flag to forget, no new
 # precedence rule between "set" and "clear".
 FIELD_CLEAR = "none"
-# Fields the reserved word may DELETE. All three are true-when-written and go
+# Fields the reserved word may DELETE. All four are true-when-written and go
 # stale: a Risk whose branch has since merged, a deferral whose class has since
-# changed, an Env naming the machine an item needed before it was re-sliced.
+# changed, an Env naming the machine an item needed before it was re-sliced, a
+# blocker that was cancelled rather than closed — a dependency the queue outlives.
 # None is ever deleted in a way that opens a gate — see cmd_edit.
 #
 # **Claimed:** ages exactly like these and is deliberately ABSENT: this set is
@@ -203,7 +204,7 @@ FIELD_CLEAR = "none"
 # also SET — `edit <id> --claimed bravo` would take an item somebody else holds,
 # in one command, which is the thing `claim` exists to refuse. It is cleared by
 # `release`, which reads the same chain and splices with the same helper.
-CLEARABLE = frozenset(("Risk", "Deferred", "Env"))
+CLEARABLE = frozenset(("Risk", "Deferred", "Env", "Blocked-by"))
 # everything else takes the queue lock. `migrate --dry-run` is in the second set
 # and writes no queue, no log and no briefing — only the empty lock below: it takes
 # the lock to READ a queue no other writer is mid-rewrite of, since a preview of a
@@ -214,8 +215,9 @@ READERS = frozenset(("list", "report", "pack"))
 # sites a machine can keep in step cannot drift: the lens campaign found this
 # same claim out of sync across five independent prose sites, a new one each
 # round. The three that remain in prose (the comment above, `queue_lock`'s
-# docstring, and the kickoff SKILL.md) cannot read a constant — they are
-# named here so the next writer knows the full list.
+# docstring, and `tk/reference/queue.md` — the kickoff SKILL.md carried it until
+# the prune of #191 moved the queue contract there) cannot read a constant —
+# they are named here so the next writer knows the full list.
 DRY_RUN_WRITES = ("no queue, no done-log and no briefing — only an empty "
                   "`.tk-queue.lock`, which never carries a byte")
 LOCK_TIMEOUT = 10                         # seconds a mutating command waits for that lock
@@ -232,6 +234,12 @@ CEILING_FORCED = 2000
 # UNSET MEANS NO CAP — the behaviour every queue had before this gate — so the
 # number is chosen by the user, once, on the machine that has to live with it.
 WIP_KEY = "max-open-items"
+# The other two halves of the same gate, spelled where tk_site spells them: the
+# cap asked of ONE queue, and the discount `max-open-items = auto` derives the
+# total with. The names travel from the module that validates them, so a rename
+# there cannot leave this file naming a key nothing reads.
+PER_QUEUE_KEY = tk_site.WIP_PER_QUEUE
+DISCOUNT_KEY = tk_site.WIP_DISCOUNT
 # The encodings BEYOND UTF-8 that the cap is looked for in when the site file
 # will not parse (see site_names_the_cap). A file saved as "Unicode" by a
 # Windows editor is UTF-16, and this house runs one — the desktop.
@@ -295,11 +303,19 @@ def fail(msg):
 
 
 def memory_dir(explicit):
+    """This queue's directory: `--dir`, or the one the cwd encodes to.
+
+    The encoding is `tk_site.project_slug`, not a regex of its own. It was one
+    here and one there, and the roster runs the SAME rule BACKWARDS — it walks
+    `~/.claude/projects` and recovers the directory each name encodes. Two
+    copies of an encoder and its decoder are two answers to "which queue is
+    this", and the day they disagree the disagreement is silent: a queue the
+    roster counts under one name and this command writes under another.
+    """
     if explicit:
         d = os.path.abspath(os.path.expanduser(explicit))
     else:
-        slug = re.sub(r"[^A-Za-z0-9-]", "-", os.getcwd())
-        d = os.path.join(PROJECTS_ROOT, slug, "memory")
+        d = os.path.join(PROJECTS_ROOT, tk_site.project_slug(os.getcwd()), "memory")
     if not os.path.isdir(d):
         fail(f"memory dir not found: {d}\n(use --dir, or run from the project's directory)")
     return d
@@ -566,6 +582,33 @@ def parse_id(raw):
     return int(m.group(1))
 
 
+def validate_blocker(value):
+    """Refuse a **Blocked-by:** value that is not an item id, and hand back the
+    ONE spelling of the one that passes.
+
+    The shape is `ID_INPUT_RE`, the same one every command takes an id in, so
+    `--blocked-by 6`, `t006` and `T006` are the one blocker they name — and the
+    stored form is `T006`, because `pack` prints the value in the exclusion
+    reason and a caller reading `blocked by 6` has to guess what to look up.
+
+    It is not asked whether the id EXISTS. A blocker closed and archived leaves
+    the queue, and a field pointing at it is then the truthful record of a
+    dependency that is satisfied — refusing it would make `pack` the only reader
+    that could ever answer, and would refuse the field on the very queue where
+    it has already done its work.
+    """
+    if value is None:
+        return None
+    if clears_field(value):
+        return value
+    m = ID_INPUT_RE.fullmatch(value.strip())
+    if not m:
+        fail(f"--blocked-by {value!r} is not an item id: the shape is the one every "
+             "command takes (T006, t006, 006 or 6), and it names an item of THIS "
+             f"queue. `{FIELD_CLEAR}` deletes the field.")
+    return f"T{int(m.group(1)):03d}"
+
+
 def ids_at(content, *positions):
     """The IDs really carried by the given structural positions in `content`.
     Group 2 in every one of them — group 1 is the box or the date."""
@@ -637,6 +680,11 @@ FIELD_VARIANTS = {
     "Source": r"(?:Source|Fonte)",
     "Deferred": r"(?:Deferred|Adiado)",
     "Env": r"(?:Env|Ambiente)",
+    # DEPENDENCY between two items of this queue, and the third field `pack`
+    # gates on. One spelling, for the reason the three below have one: it
+    # postdates the hand-written era, so an alias nothing ever wrote would be a
+    # second grammar to keep in step.
+    "Blocked-by": r"Blocked-by",
     "Claimed": r"(?:Claimed|Posse)",
     # PROVENANCE, written by whoever imports a ticket into the queue (`add
     # --ticket/--spec`). One spelling each, and deliberately: the Portuguese
@@ -1126,10 +1174,12 @@ def validate_owner(name):
     """argparse's required=True only proves --as was typed; an empty string
     satisfies it and would claim the item for nobody."""
     if not OWNER_RE.match(name or ""):
-        fail(f"--as {name!r} is not a valid owner name: letters, digits, '.', '-' or "
-             "'_', at most 32 chars, no spaces and not empty. The name sits beside the "
-             "timestamp in a one-line field, and one with a blank in it cannot be told "
-             "apart from the moment it was claimed.")
+        fail(f"--as {name!r} is not a valid owner name: it STARTS with a letter or a "
+             "digit, and may then carry letters, digits, '.', '-' or '_', at most 32 "
+             "chars, no spaces and not empty — so '.local' and '_alpha' are refused for "
+             "their first character alone. The name sits beside the timestamp in a "
+             "one-line field, and one with a blank in it cannot be told apart from the "
+             "moment it was claimed.")
     if clears_field(name):
         fail(f"--as {FIELD_CLEAR!r} is refused: {FIELD_CLEAR!r} is the word that DELETES a "
              "field everywhere in this script, so an item claimed under it would read as "
@@ -1943,23 +1993,23 @@ def cmd_list(args):
         rows.append((item_label(text), item_class(text) or "?",
                      age_cell(item_age(text, today)), item_title(text),
                      pm.group(1) if pm else None, displayed_claim(text),
-                     iid if iid in ambiguous else None))
+                     iid if iid in ambiguous else None, displayed_blocker(text)))
     if not rows:
         print("(queue empty)")
         return
-    grouped = group_by_tag([(project, (label, cls, age, title, mark, dup))
-                            for label, cls, age, title, project, mark, dup in rows],
+    grouped = group_by_tag([(project, (label, cls, age, title, mark, dup, blocked))
+                            for label, cls, age, title, project, mark, dup, blocked in rows],
                            by_position=True)
     if grouped is None:
-        for label, cls, age, title, _, mark, dup in rows:
-            print(list_line(label, cls, age, title, mark, dup))
+        for label, cls, age, title, _, mark, dup, blocked in rows:
+            print(list_line(label, cls, age, title, mark, dup, blocked))
     else:
         for n, (project, entries) in enumerate(grouped):
             if n:
                 print()
             print(f"## {project or 'no project'}")
-            for label, cls, age, title, mark, dup in entries:
-                print(list_line(label, cls, age, title, mark, dup))
+            for label, cls, age, title, mark, dup, blocked in entries:
+                print(list_line(label, cls, age, title, mark, dup, blocked))
     if any(r[0] == "----" for r in rows):
         print("\nitems without ID: run `tk-queue migrate` to assign them.")
     if ambiguous:
@@ -1967,7 +2017,29 @@ def cmd_list(args):
               "the others by hand in next-steps.md.")
 
 
-def list_line(label, cls, age, title, mark, dup=None):
+def displayed_blocker(block):
+    """`blocked by T006` for an item that names one at the writer's position, or
+    "" — the same POSITION rule every gate reads a field through, so `list` and
+    `pack` cannot disagree about whether an item is held back.
+
+    Tolerant where the gate refuses, and ONLY in the safe direction — the reading
+    `displayed_claim` already settled for the sibling field. Every shape `pack`
+    excludes the item over is shown as held back; printing nothing there was the
+    dangerous answer, because the caller who reads that exclusion reason then
+    looks the item up in `list` and finds it standing free.
+
+    A value that is not an id is shown VERBATIM rather than hidden: `pack`
+    excludes the item for it, and a listing that printed nothing there would
+    leave the caller reading `pack`'s reason with no way to see the field."""
+    segs, markers = qualified_fields(block, "Blocked-by")
+    if len(segs) > 1:
+        return "blocked ambiguously — `tk-queue pack` says why"
+    if not segs:
+        return "a **Blocked-by:** marker no gate reads" if markers else ""
+    return f"blocked by {field_value(segs[0])}"
+
+
+def list_line(label, cls, age, title, mark, dup=None, blocked=""):
     """The claim is appended, not given a column of its own: it is the exception
     (most items are free), and a column would indent every line of every queue for
     a field almost none of them carry.
@@ -1980,6 +2052,9 @@ def list_line(label, cls, age, title, mark, dup=None):
     """
     return (f"{label}  {cls:<10}  {age:>4}  {title}"
             + (f"  [{mark}]" if mark else "")
+            # appended for the same reason as the claim, and AFTER it: an item is
+            # far more often free than blocked, and the two can be true at once
+            + (f"  [{blocked}]" if blocked else "")
             # `is not None`: T000 is an ID, and truthiness would drop its mark
             + (f"  [{AMBIGUOUS_MARK % dup}]" if dup is not None else ""))
 
@@ -2082,6 +2157,11 @@ in the chain that ends the first line — never by searching the block:
   class      the chain must name AUTONOMOUS
   risk       no **Risk:** field
   env        no **Env:** field, or one naming THIS machine (the site file's identity)
+  blocked    no **Blocked-by:** field, or one naming an item this queue no longer
+             holds OPEN. The blocker closing is what lets the item back in — no
+             re-edit — and the reason names the value, so the caller reads which
+             item to chase. An unreadable value excludes, like Risk and Env: a
+             dependency nobody can read is one nobody may declare met
   spec       one **Spec:** in the chain, whose value is a forge reference
              (`<repo>#<n>`) — the shape `--spec` refuses on the way in, asked again
              here because a hand edit is not the writer. Read at the writer's
@@ -2091,6 +2171,11 @@ in the chain that ends the first line — never by searching the block:
              means unknown danger
   claimed    not held by a sibling session
   id         an item `migrate` never gave an ID to cannot be closed by ID
+  ticket     not a ticket `--blocked` names. The CALLER's fact about the tracker,
+             like `--spec-under-way` below and read at the same rung of the
+             ladder: this command opens no network connection, so a ticket
+             blocked on the forge is invisible to it. The item leaves the package
+             AND its spec's count with it
   lane       not a ticket of a SECOND spec, nor of one `--spec-under-way`
              names — see below
 
@@ -2110,11 +2195,15 @@ number without leading zeros — decided when the value is written and re-decide
 when it is read, so two spellings can never count as two specs.
 
 ONE spec per package, so there is one branch, one campaign and one tail. The lane
-goes to the FIRST spec in QUEUE ORDER that reaches the FLOOR of two tickets among
-the candidates — a spec with a single ticket in the package costs a draft PR and a
-three-step tail for one item, so that ticket is dispatched `avulso` instead. Asked
-of the candidates only: an item excluded for its class or its Risk is not in the
-package and cannot take its lane with it.
+goes to the spec with the MOST tickets among the candidates, ties broken by QUEUE
+ORDER. The accumulated branch is what pays for itself — one branch, one campaign,
+one tail, over as many tickets as possible — and queue order alone spent it on the
+spec that happened to be listed first, leaving the deeper one for a later package.
+The spec must still reach the FLOOR of two tickets: one ticket costs a draft PR
+and a three-step tail for a single item, so that ticket is dispatched `avulso`
+instead. Asked of the candidates only: an item excluded for its class, its Risk or
+`--blocked` is not in the package, cannot take its lane with it, and is not
+counted for one either.
 
 A ticket leaves the package for its lane in TWO cases, and the second half of the
 reason is what tells them apart — one read the queue, the other read the remote:
@@ -2132,6 +2221,13 @@ reason is what tells them apart — one read the queue, the other read the remot
                         which is a second pull request over that same branch's work
 
 Either way those tickets are the next package's, not lost.
+
+`--blocked` is repeatable and is the other half of that second call, asked of
+TICKETS instead of specs: `<repo>#<n>`, the value of an item's **Ticket:** field.
+The item leaves the package and its spec's count with it, so a spec whose second
+ticket is blocked drops under the floor instead of holding a lane on a ticket
+nobody can start — which is exactly what the count could not see while it counted
+ITEMS and the block lived on the forge.
 
 `--spec-under-way` is repeatable, and it is the one input this command cannot
 derive: it reads the queue and opens no network connection. So the caller runs
@@ -2216,7 +2312,8 @@ def pack_classless_reason(block):
     return "the field chain breaks before **Class:**, so no gate reads it", REPAIR_CANCEL
 
 
-def pack_exclusion(iid, block, identity):
+def pack_exclusion(iid, block, identity, open_ids=frozenset(),
+                   blocked=frozenset()):
     """(why this item stays OUT of the package, the repair) — or None when it is a
     candidate.
 
@@ -2257,7 +2354,7 @@ def pack_exclusion(iid, block, identity):
     # in prose was excluded with a false reason — its chain named Spec once,
     # unambiguously — and, having left the candidate set, took the whole spec below
     # the floor, demoting its clean siblings' accumulated lane to `avulso`.
-    for name in ("Risk", "Env"):
+    for name in ("Risk", "Env", "Blocked-by"):
         segs, markers = qualified_fields(block, name)
         if markers > len(segs):
             return (f"a **{name}:** marker sits where no gate reads it, so what the item "
@@ -2279,6 +2376,22 @@ def pack_exclusion(iid, block, identity):
             # as a clean name. The whole reason the value is in the line is to make a
             # wrong one look wrong
             return f"Env is {value!r}, {where}", None
+    if field["Blocked-by"] is not None:
+        value = field_value(field["Blocked-by"])
+        m = ID_INPUT_RE.fullmatch(value.strip())
+        if m is None:
+            # the writer's gate is not the only door — a hand edit, a foreign
+            # tool, a merge — and here the safe default is the one Risk and Env
+            # take: a dependency nobody can read is not a dependency anybody may
+            # declare satisfied, so the item leaves rather than being dispatched
+            return (f"Blocked-by is {value!r}, which is not an item id, so whether the "
+                    "dependency is met cannot be told", REPAIR_CANCEL)
+        if int(m.group(1)) in open_ids:
+            # QUOTED like Env's, and for the same reason: a value absorbed out of
+            # an item's prose then reads as an obviously wrong line instead of a
+            # silently missing item. No repair line — the repair is closing the
+            # blocker, which is work and not a queue defect
+            return f"blocked by {value}, still open", None
 
     # the Spec's SHAPE, asked at the rung the help documents — after risk and env,
     # not before them. It sat with the marker defects for one round, and that put a
@@ -2314,6 +2427,19 @@ def pack_exclusion(iid, block, identity):
     # every other command names an item, and a package cannot close one without it
     if iid is None:
         return "no ID", REPAIR_MIGRATE
+
+    # AFTER the ID, and last of all, because this rung is not the QUEUE's: it is
+    # the caller's answer about the forge, the same source and so the same place
+    # in the ladder as `--spec-under-way`. Everything above it the item's own
+    # text answers, and a reason the file explains outranks one it cannot.
+    #
+    # Read through `pack_ref`, the reader the lane and the `closes` line already
+    # share, so a **Ticket:** the position rule may not use matches no reference
+    # and costs the item nothing — the safe default both provenance fields take,
+    # and the one `pack_closes` takes for the same value one line later.
+    ref = pack_ref(block, "Ticket") if blocked else None
+    if ref is not None and ref in blocked:
+        return TICKET_BLOCKED % ref, None
     return None
 
 
@@ -2375,6 +2501,15 @@ LANE_TAKEN = "lane de spec ocupada por %s; esta é %s"
 # supplied this one, and a reason that did not say so would read as a fact the
 # queue holds.
 LANE_UNDER_WAY = "lane de spec ocupada por %s; declarada em curso por --spec-under-way"
+# The ticket the CALLER found blocked on the tracker. Same source as
+# `--spec-under-way` above — a question this command cannot ask, opening no
+# network connection — and so the same shape of reason: the value, and the flag
+# that supplied it, because a reason that did not name the flag would read as a
+# fact the queue holds. ENGLISH, unlike the two lane reasons beside it, because
+# it is read next to `blocked by T006, still open` in the same excluded block:
+# one names an item this queue holds, the other a ticket on a forge, and two
+# spellings of "blocked" in two languages is the collision to avoid.
+TICKET_BLOCKED = "ticket %s is blocked on the forge; declared by --blocked"
 # how many tickets of one spec earn the accumulated lane. Below it the ticket is
 # dispatched as an ordinary PR: a draft PR, a merge per item and a three-step
 # tail cost more than a single item is worth. A FLOOR, never a filter — the lone
@@ -2430,15 +2565,27 @@ def pack_ref(block, field):
     return canonical_ref(value) if REF_RE.fullmatch(value) else None
 
 
-# NONE OF THE THREE IS AN `edit` FLAG — Ticket, Spec, Repo — and the omission is
+# TWO OF THE THREE ARE NOT `edit` FLAGS — Ticket and Repo — and the omission is
 # deliberate — the same answer CLEARABLE gives about **Claimed:**. Provenance is
 # written once, by whoever imports the ticket, and it is the one thing about an item
 # that cannot change without the item becoming a different item: a ticket re-pointed
-# at another spec is a ticket of another spec, and one re-pointed at another
+# at another issue is the work of another issue, and one re-pointed at another
 # repository is work in another repository. The repair for a typo is the repair
 # for any unreadable chain — `cancel` and re-add, which also puts the wrong
 # `closes` on the record instead of erasing it. `edit --text` keeps all three:
 # it preserves everything from the first field marker on.
+#
+# **Spec:** IS one, and the split is what each field ANSWERS. Ticket and Repo say
+# where the item CAME FROM and where its code lands — facts that cannot change while
+# it stays the same item. Spec says which LANE the package dispatches it in
+# (`pack_lanes`), and a lane is a routing decision over a queue that MOVES: a spec
+# closes, a track is resliced, an accumulated lane is re-elected, and the same ticket
+# belongs under a different one. Add-only there protected nothing and cost the
+# alternative measured on 2026-09-01 — 22 items of this project's own queue could not
+# enter an accumulated lane, and the only route in was to close all 22 as DESCARTADO
+# and re-add them, which erases 22 real birth dates to repair a routing field. The
+# value passes the SAME gate `--spec` passes on the way in (`validate_ref`), so the
+# one spelling per reference this file holds is not what relaxes here.
 
 
 def pack_closes(block):
@@ -2557,10 +2704,11 @@ def pack_lanes(candidates, under_way=frozenset()):
     is elected and their tickets leave the package, whatever their count.
 
     ONE spec per package — one branch, one draft PR, one campaign, one tail — and
-    it is the FIRST spec in QUEUE ORDER that reaches the floor. First in queue
-    order, because priority here is the file's order, global; not the spec with
-    the most tickets, which would put a hidden heuristic in the one place this
-    queue deliberately has none.
+    it is the spec with the MOST tickets among those that reach the floor, ties
+    broken by QUEUE ORDER. The accumulated branch is the one thing here that pays
+    for itself, so it goes to the DEEPEST spec; queue order, the only priority
+    this file carries, is what settles a tie, and `max()` over a list built in the
+    file's order does both because it returns the first maximal element.
 
     "That reaches the floor" is the half the spec left open, and the reading is
     the one that keeps every sentence of it true. A spec with a single ticket in
@@ -2594,9 +2742,10 @@ def pack_lanes(candidates, under_way=frozenset()):
     for _, ref in specs:
         if ref is not None:
             tickets[ref] = tickets.get(ref, 0) + 1
-    taken = next((ref for _, ref in specs
+    contenders = [ref for _, ref in specs
                   if ref is not None and ref not in under_way
-                  and tickets[ref] >= SPEC_LANE_FLOOR), None)
+                  and tickets[ref] >= SPEC_LANE_FLOOR]
+    taken = max(contenders, key=lambda ref: tickets[ref], default=None)
     lanes, pushed = {}, {}
     for n, ref in specs:
         if ref is not None and ref in under_way:
@@ -2620,6 +2769,10 @@ def cmd_pack(args):
     # exists to end, wearing a typo instead of a missing call.
     under_way = frozenset(validate_ref("spec-under-way", v)
                           for v in (args.spec_under_way or []))
+    # the same gate, for the same reason: a malformed ticket reference matches no
+    # item, so the ticket the caller called a second time to take OUT would be
+    # dispatched — the blindness back, wearing a typo
+    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))
     memdir = memory_dir(args.dir)
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
@@ -2632,6 +2785,13 @@ def cmd_pack(args):
     # the same ordered rows. Emitting as we went and appending the lane
     # exclusions at the end would report them out of queue order, in a listing
     # whose whole contract is that its order IS the priority.
+    # collected BEFORE the pass, because a blocker sits anywhere in the file: the
+    # queue's order is priority, not dependency order, and an item may name one
+    # that is listed below it. Read from the OPEN items alone, which is the whole
+    # question a **Blocked-by:** asks — an id in the done-log is a dependency met,
+    # and one this queue never had is a blocker that has already left it
+    open_ids = frozenset(i for i in (item_id(t) for kind, t in split_blocks(content)
+                                     if kind == "item-open") if i is not None)
     rows, candidates = [], []
     for kind, text in split_blocks(content):
         if kind != "item-open":
@@ -2642,7 +2802,7 @@ def cmd_pack(args):
         # asks `iid is None`, and truthiness here packaged T000 under the `----` of
         # an item with no ID at all
         label = item_label(text)
-        verdict = pack_exclusion(iid, text, identity)
+        verdict = pack_exclusion(iid, text, identity, open_ids, blocked)
         # ROW POSITION, never the label, is what addresses an item here. A label is
         # not unique: `----` is every ID-less item's, and a duplicate ID is a shape
         # `list` warns about rather than refuses. Keying the lane by it was measured
@@ -2697,6 +2857,10 @@ def compose_item(args, iid):
     # unattended, and where. Absent = it runs wherever the queue lives
     if args.env and not clears_field(args.env):
         fields.append(f"**Env:** {args.env}.")
+    # the third field `pack` gates on, and it sits with the other two: Risk says
+    # whether this may run unattended, Env says where, and this says NOT YET
+    if args.blocked_by and not clears_field(args.blocked_by):
+        fields.append(f"**Blocked-by:** {args.blocked_by}.")
     fields.append(f"**Criterion:** {args.criterion}.")
     if args.project:
         fields.append(f"**Project:** {args.project}.")
@@ -2723,10 +2887,26 @@ def compose_item(args, iid):
 
 
 def check_ceiling(item, force):
+    """The ceiling is measured on the BLOCK, and the refusal has to say so.
+
+    A caller reading `item has 1011 chars` beside a text they know to be 641 long
+    reads the number as the text's own, and cuts prose that was never the
+    overflow: the other 370 chars were the field chain. Measured on 2026-09-03 —
+    one round spent shortening the wrong half. So both halves are counted here,
+    and the message names the one the cut has to come out of."""
     limit = CEILING_FORCED if force else CEILING
     if len(item) > limit:
+        chain = field_chain(item)
+        head = item.split("\n", 1)[0]
+        # the field chain is a suffix of the FIRST line (compose_item); everything
+        # else — the head, the text, any continuation line — is the other half
+        fields = len(head) - chain[0].start() if chain else 0
+        text = len(item) - fields
         fail(
-            f"item has {len(item)} chars (ceiling {limit}). An item is a pending "
+            f"the item BLOCK has {len(item)} chars (ceiling {limit}) — the block is the "
+            f"text AND its field chain, not the text alone: {text} chars of text and "
+            f"{fields} of fields, so the cut comes out of the "
+            f"{'text' if text >= fields else 'fields'}. An item is a pending "
             "action, not an essay: move the context to a memory file or wiki page "
             "and link it ([[slug]])." + ("" if force else " --force raises the ceiling to "
             f"{CEILING_FORCED} for the rare exception.")
@@ -2808,7 +2988,14 @@ def site_names_the_cap():
     except OSError:
         # unreadable is not a cap anyone can act on, either way
         return False
-    assignment = re.compile(rf"\s*{re.escape(WIP_KEY)}\s*=")
+    # EVERY key that gates an add, not only the total. `max-open-items` alone
+    # missed a file whose only ceiling is the per-queue one: `max-open-items` is
+    # a PREFIX of `max-open-items-per-queue`, so the `\s*=` after it does not
+    # match that line, and a broken file carrying the brake and nothing else was
+    # reported and waved past — the cap disappearing in silence, which is the one
+    # direction this whitelist may not fail in. Measured while T360 was written.
+    assignment = re.compile(r"\s*(?:" + "|".join(
+        re.escape(k) for k in (WIP_KEY, PER_QUEUE_KEY, DISCOUNT_KEY)) + r")\s*=")
     for encoding, errors in (("utf-8", "replace"),) + WIDE_DECODINGS:
         try:
             text = raw.decode(encoding, errors)
@@ -2840,9 +3027,9 @@ def load_site():
     except tk_site.SiteError as e:
         if site_names_the_cap():
             fail(str(e))
-        print(f"tk-queue: {e}\n(no `{WIP_KEY}` line was found in it, so no cap gates "
-              "this add — but the file stays broken for every command that reads it)",
-              file=sys.stderr)
+        print(f"tk-queue: {e}\n(it names none of `{WIP_KEY}`, `{PER_QUEUE_KEY}` or "
+              f"`{DISCOUNT_KEY}`, so no cap gates this one — but the file stays broken "
+              "for every command that reads it)", file=sys.stderr)
         return None
 
 
@@ -2968,7 +3155,9 @@ def check_wip(site, memdir):
     of this function, deliberately — see the note above load_site.
     """
     cap = site.ceilings.get(WIP_KEY) if site else None
-    if cap is None:
+    per_queue = site.ceilings.get(PER_QUEUE_KEY) if site else None
+    auto = bool(site and site.open_items_auto)
+    if cap is None and per_queue is None and not auto:
         return
     root = roster().projects_root()
     if not os.path.isdir(root):
@@ -2985,7 +3174,34 @@ def check_wip(site, memdir):
               "queue alone and not over the machine.", file=sys.stderr)
     counts = [(d, key, open_items(d)) for d, key in wip_queues(site, memdir)]
     total = sum(n for _, _, n in counts)
-    if total < cap:
+    target = os.path.realpath(memdir)
+    mine = sum(n for _, key, n in counts if key == target)
+    # THE PER-QUEUE CAP IS ASKED FIRST, and that order is the rule rather than a
+    # detail of the writing. The total does not see CONCENTRATION — 194 of 280
+    # open items sat in two queues on 2026-09-04 — so a machine can be a long way
+    # under its total while the queue in front of the caller is the problem. Asked
+    # second, this queue's refusal would arrive only once every OTHER queue had
+    # been pruned too, which is the opposite of the pressure it exists to create.
+    # And it is the actionable one: the items to close are in the queue the caller
+    # is already in.
+    if per_queue is not None and mine >= per_queue:
+        fail(f"{mine} open item(s) in this queue against a per-queue cap of "
+             f"{per_queue}, so no new item enters it:\n  {memdir}\n\nThe cap is "
+             f"`{PER_QUEUE_KEY}` in {site.path}, one number for every queue on this "
+             "machine's roster, and the room has to be made HERE — the machine may be "
+             "far under its total while this queue is full, which is the concentration "
+             "the per-queue cap exists to answer. Neither --force nor another --dir gets "
+             "past it, and raising the number is the user's call, not this session's. "
+             + WIP_REMEDY)
+    # DERIVED after the queues are counted, never in the site reader: how many
+    # queues exist is the roster's question, and `wip_queues` has just answered it
+    # for this very gate. `auto` is `(per-queue - discount) x N` — never
+    # `per-queue x N`, which is the worst case, every queue at its maximum at
+    # once; the discount is what says some may be, not all.
+    if auto:
+        discount = site.ceilings.get(DISCOUNT_KEY, 0)
+        cap = (per_queue - discount) * len(counts)
+    if cap is None or total < cap:
         return
     # WHERE the work is, WITHOUT writing another project's name into THE
     # REFUSAL — which is the routine output, printed on a healthy machine every
@@ -3002,15 +3218,18 @@ def check_wip(site, memdir):
     # `tk-hygiene` was already written against.
     # Only the queues that hold something: a machine's empty queues would bury
     # the two lines that matter
-    target = os.path.realpath(memdir)
-    mine = sum(n for _, key, n in counts if key == target)
     others = [(d, n) for d, key, n in counts if key != target and n]
     where = f"\n  {mine:>4}  {memdir}"
     if others:
         where += (f"\n  {sum(n for _, n in others):>4}  in {len(others)} other queue(s) "
                   "on this machine (`tk-roster` lists them there)")
+    # the DERIVED total says where it came from, or the reader looks for a number
+    # that is written nowhere in the file
+    how = (f"`{WIP_KEY} = {tk_site.WIP_AUTO}` in {site.path}, which is "
+           f"({per_queue} - {site.ceilings.get(DISCOUNT_KEY, 0)}) x {len(counts)} "
+           "queue(s)" if auto else f"`{WIP_KEY}` in {site.path}")
     fail(f"{total} open item(s) against a cap of {cap}, so no new item enters the "
-         f"queue:{where}\n\nThe cap is `{WIP_KEY}` in {site.path}, and the count sums "
+         f"queue:{where}\n\nThe cap is {how}, and the count sums "
          "every queue on this machine's roster — so neither --force nor another --dir "
          "gets past it, and raising the number is the user's call, not this session's. "
          + WIP_REMEDY)
@@ -3050,6 +3269,7 @@ def cmd_add(args):
     # comparison a plain `==` again
     args.ticket = validate_ref("ticket", args.ticket)
     args.spec = validate_ref("spec", args.spec)
+    args.blocked_by = validate_blocker(args.blocked_by)
     # returned UNCHANGED where the two above are canonicalised — validate_repo says why
     args.repo = validate_repo(args.repo)
     path = os.path.join(memdir, "next-steps.md")
@@ -3494,6 +3714,11 @@ def deferral_for_edit(args, block):
     # would let prose satisfy the gate; clearing it would delete that prose. An
     # edit that touches neither flag never consults the deferral, so it stays
     # allowed: over-refusing here would make the item uneditable instead.
+    #
+    # T165: since review#3 added the generic marker-outside-the-chain guard
+    # further down in `cmd_edit`, all four call shapes below refuse WITHOUT this
+    # one too (measured) — it is kept only because ITS message names the real
+    # problem (the deferral's position) instead of the generic one.
     if stray and (args.classe or args.deferred is not None):
         fail(f"{label} carries a **Deferred:** marker away from the position a "
              "deferral is written in (right after **Class:**) — in the item's own prose, "
@@ -3568,6 +3793,12 @@ def cmd_edit(args):
     if args.classe and args.classe not in CLASSES:
         fail(f"--class must be one of {', '.join(CLASSES)}")
     deferred_flag = deferral_for_edit(args, block)
+    args.blocked_by = validate_blocker(args.blocked_by)
+    # canonicalised the way `cmd_add` canonicalises it, and by the same gate: an
+    # edit writing `Ambiente#0171` into a queue whose adds wrote `ambiente#171`
+    # puts two spellings of one reference in one file, and the lane count that
+    # compares them is a plain `==` only because no door writes the second one
+    args.spec = validate_ref("spec", args.spec)
     new = block
     if args.text:
         head_m = CANONICAL_HEAD_RE.match(block)
@@ -3582,7 +3813,12 @@ def cmd_edit(args):
     flags = ((args.classe, "Class"), (args.effort, "Effort"),
              (args.risk, "Risk"), (args.env, "Env"),
              (args.criterion, "Criterion"),
-             (args.project, "Project"), (deferred_flag, "Deferred"))
+             (args.project, "Project"), (deferred_flag, "Deferred"),
+             (args.blocked_by, "Blocked-by"),
+             # LAST, after every field that already had a flag: an absent field is
+             # APPENDED at the end of the chain by this loop, so a new flag inserted
+             # higher up would move where the older ones land on the same item
+             (args.spec, "Spec"))
     promoted_names = []
     for flag, field in flags:
         if not flag:
@@ -3953,14 +4189,16 @@ def cmd_report(args):
 
 
 # --- the fold: a field chain that sits off the first line, lifted onto it ---
-# 31 of the 155 open items across the real queues carry the LEGACY shape — the
-# item's text on the first line and its `**Field:** value.` chain on a
+# A real minority of the open items across the real queues carry the LEGACY
+# shape — a fraction measured once, at write time, and never a fixed count:
+# the queues keep growing, so a number written here would go stale on its own
+# — the item's text on the first line and its `**Field:** value.` chain on a
 # continuation line. field_chain reads the run that ENDS THE FIRST LINE and
 # nothing else (its docstring says why), so to every gate those items have no
 # fields at all: `pack` excludes them, `claim` refuses them, every per-field
 # `edit` is refused on them. `migrate` is where the repair belongs — it is
-# already the command that rewrites legacy shapes into what the readers expect,
-# and the per-item alternative is retyping the item's whole text into
+# already the command that rewrites legacy shapes into what the readers
+# expect, and the per-item alternative is retyping the item's whole text into
 # `edit --text`, once per item, by hand.
 
 # printed with the IDs it applies to, never per item: the shapes each covers are
@@ -4477,34 +4715,89 @@ def main():
                    "machine that owns this queue ('none' writes no Env line)")
     a.add_argument("--project", help="optional short slug tagging which project this item "
                    "belongs to, e.g. 'ambiente', 'tk' (warns on stderr if unseen in this queue)")
+    a.add_argument("--blocked-by", metavar="T<n>",
+                   help="an item of THIS queue that has to close first. `pack` leaves "
+                        "this item OUT of the package while that one is open, naming the "
+                        "value in the reason, and lets it back in the moment the blocker "
+                        "is closed — no re-edit. Any id spelling (T006, t006, 006, 6) is "
+                        "stored as `T006`. It is NOT checked against the queue: a blocker "
+                        "already closed and archived has left it, and that field is then "
+                        f"a satisfied dependency, not a typo. '{FIELD_CLEAR}' writes no "
+                        "line")
     a.add_argument("--source", help="origin (default: today's date)")
     a.add_argument("--ticket", help="the forge ticket this item implements, `<repo>#<n>` "
-                                    "— feeds the `closes` line of its PR")
+                                    "— feeds the `closes` line of its PR. ONE spelling is "
+                                    "stored: repo lower-cased, number without leading "
+                                    "zeros (`Ambiente#0171` is written `ambiente#171`), "
+                                    "`owner/repo#n` refused. The shape is exact on the "
+                                    "way in and asked again on the way out — `pack` marks "
+                                    "a hand-edited one `[?]`")
     a.add_argument("--spec", help="the spec the ticket belongs to, `<repo>#<n>` — decides "
-                                  "the item's LANE in the afk package (see `pack --help`)")
-    a.add_argument("--repo", help="the repository this item's CODE lands in — a URL or an "
-                                  "ABSOLUTE path, never a remote name and never a relative "
-                                  "path. The tracker `--ticket`/`--spec` name is routinely "
-                                  "another repo (see `pack --help`)")
-    a.add_argument("--force", action="store_true")
+                                  "the item's LANE in the afk package (see `pack --help`). "
+                                  "Same one spelling as `--ticket`: two casings of one "
+                                  "repo would be two specs of one ticket each, and two "
+                                  "branches for one spec")
+    a.add_argument("--repo", help="the repository this item's CODE lands in. A WHITELIST "
+                                  "of five shapes: https://<host>/<path>, "
+                                  "ssh://git@<host>/<path>, git@<host>:<path>, "
+                                  "file:///<path>, or an ABSOLUTE path "
+                                  "(/root/.claude/skills, C:\\clones\\repo). A `~/` "
+                                  "address is refused (HOME differs per reader), a "
+                                  "`<user>@` half on an http(s) URL is refused (it would "
+                                  "store a credential this file reprints), and so are a "
+                                  "remote NAME like `origin` and a relative path. The "
+                                  "tracker `--ticket`/`--spec` name is routinely another "
+                                  "repo (see `pack --help`)")
+    a.add_argument("--force", action="store_true",
+                   help=f"raise BOTH ceilings for this one call: the item BLOCK, from "
+                        f"{CEILING} chars to {CEILING_FORCED}, and each field VALUE, "
+                        f"from {FIELD_CEILING_SHORT}/{FIELD_CEILING} to "
+                        f"{FIELD_CEILING_SHORT_FORCED}/{FIELD_CEILING_FORCED} (short "
+                        "fields/prose). It does NOT reach the WIP cap, which has no way "
+                        "through by design")
 
     d = sub.add_parser("done", parents=[common], help="conclude: move the item to the done-log")
     d.add_argument("id", type=parse_id)
     d.add_argument("--how", required=True, help="outcome + pointer: 'PR #82', 'commit abc123', '[[slug]]'")
     d.add_argument("--summary", help="replaces the item text on the log line")
     d.add_argument("--note", help="extra substance when there is NO pointer (the line is the only record)")
-    d.add_argument("--force", action="store_true", help="raise the field ceiling")
+    d.add_argument("--force", action="store_true",
+                   help=f"raise BOTH ceilings for this one call: each field VALUE from "
+                        f"{FIELD_CEILING_SHORT}/{FIELD_CEILING} to "
+                        f"{FIELD_CEILING_SHORT_FORCED}/{FIELD_CEILING_FORCED} (short "
+                        f"fields/prose), and the item BLOCK from {CEILING} to "
+                        f"{CEILING_FORCED}")
 
-    c = sub.add_parser("cancel", parents=[common], help="discard: move the item to the done-log as DESCARTADO")
+    c = sub.add_parser("cancel", parents=[common],
+                       help="discard: move the item to the done-log as DESCARTADO",
+                       description="Discard an item: it moves to the done-log as "
+                       "DESCARTADO. FUSING two items into one, the order is `edit "
+                       "--text` on the survivor FIRST and `cancel` on the source only "
+                       "then. The two commands are not one transaction, and the "
+                       "700-char block ceiling can refuse the edit that carries the "
+                       "union — cancelled first, that content is out of the queue when "
+                       "the refusal arrives. Measured three times in the consolidation "
+                       "of 2026-09-02.")
     c.add_argument("id", type=parse_id)
     c.add_argument("--why", required=True)
     c.add_argument("--summary")
     c.add_argument("--note")
-    c.add_argument("--force", action="store_true", help="raise the field ceiling")
+    c.add_argument("--force", action="store_true",
+                   help=f"raise BOTH ceilings for this one call: each field VALUE from "
+                        f"{FIELD_CEILING_SHORT}/{FIELD_CEILING} to "
+                        f"{FIELD_CEILING_SHORT_FORCED}/{FIELD_CEILING_FORCED} (short "
+                        f"fields/prose), and the item BLOCK from {CEILING} to "
+                        f"{CEILING_FORCED}")
 
     e = sub.add_parser("edit", parents=[common], help="edit fields of an open item")
     e.add_argument("id", type=parse_id)
-    e.add_argument("--text")
+    e.add_argument("--text", help="REPLACES the item's text — everything between the "
+                   "`- [ ] **T<id>** —` head and the first field marker, continuation "
+                   "prose included; it never appends, so a fusion passes the union of "
+                   "both texts. FUSING two items: this `edit` FIRST, then `cancel` the "
+                   "source. The two are not one transaction, and the block ceiling can "
+                   "refuse the edit carrying the union — done in the other order, the "
+                   "source is already in the done-log when the refusal lands")
     e.add_argument("--class", dest="classe",
                    help="replaces the whole class VALUE. On an item that carries "
                    "none the anchor is written AHEAD of any fields already ending "
@@ -4527,15 +4820,35 @@ def main():
                    "or 'none' to DELETE the field — the item then runs wherever the "
                    "queue does")
     e.add_argument("--project", help="assign/change the project tag")
-    e.add_argument("--force", action="store_true")
+    e.add_argument("--blocked-by", metavar="T<n>",
+                   help=f"the item that has to close first, or '{FIELD_CLEAR}' to DELETE "
+                        "the field — the blocker that was cancelled rather than closed. "
+                        "See `add --help` for the shape and for what `pack` does with it")
+    e.add_argument("--spec", help="the spec this ticket belongs to, `<repo>#<n>` — "
+                   "written here, or REWRITTEN. It is the only field of its group with "
+                   "a flag on this command: **Ticket:** and **Repo:** say where the item "
+                   "came from and where its code lands, which cannot change while it "
+                   "stays the same item, and their repair is `cancel` + re-add. **Spec:** "
+                   "is the item's LANE in the afk package (see `pack --help`) — a routing "
+                   "decision over a queue that moves. Same shape and same one spelling as "
+                   "on the way in (`Ambiente#0171` is stored `ambiente#171`); "
+                   f"'{FIELD_CLEAR}' does NOT clear it — a lane is changed, never emptied")
+    e.add_argument("--force", action="store_true",
+                   help=f"raise BOTH ceilings for this one call: the item BLOCK from "
+                        f"{CEILING} to {CEILING_FORCED}, and each field VALUE from "
+                        f"{FIELD_CEILING_SHORT}/{FIELD_CEILING} to "
+                        f"{FIELD_CEILING_SHORT_FORCED}/{FIELD_CEILING_FORCED} (short "
+                        "fields/prose)")
 
     cl = sub.add_parser("claim", parents=[common],
                         help="take an item, so a sibling session does not work it too")
     cl.add_argument("id", type=parse_id)
     cl.add_argument("--as", dest="owner", required=True,
-                    help="who is taking it — a session or host label (letters, digits, "
-                         "'.', '-', '_', at most 32 chars, no spaces): it is written "
-                         "beside the moment of the claim and both are read back")
+                    help="who is taking it — a session or host label STARTING with a "
+                         "letter or a digit, then letters, digits, '.', '-', '_', at "
+                         "most 32 chars, no spaces ('.local' and '_alpha' are refused "
+                         "for their first character): it is written beside the moment "
+                         "of the claim and both are read back")
 
     rl = sub.add_parser("release", parents=[common],
                         help="hand a claimed item back to the queue without closing it")
@@ -4578,6 +4891,12 @@ def main():
                          "lane is elected, and its tickets leave the package on the lane "
                          "rung whatever their count. This command opens no network "
                          "connection, so this flag is the only way it can know (see LANE)")
+    pk.add_argument("--blocked", action="append", metavar="<repo>#<n>",
+                    help="a TICKET the caller has found blocked on the tracker, "
+                         "`<repo>#<n>` — REPEATABLE. The item carrying it leaves the "
+                         "package, and its spec's ticket COUNT with it, so a spec held "
+                         "up by one blocked ticket stops winning the accumulated lane "
+                         "on that ticket's strength (see LANE)")
 
     mg = sub.add_parser("migrate", parents=[common],
                         help="move legacy [x] items to the done-log, assign IDs to open "
@@ -4603,18 +4922,25 @@ def main():
         "pack": cmd_pack,
         "migrate": cmd_migrate,
     }[args.cmd]
-    if args.cmd not in READERS:
-        memdir = memory_dir(args.dir)
-        # Which queue is being written is INFERRED — from --dir, or from the cwd
-        # when it is absent — and an inference nobody sees is an inference nobody
-        # checks. A caller whose cwd is not where they think (the agent's shell
-        # keeps its cwd between calls) edits a homonymous item in ANOTHER project's
-        # queue and is told "T019 updated", which reads as success. Printing the
-        # resolved dir is what makes that visible without a flag to remember —
-        # stderr, so it never contaminates stdout that a caller parses, and BEFORE
-        # the work, so a command that then fails or blocks on the lock has still
-        # said where it was aiming.
+    # Which queue this command is aimed at is INFERRED — from --dir, or from the
+    # cwd when it is absent — and an inference nobody sees is an inference nobody
+    # checks. A caller whose cwd is not where they think (the agent's shell keeps
+    # its cwd between calls) edits a homonymous item in ANOTHER project's queue
+    # and is told "T019 updated", which reads as success. The same wrong cwd
+    # answers a `list` with another project's two items and says nothing at all,
+    # which is why READING commands announce too: a read is what a decision is
+    # made from, and silence there is the same inference gone unchecked.
+    # stderr, so it never contaminates the stdout that `add` and `pack` callers
+    # parse, and BEFORE the work, so a command that then fails or blocks on the
+    # lock has still said where it was aiming.
+    #
+    # `report` is the ONE command with no single dir to name: it sweeps every
+    # project's queue under PROJECTS_ROOT by construction, so there is no
+    # inference for it to expose and no dir of its own to resolve.
+    memdir = None if args.cmd == "report" else memory_dir(args.dir)
+    if memdir is not None:
         print(f"tk-queue: queue: {memdir}", file=sys.stderr)
+    if args.cmd not in READERS:
         # taken BEFORE the handler's first read, released after its last write:
         # a lock around the write alone would still let a stale snapshot win
         with queue_lock(memdir):

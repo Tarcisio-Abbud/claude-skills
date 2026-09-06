@@ -34,6 +34,44 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 TK_DIR = os.path.dirname(HERE)
 DEFAULT_SRC = os.path.join("bin", "tk-queue")
+TEST_MODULE = "test_tk_queue"
+# The other two sources this list anchors into, and the module whose tests prove
+# them. They arrived with the twenty entries absorbed from `mutations_roster.py`
+# (T119): one list, because a second harness existed only for the hardcoded
+# module name below and for nothing else.
+ROSTER = os.path.join("bin", "tk-roster")
+SITE = os.path.join("bin", "tk_site.py")
+ROSTER_TEST_MODULE = "test_tk_roster"
+TEST_MODULES = (TEST_MODULE, ROSTER_TEST_MODULE)
+
+sys.path.insert(0, HERE)
+from mutations_tk_contract import (  # noqa: E402 (path above)
+    load_module, misnamed, test_classes, unproved)
+
+# ENTRIES THAT NAME A TEST WHICH DOES NOT EXIST. The defect is in the LIST, not
+# in the suite: unittest answers a name it cannot load with a non-zero exit, and
+# `run_suite` below reads non-zero as "the named test fell" — so a typo scored
+# itself as coverage, which is worse than an uncovered guard. Such entries are
+# excluded from the tally and reported apart, and this is the debt the list
+# carries: a ceiling to LOWER as entries are repaired, never to raise. Measured
+# 2026-09-05: nine entries name five tests renamed out from under them.
+KNOWN_MISNAMED = 9
+
+# TESTS NO ENTRY NAMES. A run prints `N/N caught` and means it — but N counts
+# the mutants SOMEONE WROTE, so a test nobody mutated is invisible to that
+# number, and the suite reads as fully proved while that test protects nothing.
+# They are enumerated from the module and reported, and this is the debt the
+# list carries: a ceiling to LOWER, never to raise. Measured 2026-09-05: 61 of
+# the suite's 480 test methods. Triaging them is not this item's work; noticing
+# a sixty-second one is.
+KNOWN_UNPROVED = 61
+
+# The same debt for the suite absorbed with the roster entries (T119), kept as
+# its OWN number rather than folded into the one above. Folding would have
+# RAISED a ceiling whose whole rule is that it only ever falls, and the two
+# debts are not one: this one arrived with a harness that never had an orphan
+# check at all. Measured 2026-09-05: 4 of test_tk_roster's 22 test methods.
+KNOWN_UNPROVED_ROSTER = 4
 
 # (label, old, new, [test names that must fail]) — plus an optional 5th element,
 # the source file the anchor lives in, relative to tk/ (default: bin/tk-queue).
@@ -366,11 +404,24 @@ MUTATIONS = [
      '        print(f"tk-queue: queue: {memdir}")',
      ["TestTargetQueueAnnounced.test_it_goes_to_stderr_and_never_pollutes_stdout"]),
 
-    # over-trigger direction: readers write nothing, so announcing a write target
-    # on `list`/`report` is noise on every read
-    ("T072 readers announce a write target too",
+    ("T072 a reader takes the write lock too",
      'READERS = frozenset(("list", "report", "pack"))', "READERS = frozenset()",
-     ["TestTargetQueueAnnounced.test_readers_stay_silent"]),
+     ["TestTargetQueueAnnounced."
+      "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
+
+    ("T215 the readers of one queue go back to naming nothing",
+     '    memdir = None if args.cmd == "report" else memory_dir(args.dir)',
+     "    memdir = None if args.cmd in READERS else memory_dir(args.dir)",
+     ["TestTargetQueueAnnounced."
+      "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
+
+    # over-trigger direction: `report` sweeps every project's queue, so a single
+    # dir named on it is a queue it does not read
+    ("T215 report announces one queue out of the many it sweeps",
+     '    memdir = None if args.cmd == "report" else memory_dir(args.dir)',
+     "    memdir = memory_dir(args.dir)",
+     ["TestTargetQueueAnnounced."
+      "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
     # --- review#2: the real field is the one in the CHAIN ------------------
 
     ("review#2 the real field is the LAST marker in the block again (note eaten)",
@@ -537,8 +588,8 @@ MUTATIONS = [
      ["TestDecisionDeferralGate.test_leaving_the_decision_class_takes_the_deferral_with_it"]),
 
     ("T119 Deferred stops being clearable, so leaving the class WRITES 'none'",
-     'CLEARABLE = frozenset(("Risk", "Deferred", "Env"))',
-     'CLEARABLE = frozenset(("Risk", "Env"))',
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env", "Blocked-by"))',
+     'CLEARABLE = frozenset(("Risk", "Env", "Blocked-by"))',
      ["TestDecisionDeferralGate.test_leaving_the_decision_class_takes_the_deferral_with_it"]),
 
     ("T119 add stops measuring the justification against the field ceiling",
@@ -607,10 +658,13 @@ MUTATIONS = [
      "                           )",
      ["TestBump.test_a_bump_shows_in_list_on_a_tagged_queue_too"]),
 
-    ("T119 bump counts as a reader, so it takes no lock and names no queue",
+    # the announcement used to be this mutation's observable; since T215 every
+    # command but `report` names its queue, reader or not, so the LOCK is what
+    # tells the two sides apart and the test that watches it is the proof
+    ("T119 bump counts as a reader, so it takes no lock",
      'READERS = frozenset(("list", "report", "pack"))',
      'READERS = frozenset(("list", "report", "pack", "bump"))',
-     ["TestTargetQueueAnnounced.test_every_mutating_command_names_the_memdir_on_stderr"]),
+     ["TestConcurrency.test_bump_waits_for_the_lock_like_every_other_writer"]),
 
     # --- 2nd pair of eyes: the free-text guards, ON THE NEW FLAG --------------
     # Wiring `deferred=` into a generic checker is not proof that the checker sees
@@ -843,12 +897,14 @@ MUTATIONS = [
      ["TestEnvField.test_add_writes_no_field_for_the_reserved_word"]),
 
     ("T120 the field moves out of the position the package filter reads",
-     '    if args.env and not clears_field(args.env):\n'
-     '        fields.append(f"**Env:** {args.env}.")\n'
-     '    fields.append(f"**Criterion:** {args.criterion}.")',
-     '    fields.append(f"**Criterion:** {args.criterion}.")\n'
-     '    if args.env and not clears_field(args.env):\n'
-     '        fields.append(f"**Env:** {args.env}.")',
+     ['    if args.env and not clears_field(args.env):\n'
+      '        fields.append(f"**Env:** {args.env}.")\n'
+      '    # the third field',
+      '    fields.append(f"**Criterion:** {args.criterion}.")'],
+     ['    # the third field',
+      '    fields.append(f"**Criterion:** {args.criterion}.")\n'
+      '    if args.env and not clears_field(args.env):\n'
+      '        fields.append(f"**Env:** {args.env}.")'],
      ["TestEnvField.test_add_writes_the_field_where_the_readers_look_for_it"]),
 
     # the neighbouring gate field, which the assertion above only sees because the
@@ -877,8 +933,8 @@ MUTATIONS = [
       "TestEnvField.test_a_marker_only_outside_the_chain_is_refused_not_guessed"]),
 
     ("T120 Env stops being clearable (the stale pin nobody can remove)",
-     'CLEARABLE = frozenset(("Risk", "Deferred", "Env"))',
-     'CLEARABLE = frozenset(("Risk", "Deferred"))',
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env", "Blocked-by"))',
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Blocked-by"))',
      ["TestEnvField.test_the_reserved_word_clears_the_field_and_leaves_the_file_intact",
       "TestEnvField.test_clearing_needs_no_site_file_at_all"]),
 
@@ -1441,10 +1497,12 @@ MUTATIONS = [
      '        return "?"',
      ["TestPack.test_an_unreadable_Effort_does_not_cost_the_item_its_place"]),
 
-    ("T126 pack stops being a reader, so it takes the lock and names the queue",
+    # the observable moved with T215: naming the queue no longer tells a reader
+    # from a writer, since every command but `report` names it — the LOCK does
+    ("T126 pack stops being a reader, so it queues behind a writer",
      "READERS = frozenset((\"list\", \"report\", \"pack\"))",
      "READERS = frozenset((\"list\", \"report\"))",
-     ["TestTargetQueueAnnounced.test_readers_stay_silent"]),
+     ["TestConcurrency.test_pack_reads_straight_through_a_held_lock"]),
 
     # --- T122 handoff: the briefing that lives and dies with the item --------
     ("T122 the write gate asks a PROXY instead of the composed briefing",
@@ -2281,6 +2339,36 @@ MUTATIONS = [
      ["TestProvenanceFields.test_an_add_without_the_flags_writes_the_item_of_today",
       "TestProvenanceFields.test_the_flags_are_independent"]),
 
+    # --- T300: the lane address is the one field of the group an edit rewrites ---
+    ("T300 the spec flag leaves the edit loop, so it writes nothing",
+     '             (args.project, "Project"), (deferred_flag, "Deferred"),',
+     '             (args.project, "Project"), (deferred_flag, "Deferred"))\n    _ = (',
+     ["TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_field_is_written_on_an_item_that_carried_none",
+      "TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_field_is_REWRITTEN_and_the_old_value_is_gone",
+      "TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_value_is_stored_in_the_one_spelling"]),
+
+    ("T300 the edit door stores the caller's own spelling, ungated",
+     '    args.spec = validate_ref("spec", args.spec)\n'
+     "    new = block",
+     "    new = block",
+     ["TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_a_value_outside_the_ref_shape_is_refused_and_writes_nothing",
+      "TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_value_is_stored_in_the_one_spelling"]),
+
+    # over-trigger direction: the relaxation spreads to the fields it was
+    # deliberately NOT granted to, and a ticket re-pointed at another issue is
+    # the work of another issue
+    ("T300 the relaxation spreads to Ticket, which is provenance and add-only",
+     '    e.add_argument("--project", help="assign/change the project tag")\n',
+     '    e.add_argument("--project", help="assign/change the project tag")\n'
+     '    e.add_argument("--ticket")\n',
+     ["TestTheSpecIsTheOneEditableFieldOfItsGroup."
+      "test_the_other_two_fields_of_the_group_still_have_no_flag"]),
+
     ("T172 the lane column leaves the package listing",
      '            eligible.append(f"{label}  {pack_effort(text):<12}  "\n'
      '                            f"{lanes[n]:<20}  {item_title(text)}"',
@@ -2290,14 +2378,14 @@ MUTATIONS = [
       "TestPack.test_an_eligible_item_carries_its_id_effort_and_text",
       "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
-    ("T172 the lane's spec is the LAST ticket's instead of the first's",
-     "    taken = next((ref for _, ref in specs\n"
-     "                  if ref is not None and ref not in under_way\n"
-     "                  and tickets[ref] >= SPEC_LANE_FLOOR), None)",
-     "    taken = next((ref for _, ref in reversed(specs)\n"
-     "                  if ref is not None and ref not in under_way\n"
-     "                  and tickets[ref] >= SPEC_LANE_FLOOR), None)",
-     ["TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order"]),
+    # RE-ANCHORED by T271, which moved this rule: `next()` over the queue's
+    # order became `max()` over the ticket count, so the direction this entry
+    # switches is no longer "the first ticket" but the TIE-BREAK — the half of
+    # the old rule that survived the rewrite
+    ("T271 a tie goes to the LAST spec in queue order instead of the first",
+     "    taken = max(contenders, key=lambda ref: tickets[ref], default=None)",
+     "    taken = max(reversed(contenders), key=lambda ref: tickets[ref], default=None)",
+     ["TestPackLane.test_a_TIE_on_ticket_count_is_broken_by_QUEUE_ORDER"]),
 
     ("T172 the floor goes, so a lone spec becomes a SECOND lane and is excluded",
      "        elif ref is not None and tickets[ref] >= SPEC_LANE_FLOOR:",
@@ -2319,16 +2407,22 @@ MUTATIONS = [
      "            pushed[n] = LANE_TAKEN % (taken, ref)",
      "            lanes[n] = LANE_SPEC % ref",
      ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason",
-      "TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order",
+      "TestPackLane.test_a_TIE_on_ticket_count_is_broken_by_QUEUE_ORDER",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
 
-    ("T172 the lane goes to the first spec seen, floor or no floor",
-     '    taken = next((ref for _, ref in specs\n'
-     '                  if ref is not None and ref not in under_way\n'
-     '                  and tickets[ref] >= SPEC_LANE_FLOOR), None)',
-     "    taken = next((ref for _, ref in specs\n"
-     "                  if ref is not None and ref not in under_way), None)",
-     ["TestPackLane.test_a_spec_under_the_floor_does_not_take_the_lane_it_cannot_use"]),
+    # The test this named before T271 stopped falling for it, and the entry was
+    # VACUOUS for one run: with the lane going to the deepest spec, dropping the
+    # floor here still elects the two-ticket spec over the lone one, so the case
+    # that put a lone FIRST spec against a fuller second one no longer separates
+    # the two readings. The queue that does is the one where NO spec reaches the
+    # floor — there `max()` hands the lane to a spec that may not hold one.
+    ("T172 the lane goes to any spec that has a ticket, floor or no floor",
+     "    contenders = [ref for _, ref in specs\n"
+     "                  if ref is not None and ref not in under_way\n"
+     "                  and tickets[ref] >= SPEC_LANE_FLOOR]",
+     "    contenders = [ref for _, ref in specs\n"
+     "                  if ref is not None and ref not in under_way]",
+     ["TestPackLane.test_no_spec_reaching_the_floor_leaves_every_ticket_avulso"]),
 
     ("T172 the lane is decided over EVERY item, not the candidates only",
      "    lanes, pushed = pack_lanes(candidates, under_way)",
@@ -2341,12 +2435,12 @@ MUTATIONS = [
     # T172 wrote; what is new is the SOURCE of the fact — the caller's remote
     # check, which this command cannot make for itself.
     ("T249 the election ignores the specs the caller reported under way",
-     '    taken = next((ref for _, ref in specs\n'
-     '                  if ref is not None and ref not in under_way\n'
-     '                  and tickets[ref] >= SPEC_LANE_FLOOR), None)',
-     "    taken = next((ref for _, ref in specs\n"
+     "    contenders = [ref for _, ref in specs\n"
+     "                  if ref is not None and ref not in under_way\n"
+     "                  and tickets[ref] >= SPEC_LANE_FLOOR]",
+     "    contenders = [ref for _, ref in specs\n"
      "                  if ref is not None\n"
-     "                  and tickets[ref] >= SPEC_LANE_FLOOR), None)",
+     "                  and tickets[ref] >= SPEC_LANE_FLOOR]",
      ["TestPackLaneUnderWay.test_the_named_spec_loses_the_lane_and_the_next_one_takes_it"]),
 
     ("T249 a spec under way keeps its tickets in the package",
@@ -2391,6 +2485,75 @@ MUTATIONS = [
      '    under_way = frozenset(validate_ref("spec-under-way", v)\n'
      "                          for v in (args.spec_under_way or [])[-1:])",
      ["TestPackLaneUnderWay.test_every_spec_under_way_leaves_a_package_of_avulsos"]),
+
+
+    # --- T271: the deepest spec takes the lane, and the blocked ticket goes --
+    ("T271 the lane goes to the first spec in order again, however few tickets",
+     "    taken = max(contenders, key=lambda ref: tickets[ref], default=None)",
+     "    taken = contenders[0] if contenders else None",
+     ["TestPackLane.test_the_lane_goes_to_the_spec_with_the_MOST_tickets"]),
+
+    ("T271 the lane goes to the SHALLOWEST spec",
+     "    taken = max(contenders, key=lambda ref: tickets[ref], default=None)",
+     "    taken = min(contenders, key=lambda ref: tickets[ref], default=None)",
+     ["TestPackLane.test_the_lane_goes_to_the_spec_with_the_MOST_tickets"]),
+
+    ("T271 the ticket the caller reported blocked stays in the package",
+     '    ref = pack_ref(block, "Ticket") if blocked else None\n'
+     "    if ref is not None and ref in blocked:",
+     '    ref = pack_ref(block, "Ticket") if blocked else None\n'
+     "    if False:",
+     ["TestPackBlockedTicket.test_the_named_ticket_leaves_the_package_with_the_reason",
+      "TestPackBlockedTicket.test_the_blocked_ticket_leaves_its_specs_COUNT_too"]),
+
+    ("T271 the flag never reaches the ladder",
+     "        verdict = pack_exclusion(iid, text, identity, open_ids, blocked)",
+     "        verdict = pack_exclusion(iid, text, identity, open_ids)",
+     ["TestPackBlockedTicket.test_the_named_ticket_leaves_the_package_with_the_reason",
+      "TestPackBlockedTicket.test_the_blocked_ticket_leaves_its_specs_COUNT_too"]),
+
+    ("T271 the flag value is neither shape-checked nor canonicalised",
+     '    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))',
+     "    blocked = frozenset(v for v in (args.blocked or []))",
+     ["TestPackBlockedTicket.test_a_malformed_value_is_refused_the_way_spec_refuses_one",
+      "TestPackBlockedTicket.test_the_value_is_read_in_the_ONE_canonical_spelling"]),
+
+    ("T271 only the LAST --blocked counts, so the flag stops repeating",
+     '    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))',
+     '    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or [])[-1:])',
+     ["TestPackBlockedTicket.test_the_flag_repeats"]),
+
+    ("T271 the reason stops naming the source of the fact",
+     'TICKET_BLOCKED = "ticket %s is blocked on the forge; declared by --blocked"',
+     'TICKET_BLOCKED = "ticket %s is blocked"',
+     ["TestPackBlockedTicket.test_the_named_ticket_leaves_the_package_with_the_reason",
+      "TestPackBlockedTicket.test_the_blocked_ticket_leaves_its_specs_COUNT_too"]),
+
+    # the three over-trigger directions, each one a package emptied instead of
+    # a ticket taken out of it
+    ("T271 every item carrying a ticket leaves, named or not",
+     "    if ref is not None and ref in blocked:",
+     "    if ref is not None:",
+     ["TestPackBlockedTicket.test_the_named_ticket_leaves_the_package_with_the_reason"]),
+
+    ("T271 the rung reads the flag inverted, so every ticket NOT named leaves",
+     '    ref = pack_ref(block, "Ticket") if blocked else None\n'
+     "    if ref is not None and ref in blocked:",
+     '    ref = pack_ref(block, "Ticket")\n'
+     "    if ref is not None and ref not in blocked:",
+     ["TestPackBlockedTicket.test_the_run_with_no_flag_is_what_it_has_always_been"]),
+
+    ("T271 a **Ticket:** no reader may use costs the item its place",
+     "    if ref is not None and ref in blocked:",
+     "    if blocked and (ref in blocked or real_fields(block, \"Ticket\")):",
+     ["TestPackBlockedTicket."
+      "test_a_ticket_the_position_rule_cannot_read_is_not_excluded"]),
+
+    # the prose half: a skill's orchestrator reads the election rule from here
+    ("T271 the documented election goes back to queue order",
+     "goes to the spec with the MOST tickets among the candidates, ties broken by QUEUE",
+     "goes to the FIRST spec in QUEUE ORDER among the candidates, ties broken by QUEUE",
+     ["TestPackBlockedTicket.test_the_flag_is_documented_in_the_help_the_skill_reads"]),
 
     ("T172 a ticket the taken lane pushed out is listed as eligible TOO",
      "        if verdict is None and n not in pushed:",
@@ -2530,7 +2693,8 @@ MUTATIONS = [
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
     # --- T172, round 4: provenance is read at the writer's position ONLY -----
     ("T172 a provenance marker in prose excludes the item, demoting its spec's lane",
-     '    for name in ("Risk", "Env"):', '    for name in ("Risk", "Env", "Spec"):',
+     '    for name in ("Risk", "Env", "Blocked-by"):',
+     '    for name in ("Risk", "Env", "Blocked-by", "Spec"):',
      ["TestPackLane.test_one_siblings_PROSE_never_demotes_a_whole_specs_lane",
       "TestPackLane.test_a_spec_QUOTED_IN_PROSE_leaves_the_item_AVULSO"]),
 
@@ -2888,8 +3052,8 @@ MUTATIONS = [
      ["TestWipCap.test_force_does_not_reach_the_cap"]),
 
     ("T297 the cap refuses only PAST itself (off by one)",
-     "    if total < cap:\n        return",
-     "    if total <= cap:\n        return",
+     "    if cap is None or total < cap:\n        return",
+     "    if cap is None or total <= cap:\n        return",
      ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap"]),
 
     # the over-refusal direction, and the one that would brick every queue on a
@@ -2944,7 +3108,8 @@ MUTATIONS = [
     # the site file's own half: an unknown key is IGNORED by design, so dropping
     # the key from the tuple does not fail the file — it silently unsets the cap
     ("T297 site the cap's key leaves the tuple, so the value reads as an unknown key",
-     'CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items")',
+     'CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items",\n'
+     '            "max-open-items-per-queue")',
      'CEILINGS = ("max-local-subagents", "max-cloud-subagents")',
      ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap",
       "TestWipCap.test_a_cap_of_zero_is_refused_by_the_site_file"],
@@ -2989,8 +3154,6 @@ MUTATIONS = [
     # the leak: a project directory carries a client's or a company's name, and a
     # refusal travels into transcripts and pull request bodies
     ("T346 the refusal dumps every project on the machine again",
-     '    target = os.path.realpath(memdir)\n'
-     '    mine = sum(n for _, key, n in counts if key == target)\n'
      '    others = [(d, n) for d, key, n in counts if key != target and n]\n'
      '    where = f"\\n  {mine:>4}  {memdir}"\n'
      '    if others:\n'
@@ -3060,13 +3223,523 @@ MUTATIONS = [
      "THAT RACE IS THE ONLY WAY INTO THAT",
      "The other reachable way in is a first `add` into a brand-new queue. THAT IS NOT",
      ["TestWipCap.test_the_untested_branch_says_it_is_the_race_and_not_a_first_add"]),
+
+    # --- the CLI's own words: one entry per sentence a reader decides from ---
+    ("T274 the owner refusal drops the first-character rule again",
+     "name: it STARTS with a letter or a ", "name: letters, digits and a ",
+     ["TestTheCommandsSayWhatTheyDo.test_the_owner_grammar_names_the_first_character_rule"]),
+
+    ("T274 claim --help drops the first-character rule again",
+     "a session or host label STARTING with a ", "a session or host label with a ",
+     ["TestTheCommandsSayWhatTheyDo.test_the_owner_grammar_names_the_first_character_rule"]),
+
+    ("T335 edit --text goes back to having no description at all",
+     "REPLACES the item's text — everything between the ",
+     "the item's new text, replacing everything between the ",
+     ["TestTheCommandsSayWhatTheyDo.test_edit_help_says_that_text_replaces_and_what_it_replaces"]),
+
+    ("T340 cancel --help stops naming which command comes first",
+     "--text` on the survivor FIRST and `cancel` on the source only ",
+     "--text` on the survivor and `cancel` on the source only ",
+     ["TestTheCommandsSayWhatTheyDo.test_cancel_and_edit_both_name_the_order_a_fusion_runs_in"]),
+
+    ("T354 the ceiling refusal calls the block the item again",
+     "the item BLOCK has {len(item)} chars", "item has {len(item)} chars",
+     ["TestTheCommandsSayWhatTheyDo.test_the_ceiling_refusal_names_the_block_and_the_half_over_the_line"]),
+
+    ("T354 the refusal names one half whichever one overflowed",
+     "{'text' if text >= fields else 'fields'}. An item is a pending ",
+     "{'text'}. An item is a pending ",
+     ["TestTheCommandsSayWhatTheyDo.test_the_refusal_points_at_the_fields_when_they_are_the_larger_half"]),
+
+    ("kickoff-prune gaps: add --help stops declaring the canonical spelling",
+     "stored: repo lower-cased, number without leading ",
+     "stored: the repo and the number as given, with leading ",
+     ["TestTheCommandsSayWhatTheyDo.test_add_help_names_the_canonical_spelling_of_a_forge_reference"]),
+
+    ("kickoff-prune gaps: add --repo help goes back to the summary",
+     "of five shapes: https://<host>/<path>, ",
+     "of shapes, among them ",
+     ["TestTheCommandsSayWhatTheyDo.test_add_help_carries_the_whole_repo_whitelist"]),
+
+    ("kickoff-prune gaps: --force names one ceiling again",
+     "raise BOTH ceilings for this one call: the item BLOCK, from ",
+     "raise the field ceiling for this one call, and the item BLOCK from ",
+     ["TestTheCommandsSayWhatTheyDo.test_force_names_both_ceilings_it_raises_wherever_it_is_offered"]),
+
+    ("kickoff-prune gaps: the comment names a prose site the prune moved",
+     "docstring, and `tk/reference/queue.md` — the kickoff SKILL.md carried it until",
+     "docstring, and the kickoff SKILL.md) cannot read a constant. It carried it until",
+     ["TestTheCommandsSayWhatTheyDo.test_the_dry_run_comment_names_the_prose_site_that_exists"]),
+
+    # --- T152 the harness's own reader of an entry ------------------------
+    # These mutate THIS file. A short anchor would also match inside its own
+    # entry literal and be called UNRUNNABLE; an anchor spanning a line break
+    # escapes that, because a `\n` written in an entry is two characters here
+    # and never a newline.
+    ("T152 an entry naming a test that does not exist is scored as a kill again",
+     "    if gone:\n        return \"MISNAMED\", f\"names a test that does not exist:",
+     "    if False:\n        return \"MISNAMED\", f\"names a test that does not exist:",
+     ["TestMutationHarness.test_an_entry_naming_a_test_that_does_not_exist_is_refused"],
+     os.path.join("tests", "mutations.py")),
+
+    # the same defect one level up: `per_module` drops the names of a module
+    # nothing resolved, so an entry naming a typo'd MODULE would be scored on
+    # whatever names were left and never asked about its typo
+    ("T119 an entry naming a module this run never loaded is scored on the rest",
+     "    absent = modules_missing([entry], modules)\n    if absent:",
+     "    absent = modules_missing([entry], modules)\n    if False:",
+     ["TestMutationHarness."
+      "test_an_entry_naming_a_module_this_run_never_loaded_is_refused"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T119 the absorbed suite's debt is recorded as zero, so its ratchet cannot bite",
+     "\nKNOWN_UNPROVED_ROSTER = 4", "\nKNOWN_UNPROVED_ROSTER = 0",
+     ["TestMutationHarness."
+      "test_the_absorbed_roster_suite_keeps_its_own_unproved_ceiling"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T119 the module a name carries is ignored, so one list cannot hold two suites",
+     '    if module.startswith("test_") and rest:\n        return module, rest',
+     "    if False:\n        return module, rest",
+     ["TestMutationHarness.test_a_name_may_say_which_suite_it_lives_in"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T152 an entry naming a whole class is read as a typo",
+     "            cls = getattr(module_obj, cls_name, None)\n"
+     "            if cls is None or (attr and not hasattr(cls, attr)):",
+     "            cls = getattr(module_obj, cls_name, None)\n"
+     "            if cls is None or not hasattr(cls, attr):",
+     ["TestMutationHarness.test_an_entry_naming_a_whole_class_is_not_read_as_a_typo"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("T152 a mutation that changes nothing runs anyway",
+     "    if not pairs or any(o == n for o, n in pairs):\n"
+     '        return "UNRUNNABLE"',
+     "    if not pairs:\n"
+     '        return "UNRUNNABLE"',
+     ["TestMutationHarness.test_a_mutation_that_changes_nothing_is_refused"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T152 an anchor that matches twice is applied to the first match",
+     "    if any(c != 1 for c in counts):\n        # NOT a survivor",
+     "    if any(c < 1 for c in counts):\n        # NOT a survivor",
+     ["TestMutationHarness.test_an_anchor_that_does_not_match_exactly_once_is_refused"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T160 the baseline classes go back to a hand-kept list",
+     'have been told from one the mutant reddened."""\n'
+     "    return list(test_classes(module_obj))",
+     'have been told from one the mutant reddened."""\n'
+     '    return ["TestPrefixedId", "TestConcurrency"]',
+     ["TestMutationHarness.test_the_classes_the_baseline_runs_are_derived_not_listed"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T160 the recorded debt of tests no entry proves stops being read",
+     "\nKNOWN_UNPROVED = 61", "\nKNOWN_UNPROVED = 0",
+     ["TestMutationHarness."
+      "test_the_recorded_count_of_unproved_tests_is_not_below_the_real_one"],
+     os.path.join("tests", "mutations.py")),
+
+    ("T152 the recorded debt of misnamed entries stops being read",
+     "\nKNOWN_MISNAMED = 9", "\nKNOWN_MISNAMED = 0",
+     ["TestMutationHarness."
+      "test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one"],
+     os.path.join("tests", "mutations.py")),
+
+    # --- T360: the cap per QUEUE, and a total that scales with the roster ---
+    ("T360 the per-queue cap stops refusing anything",
+     "    if per_queue is not None and mine >= per_queue:", "    if False:",
+     ["TestWipCapPerQueue.test_a_full_queue_is_refused_while_the_others_are_empty",
+      "TestWipCapPerQueue.test_force_does_not_reach_the_per_queue_cap_either"]),
+
+    ("T360 the per-queue cap refuses only PAST itself (off by one)",
+     "mine >= per_queue:", "mine > per_queue:",
+     ["TestWipCapPerQueue.test_a_full_queue_is_refused_while_the_others_are_empty",
+      "TestWipCapPerQueue.test_force_does_not_reach_the_per_queue_cap_either"]),
+
+    # over-trigger direction: the brake asked of the MACHINE is the total again,
+    # and it closes every queue on it the moment one of them fills
+    ("T360 the per-queue cap is asked of the machine, not of the queue",
+     "    if per_queue is not None and mine >= per_queue:",
+     "    if per_queue is not None and total >= per_queue:",
+     ["TestWipCapPerQueue.test_a_sibling_queue_stays_open_while_one_is_full"]),
+
+    ("T360 auto derives the WORST case, per-queue x N",
+     "        cap = (per_queue - discount) * len(counts)",
+     "        cap = per_queue * len(counts)",
+     ["TestWipCapPerQueue.test_the_total_refuses_with_no_queue_at_its_own_cap"]),
+
+    ("T360 auto counts one queue instead of the roster's",
+     "        cap = (per_queue - discount) * len(counts)",
+     "        cap = (per_queue - discount)",
+     ["TestWipCapPerQueue.test_auto_counts_the_queues_the_roster_counts"]),
+
+    ("T360 the derived total stops saying where it came from",
+     '    how = (f"`{WIP_KEY} = {tk_site.WIP_AUTO}` in {site.path}, which is "\n'
+     '           f"({per_queue} - {site.ceilings.get(DISCOUNT_KEY, 0)}) x {len(counts)} "\n'
+     '           "queue(s)" if auto else f"`{WIP_KEY}` in {site.path}")',
+     '    how = f"`{WIP_KEY}` in {site.path}"',
+     ["TestWipCapPerQueue.test_the_total_refuses_with_no_queue_at_its_own_cap"]),
+
+    # the third option eats the second: a number the user pinned is overwritten
+    # by one derived from a key they wrote for the OTHER half of the gate
+    ("T360 a pinned total is overwritten by the derived one",
+     "    if auto:\n        discount = site.ceilings.get(DISCOUNT_KEY, 0)",
+     "    if per_queue is not None:\n        discount = site.ceilings.get(DISCOUNT_KEY, 0)",
+     ["TestWipCapPerQueue.test_an_explicit_number_still_pins_the_total"]),
+
+    ("T360 an unset total refuses instead of letting the add through",
+     "    if cap is None or total < cap:\n        return",
+     "    if cap is not None and total < cap:\n        return",
+     ["TestWipCapPerQueue.test_the_per_queue_cap_alone_leaves_the_total_uncapped"]),
+
+    ("T360 an absent per-queue key reads as a cap of three",
+     "    per_queue = site.ceilings.get(PER_QUEUE_KEY) if site else None",
+     "    per_queue = site.ceilings.get(PER_QUEUE_KEY, 3) if site else None",
+     ["TestWipCapPerQueue.test_without_the_per_queue_key_nothing_changes"]),
+
+    ("T360 the gating-key whitelist goes back to the total alone",
+     '    assignment = re.compile(r"\\s*(?:" + "|".join(\n'
+     "        re.escape(k) for k in (WIP_KEY, PER_QUEUE_KEY, DISCOUNT_KEY)) + r\")\\s*=\")",
+     '    assignment = re.compile(rf"\\s*{re.escape(WIP_KEY)}\\s*=")',
+     ["TestWipCapPerQueue.test_a_per_queue_cap_that_is_not_a_number_is_refused"]),
+
+    ("T360 site auto with no per-queue cap is read as no cap at all",
+     "    if open_items_auto:\n        del pairs[WIP_TOTAL]\n"
+     "        if WIP_PER_QUEUE not in pairs:",
+     "    if open_items_auto:\n        del pairs[WIP_TOTAL]\n        if False:",
+     ["TestWipCapPerQueue."
+      "test_auto_without_the_per_queue_key_is_refused_by_the_site_file"],
+     "bin/tk_site.py"),
+
+    ("T360 site a discount at or above the per-queue cap is accepted",
+     "    if per_queue is not None and discount is not None and discount >= per_queue:",
+     "    if False:",
+     ["TestWipCapPerQueue.test_a_discount_at_or_above_the_per_queue_cap_is_refused"],
+     "bin/tk_site.py"),
+
+    # --- T306: the dependency between two items of one queue ----------------
+    ("T306 the blocker is written outside the position every gate reads",
+     ['    if args.blocked_by and not clears_field(args.blocked_by):\n'
+      '        fields.append(f"**Blocked-by:** {args.blocked_by}.")\n'
+      '    fields.append(f"**Criterion:** {args.criterion}.")',
+      '    if args.project:\n        fields.append(f"**Project:** {args.project}.")'],
+     ['    fields.append(f"**Criterion:** {args.criterion}.")',
+      '    if args.project:\n        fields.append(f"**Project:** {args.project}.")\n'
+      '    if args.blocked_by and not clears_field(args.blocked_by):\n'
+      '        fields.append(f"**Blocked-by:** {args.blocked_by}.")'],
+     ["TestBlockedBy.test_the_line_is_written_where_the_gates_read_a_field"]),
+
+    ("T306 add stops validating the blocker",
+     '    args.blocked_by = validate_blocker(args.blocked_by)\n'
+     "    # returned UNCHANGED where the two above are canonicalised",
+     "    # returned UNCHANGED where the two above are canonicalised",
+     ["TestBlockedBy.test_a_value_that_is_no_item_id_is_refused_and_writes_nothing",
+      "TestBlockedBy.test_every_id_spelling_is_stored_as_the_one"]),
+
+    ("T306 the id is stored in whatever spelling the caller typed",
+     '    return f"T{int(m.group(1)):03d}"', "    return value",
+     ["TestBlockedBy.test_every_id_spelling_is_stored_as_the_one"]),
+
+    # over-trigger direction: a field written whether or not the caller asked
+    # for one gives every item a dependency nobody declared
+    ("T306 the line is written on an add that never named a blocker",
+     "    if args.blocked_by and not clears_field(args.blocked_by):",
+     "    if True:",
+     ["TestBlockedBy.test_an_add_without_the_flag_writes_the_item_of_today"]),
+
+    ("T306 an open blocker stops holding the item back",
+     "        if int(m.group(1)) in open_ids:", "        if False:",
+     ["TestBlockedBy.test_pack_leaves_the_item_out_while_the_blocker_is_open"]),
+
+    # the other direction: a blocker already closed goes on holding the item,
+    # which is a package that shrinks by itself and never grows back
+    ("T306 every blocker holds the item back, the closed ones included",
+     "        if int(m.group(1)) in open_ids:", "        if True:",
+     ["TestBlockedBy.test_closing_the_blocker_lets_it_back_in_with_no_re_edit",
+      "TestBlockedBy.test_a_blocker_this_queue_never_held_does_not_hold_the_item"]),
+
+    ("T306 the exclusion reason drops the value it read",
+     '            return f"blocked by {value}, still open", None',
+     '            return "blocked, still open", None',
+     ["TestBlockedBy.test_pack_leaves_the_item_out_while_the_blocker_is_open"]),
+
+    ("T306 a blocker no reader can parse is dispatched anyway",
+     '            return (f"Blocked-by is {value!r}, which is not an item id, so whether the "\n'
+     '                    "dependency is met cannot be told", REPAIR_CANCEL)',
+     "            return None",
+     ["TestBlockedBy.test_an_unreadable_value_excludes_the_item"]),
+
+    ("T306 a Blocked-by marker where no gate reads it stops excluding",
+     "        if markers > len(segs):\n"
+     '            return (f"a **{name}:** marker sits where no gate reads it',
+     '        if markers > len(segs) and name != "Blocked-by":\n'
+     '            return (f"a **{name}:** marker sits where no gate reads it',
+     ["TestBlockedBy.test_a_marker_where_no_gate_reads_it_excludes_the_item"]),
+
+    ("T306 the blocker stops being clearable (the stale pin nobody can remove)",
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env", "Blocked-by"))',
+     'CLEARABLE = frozenset(("Risk", "Deferred", "Env"))',
+     ["TestBlockedBy.test_edit_writes_rewrites_and_clears_the_field"]),
+
+    ("T306 edit stops writing the blocker at all",
+     '             (args.blocked_by, "Blocked-by"),', "",
+     ["TestBlockedBy.test_edit_writes_rewrites_and_clears_the_field"]),
+
+    ("T306 list stops showing which item is held back",
+     '    return f"blocked by {field_value(segs[0])}"', '    return ""',
+     ["TestBlockedBy.test_list_shows_the_blocker_beside_the_item"]),
+
+    ("T306 list goes back to showing an ambiguous blocker as FREE",
+     '        return "blocked ambiguously — `tk-queue pack` says why"',
+     '        return ""',
+     ["TestBlockedBy.test_list_marks_the_item_pack_drops_for_an_ambiguous_blocker"]),
+
+    ("T306 list goes back to showing an unreadable marker as FREE",
+     '        return "a **Blocked-by:** marker no gate reads" if markers else ""',
+     '        return ""',
+     ["TestBlockedBy.test_list_marks_the_item_pack_drops_for_a_marker_no_gate_reads"]),
+
+    # --- absorbed from mutations_roster.py (T119) --------------------------
+    # The roster suite's own harness was a second file because THIS one ran
+    # every named test as `test_tk_queue.<name>`, hardcoded, so a roster entry
+    # could not be expressed here at all. It can now: a name may carry the
+    # module it lives in, and these twenty do. Their anchors live in two other
+    # sources, which the 5th element has always been able to say.
+    ("T128 roster any project directory counts, queue file or not",
+     "if os.path.isfile(os.path.join(root, name, MEMORY_DIR, QUEUE_FILE))]", "if True]",
+     ["test_tk_roster."
+       "TestSweep.test_a_directory_without_the_queue_file_is_not_a_project"], ROSTER),
+
+    ("T128 roster the queue is the done log, so a finished project is swept",
+     'QUEUE_FILE = "next-steps.md"', 'QUEUE_FILE = "done-log.md"',
+     ["test_tk_roster."
+       "TestSweep.test_a_directory_without_the_queue_file_is_not_a_project"], ROSTER),
+
+    ("T128 site the encoding alphabet keeps a character tk-queue replaces",
+     'PROJECT_ALPHABET = "A-Za-z0-9-"', 'PROJECT_ALPHABET = "A-Za-z0-9_-"',
+     ["test_tk_roster."
+       "TestProjectPath.test_the_path_is_the_directory_that_encodes_to_the_name"], SITE),
+
+    ("T128 roster a projects root that does not exist is a failure to report",
+     "    except FileNotFoundError:\n"
+     "        # not a failure of this machine's setup: a machine where no session ever\n"
+     "        # ran has no such directory, and an empty roster is the true answer\n"
+     "        return []",
+     "    except FileNotFoundError:\n        fail(\"no projects root\")",
+     ["test_tk_roster."
+       "TestSweep.test_an_absent_projects_root_is_an_empty_roster_not_a_failure"], ROSTER),
+
+    ("T128 roster a name no POSIX path encodes to is resolved anyway",
+     '    return name.startswith("-")', "    return True",
+     ["test_tk_roster."
+       "TestProjectPath.test_a_name_another_machine_wrote_is_not_resolved_as_a_shorter_path"],
+     ROSTER),
+
+    ("T128 roster a queue another machine wrote is reported as a gone directory",
+     "    if not encodes_a_posix_path(name):\n        return \"the name encodes no POSIX "
+     "absolute path, so another machine wrote it\"\n",
+     "",
+     ["test_tk_roster."
+       "TestProjectPath.test_a_name_another_machine_wrote_is_not_resolved_as_a_shorter_path"],
+     ROSTER),
+
+    ("T128 roster the report names the wrong list as the keeper",
+     '        return "fleet-allow"', '        return "fleet-deny"',
+     ["test_tk_roster."
+       "TestAllowDeny.test_fleet_allow_admits_only_what_it_lists"], ROSTER),
+
+    ("T128 roster an ambiguous name is dispatched to the first match",
+     "        if len(paths) == 1:", "        if paths:",
+     ["test_tk_roster."
+       "TestProjectPath.test_two_directories_encoding_to_one_name_are_not_dispatchable"], ROSTER),
+
+    ("T128 roster a symlinked directory counts as a candidate",
+     "if not entry.is_dir(follow_symlinks=False):", "if not entry.is_dir(follow_symlinks=True):",
+     ["test_tk_roster."
+       "TestProjectPath.test_a_symlink_does_not_make_a_project_ambiguous"], ROSTER),
+
+    ("T128 roster deny is consulted only when there is no allowlist",
+     "    if any(list_key(e) == name for e in deny):",
+     "    if not allow and any(list_key(e) == name for e in deny):",
+     ["test_tk_roster.TestAllowDeny.test_a_name_in_both_lists_is_denied"], ROSTER),
+
+    ("T128 roster an absent allowlist excludes everything",
+     "    if allow and not any(list_key(e) == name for e in allow):",
+     "    if not any(list_key(e) == name for e in allow):",
+     ["test_tk_roster.TestAllowDeny.test_without_lists_every_queue_enters"], ROSTER),
+
+    ("T128 roster the allowlist admits what it does NOT list",
+     "    if allow and not any(list_key(e) == name for e in allow):",
+     "    if allow and any(list_key(e) == name for e in allow):",
+     ["test_tk_roster."
+       "TestAllowDeny.test_fleet_allow_admits_only_what_it_lists"], ROSTER),
+
+    ("T128 roster a list entry that is a path is matched verbatim, never encoded",
+     '    return project_slug(entry) if entry.startswith("/") else entry',
+     "    return entry",
+     ["test_tk_roster."
+       "TestAllowDeny.test_an_entry_written_as_a_path_names_the_same_project"], ROSTER),
+
+    ("T128 roster an entry that matched nothing is passed over in silence",
+     "        unmatched = [e for e in entries if list_key(e) not in listed]",
+     "        unmatched = []",
+     ["test_tk_roster."
+       "TestAllowDeny.test_an_entry_matching_no_queue_is_reported"], ROSTER),
+
+    ("T128 roster every entry is reported as unmatched, matched ones included",
+     "        unmatched = [e for e in entries if list_key(e) not in listed]",
+     "        unmatched = list(entries)",
+     ["test_tk_roster."
+       "TestAllowDeny.test_a_matching_entry_is_not_reported_as_unmatched"], ROSTER),
+
+    ("T128 roster a rotten site file is read as an absent one",
+     "    except tk_site.SiteError as e:\n        fail(str(e))",
+     "    except tk_site.SiteError as e:\n        site = None",
+     ["test_tk_roster."
+       "TestSiteFile.test_a_rotten_site_file_stops_the_sweep_instead_of_ignoring_the_lists"],
+     ROSTER),
+
+    ("T128 roster an absent site file is swept without a word",
+     "    if site is None:\n        print(", "    if False:\n        print(",
+     ["test_tk_roster."
+       "TestSiteFile.test_no_site_file_sweeps_everything_and_says_the_file_is_absent"], ROSTER),
+
+    ("T128 site an empty fleet list reads as an absent one",
+     "        if not entries:", "        if False:",
+     ["test_tk_roster."
+       "TestListValidation.test_an_empty_list_is_refused_not_read_as_an_absent_one"], SITE),
+
+    ("T128 site a project name outside the encoding alphabet is accepted",
+     "            if not PROJECT_NAME_RE.match(entry):", "            if False:",
+     ["test_tk_roster.TestListValidation.test_a_relative_path_names_no_project",
+      "test_tk_roster."
+       "TestListValidation.test_a_name_outside_the_encoding_alphabet_is_refused"], SITE),
+
+    ("T128 site an unknown key is refused instead of ignored",
+     "        pairs[key] = value.strip()",
+     "        pairs[key] = value.strip()\n"
+     "        if key not in REQUIRED + CEILINGS + FLEET_LISTS:\n"
+     '            raise SiteError(f"{path}:{n}: unknown key {key!r}.")',
+     ["test_tk_roster.TestSiteFile.test_an_unknown_key_is_still_ignored"], SITE),
 ]
+
+
+def qualify(name):
+    """(module, `Class.method`) for one entry's test name.
+
+    An entry writes `Class.method` and means this harness's own suite, or
+    `module.Class.method` and says which suite it means. The FIRST component
+    decides: a test module is `test_<something>` and a TestCase class is
+    `Test<Something>`, so a leading lowercase `test_` is a module and nothing
+    else is. Counting dots was the first rule here and it was wrong for the one
+    caller that hands over a whole class — the baseline runs `module.Class`, two
+    components naming a module, and every one of them was read as a class of
+    this harness's own suite (58 load errors, measured).
+
+    This one line is what a second harness file used to be. `mutations_roster.py`
+    existed because the module was hardcoded HERE — its own docstring said so and
+    said the merge was this — while its twenty entries already carried the 5th
+    element naming their source. Two runners, two baselines and two reports for
+    one missing prefix."""
+    module, _, rest = name.partition(".")
+    if module.startswith("test_") and rest:
+        return module, rest
+    return TEST_MODULE, name
 
 
 def run_suite(tk_dir, names):
     tests = os.path.join(tk_dir, "tests")
-    argv = [sys.executable, "-m", "unittest", "-v"] + [f"test_tk_queue.{n}" for n in names]
+    argv = [sys.executable, "-m", "unittest", "-v"]
+    argv += [f"{module}.{rest}" for module, rest in map(qualify, names)]
     return subprocess.run(argv, cwd=tests, capture_output=True, text=True)
+
+
+def names_by_module(names):
+    """{module: [`Class.method`, …]} — the entry's names, sorted by the suite each
+    one lives in, so a check that needs a module object asks the right one."""
+    out = {}
+    for module, rest in map(qualify, names):
+        out.setdefault(module, []).append(rest)
+    return out
+
+
+def baseline_classes(module_obj):
+    """The classes the baseline runs — DERIVED from the module, never listed.
+
+    A hand-kept list is a list someone forgets, and a class left out of it drops
+    out of the baseline AND out of the orphan check at the same time: both
+    watchers go blind at once, in silence. The list this replaced had forgotten
+    TestPackLaneUnderWay and TestEverySpawnCarriesTheRedirectedHome, so neither
+    ran before a mutation was applied and a suite already red there could not
+    have been told from one the mutant reddened."""
+    return list(test_classes(module_obj))
+
+
+def pairs_of(entry):
+    """An entry's (old, new) pairs — one, or a list applied in order."""
+    old, new = entry[1], entry[2]
+    if isinstance(old, (list, tuple)):
+        return list(zip(old, new))
+    return [(old, new)]
+
+
+def per_module(mutations, module):
+    """`mutations` carrying only the names that belong to `module`, entries with
+    none of them dropped.
+
+    It is what lets a check written for ONE suite be asked of a list that now
+    carries two: `misnamed` and `unproved` both resolve a name against a module
+    object, and neither needs to learn that a name may say which module."""
+    out = []
+    for entry in mutations:
+        names = names_by_module(entry[3]).get(module)
+        if names:
+            out.append((entry[0], entry[1], entry[2], names) + tuple(entry[4:]))
+    return out
+
+
+def modules_missing(mutations, modules):
+    """Entries naming a MODULE this run did not load — the misnamed check one
+    level up. A name whose module nothing resolves would otherwise be dropped by
+    `per_module` and never asked about by anybody."""
+    return sorted(f"{entry[0]} -> {name}" for entry in mutations for name in entry[3]
+                  if qualify(name)[0] not in modules)
+
+
+def entry_problem(entry, modules, source):
+    """Why this entry cannot be replayed, as (kind, why) — or None when it can.
+
+    Every reason here means the entry proves NOTHING, and one of them used to be
+    invisible: the runner reads a non-zero exit as "the named test fell", so an
+    entry naming a test that does not exist reported itself as a mutant killed.
+
+    `modules` is {module name: module object} rather than one module, because an
+    entry may name tests in either suite this list now carries, and the question
+    "does this test exist" is only answerable against the module it lives in.
+
+    The checks are per PAIR, and one bad pair disqualifies the entry: a paired
+    mutation whose second edit did not land is a DIFFERENT mutation from the one
+    the label names, and it would be scored under that name."""
+    absent = modules_missing([entry], modules)
+    if absent:
+        return "MISNAMED", f"names a module that is not loaded: {', '.join(absent)}"
+    gone = [name for name in entry[3]
+            if misnamed([(entry[0], "a", "b", [qualify(name)[1]])],
+                        modules[qualify(name)[0]])]
+    if gone:
+        return "MISNAMED", f"names a test that does not exist: {', '.join(gone)}"
+    pairs = pairs_of(entry)
+    if not pairs or any(o == n for o, n in pairs):
+        return "UNRUNNABLE", "the mutation is a no-op: old == new"
+    counts = [source.count(o) for o, _ in pairs]
+    if any(c != 1 for c in counts):
+        # NOT a survivor: the mutation never ran, so it says nothing about the
+        # suite. It is still a failure — a stale anchor silently stops proving
+        # whatever it used to prove — but calling it "survived" would be a lie
+        return "UNRUNNABLE", f"anchor matched {', '.join(str(c) for c in counts)}x, not once"
+    return None
 
 
 def load_check(tk_dir, rel):
@@ -3099,39 +3772,26 @@ def load_check(tk_dir, rel):
 
 
 def main():
-    baseline = run_suite(TK_DIR, ["TestPrefixedId", "TestConcurrency", "TestMissingItemMessage",
-                                  "TestDirResolution", "TestProjectTagInDoneLog",
-                                  "TestEmbeddedMarker", "TestAtomicWrite",
-                                  "TestRiskDeletion", "TestCeilingScope",
-                                  "TestTargetQueueAnnounced", "TestFieldChain",
-                                  "TestCloseFieldCeilings", "TestIdAllocationScope",
-                                  "TestDoneLogLineGrammar", "TestCanonicalHead",
-                                  "TestDecisionDeferralGate", "TestBump",
-                                  "TestBlockAddressing", "TestClearingKeepsTheFileIntact",
-                                  "TestEnvField", "TestClaim",
-                                  "TestPack", "TestProvenanceFields", "TestPackLane",
-                                  "TestRepoField", "TestPackRepo",
-                                  "PackOutput",
-                                  "TestHandoffCreation",
-                                  "TestHandoffLifecycle", "TestByteOrderMark",
-                                  "TestIdSpelling", "TestAmbiguousId",
-                                  "TestMigrateFold", "TestMigrateDryRun",
-                                  "TestProseWearingAFieldName",
-                                  "TestListReadsTheClassFromTheChain",
-                                  "TestResolvedItemKeepsItsOwnSpelling",
-                                  "TestFoldKeepsTheItemsMarkdown",
-                                  "TestAClassLessChainIsNotAField",
-                                  "TestTheZeroIdIsStillAnId",
-                                  "TestFoldFailsSafeOnShapesNobodyEnumerated",
-                                  "TestAFieldAppendedBeforeTheAnchorIsRefused",
-                                  "TestTheClassLandsAheadOfTheChain",
-                                  "TestASetextTitleIsKeptWithItsUnderline",
-                                  "TestClearingOnAClassLessItemIsRefused",
-                                  "TestBirthDate", "TestMigrateBackdates",
-                                  "TestListShowsTheAge", "TestWipCap"])
+    # BOTH suites, because the list names tests in both: a baseline over one of
+    # them would leave the other's red — from a defect that was already there —
+    # indistinguishable from a mutant this run reddened
+    modules = {name: load_module(name, TK_DIR) for name in TEST_MODULES}
+    baseline_names = [f"{name}.{cls}" for name, obj in modules.items()
+                      for cls in baseline_classes(obj)]
+    baseline = run_suite(TK_DIR, baseline_names)
     if baseline.returncode != 0:
         print("BASELINE IS RED — fix the suite before mutating\n", baseline.stderr[-3000:])
         return 1
+
+    # per suite, and reported per suite, because the DEBT is per suite: the
+    # ceilings below are two numbers and each one only ever goes down
+    orphans = {name: unproved(per_module(MUTATIONS, name), obj)
+               for name, obj in modules.items()}
+    for module, names in orphans.items():
+        for name in names:
+            print(f"UNPROVED   {module}.{name} — no mutation entry names this test")
+    if any(orphans.values()):
+        print()
 
     sources = {}
     for entry in MUTATIONS:
@@ -3139,31 +3799,19 @@ def main():
         if rel not in sources:
             with open(os.path.join(TK_DIR, rel), encoding="utf-8") as f:
                 sources[rel] = f.read()
-    survived, unrunnable = [], []
+    survived, unrunnable, fictitious = [], [], []
     for entry in MUTATIONS:
         label, old, new, names = entry[:4]
         rel = entry[4] if len(entry) > 4 else DEFAULT_SRC
         src = sources[rel]
-        pairs = (list(zip(old, new)) if isinstance(old, (list, tuple))
-                 else [(old, new)])
-        # every check below is per PAIR, and one bad pair disqualifies the entry:
-        # a paired mutation whose second edit did not land is a DIFFERENT mutation
-        # from the one the label names, and it would be scored under that name
-        if not pairs or any(o == n for o, n in pairs):
-            unrunnable.append(f"{label} (the mutation is a no-op: old == new)")
-            print(f"UNRUNNABLE {label}\n           the mutation is a no-op: old == new")
-            continue
-        counts = [src.count(o) for o, _ in pairs]
-        if any(c != 1 for c in counts):
-            # NOT a survivor: the mutation never ran, so it says nothing about the
-            # suite. It is still a failure — a stale anchor silently stops proving
-            # whatever it used to prove — but calling it "survived" would be a lie
-            shown = ", ".join(str(c) for c in counts)
-            unrunnable.append(f"{label} (anchor matched {shown}x, not once)")
-            print(f"UNRUNNABLE {label}\n           anchor matched {shown}x, not once")
+        problem = entry_problem(entry, modules, src)
+        if problem is not None:
+            kind, why = problem
+            (fictitious if kind == "MISNAMED" else unrunnable).append(f"{label} ({why})")
+            print(f"{kind:10} {label}\n           {why}")
             continue
         mutated = src
-        for o, n in pairs:
+        for o, n in pairs_of(entry):
             mutated = mutated.replace(o, n, 1)
         tmp = tempfile.mkdtemp(prefix="tk-mutation.")
         try:
@@ -3202,16 +3850,36 @@ def main():
         else:
             print(f"caught     {label}\n           → all {len(names)} named test(s) fell")
 
-    ran = len(MUTATIONS) - len(unrunnable)
+    ran = len(MUTATIONS) - len(unrunnable) - len(fictitious)
     print(f"\n{ran - len(survived)}/{ran} mutations caught"
-          + (f" ({len(unrunnable)} could not run)" if unrunnable else ""))
+          + (f" ({len(unrunnable)} could not run)" if unrunnable else "")
+          + (f" ({len(fictitious)} name no such test)" if fictitious else "")
+          + ", " + " + ".join(f"{len(names)} in {module}"
+                              for module, names in orphans.items())
+          + " test(s) no entry proves")
     for title, items in (("SURVIVORS (the suite does not actually protect these)", survived),
-                         ("UNRUNNABLE (stale anchor — proves nothing until fixed)", unrunnable)):
+                         ("UNRUNNABLE (stale anchor — proves nothing until fixed)", unrunnable),
+                         ("MISNAMED (names no such test — scored as nothing, never as a kill)",
+                          fictitious)):
         if items:
             print(f"{title}:")
             for i in items:
                 print("  -", i)
-    return 1 if survived or unrunnable else 0
+    grown = []
+    for name, ceiling, count, what in (
+            ("KNOWN_MISNAMED", KNOWN_MISNAMED, len(fictitious), "misnamed entries"),
+            ("KNOWN_UNPROVED", KNOWN_UNPROVED, len(orphans[TEST_MODULE]),
+             "tests no entry proves"),
+            ("KNOWN_UNPROVED_ROSTER", KNOWN_UNPROVED_ROSTER,
+             len(orphans[ROSTER_TEST_MODULE]), "roster tests no entry proves")):
+        if count > ceiling:
+            grown.append(f"{name} records {ceiling} {what} and this run found {count}")
+        elif count < ceiling:
+            print(f"\n{name} says {ceiling} and this run found only {count} {what} — "
+                  "lower the constant, or the ratchet stops biting")
+    for line in grown:
+        print(f"\n{line}: the debt grew")
+    return 1 if survived or unrunnable or grown else 0
 
 
 if __name__ == "__main__":
