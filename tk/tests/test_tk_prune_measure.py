@@ -821,10 +821,16 @@ class TestTheEnvironmentBoundary(MeasureTest):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertNotIn("Traceback", r.stderr)
 
-    def test_a_subcommand_the_usage_never_named_is_not_run(self):
+    def test_only_a_subcommand_the_usage_names_reaches_the_subprocess(self):
         """The allowlist of `kit_tools` covers the EXECUTABLE. The prefetch sent
-        `argv[1]` straight from the markdown, so a file writing `tk-probe
-        rmdash` ran the tool with an argument no author of this kit wrote."""
+        `argv[1]` straight from the markdown, so a file writing a tool name
+        followed by `rmdash` ran that tool with an argument no author of this
+        kit ever wrote.
+
+        Both directions in ONE assertion: `done` is in the tool's own braced
+        usage and its help is read, `rmdash` is not and never runs. A test that
+        only forbade would pass on a bin that stopped passing arguments at all.
+        """
         log = os.path.join(self.tmp, "argv.log")
         self.tool("tk-probe",
                   "#!/usr/bin/env python3\n"
@@ -833,23 +839,9 @@ class TestTheEnvironmentBoundary(MeasureTest):
                   "sys.stdout.write('usage: tk-probe [-h] {done,list} ...\\n')\n"
                   % log)
         self.run_on(self.write(QUIET + "\n- run `tk-probe rmdash` and it "
-                                       "refuses an empty mandatory field.\n"))
-        with open(log, encoding="utf-8") as f:
-            ran = [line.split() for line in f.read().splitlines()]
-        self.assertEqual(ran, [["--help"]])
-
-    def test_a_subcommand_the_usage_does_name_is_still_run(self):
-        """The check is the tool's own braced list, not a refusal to pass any
-        argument at all: `done` is in the usage, so its help is read."""
-        log = os.path.join(self.tmp, "argv.log")
-        self.tool("tk-probe",
-                  "#!/usr/bin/env python3\n"
-                  "import sys\n"
-                  "open(%r, 'a').write(' '.join(sys.argv[1:]) + chr(10))\n"
-                  "sys.stdout.write('usage: tk-probe [-h] {done,list} ...\\n')\n"
-                  % log)
-        self.run_on(self.write(QUIET + "\n- run `tk-probe done` and it "
-                                       "refuses an empty mandatory field.\n"))
+                                       "refuses an empty mandatory field.\n"
+                                       "- run `tk-probe done` and it refuses "
+                                       "an empty mandatory field.\n"))
         with open(log, encoding="utf-8") as f:
             ran = sorted(line.split() for line in f.read().splitlines())
         self.assertEqual(ran, [["--help"], ["done", "--help"]])
@@ -1043,22 +1035,29 @@ class TestEnvironmentCopies(MeasureTest):
     def test_a_sentence_that_only_names_the_tool_is_not_a_copy(self):
         self.assertEqual(self.copies(self.RELEASE), [])
 
-    # the same sentence as STEP_ONE's description, with the invocation moved
-    # into its middle: the span now opens on the sentence's SECOND line
-    WRAPPED_MID = ("- The orchestrator writes the briefing with\n"
-                   "  `tk-queue handoff <id>`, which refuses a briefing whose\n"
-                   "  mandatory fields are empty and is what makes it deleted\n"
-                   "  when the item closes.\n")
+    # ONE SENTENCE OF WRAPPED PROSE, written twice. A list item ends a sentence
+    # at the end of its own line, so this case only exists in a paragraph: here
+    # the span opens on the sentence's SECOND line, and in `SPAN_FIRST` on its
+    # first. Nothing else about the two differs.
+    SPAN_LATER = ("The orchestrator writes the briefing with\n"
+                  "`tk-queue handoff <id>`, which refuses a briefing whose\n"
+                  "mandatory fields are empty and is what makes it deleted\n"
+                  "when the item closes.\n")
+    SPAN_FIRST = ("`tk-queue handoff <id>` is how the orchestrator writes the\n"
+                  "briefing, which refuses a briefing whose mandatory fields are\n"
+                  "empty and is what makes it deleted when the item closes.\n")
 
     def test_a_sentence_is_attributed_by_a_span_of_its_own_after_its_first_line(self):
         """The brief attributes a sentence to the tool named IN THE SENTENCE or
-        earlier in the same block. The line map answered only the second half,
-        so the same sentence marked with its invocation first and not with the
-        invocation wrapped onto the line below — a difference the author's line
-        breaks make and the sentence's meaning does not."""
-        found = self.copies(self.WRAPPED_MID)
-        self.assertEqual(len(found), 1, found)
-        self.assertEqual(found[0]["tool"].split()[-1], "handoff")
+        earlier in the same block. The line map answered only the second half —
+        it is keyed by line, and a sentence is filed under the line it OPENS on
+        — so one sentence marked with its invocation first and did not with the
+        same invocation wrapped onto the line below. That is a difference the
+        author's line breaks make and the sentence's meaning does not."""
+        later = self.copies(self.SPAN_LATER)
+        self.assertEqual([e["tool"].split()[-1] for e in later], ["handoff"])
+        self.assertEqual([e["tool"] for e in self.copies(self.SPAN_FIRST)],
+                         [e["tool"] for e in later])
 
     def test_a_later_block_does_not_inherit_the_tool_of_an_earlier_one(self):
         """Two steps of one list, no blank line between them, and the second

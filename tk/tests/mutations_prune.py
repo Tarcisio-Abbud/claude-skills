@@ -608,13 +608,8 @@ MUTATIONS = [
      '        if m and sub in m.group(1).split(","):\n'
      "            subs.add((path, (sub,)))",
      "        if True:\n            subs.add((path, (sub,)))",
-     ["TestTheEnvironmentBoundary.test_a_subcommand_the_usage_never_named_is_not_run"]),
-
-    ("T293 the prefetch never reads a subcommand help, so the wave is one deep",
-     '        if m and sub in m.group(1).split(","):\n'
-     "            subs.add((path, (sub,)))",
-     "        if False:\n            subs.add((path, (sub,)))",
-     ["TestTheEnvironmentBoundary.test_a_subcommand_the_usage_does_name_is_still_run"]),
+     ["TestTheEnvironmentBoundary."
+      "test_only_a_subcommand_the_usage_names_reaches_the_subprocess"]),
 
     ("T282 a sibling is named once per definition, not once per file",
      "    return {term: list(dict.fromkeys(names)) for term, names in out.items()}",
