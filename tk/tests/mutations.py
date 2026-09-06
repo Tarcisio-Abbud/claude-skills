@@ -3710,6 +3710,14 @@ MUTATIONS = [
      ["TestTheDoorNormalisesWhatNoReaderCanSee."
       "test_a_bom_glued_to_a_marker_in_the_MIDDLE_of_the_file"]),
 
+    # the door on the OTHER file's head: the allocator reads both, so an entry
+    # whose head no reader sees spends nothing and the id goes out twice
+    ("cold review#95 the door reaches the item marker only, so a spent id hides",
+     "HEADS = ((LOOSE_MARKER_RE, ITEM_ID_RE), (LOOSE_LOG_RE, LOG_ID_RE))",
+     "HEADS = ((LOOSE_MARKER_RE, ITEM_ID_RE),)",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_bom_glued_to_a_DONE_LOG_entry_still_spends_that_id"]),
+
     ("T171 a UTF-16 file is read in silence, and the conversion is a surprise",
      '            warn_once(f"{path} is UTF-16 — read as UTF-16, and the next write stores "\n'
      '                      "it as UTF-8, which is what this script emits.")',

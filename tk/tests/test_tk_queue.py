@@ -8137,6 +8137,22 @@ class TestTheDoorNormalisesWhatNoReaderCanSee(QueueTest):
         self.assertIn("**T003**", self.body())
         self.assertNotIn(self.BOM, self.body())
 
+    def test_a_bom_glued_to_a_DONE_LOG_entry_still_spends_that_id(self):
+        """The other file the allocator reads. A spent id lives in a done-log
+        ENTRY, so a BOM glued to one hides it exactly as a BOM glued to an item
+        marker hides an open item's — and the number is handed out a second time,
+        which is the whole of T163 on the file the first repair did not reach.
+
+        Measured before this: `done_log_ids` answered [] for an entry the file
+        plainly carries, with no warning anywhere."""
+        self.seed(log="# Done log\n\n" + self.BOM
+                  + "- 2026-08-01 — tk — T001 — feito — how: PR #1\n")
+        r = self.run_tk("add", "o proximo", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: y")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**T002**", self.body())
+        self.assertNotIn("**T001**", self.body())
+
     def test_a_utf16_file_is_read_and_the_warning_says_what_the_next_write_does(self):
         """A raw UnicodeDecodeError is a traceback the caller cannot act on. And
         reading it silently would be worse than the error: this script writes
