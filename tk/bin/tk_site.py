@@ -168,12 +168,12 @@ class Site:
 def project_slug(path):
     """The directory under ~/.claude/projects that holds `path`'s queue.
 
-    The rule is `tk-queue`'s — it derives its own queue directory from the
-    working directory this way, inline in memory_dir(). It lives here because
-    two readers of the site file now need it (this module, to validate a
-    fleet list; the roster sweep, to run it backwards), and a rule copied per
-    reader is a rule that stops agreeing. The copy still in tk-queue is one
-    import away from this one, and merges the day that file is free to edit.
+    The rule is the queue directory's: `tk-queue`'s memory_dir() derives its own
+    from the working directory by CALLING this, this module runs it to validate a
+    fleet list, and the roster sweep runs it BACKWARDS to recover the directory
+    each name encodes. It lives here because a rule copied per reader is a rule
+    that stops agreeing — the copy tk-queue used to carry inline was folded into
+    this one, so there is one encoder and one decoder for "which queue is this".
 
     It is ONE-WAY: `/w/p/x-y` and `/w/p/x/y` produce the same name.
     """

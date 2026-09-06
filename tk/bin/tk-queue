@@ -2022,12 +2022,20 @@ def displayed_blocker(block):
     "" — the same POSITION rule every gate reads a field through, so `list` and
     `pack` cannot disagree about whether an item is held back.
 
+    Tolerant where the gate refuses, and ONLY in the safe direction — the reading
+    `displayed_claim` already settled for the sibling field. Every shape `pack`
+    excludes the item over is shown as held back; printing nothing there was the
+    dangerous answer, because the caller who reads that exclusion reason then
+    looks the item up in `list` and finds it standing free.
+
     A value that is not an id is shown VERBATIM rather than hidden: `pack`
     excludes the item for it, and a listing that printed nothing there would
     leave the caller reading `pack`'s reason with no way to see the field."""
     segs, markers = qualified_fields(block, "Blocked-by")
-    if len(segs) != 1 or markers > len(segs):
-        return ""
+    if len(segs) > 1:
+        return "blocked ambiguously — `tk-queue pack` says why"
+    if not segs:
+        return "a **Blocked-by:** marker no gate reads" if markers else ""
     return f"blocked by {field_value(segs[0])}"
 
 
@@ -2696,10 +2704,11 @@ def pack_lanes(candidates, under_way=frozenset()):
     is elected and their tickets leave the package, whatever their count.
 
     ONE spec per package — one branch, one draft PR, one campaign, one tail — and
-    it is the FIRST spec in QUEUE ORDER that reaches the floor. First in queue
-    order, because priority here is the file's order, global; not the spec with
-    the most tickets, which would put a hidden heuristic in the one place this
-    queue deliberately has none.
+    it is the spec with the MOST tickets among those that reach the floor, ties
+    broken by QUEUE ORDER. The accumulated branch is the one thing here that pays
+    for itself, so it goes to the DEEPEST spec; queue order, the only priority
+    this file carries, is what settles a tie, and `max()` over a list built in the
+    file's order does both because it returns the first maximal element.
 
     "That reaches the floor" is the half the spec left open, and the reading is
     the one that keeps every sentence of it true. A spec with a single ticket in
@@ -3018,9 +3027,9 @@ def load_site():
     except tk_site.SiteError as e:
         if site_names_the_cap():
             fail(str(e))
-        print(f"tk-queue: {e}\n(no `{WIP_KEY}` line was found in it, so no cap gates "
-              "this add — but the file stays broken for every command that reads it)",
-              file=sys.stderr)
+        print(f"tk-queue: {e}\n(it names none of `{WIP_KEY}`, `{PER_QUEUE_KEY}` or "
+              f"`{DISCOUNT_KEY}`, so no cap gates this one — but the file stays broken "
+              "for every command that reads it)", file=sys.stderr)
         return None
 
 

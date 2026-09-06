@@ -3252,22 +3252,22 @@ MUTATIONS = [
      "{'text'}. An item is a pending ",
      ["TestTheCommandsSayWhatTheyDo.test_the_refusal_points_at_the_fields_when_they_are_the_larger_half"]),
 
-    ("homeserver-ambiente#223 add --help stops declaring the canonical spelling",
+    ("kickoff-prune gaps: add --help stops declaring the canonical spelling",
      "stored: repo lower-cased, number without leading ",
      "stored: the repo and the number as given, with leading ",
      ["TestTheCommandsSayWhatTheyDo.test_add_help_names_the_canonical_spelling_of_a_forge_reference"]),
 
-    ("homeserver-ambiente#223 add --repo help goes back to the summary",
+    ("kickoff-prune gaps: add --repo help goes back to the summary",
      "of five shapes: https://<host>/<path>, ",
      "of shapes, among them ",
      ["TestTheCommandsSayWhatTheyDo.test_add_help_carries_the_whole_repo_whitelist"]),
 
-    ("homeserver-ambiente#223 --force names one ceiling again",
+    ("kickoff-prune gaps: --force names one ceiling again",
      "raise BOTH ceilings for this one call: the item BLOCK, from ",
      "raise the field ceiling for this one call, and the item BLOCK from ",
      ["TestTheCommandsSayWhatTheyDo.test_force_names_both_ceilings_it_raises_wherever_it_is_offered"]),
 
-    ("homeserver-ambiente#223 the comment names a prose site the prune moved",
+    ("kickoff-prune gaps: the comment names a prose site the prune moved",
      "docstring, and `tk/reference/queue.md` — the kickoff SKILL.md carried it until",
      "docstring, and the kickoff SKILL.md) cannot read a constant. It carried it until",
      ["TestTheCommandsSayWhatTheyDo.test_the_dry_run_comment_names_the_prose_site_that_exists"]),
@@ -3490,6 +3490,16 @@ MUTATIONS = [
     ("T306 list stops showing which item is held back",
      '    return f"blocked by {field_value(segs[0])}"', '    return ""',
      ["TestBlockedBy.test_list_shows_the_blocker_beside_the_item"]),
+
+    ("T306 list goes back to showing an ambiguous blocker as FREE",
+     '        return "blocked ambiguously — `tk-queue pack` says why"',
+     '        return ""',
+     ["TestBlockedBy.test_list_marks_the_item_pack_drops_for_an_ambiguous_blocker"]),
+
+    ("T306 list goes back to showing an unreadable marker as FREE",
+     '        return "a **Blocked-by:** marker no gate reads" if markers else ""',
+     '        return ""',
+     ["TestBlockedBy.test_list_marks_the_item_pack_drops_for_a_marker_no_gate_reads"]),
 
     # --- absorbed from mutations_roster.py (T119) --------------------------
     # The roster suite's own harness was a second file because THIS one ran

@@ -3415,6 +3415,28 @@ class TestBlockedBy(QueueTest):
         self.assertIn("[blocked by T001]", out)
         self.assertEqual(out.count("blocked by"), 1)
 
+    def test_list_marks_the_item_pack_drops_for_an_ambiguous_blocker(self):
+        """Two qualifying fields: `pack` excludes the item and `list` may not show
+        it FREE. The tolerant answer is the dangerous one here, exactly as it is
+        for a claim — the reader who looks up that exclusion sees an item nothing
+        holds, and the afk package is built from this same display."""
+        self.seed(blocked_item(1, "preso", "T002").replace(
+            " **Criterion:**", " **Blocked-by:** T003. **Criterion:**", 1))
+        out = self.run_tk("list").stdout
+        self.assertIn("[blocked ambiguously", out)
+        excluded = self.run_tk("pack").stdout.split("excluded")[1]
+        self.assertIn("**Blocked-by:** fields in the chain", excluded)
+
+    def test_list_marks_the_item_pack_drops_for_a_marker_no_gate_reads(self):
+        """Same asymmetry, the other shape: the marker sits where the position
+        rule will not read it, `pack` drops the item over it, and a silent `list`
+        would be the one reading that says it is dispatchable."""
+        self.seed(item(1, "cita **Blocked-by:** na prosa"))
+        out = self.run_tk("list").stdout
+        self.assertIn("[a **Blocked-by:** marker no gate reads]", out)
+        excluded = self.run_tk("pack").stdout.split("excluded")[1]
+        self.assertIn("marker sits where no gate reads it", excluded)
+
 
 class TestPackLane(PackOutput):
     """The lane is what the afk orchestrator dispatches by, and it is read from
