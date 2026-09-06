@@ -1635,12 +1635,22 @@ class TestTheShippedSkills(MeasureTest):
 
     def test_the_table_heavy_skill_does_not_measure_as_one_enormous_sentence(self):
         """`dispatch` is the real file the sentence unit exists for: its palette
-        is one table, its rows carry no full stop, and by the punctuation rule
-        alone it measures over 50 words per sentence. This is that claim held
-        against the shipped file rather than against a fixture built to show it."""
+        is one table and its rows carry no full stop, so by the punctuation rule
+        alone the whole palette is ONE sentence of 206 words. This is that claim
+        held against the shipped file rather than against a fixture built to show
+        it.
+
+        THE LONGEST SENTENCE IS THE ASSERTION, not the mean. The mean was what
+        this test asked for years and it proved nothing: with the table's hard
+        break removed the file measures 20.0 words per sentence, and with EVERY
+        hard break removed it measures 24.6 — both under the 25 the assertion
+        allowed, so the mutant that puts the defect back walked straight past.
+        The mean cannot separate the two worlds, because collapsing rows into one
+        long sentence removes sentences as fast as it adds words. The maximum
+        can: 25 words on the shipped tree against 206 with the break gone."""
         m = self.report(os.path.join(HERE, os.pardir, "skills", "dispatch",
                                      "SKILL.md"))["metrics"]
-        self.assertLess(m["mean_sentence_words"], 25)
+        self.assertLess(m["max_sentence_words"], 50)
 
 
 if __name__ == "__main__":
