@@ -135,10 +135,10 @@ writing the close.** It is written for a cold reader, and the structure is what 
 queue item, in executable order, plus the opening sentence of the next session. Escalate
 to the five-field handoff file when the understanding the next session needs lives only
 in this conversation — a task mid-flight, open hypotheses, a campaign spanning several
-items. That file is written and removed only by `tk-queue handoff <id> --objective "..."
---state "..." --blockers "..."`; run the `edit` it prints (rule: `../verify/SKILL.md`,
-*The item points at the briefing*), and a campaign gets ONE handoff file, pointed at by
-every item in it. The file carries **CONCLUSIONS, never a reading list**.
+items. That file is written and removed only by `tk-queue handoff "<id>" --dir "<queue dir>"
+--objective "..." --state "..." --blockers "..."`; run the `edit` it prints (rule:
+`../verify/SKILL.md`, *The item points at the briefing*), and a campaign gets ONE handoff
+file, pointed at by every item in it. The file carries **CONCLUSIONS, never a reading list**.
 
 **The next step — ALWAYS close by recommending ONE path**, the why in 1–2 sentences, by
 where the understanding lives: written down, `/clear` is cheap; conversation-only,
