@@ -1671,8 +1671,12 @@ MUTATIONS = [
      ["TestHandoffCreation.test_the_remedy_never_truncates_the_item_it_rewrites"]),
 
     ("BOM read() lets one at the head through to the `^`-anchored grammars again",
-     '    with open(path, encoding="utf-8-sig") as f:\n        return f.read()',
-     '    with open(path, encoding="utf-8") as f:\n        return f.read()',
+     ['        return data.decode("utf-8-sig")',
+      '    f"{BOM}*" + r"-[ \\t" + INVISIBLE_BLANKS + r"]\\[( |x)\\][ \\t" '
+      '+ INVISIBLE_BLANKS + r"]"'],
+     ['        return data.decode("utf-8")',
+      '    r"-[ \\t" + INVISIBLE_BLANKS + r"]\\[( |x)\\][ \\t" '
+      '+ INVISIBLE_BLANKS + r"]"'],
      ["TestByteOrderMark.test_the_first_item_is_neither_hidden_nor_blamed_on_a_concurrent_writer",
       "TestByteOrderMark.test_the_hidden_items_id_is_never_handed_out_twice",
       "TestByteOrderMark.test_a_bom_in_the_done_log_keeps_its_first_entry_allocated"]),
@@ -1683,9 +1687,8 @@ MUTATIONS = [
     # the other direction, which no mutation above covers: a strip that reaches
     # PAST the head silently edits the user's own text
     ("BOM the strip reaches past the head, into the user's own text",
-     '    with open(path, encoding="utf-8-sig") as f:\n        return f.read()',
-     '    with open(path, encoding="utf-8") as f:\n'
-     '        return f.read().replace("\\ufeff", "")',
+     '        return normalize_source(f.read(), os.path.basename(path))',
+     '        return normalize_source(f.read(), os.path.basename(path)).replace(BOM, "")',
      ["TestByteOrderMark.test_a_bom_further_INTO_the_file_is_left_alone"]),
 
     ("ID the label is rebuilt from the parsed number, so T0001 prints as T001 again",
@@ -3657,6 +3660,57 @@ MUTATIONS = [
      "    def forget_offsets(self):\n        self.offsets = None",
      "    def forget_offsets(self):\n        pass",
      ["TestOneParseOneWriter.test_the_offsets_of_a_mutated_item_are_refused_not_stale"]),
+
+    # --- T301 slice 2: the door -------------------------------------------
+    # Every entry here restores a byte no reader can see. What each test proves
+    # is that the item did not silently LEAVE the queue with its id still spent.
+    ("T171 the marker header stops repairing the blanks nothing can see",
+     '            for ch in INVISIBLE_BLANKS:',
+     '            for ch in "":',
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_non_breaking_space_after_the_checkbox_still_names_the_item"]),
+
+    ("T163 a BOM glued to a marker below byte 0 is left where it hides the item",
+     '            fixed = head.replace(BOM, "")', "            fixed = head",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_bom_glued_to_a_marker_in_the_MIDDLE_of_the_file"]),
+
+    ("T171 a UTF-16 file is read in silence, and the conversion is a surprise",
+     '            warn_once(f"{path} is UTF-16 — read as UTF-16, and the next write stores "\n'
+     '                      "it as UTF-8, which is what this script emits.")',
+     "            pass",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_utf16_file_is_read_and_the_warning_says_what_the_next_write_does"]),
+
+    ("T171 bytes that decode as nothing go back to a raw traceback",
+     '        fail(f"{path} is not valid utf-8: byte {e.start} is {data[e.start]:#04x}. "\n'
+     '             "Nothing was read. These files are written only by `tk-queue`, so a "\n'
+     '             "file it cannot decode came from somewhere else — convert it to UTF-8 "\n'
+     '             "and run the command again.")',
+     "        raise",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_bytes_that_are_no_encoding_name_the_file_the_byte_and_the_encoding"]),
+
+    ("T161 a line of only SPACES closes the item block again",
+     '        elif kind.startswith("item") and (line.strip("\\r\\n") == ""',
+     '        elif kind.startswith("item") and (line.strip() == ""',
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_continuation_line_of_only_spaces_does_not_split_the_item"]),
+
+    ("T171 `list` stops naming a class value that is no class",
+     "    return cls if cls and cls not in CLASSES else None", "    return None",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_class_value_outside_the_enum_is_named_not_displayed_as_valid"]),
+
+    ("T171 `pack` reads an invented class as a STATE the item is in",
+     "    if cls is not None and cls not in CLASSES:", "    if False:",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_class_value_outside_the_enum_is_named_not_displayed_as_valid"]),
+
+    ("T301 the door decodes but stops repairing the marker headers",
+     "    text, repaired = normalize_marker_headers(text)", "    repaired = 0",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_the_round_trip_holds_over_the_NORMALISED_text"]),
 ]
 
 

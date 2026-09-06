@@ -8095,6 +8095,129 @@ class TestOneParseOneWriter(QueueTest):
             first.start()
 
 
+# --- the door: what a queue file may carry that no reader can see ---------
+
+class TestTheDoorNormalisesWhatNoReaderCanSee(QueueTest):
+    """A byte no reader can SEE is the worst shape a queue file takes: the item
+    does not fall over, it disappears, and the id it was holding is handed out
+    again. All three vectors below are hand edits from outside this script — an
+    editor that writes a BOM, a paste carrying a non-breaking space, a file that
+    came back from a Windows tool as UTF-16 — and the contract says these files
+    are written only by `tk-queue`, so nothing inside ever produced one.
+
+    Normalisation is at the MARKER HEADER and nowhere else. The item's own text
+    keeps every byte the user typed: a queue file is the user's prose, and a
+    reader that tidied it would be editing what it was asked to display.
+    """
+
+    NBSP = " "
+    BOM = "﻿"
+
+    def setUp(self):
+        super().setUp()
+        self.tk = load_tk()
+
+    def test_a_non_breaking_space_after_the_checkbox_still_names_the_item(self):
+        """Measured before the fix: `list` printed `(queue empty)` with the item
+        right there in the file, and the next new item was handed T001 AGAIN —
+        the duplicate id this whole grammar exists to prevent."""
+        self.seed(f"- [ ]{self.NBSP}**T001** — item invisivel **Class:** AUTONOMOUS. "
+                  "**Effort:** S. **Criterion:** A: x.\n")
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+        self.assertIn("AUTONOMOUS", r.stdout)
+        r = self.run_tk("add", "o proximo", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: y")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T002", self.body())
+        self.assertEqual(self.body().count("**T001**"), 1)
+
+    def test_a_bom_glued_to_a_marker_in_the_MIDDLE_of_the_file(self):
+        """`read` strips a BOM at byte 0 and deliberately nowhere else. One glued
+        to a marker further down turns that item into prose of the block above:
+        `pack` counted "1 of 1" with two items in the file, and the id of the
+        second was invisible to the allocator."""
+        self.seed(item(1, "o primeiro"), self.BOM + item(2, "o segundo"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T002", r.stdout)
+        r = self.run_tk("add", "o terceiro", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: y")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**T003**", self.body())
+        self.assertNotIn(self.BOM, self.body())
+
+    def test_a_utf16_file_is_read_and_the_warning_says_what_the_next_write_does(self):
+        """A raw UnicodeDecodeError is a traceback the caller cannot act on. And
+        reading it silently would be worse than the error: this script writes
+        UTF-8, so the next command CONVERTS the file, and the caller has to be
+        told before that happens rather than after."""
+        with open(os.path.join(self.mem, "next-steps.md"), "w", encoding="utf-16") as f:
+            f.write(HEADER + item(1, "em utf-16"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+        self.assertIn("UTF-16", r.stderr)
+        self.assertIn("UTF-8", r.stderr)
+
+    def test_bytes_that_are_no_encoding_name_the_file_the_byte_and_the_encoding(self):
+        """The other half: a file this cannot read must say WHICH file, WHICH
+        byte and which encoding it tried. A traceback names a line of the script
+        instead, which is the one place the caller cannot fix."""
+        with open(os.path.join(self.mem, "next-steps.md"), "wb") as f:
+            f.write((HEADER + item(1, "ok")).encode() + b"- [ ] **T002** \xff\xfe\n")
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("next-steps.md", r.stderr)
+        self.assertIn("utf-8", r.stderr.lower())
+        self.assertIn("byte", r.stderr.lower())
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_a_continuation_line_of_only_spaces_does_not_split_the_item(self):
+        """T161: `split_blocks` closed a block on any blank-LOOKING line, so an
+        item whose fields sit below a line of spaces lost them — `list` showed
+        `?`, and `migrate`, the one command that repairs the shape, could not
+        even see the item to report it."""
+        self.seed("- [ ] **T001** — item com linha de espacos\n"
+                  "   \n"
+                  "  **Class:** AUTONOMOUS. **Effort:** M. **Criterion:** A: x.\n")
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("AUTONOMOUS", r.stdout)
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+
+    def test_a_class_value_outside_the_enum_is_named_not_displayed_as_valid(self):
+        """`URGENTE` is not a class this queue has, and printing it in the class
+        column reads exactly like one that is. `pack` said `class is URGENTE`,
+        which reads as a state the item is IN rather than as a value nothing can
+        act on."""
+        self.seed(item(1, "com classe inventada", klass="URGENTE"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("URGENTE", r.stdout)
+        self.assertIn("AUTONOMOUS", r.stdout)          # the classes it could have carried
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("URGENTE", r.stdout)
+        self.assertIn("--class", r.stdout)             # the repair, not merely the fact
+
+    def test_the_round_trip_holds_over_the_NORMALISED_text(self):
+        """The parse's invariant is stated over what `read` returns, not over the
+        bytes on disk: normalisation happens ONCE, at the door, and every reader
+        and every writer downstream sees the same text."""
+        raw = (f"- [ ]{self.NBSP}**T001** — texto **Class:** AUTONOMOUS. **Effort:** S.\n"
+               "   \n"
+               "  uma nota\n").encode()
+        text = self.tk.normalize_source(raw, "next-steps.md")
+        blocks = [b for kind, b in self.tk.split_blocks(text) if kind.startswith("item")]
+        self.assertEqual(len(blocks), 1)
+        self.assertIn("- [ ] **T001**", blocks[0])
+        self.assertEqual(self.tk.render_item(self.tk.parse_item(blocks[0])), blocks[0])
+
+
 class TestMutationHarness(unittest.TestCase):
     """The harness is what says this suite protects anything, and until T152
     nothing checked IT. Each test here is a way the harness could go on printing

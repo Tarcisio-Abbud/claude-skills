@@ -322,16 +322,22 @@ def memory_dir(explicit):
 
 
 def read(path):
-    """The file's text, with a leading BOM read OFF.
+    """The file's text, normalised at the door — see `normalize_source`.
 
-    utf-8-sig, not utf-8, and the asymmetry with `write_atomic` (which stays
-    utf-8, so nothing here ever EMITS a BOM) is the point. Every reader of these
-    files anchors with `^` under re.M — ITEM_START, ITEM_ID_RE, LOG_ID_RE — and a
-    BOM surviving at byte 0 is a CHARACTER sitting between `^` and the first
-    line's marker, so that one line stops matching. Only the first line: `^` also
-    matches after every newline, and those are untouched. The vector is a hand
-    edit from an editor that writes one (Windows), on a file that syncs between
-    machines.
+    The bytes are read RAW and handed there, rather than opened with an encoding
+    argument, because one argument answers only one of the three questions a
+    queue file poses: which encoding, a BOM that is not at byte 0, and a blank
+    that is not a blank. All three are the same failure — a character no reader
+    can see — and answering them in one place is what lets every reader and
+    every writer downstream work on one text.
+
+    The head of that story is the oldest: utf-8-sig, not utf-8, asymmetric with
+    `write_atomic` (which stays utf-8, so nothing here ever EMITS a BOM). Every
+    reader of these files anchors with `^` under re.M — ITEM_START, ITEM_ID_RE,
+    LOG_ID_RE — and a BOM surviving at byte 0 is a CHARACTER sitting between `^`
+    and the first line's marker, so that one line stops matching. The vector is a
+    hand edit from an editor that writes one (Windows), on a file that syncs
+    between machines.
 
     Measured on this script before the fix, on a next-steps.md whose first line
     is an item: `list` printed everything BUT that item; `edit` on its ID
@@ -345,8 +351,8 @@ def read(path):
     """
     if not os.path.exists(path):
         return None
-    with open(path, encoding="utf-8-sig") as f:
-        return f.read()
+    with open(path, "rb") as f:
+        return normalize_source(f.read(), os.path.basename(path))
 
 
 def write_atomic(path, text):
@@ -521,6 +527,119 @@ LOG_ID_RE = re.compile("^" + LOG_LINE + r"\S+ — T([0-9]{3,})\b", re.M)
 CANONICAL_HEAD_RE = re.compile(MARKER + DECOR + ID_SLOT + " — ")
 
 
+# --- THE DOOR: what a queue file may carry that no reader can SEE ---------
+# These files are written only by `tk-queue` (reference/queue.md), so nothing
+# below was ever produced from inside. The vectors are hand edits from outside:
+# an editor that writes a BOM, a paste that carries a non-breaking space, a file
+# that came back from a Windows tool as UTF-16.
+#
+# What makes them the worst shape a queue file takes is that they are INVISIBLE.
+# The item does not fall over — it disappears, and the ID it was holding is
+# handed out again. Measured on this script, each one separately: an NBSP after
+# the checkbox made `list` print "(queue empty)" with the item in the file and
+# the next creation re-emit T001; a BOM glued to a marker in the middle of the
+# file turned that item into prose of the block above, and its ID was invisible
+# to the allocator; UTF-16 raised a raw UnicodeDecodeError, a traceback naming a
+# line of THIS script, which is the one place the caller cannot fix.
+#
+# NORMALISED AT THE MARKER HEADER, AND NOWHERE ELSE. The rule is not "clean the
+# file": a queue file is the user's own prose, and a reader that tidied it would
+# be editing what it was asked to display. Only the header — the bullet, the
+# box, the decoration and the ID slot — is repaired, only on a line that the
+# strict reader FAILS on, and the repaired text is what every reader and every
+# writer downstream sees, so the next write stores it repaired.
+BOM = "﻿"
+# NBSP, narrow NBSP, figure space, zero-width space: what a paste out of a
+# browser, a spreadsheet or a chat leaves where a plain blank was meant. They
+# are mapped to a blank rather than deleted — the marker's grammar wants a blank
+# in each of those positions, and deleting one would break a header that a
+# substitution repairs.
+INVISIBLE_BLANKS = "   ​"
+# a marker header the STRICT reader would miss, spelled from the same pieces as
+# MARKER + DECOR + ID_SLOT so the two cannot drift: the same bullet, box, slot
+# and decoration, with the invisible characters admitted where a blank belongs.
+# Anchored at the head of the line, like every other reader of these files.
+LOOSE_MARKER_RE = re.compile(
+    f"{BOM}*" + r"-[ \t" + INVISIBLE_BLANKS + r"]\[( |x)\][ \t" + INVISIBLE_BLANKS + r"]"
+    + DECOR + ID_SLOT)
+
+WARNED = set()
+
+
+def warn_once(msg):
+    """One warning per message per run. `read` is called several times by a
+    single command — the allocator, the finder and the display each ask — and a
+    warning repeated four times reads as four separate files being wrong."""
+    if msg in WARNED:
+        return
+    WARNED.add(msg)
+    print(f"tk-queue: warning: {msg}", file=sys.stderr)
+
+
+def decode_source(data, path):
+    """The bytes of a queue file as text, or a refusal that NAMES what failed.
+
+    UTF-16 is read rather than refused, because refusing would leave the caller
+    with a file this script cannot open and no way to convert it — but it is
+    read out loud: `write_atomic` emits UTF-8, so the next command that touches
+    the file CONVERTS it, and that has to be said before it happens rather than
+    discovered after.
+
+    Anything else that will not decode is a refusal naming the FILE, the BYTE
+    and the encoding tried. A raw UnicodeDecodeError names a line of this script
+    instead, which is the one place the caller cannot act on.
+    """
+    for bom, encoding in ((b"\xff\xfe", "utf-16"), (b"\xfe\xff", "utf-16")):
+        if data.startswith(bom):
+            warn_once(f"{path} is UTF-16 — read as UTF-16, and the next write stores "
+                      "it as UTF-8, which is what this script emits.")
+            return data.decode(encoding)
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError as e:
+        fail(f"{path} is not valid utf-8: byte {e.start} is {data[e.start]:#04x}. "
+             "Nothing was read. These files are written only by `tk-queue`, so a "
+             "file it cannot decode came from somewhere else — convert it to UTF-8 "
+             "and run the command again.")
+
+
+def normalize_marker_headers(text):
+    """(the text with every unreadable marker header repaired, how many).
+
+    A line is touched only when it WANTS to be an item marker and the strict
+    reader misses it — `ITEM_ID_RE` is asked first, so a header that already
+    parses is left byte for byte. Everything after the ID slot is the user's own
+    text and is never looked at.
+    """
+    repaired, out = 0, []
+    for line in text.splitlines(keepends=True):
+        m = LOOSE_MARKER_RE.match(line)
+        if m and not ITEM_ID_RE.match(line):
+            head = m.group(0)
+            fixed = head.replace(BOM, "")
+            for ch in INVISIBLE_BLANKS:
+                fixed = fixed.replace(ch, " ")
+            if fixed != head:
+                line = fixed + line[len(head):]
+                repaired += 1
+        out.append(line)
+    return "".join(out), repaired
+
+
+def normalize_source(data, path):
+    """The text a queue file's bytes mean — decoded, and its marker headers made
+    readable. Called at the door by `read`, so the whole rest of this script
+    works on ONE text: the offsets a reader hands a writer are offsets into it,
+    and the parse's round-trip invariant is stated over it."""
+    text = decode_source(data, path)
+    text, repaired = normalize_marker_headers(text)
+    if repaired:
+        warn_once(f"{path}: {repaired} item marker(s) carried a character no reader can "
+                  "see (a BOM, a non-breaking or zero-width space) and were read as if "
+                  "they did not. The next write stores them repaired.")
+    return text
+
+
 def split_blocks(body):
     """Return a list of (kind, text) where kind is 'item-open'/'item-done'/'other'."""
     blocks, buf, kind = [], [], "other"
@@ -530,7 +649,14 @@ def split_blocks(body):
             if buf:
                 blocks.append((kind, "".join(buf)))
             buf, kind = [line], ("item-done" if m.group(1) == "x" else "item-open")
-        elif kind.startswith("item") and (line.strip() == "" or line.startswith("#")):
+        # `line.strip("\r\n")`, not `line.strip()`: a line of only SPACES looks
+        # blank and is not one. Closing the block on it stranded every field
+        # below it — measured, `list` showed `?` for the class and `migrate`,
+        # the one command that repairs the shape, could not see the item to
+        # report it, while `claim` diagnosed a missing class and would have
+        # written a SECOND one, orphaning the real fields for good.
+        elif kind.startswith("item") and (line.strip("\r\n") == ""
+                                          or line.startswith("#")):
             blocks.append((kind, "".join(buf)))
             buf, kind = [line], "other"
         else:
@@ -2287,6 +2413,12 @@ def cmd_list(args):
     if ambiguous:
         print("\nduplicate IDs: only the FIRST item under each is reachable — renumber "
               "the others by hand in next-steps.md.")
+    strange = [(item_label(t), unknown_class(t)) for t in opens if unknown_class(t)]
+    if strange:
+        print("\nclass values that are no class: "
+              + ", ".join(f"{label} ({cls})" for label, cls in strange)
+              + f" — the classes are {', '.join(CLASSES)}. No gate acts on any other "
+              "value; `tk-queue edit <id> --class <CLASS>` sets one.")
 
 
 def displayed_blocker(block):
@@ -2309,6 +2441,19 @@ def displayed_blocker(block):
     if not segs:
         return "a **Blocked-by:** marker no gate reads" if markers else ""
     return f"blocked by {field_value(segs[0])}"
+
+
+def unknown_class(block):
+    """The class value this item carries that is NOT one of CLASSES, or None.
+
+    Printed in the class column, `URGENTE` reads exactly like a class this queue
+    has: same place, same shape, and nothing anywhere saying that no gate will
+    ever act on it. The value is still SHOWN — it is what the file says, and
+    hiding it would send the reader to a file that disagrees with the screen —
+    and it is NAMED, once, under the listing.
+    """
+    cls = item_class(block)
+    return cls if cls and cls not in CLASSES else None
 
 
 def list_line(label, cls, age, title, mark, dup=None, blocked=""):
@@ -2363,6 +2508,13 @@ REPAIR_FOLD = ("fields off the first line: `tk-queue migrate` folds them up, eve
                "opens a Markdown block — it will not lift half a chain; the repair for both "
                "is `cancel` + re-add")
 REPAIR_CLASSLESS = "no **Class:** at all: `tk-queue edit <id> --class AUTONOMOUS`"
+# A class this queue does not have is not a state, and the difference decides
+# what the caller does next: `class is DECISION` is the item waiting for a human
+# and nothing to repair, while `class is URGENTE` is a value no gate will ever
+# read — the item is out of every package on every machine until someone gives
+# it one of the five.
+REPAIR_UNKNOWN_CLASS = ("a class value that is no class: `tk-queue edit <id> --class "
+                        "<CLASS>`, one of " + ", ".join(CLASSES))
 # The same shape with its fields still off the first line, and the ORDER is the
 # whole of it: `edit --class` appends the anchor to a first line that has no
 # chain, which strands those fields for good and stops `migrate` from ever
@@ -2605,6 +2757,9 @@ def pack_exclusion(iid, block, identity, open_ids=frozenset(),
     twenty from being packaged — the same choice `displayed_claim` makes for `list`
     — so nothing here calls `fail`."""
     cls = chain_class(block)
+    if cls is not None and cls not in CLASSES:
+        return (f"class is {cls!r}, which is none of {', '.join(CLASSES)}, so no gate "
+                "reads it", REPAIR_UNKNOWN_CLASS)
     if cls != "AUTONOMOUS":
         return pack_classless_reason(block) if cls is None else (f"class is {cls}", None)
 
