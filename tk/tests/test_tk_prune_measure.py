@@ -460,6 +460,16 @@ class TestDefinedTerms(MeasureTest):
         self.assertEqual(report["metrics"]["terms_defined_in_sibling"], 1)
         self.assertEqual(report["terms_defined_in_sibling"][0]["also_in"], ["REFERENCE.md"])
 
+    def test_a_sibling_that_defines_the_term_twice_is_named_once(self):
+        """The counter counts the TARGET's terms, so it never saw this; the
+        finding did, and named one file twice — `also in b.md, b.md` reports
+        two files that do not exist."""
+        self.write("# B\n\n**Widget**: a thing.\n\n**Widget**: and again.\n",
+                   name="b.md")
+        found = self.report(self.write("# A\n\n**Widget**: a thing.\n")
+                            )["terms_defined_in_sibling"]
+        self.assertEqual([e["also_in"] for e in found], [["b.md"]])
+
     def test_the_sibling_comparison_ignores_case(self):
         self.write("**Session FINDING**: what a session learned.\n",
                    name="REFERENCE.md", subdir="skill")
@@ -765,6 +775,84 @@ class TestEvidenceInBothDirections(MeasureTest):
                           ).stdout
         self.assertIn("narrated outcomes (1)", out)
         self.assertIn("has passed", out)
+
+
+class TestTheEnvironmentBoundary(MeasureTest):
+    """What the bin may run, and what it may not do when the run goes wrong.
+
+    `scan_environment` reads a tool's `--help` out of a SUBPROCESS, which is the
+    only place this bin leaves its own process. Both cases below were found by
+    the cold review of the lane that added it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.bin = os.path.join(self.tmp, "bin")
+        os.makedirs(self.bin)
+        previous = os.environ.get("TK_PRUNE_BIN")
+        os.environ["TK_PRUNE_BIN"] = self.bin
+        self.addCleanup(self.restore_bin, previous)
+
+    def restore_bin(self, previous):
+        if previous is None:
+            os.environ.pop("TK_PRUNE_BIN", None)
+        else:
+            os.environ["TK_PRUNE_BIN"] = previous
+
+    def tool(self, name, source):
+        path = os.path.join(self.bin, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(source)
+        os.chmod(path, 0o755)
+        return path
+
+    def test_a_help_that_is_not_utf8_is_measured_rather_than_traced_back(self):
+        """The bin promises to exit 0 for every measurement. A help carrying a
+        byte the locale cannot decode raised inside `subprocess.run`, and a
+        `UnicodeDecodeError` is a `ValueError` — it passed every `except` on the
+        way out and the whole run ended in a traceback."""
+        self.tool("tk-badhelp",
+                  "#!/usr/bin/env python3\n"
+                  "import sys\n"
+                  "sys.stdout.buffer.write(b'usage: tk-badhelp [-h]\\n\\n"
+                  "refuses \\xff an empty mandatory field\\n')\n")
+        r = self.run_on(self.write(QUIET + "\n- `tk-badhelp <id>` refuses an "
+                                           "empty mandatory field.\n"))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_a_subcommand_the_usage_never_named_is_not_run(self):
+        """The allowlist of `kit_tools` covers the EXECUTABLE. The prefetch sent
+        `argv[1]` straight from the markdown, so a file writing `tk-probe
+        rmdash` ran the tool with an argument no author of this kit wrote."""
+        log = os.path.join(self.tmp, "argv.log")
+        self.tool("tk-probe",
+                  "#!/usr/bin/env python3\n"
+                  "import sys\n"
+                  "open(%r, 'a').write(' '.join(sys.argv[1:]) + chr(10))\n"
+                  "sys.stdout.write('usage: tk-probe [-h] {done,list} ...\\n')\n"
+                  % log)
+        self.run_on(self.write(QUIET + "\n- run `tk-probe rmdash` and it "
+                                       "refuses an empty mandatory field.\n"))
+        with open(log, encoding="utf-8") as f:
+            ran = [line.split() for line in f.read().splitlines()]
+        self.assertEqual(ran, [["--help"]])
+
+    def test_a_subcommand_the_usage_does_name_is_still_run(self):
+        """The check is the tool's own braced list, not a refusal to pass any
+        argument at all: `done` is in the usage, so its help is read."""
+        log = os.path.join(self.tmp, "argv.log")
+        self.tool("tk-probe",
+                  "#!/usr/bin/env python3\n"
+                  "import sys\n"
+                  "open(%r, 'a').write(' '.join(sys.argv[1:]) + chr(10))\n"
+                  "sys.stdout.write('usage: tk-probe [-h] {done,list} ...\\n')\n"
+                  % log)
+        self.run_on(self.write(QUIET + "\n- run `tk-probe done` and it "
+                                       "refuses an empty mandatory field.\n"))
+        with open(log, encoding="utf-8") as f:
+            ran = sorted(line.split() for line in f.read().splitlines())
+        self.assertEqual(ran, [["--help"], ["done", "--help"]])
 
 
 class TestPointers(MeasureTest):

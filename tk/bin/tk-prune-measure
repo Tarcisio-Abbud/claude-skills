@@ -626,8 +626,15 @@ def tool_help(path, args, cache):
             # stdin is CLOSED, not inherited. A tool that reads it would block
             # on the terminal this bin was run from, and a measurement that
             # hangs on a help text is worse than one that never asks.
+            # `errors="replace"` for the same reason `measure` decodes that
+            # way: a byte the locale cannot decode is not a reason to refuse a
+            # measurement. Strict decoding raises inside `subprocess.run`, and a
+            # `UnicodeDecodeError` is a `ValueError` — it passed BOTH the except
+            # below and `main`'s, and the bin that promises to exit 0 for every
+            # measurement traced back instead.
             out = subprocess.run([path, *args, "--help"], capture_output=True,
-                                 text=True, timeout=HELP_TIMEOUT,
+                                 text=True, errors="replace",
+                                 timeout=HELP_TIMEOUT,
                                  stdin=subprocess.DEVNULL)
             cache[key] = out.stdout if out.returncode == 0 else None
         except (OSError, subprocess.SubprocessError):
@@ -757,32 +764,58 @@ def resolve_tool(named, tools, cache):
     return name, top
 
 
-def prefetch(wanted, tools, cache):
-    """Fill the help cache for every tool this file names, in parallel.
+def fill(calls, cache):
+    """Read the helps of `calls` together, filing each under its own key.
 
     Nothing here changes an answer — every entry it writes is one `tool_help`
-    would have written on its own, in the same order of arguments. It changes
-    the WALL CLOCK: the reads are independent and each one is an interpreter
-    starting, so a file naming ten subcommands waited three seconds for them
-    one at a time.
+    would have written on its own, from the same arguments. It changes the WALL
+    CLOCK: the reads are independent and each one is an interpreter starting, so
+    a file naming ten subcommands waited three seconds for them one at a time.
+
+    The order is taken ONCE and reused for both halves of the `zip`: sorting the
+    same set twice made the pairing depend on two sorts agreeing.
     """
-    calls = set()
-    for named in wanted:
-        if named is None:
-            continue
-        path = tools.get(named[0])
-        if path is None:
-            continue
-        calls.add((path, ()))
-        if named[1]:
-            calls.add((path, (named[1],)))
-    if len(calls) < 2:
+    order = sorted(c for c in calls if (c[0],) + tuple(c[1]) not in cache)
+    if not order:
+        return
+    if len(order) == 1:
+        tool_help(order[0][0], order[0][1], cache)
         return
     with concurrent.futures.ThreadPoolExecutor(HELP_WORKERS) as pool:
         for (path, args), text in zip(
-                sorted(calls),
-                pool.map(lambda c: tool_help(c[0], c[1], {}), sorted(calls))):
+                order, pool.map(lambda c: tool_help(c[0], c[1], {}), order)):
             cache[(path,) + tuple(args)] = text
+
+
+def prefetch(wanted, tools, cache):
+    """Fill the help cache for every tool this file names, in TWO waves.
+
+    THE SUBCOMMAND IS PROSE, AND IT IS CHECKED BEFORE IT IS RUN. The allowlist
+    of `kit_tools` covers the executable and nothing else, so a single wave sent
+    `argv[1]` straight from the markdown: a file writing `` `tk-queue rmdash` ``
+    ran the tool with an argument no author of this kit ever wrote. It was never
+    a shell and never an injection — the run is a list, `stdin` is closed and the
+    output is discarded — but `kit_tools` claims prose cannot make this bin run
+    anything, and that claim has to hold for the whole command line.
+
+    So the top-level helps come first, and a subcommand reaches `subprocess`
+    only once the tool's OWN braced list in the usage has named it — the same
+    check `resolve_tool` makes before it reads an answer.
+    """
+    named = [n for n in wanted if n is not None and n[0] in tools]
+    fill({(tools[n[0]], ()) for n in named}, cache)
+    subs = set()
+    for name, sub in named:
+        if not sub:
+            continue
+        path = tools[name]
+        top = cache.get((path,))
+        if top is None:
+            continue
+        m = SUBCOMMANDS.search(usage_block(top))
+        if m and sub in m.group(1).split(","):
+            subs.add((path, (sub,)))
+    fill(subs, cache)
 
 
 def scan_environment(sents, body):
@@ -807,7 +840,7 @@ def scan_environment(sents, body):
     """
     tools, cache, named = kit_tools(), {}, tools_by_line(body)
     prefetch(named.values(), tools, cache)
-    resolved, found = {}, []
+    resolved, prose, found = {}, {}, []
     for number, text in sents:
         tool = named.get(number)
         if tool is None:
@@ -817,9 +850,15 @@ def scan_environment(sents, body):
         if resolved[tool] is None:
             continue
         display, help_text = resolved[tool]
-        drop = {stem(part) for name in display.split() for part in name.split("-")}
-        shared = content_stems(CODE_SPAN.sub(" ", text), drop) & content_stems(
-            help_prose(help_text), drop)
+        if tool not in prose:
+            # the help's half of the comparison does not move from one sentence
+            # to the next, and stemming it per sentence made the scan cost
+            # sentences x help rather than help
+            drop = {stem(part) for name in display.split()
+                    for part in name.split("-")}
+            prose[tool] = (drop, content_stems(help_prose(help_text), drop))
+        drop, help_stems = prose[tool]
+        shared = content_stems(CODE_SPAN.sub(" ", text), drop) & help_stems
         fact = None
         if OBLIGATION.search(text):
             required = required_flags(help_text)
@@ -967,7 +1006,11 @@ def sibling_terms(path):
         scanned, _ = scan(body)
         for _, term in defined_terms(scanned):
             out.setdefault(term.casefold(), []).append(name)
-    return out
+    # A sibling that defines the term TWICE is still one other place to read it.
+    # The counter never saw the difference — it counts the target's terms — but
+    # the finding named the file once per definition, and `also in b.md, b.md`
+    # is a report of two files that do not exist.
+    return {term: list(dict.fromkeys(names)) for term, names in out.items()}
 
 
 def collapse(text):

@@ -590,6 +590,30 @@ MUTATIONS = [
      ["TestEnvironmentCopies.test_environment_copies_are_marked_against_no_target",
       "TestTargets.test_the_targets_the_bin_carries_are_the_ones_the_house_rule_names"]),
 
+    # -- the boundary the subprocess sits behind (cold review of the lane) --
+    ("T293 the help is decoded strictly, so a byte of it traces the bin back",
+     '                                 text=True, errors="replace",',
+     "                                 text=True,",
+     ["TestTheEnvironmentBoundary."
+      "test_a_help_that_is_not_utf8_is_measured_rather_than_traced_back"]),
+
+    ("T293 the prefetch takes the subcommand from the prose and runs it unchecked",
+     '        if m and sub in m.group(1).split(","):\n'
+     "            subs.add((path, (sub,)))",
+     "        if True:\n            subs.add((path, (sub,)))",
+     ["TestTheEnvironmentBoundary.test_a_subcommand_the_usage_never_named_is_not_run"]),
+
+    ("T293 the prefetch never reads a subcommand help, so the wave is one deep",
+     '        if m and sub in m.group(1).split(","):\n'
+     "            subs.add((path, (sub,)))",
+     "        if False:\n            subs.add((path, (sub,)))",
+     ["TestTheEnvironmentBoundary.test_a_subcommand_the_usage_does_name_is_still_run"]),
+
+    ("T282 a sibling is named once per definition, not once per file",
+     "    return {term: list(dict.fromkeys(names)) for term, names in out.items()}",
+     "    return out",
+     ["TestDefinedTerms.test_a_sibling_that_defines_the_term_twice_is_named_once"]),
+
     ("T293 the text report drops the section the JSON carries",
      '    lines += section("environment copies", report["environment_copies"],',
      '    lines += section("environment copies", [],',
