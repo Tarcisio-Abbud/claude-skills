@@ -234,6 +234,12 @@ CEILING_FORCED = 2000
 # UNSET MEANS NO CAP — the behaviour every queue had before this gate — so the
 # number is chosen by the user, once, on the machine that has to live with it.
 WIP_KEY = "max-open-items"
+# The other two halves of the same gate, spelled where tk_site spells them: the
+# cap asked of ONE queue, and the discount `max-open-items = auto` derives the
+# total with. The names travel from the module that validates them, so a rename
+# there cannot leave this file naming a key nothing reads.
+PER_QUEUE_KEY = tk_site.WIP_PER_QUEUE
+DISCOUNT_KEY = tk_site.WIP_DISCOUNT
 # The encodings BEYOND UTF-8 that the cap is looked for in when the site file
 # will not parse (see site_names_the_cap). A file saved as "Unicode" by a
 # Windows editor is UTF-16, and this house runs one — the desktop.
@@ -2929,7 +2935,14 @@ def site_names_the_cap():
     except OSError:
         # unreadable is not a cap anyone can act on, either way
         return False
-    assignment = re.compile(rf"\s*{re.escape(WIP_KEY)}\s*=")
+    # EVERY key that gates an add, not only the total. `max-open-items` alone
+    # missed a file whose only ceiling is the per-queue one: `max-open-items` is
+    # a PREFIX of `max-open-items-per-queue`, so the `\s*=` after it does not
+    # match that line, and a broken file carrying the brake and nothing else was
+    # reported and waved past — the cap disappearing in silence, which is the one
+    # direction this whitelist may not fail in. Measured while T360 was written.
+    assignment = re.compile(r"\s*(?:" + "|".join(
+        re.escape(k) for k in (WIP_KEY, PER_QUEUE_KEY, DISCOUNT_KEY)) + r")\s*=")
     for encoding, errors in (("utf-8", "replace"),) + WIDE_DECODINGS:
         try:
             text = raw.decode(encoding, errors)
@@ -3089,7 +3102,9 @@ def check_wip(site, memdir):
     of this function, deliberately — see the note above load_site.
     """
     cap = site.ceilings.get(WIP_KEY) if site else None
-    if cap is None:
+    per_queue = site.ceilings.get(PER_QUEUE_KEY) if site else None
+    auto = bool(site and site.open_items_auto)
+    if cap is None and per_queue is None and not auto:
         return
     root = roster().projects_root()
     if not os.path.isdir(root):
@@ -3106,7 +3121,34 @@ def check_wip(site, memdir):
               "queue alone and not over the machine.", file=sys.stderr)
     counts = [(d, key, open_items(d)) for d, key in wip_queues(site, memdir)]
     total = sum(n for _, _, n in counts)
-    if total < cap:
+    target = os.path.realpath(memdir)
+    mine = sum(n for _, key, n in counts if key == target)
+    # THE PER-QUEUE CAP IS ASKED FIRST, and that order is the rule rather than a
+    # detail of the writing. The total does not see CONCENTRATION — 194 of 280
+    # open items sat in two queues on 2026-09-04 — so a machine can be a long way
+    # under its total while the queue in front of the caller is the problem. Asked
+    # second, this queue's refusal would arrive only once every OTHER queue had
+    # been pruned too, which is the opposite of the pressure it exists to create.
+    # And it is the actionable one: the items to close are in the queue the caller
+    # is already in.
+    if per_queue is not None and mine >= per_queue:
+        fail(f"{mine} open item(s) in this queue against a per-queue cap of "
+             f"{per_queue}, so no new item enters it:\n  {memdir}\n\nThe cap is "
+             f"`{PER_QUEUE_KEY}` in {site.path}, one number for every queue on this "
+             "machine's roster, and the room has to be made HERE — the machine may be "
+             "far under its total while this queue is full, which is the concentration "
+             "the per-queue cap exists to answer. Neither --force nor another --dir gets "
+             "past it, and raising the number is the user's call, not this session's. "
+             + WIP_REMEDY)
+    # DERIVED after the queues are counted, never in the site reader: how many
+    # queues exist is the roster's question, and `wip_queues` has just answered it
+    # for this very gate. `auto` is `(per-queue - discount) x N` — never
+    # `per-queue x N`, which is the worst case, every queue at its maximum at
+    # once; the discount is what says some may be, not all.
+    if auto:
+        discount = site.ceilings.get(DISCOUNT_KEY, 0)
+        cap = (per_queue - discount) * len(counts)
+    if cap is None or total < cap:
         return
     # WHERE the work is, WITHOUT writing another project's name into THE
     # REFUSAL — which is the routine output, printed on a healthy machine every
@@ -3123,15 +3165,18 @@ def check_wip(site, memdir):
     # `tk-hygiene` was already written against.
     # Only the queues that hold something: a machine's empty queues would bury
     # the two lines that matter
-    target = os.path.realpath(memdir)
-    mine = sum(n for _, key, n in counts if key == target)
     others = [(d, n) for d, key, n in counts if key != target and n]
     where = f"\n  {mine:>4}  {memdir}"
     if others:
         where += (f"\n  {sum(n for _, n in others):>4}  in {len(others)} other queue(s) "
                   "on this machine (`tk-roster` lists them there)")
+    # the DERIVED total says where it came from, or the reader looks for a number
+    # that is written nowhere in the file
+    how = (f"`{WIP_KEY} = {tk_site.WIP_AUTO}` in {site.path}, which is "
+           f"({per_queue} - {site.ceilings.get(DISCOUNT_KEY, 0)}) x {len(counts)} "
+           "queue(s)" if auto else f"`{WIP_KEY}` in {site.path}")
     fail(f"{total} open item(s) against a cap of {cap}, so no new item enters the "
-         f"queue:{where}\n\nThe cap is `{WIP_KEY}` in {site.path}, and the count sums "
+         f"queue:{where}\n\nThe cap is {how}, and the count sums "
          "every queue on this machine's roster — so neither --force nor another --dir "
          "gets past it, and raising the number is the user's call, not this session's. "
          + WIP_REMEDY)

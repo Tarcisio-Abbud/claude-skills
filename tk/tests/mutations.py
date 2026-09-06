@@ -2977,8 +2977,8 @@ MUTATIONS = [
      ["TestWipCap.test_force_does_not_reach_the_cap"]),
 
     ("T297 the cap refuses only PAST itself (off by one)",
-     "    if total < cap:\n        return",
-     "    if total <= cap:\n        return",
+     "    if cap is None or total < cap:\n        return",
+     "    if cap is None or total <= cap:\n        return",
      ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap"]),
 
     # the over-refusal direction, and the one that would brick every queue on a
@@ -3033,7 +3033,8 @@ MUTATIONS = [
     # the site file's own half: an unknown key is IGNORED by design, so dropping
     # the key from the tuple does not fail the file — it silently unsets the cap
     ("T297 site the cap's key leaves the tuple, so the value reads as an unknown key",
-     'CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items")',
+     'CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items",\n'
+     '            "max-open-items-per-queue")',
      'CEILINGS = ("max-local-subagents", "max-cloud-subagents")',
      ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap",
       "TestWipCap.test_a_cap_of_zero_is_refused_by_the_site_file"],
@@ -3078,8 +3079,6 @@ MUTATIONS = [
     # the leak: a project directory carries a client's or a company's name, and a
     # refusal travels into transcripts and pull request bodies
     ("T346 the refusal dumps every project on the machine again",
-     '    target = os.path.realpath(memdir)\n'
-     '    mine = sum(n for _, key, n in counts if key == target)\n'
      '    others = [(d, n) for d, key, n in counts if key != target and n]\n'
      '    where = f"\\n  {mine:>4}  {memdir}"\n'
      '    if others:\n'
@@ -3272,6 +3271,78 @@ MUTATIONS = [
      ["TestMutationHarness."
       "test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one"],
      os.path.join("tests", "mutations.py")),
+
+    # --- T360: the cap per QUEUE, and a total that scales with the roster ---
+    ("T360 the per-queue cap stops refusing anything",
+     "    if per_queue is not None and mine >= per_queue:", "    if False:",
+     ["TestWipCapPerQueue.test_a_full_queue_is_refused_while_the_others_are_empty",
+      "TestWipCapPerQueue.test_force_does_not_reach_the_per_queue_cap_either"]),
+
+    ("T360 the per-queue cap refuses only PAST itself (off by one)",
+     "mine >= per_queue:", "mine > per_queue:",
+     ["TestWipCapPerQueue.test_a_full_queue_is_refused_while_the_others_are_empty",
+      "TestWipCapPerQueue.test_force_does_not_reach_the_per_queue_cap_either"]),
+
+    # over-trigger direction: the brake asked of the MACHINE is the total again,
+    # and it closes every queue on it the moment one of them fills
+    ("T360 the per-queue cap is asked of the machine, not of the queue",
+     "    if per_queue is not None and mine >= per_queue:",
+     "    if per_queue is not None and total >= per_queue:",
+     ["TestWipCapPerQueue.test_a_sibling_queue_stays_open_while_one_is_full"]),
+
+    ("T360 auto derives the WORST case, per-queue x N",
+     "        cap = (per_queue - discount) * len(counts)",
+     "        cap = per_queue * len(counts)",
+     ["TestWipCapPerQueue.test_the_total_refuses_with_no_queue_at_its_own_cap"]),
+
+    ("T360 auto counts one queue instead of the roster's",
+     "        cap = (per_queue - discount) * len(counts)",
+     "        cap = (per_queue - discount)",
+     ["TestWipCapPerQueue.test_auto_counts_the_queues_the_roster_counts"]),
+
+    ("T360 the derived total stops saying where it came from",
+     '    how = (f"`{WIP_KEY} = {tk_site.WIP_AUTO}` in {site.path}, which is "\n'
+     '           f"({per_queue} - {site.ceilings.get(DISCOUNT_KEY, 0)}) x {len(counts)} "\n'
+     '           "queue(s)" if auto else f"`{WIP_KEY}` in {site.path}")',
+     '    how = f"`{WIP_KEY}` in {site.path}"',
+     ["TestWipCapPerQueue.test_the_total_refuses_with_no_queue_at_its_own_cap"]),
+
+    # the third option eats the second: a number the user pinned is overwritten
+    # by one derived from a key they wrote for the OTHER half of the gate
+    ("T360 a pinned total is overwritten by the derived one",
+     "    if auto:\n        discount = site.ceilings.get(DISCOUNT_KEY, 0)",
+     "    if per_queue is not None:\n        discount = site.ceilings.get(DISCOUNT_KEY, 0)",
+     ["TestWipCapPerQueue.test_an_explicit_number_still_pins_the_total"]),
+
+    ("T360 an unset total refuses instead of letting the add through",
+     "    if cap is None or total < cap:\n        return",
+     "    if cap is not None and total < cap:\n        return",
+     ["TestWipCapPerQueue.test_the_per_queue_cap_alone_leaves_the_total_uncapped"]),
+
+    ("T360 an absent per-queue key reads as a cap of three",
+     "    per_queue = site.ceilings.get(PER_QUEUE_KEY) if site else None",
+     "    per_queue = site.ceilings.get(PER_QUEUE_KEY, 3) if site else None",
+     ["TestWipCapPerQueue.test_without_the_per_queue_key_nothing_changes"]),
+
+    ("T360 the gating-key whitelist goes back to the total alone",
+     '    assignment = re.compile(r"\\s*(?:" + "|".join(\n'
+     "        re.escape(k) for k in (WIP_KEY, PER_QUEUE_KEY, DISCOUNT_KEY)) + r\")\\s*=\")",
+     '    assignment = re.compile(rf"\\s*{re.escape(WIP_KEY)}\\s*=")',
+     ["TestWipCapPerQueue.test_a_per_queue_cap_that_is_not_a_number_is_refused"]),
+
+    ("T360 site auto with no per-queue cap is read as no cap at all",
+     "    if open_items_auto:\n        del pairs[WIP_TOTAL]\n"
+     "        if WIP_PER_QUEUE not in pairs:",
+     "    if open_items_auto:\n        del pairs[WIP_TOTAL]\n        if False:",
+     ["TestWipCapPerQueue."
+      "test_auto_without_the_per_queue_key_is_refused_by_the_site_file"],
+     "bin/tk_site.py"),
+
+    ("T360 site a discount at or above the per-queue cap is accepted",
+     "    if per_queue is not None and discount is not None and discount >= per_queue:",
+     "    if False:",
+     ["TestWipCapPerQueue.test_a_discount_at_or_above_the_per_queue_cap_is_refused"],
+     "bin/tk_site.py"),
 
     # --- T306: the dependency between two items of one queue ----------------
     ("T306 the blocker is written outside the position every gate reads",

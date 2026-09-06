@@ -7046,19 +7046,13 @@ def site_cap(cap):
     return f"identity = alpha\nenvironments = alpha\nmax-open-items = {cap}\n"
 
 
-class TestWipCap(QueueTest):
-    """`add` is refused once the OPEN items reach the cap, with NO bypass.
+class WipCapTest(QueueTest):
+    """The fixtures both cap suites share: the `add` under test, a queue where
+    `tk-roster` will sweep for it, and an `add` aimed at a chosen directory.
 
-    A queue is a working set, and `add` is the cheapest action in this CLI — a
-    session that cannot finish a finding enqueues it, and the queue grows faster
-    than any session empties it. The gate is the whitelist form of the answer:
-    refuse AT the cap, always, and let a human take an item out. There is no
-    `--force` for it, deliberately: an unattended `--force` is a string no gate
-    can judge, and this script has no signal of whether anyone is present.
-
-    The count sums every queue on this machine's roster, which is what closes
-    the `--dir` bypass: a cap that counted one queue is walked around by naming
-    another one on the same machine, and the WIP is the same WIP.
+    A base class, not a parent suite: inheriting the CASES would rerun the whole
+    total-cap class inside the per-queue one, and this suite already spawns a
+    subprocess per case.
     """
 
     ADD = ("add", "achado da review", "--class", "AUTONOMOUS", "--effort", "S",
@@ -7084,6 +7078,22 @@ class TestWipCap(QueueTest):
         return subprocess.run([sys.executable, TK, *self.ADD, *extra, "--dir", memdir],
                               capture_output=True, text=True, cwd=self.dir, env=env,
                               timeout=60)
+
+
+class TestWipCap(WipCapTest):
+    """`add` is refused once the OPEN items reach the cap, with NO bypass.
+
+    A queue is a working set, and `add` is the cheapest action in this CLI — a
+    session that cannot finish a finding enqueues it, and the queue grows faster
+    than any session empties it. The gate is the whitelist form of the answer:
+    refuse AT the cap, always, and let a human take an item out. There is no
+    `--force` for it, deliberately: an unattended `--force` is a string no gate
+    can judge, and this script has no signal of whether anyone is present.
+
+    The count sums every queue on this machine's roster, which is what closes
+    the `--dir` bypass: a cap that counted one queue is walked around by naming
+    another one on the same machine, and the WIP is the same WIP.
+    """
 
     # --- the cap itself ---------------------------------------------------
 
@@ -7537,6 +7547,136 @@ class TestWipCap(QueueTest):
         doc = load_tk().open_items.__doc__
         self.assertIn("THAT RACE IS THE ONLY WAY INTO THAT", doc)
         self.assertNotIn("The other reachable way in is a", doc)
+
+
+class TestWipCapPerQueue(WipCapTest):
+    """The total does not see CONCENTRATION. On 2026-09-04, 194 of 280 open
+    items sat in TWO of twelve queues: a machine can be a long way under its
+    total while the queue in front of the caller is the problem, and the total
+    alone answers that by tightening on the ten queues that are not.
+
+    So the brake is per QUEUE, one number for every queue on the roster — not a
+    map, which is configuration nobody maintains and under which every new queue
+    is born without an entry — and the total scales with the roster instead of
+    being a fixed number that turns into a lie the day a project is added.
+    """
+
+    def three_queues(self, *sizes, per_queue=None, total=None, discount=None):
+        """A site file plus three roster queues holding `sizes` items each, and
+        `self.mem` (outside ~/.claude/projects) as the target queue."""
+        lines = ["identity = alpha", "environments = alpha"]
+        if per_queue is not None:
+            lines.append(f"max-open-items-per-queue = {per_queue}")
+        if total is not None:
+            lines.append(f"max-open-items = {total}")
+        if discount is not None:
+            lines.append(f"max-open-items-discount = {discount}")
+        self.site("\n".join(lines) + "\n")
+        for n, size in enumerate(sizes, 1):
+            self.roster_queue(f"q{n}", *(item(i, f"item {i}") for i in range(1, size + 1)))
+
+    def add_in_roster_queue(self, name, *extra):
+        return self.add_in(os.path.join(self.home, ".claude", "projects", name, "memory"),
+                           *extra)
+
+    def test_a_full_queue_is_refused_while_the_others_are_empty(self):
+        """The half the total cannot express: 3 open of a per-queue cap of 3, a
+        machine holding 3 items in all, and the add refused."""
+        self.three_queues(3, 0, 0, per_queue=3, total="auto", discount=0)
+        r = self.add_in_roster_queue("q1")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("3 open item(s) in this queue against a per-queue cap of 3",
+                      r.stderr)
+        self.assertIn("max-open-items-per-queue", r.stderr)
+
+    def test_a_sibling_queue_stays_open_while_one_is_full(self):
+        """The over-refusal direction: the per-queue cap is per QUEUE, and a full
+        one may not close the machine."""
+        self.three_queues(3, 0, 0, per_queue=3, total="auto", discount=0)
+        r = self.add_in_roster_queue("q2")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_the_total_refuses_with_no_queue_at_its_own_cap(self):
+        """The other half: three queues at 8 of a per-queue cap of 30, so none is
+        full — and the derived total is (30 - 27) x 3 = 9 against 24 open."""
+        self.three_queues(8, 8, 8, per_queue=30, total="auto", discount=27)
+        r = self.add_in_roster_queue("q1")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("24 open item(s) against a cap of 9", r.stderr)
+        self.assertIn("(30 - 27) x 3 queue(s)", r.stderr,
+                      "the derived total has to say where it came from")
+
+    def test_auto_counts_the_queues_the_roster_counts(self):
+        """`auto` is (per-queue - discount) x N, and N moves with the roster: the
+        same occupancy that refuses over three queues passes over four, which is
+        the whole reason the total is derived instead of pinned."""
+        self.three_queues(4, 4, 4, per_queue=30, total="auto", discount=26)
+        r = self.add_in_roster_queue("q1")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("12 open item(s) against a cap of 12", r.stderr)
+        self.three_queues(4, 4, 4, 0, per_queue=30, total="auto", discount=26)
+        r = self.add_in_roster_queue("q4")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_without_the_per_queue_key_nothing_changes(self):
+        """The compatibility half of the criterion, asserted against the two
+        behaviours the file had before this key existed."""
+        self.three_queues(2, 0, 0, total=3)
+        self.assertEqual(self.add_in_roster_queue("q1").returncode, 0)
+        self.three_queues(3, 0, 0, total=3)
+        r = self.add_in_roster_queue("q1")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("3 open item(s) against a cap of 3", r.stderr)
+        self.assertNotIn("per-queue", r.stderr)
+
+    def test_an_explicit_number_still_pins_the_total(self):
+        """Three options, not two: absent is no cap, a number pins it, `auto`
+        derives it. A per-queue cap beside a pinned total leaves the total pinned."""
+        self.three_queues(4, 4, 4, per_queue=30, total=99)
+        r = self.add_in_roster_queue("q1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.three_queues(4, 4, 4, per_queue=30, total=12)
+        r = self.add_in_roster_queue("q1")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("12 open item(s) against a cap of 12", r.stderr)
+
+    def test_the_per_queue_cap_alone_leaves_the_total_uncapped(self):
+        """Each key stands on its own: writing the brake must not invent a total
+        the user never chose."""
+        self.three_queues(2, 2, 2, per_queue=30)
+        self.assertEqual(self.add_in_roster_queue("q1").returncode, 0)
+
+    def test_auto_without_the_per_queue_key_is_refused_by_the_site_file(self):
+        """`auto` derives from a number that is not there. Read as "no cap" it
+        would silently drop a ceiling the user wrote a line to ask for."""
+        self.three_queues(1, 0, 0, total="auto")
+        r = self.add_in_roster_queue("q1")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("max-open-items-per-queue", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_a_discount_at_or_above_the_per_queue_cap_is_refused(self):
+        """It derives a total of zero or less — a machine that may open no item
+        at all, arriving as a refusal citing a number written nowhere."""
+        self.three_queues(0, 0, 0, per_queue=30, total="auto", discount=30)
+        r = self.add_in_roster_queue("q1")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("max-open-items-discount", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_a_per_queue_cap_that_is_not_a_number_is_refused(self):
+        self.three_queues(0, 0, 0, per_queue="muitas")
+        r = self.add_in_roster_queue("q1")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("max-open-items-per-queue", r.stderr)
+
+    def test_force_does_not_reach_the_per_queue_cap_either(self):
+        """The same answer `--force` gets from the total, for the same reason:
+        an unattended `--force` is a string no gate can judge."""
+        self.three_queues(3, 0, 0, per_queue=3)
+        r = self.add_in_roster_queue("q1", "--force")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("per-queue cap of 3", r.stderr)
 
 
 
