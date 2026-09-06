@@ -13,22 +13,32 @@ Runs on CPU, so nothing leaves the machine.
 python3 "${CLAUDE_PLUGIN_ROOT}/bin/transcribe.py" <folder|file|export.zip> [options]
 ```
 
+`${CLAUDE_PLUGIN_ROOT}` is set only while this skill runs as an installed PLUGIN. Anywhere
+else it expands to nothing and the line dies as `python3 /bin/transcribe.py`; then spell the
+path from THIS file, where the script is `../../bin/transcribe.py`.
+
 Use the Python that has `onnx-asr` and `av` installed — usually a dedicated venv rather than
-the system interpreter. This machine's venv path, model cache and provisioning script live in
-the extension file `~/.claude/asr/transcribe-audio.md`; read it before the first run.
+the system interpreter. A machine already provisioned keeps its venv path, model cache and
+provisioning script in `~/.claude/asr/transcribe-audio.md`: read that file before the first
+run. **No such file means no venv on this machine**, not a blocked run — make one,
+`pip install onnx-asr av` (plus `faster-whisper` for `--engine whisper`), and point `HF_HOME`
+at a persistent directory so the weights survive.
 
 | Flag | Default | When to change it |
 |---|---|---|
 | `--engine parakeet\|whisper` | `parakeet` | `whisper` for a language Parakeet does not cover |
 | `--lang` | `pt` | any code the chosen engine supports |
 | `--chunk` | `30` | lower it on a box that OOMs |
+| `--out` | `transcript.jsonl` beside the target | give it a FILE path ending `.jsonl` — `transcript.md` takes that stem. Without it the run writes into the user's own audio folder |
 
 Writes `transcript.jsonl` (one line per file: `file`, `dur`, `engine`, `text`) and a readable
 `transcript.md` beside it. **Resumable** — rerunning skips what is already done, so a killed
 batch resumes instead of restarting.
 
-Expect roughly 4x realtime on a weak CPU. Background a long batch, and note that it holds
-~1.1 GB resident until it finishes — on a small box, run it alone.
+The factor counts on the audio's side: the run is FASTER than the recording, 2x to 4x
+depending on the CPU — ~2x measured on this container on 2026-08-26, ten minutes of audio in
+about five of wall clock. Background a long batch, and note that it holds ~1.1 GB resident
+until it finishes — on a small box, run it alone.
 
 ## Which engine
 

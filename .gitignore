@@ -58,7 +58,7 @@
 # this PUBLIC repo.
 !/.claude
 /.claude/*
-!/.claude/hookify.code-review-antes-de-pronto.local.md
+!/.claude/hookify.code-review-before-done.local.md
 
 # Python bytecode from the test suites
 __pycache__/
