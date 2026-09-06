@@ -179,6 +179,41 @@ def roster():
     return _ROSTER
 
 CLASSES = ("AUTONOMOUS", "DECISION", "BLOCKED", "EXTERNAL", "RECURRING")
+# Class VALUES a human wrote in Portuguese, and the enum each names. The field
+# NAME in Portuguese was never the problem — `Classe` and `Esforço` are read as
+# the fields they are — but the VALUE is what every gate compares against
+# CLASSES, so `**Classe:** EXTERNA.` leaves the item invisible to `pack` and to
+# every afk package. Measured 2026-09-06 across the twelve real queues: 26 items
+# in five of them, spelled AUTÔNOMA, BLOQUEADA, DECISÃO and EXTERNA.
+#
+# An explicit map and nothing wider. A rule ("strip the accents, take the stem")
+# would translate a word nobody wrote — and a value outside this map is a value
+# `migrate` NAMES rather than guesses at, which is the whole difference between
+# a migration and a rewrite.
+NO_CLASS_MAPPING = ("no Portuguese-to-enum mapping carries this spelling, and inventing "
+                    "one would be inventing a class")
+CLASS_ALIASES = {
+    "AUTONOMA": "AUTONOMOUS", "AUTÔNOMA": "AUTONOMOUS",
+    "AUTONOMO": "AUTONOMOUS", "AUTÔNOMO": "AUTONOMOUS",
+    "DECISAO": "DECISION", "DECISÃO": "DECISION",
+    "BLOQUEADA": "BLOCKED", "BLOQUEADO": "BLOCKED",
+    "EXTERNA": "EXTERNAL", "EXTERNO": "EXTERNAL",
+    "RECORRENTE": "RECURRING",
+}
+
+
+def class_alias_summary():
+    """The map above, spelled the way the `pack` repair line prints it.
+
+    DERIVED, never respelled beside it: the printed remedy is the whole of T134,
+    and a remedy that promises a translation the command does not make is the
+    same defect in the other direction. Add a spelling to the map and the line
+    offers it; take one out and the line stops.
+    """
+    by_enum = {}
+    for pt, enum in CLASS_ALIASES.items():
+        by_enum.setdefault(enum, []).append(pt)
+    return "; ".join(f"{'/'.join(v)} → {k}" for k, v in by_enum.items())
 # The class that PARKS the queue: nothing moves on a DECISION item until the user
 # is back. So it may not be reached by omission — `add --class DECISION` and any
 # `edit` that sets that class demand `--deferred <justification>`, recorded in the
@@ -1507,6 +1542,35 @@ def write_class_segment(block, value):
     return render_item(item), promoted
 
 
+def translate_class_value(block):
+    """(block with its class value written as the enum, `(before, after)`) —
+    (block, None) when there is nothing to translate.
+
+    The one writer of a class value that is not a REPLACEMENT: `edit --class`
+    rewrites the whole segment, and doing that here would delete the qualifier a
+    legacy value carries — `**Classe:** EXTERNA (João/contrato).` says who the
+    item waits on, and that clause is the item's substance, not decoration. Only
+    the class WORD changes, matched where `chain_class` reads it, so everything
+    the user wrote around it stays byte for byte.
+
+    Read through `chain_class`, so a class named in the item's own prose is not
+    what gets translated: that reader takes the chain's single Class field and
+    answers None where there are two, which is the ambiguity this file refuses
+    everywhere rather than guessing at.
+    """
+    written = chain_class(block)
+    if written is None or written in CLASSES:
+        return block, None
+    enum = CLASS_ALIASES.get(written.upper())
+    if enum is None:
+        return block, None
+    item = parse_item(block)
+    field = next(f for f in item.fields if f.canonical == "Class")
+    field.rewrite(re.sub(r"(\*\*[^*]+:\*\*\s*)" + re.escape(written),
+                         lambda m: m.group(1) + enum, field.text, count=1))
+    return render_item(item), (written, enum)
+
+
 def chain_breaker(candidate):
     """The field segment that stops the chain from reaching back to **Class:** — the
     one a refusal has to NAME, because it is the one the caller must repair.
@@ -2625,8 +2689,14 @@ REPAIR_CLASSLESS = "no **Class:** at all: `tk-queue edit <id> --class AUTONOMOUS
 # and nothing to repair, while `class is URGENTE` is a value no gate will ever
 # read — the item is out of every package on every machine until someone gives
 # it one of the five.
-REPAIR_UNKNOWN_CLASS = ("a class value that is no class: `tk-queue edit <id> --class "
-                        "<CLASS>`, one of " + ", ".join(CLASSES))
+# The first half is DERIVED from CLASS_ALIASES rather than respelled here: this
+# is the printed remedy T134 is about, and the way it fails is by promising a
+# repair the command does not make. Whatever `migrate` translates, this offers;
+# whatever it names instead, the second half addresses.
+REPAIR_UNKNOWN_CLASS = ("a class value that is no class: `tk-queue migrate` writes the "
+                        "spellings it maps (" + class_alias_summary() + ") and NAMES the "
+                        "rest; for those, `tk-queue edit <id> --class <CLASS>`, one of "
+                        + ", ".join(CLASSES))
 # The same shape with its fields still off the first line, and the ORDER is the
 # whole of it: `edit --class` appends the anchor to a first line that has no
 # chain, which strands those fields for good and stops `migrate` from ever
@@ -4776,6 +4846,10 @@ FOLD_SPLIT_REFUSAL = ("a **Field:** marker would stay off the first line, and a 
 FOLD_PROSE_REFUSAL = ("a line between the head and the chain is not the hard-wrapped prose "
                       "the fold may absorb, and absorbing a shape nobody recognised is how "
                       "structure is lost in silence")
+FOLD_PROSE_MARKER_REFUSAL = (
+    "a **Field:** marker sits outside the chain the join would produce, so the fold "
+    "would promote the item's own prose to a field — quote that marker in a code "
+    "span (`**Class:**`) and the fold reads the rest as the chain it is")
 
 
 # every line-shape that OPENS a Markdown block, from CommonMark's block-start
@@ -5016,6 +5090,65 @@ def field_run(line):
     return [text[start:end] for _, start, end in segs]
 
 
+def fold_wrapped(lines, block):
+    """(folded, why) for the item whose chain SHARES a line with the prose it
+    wrapped out of — the second fold path, tried when the first declines.
+
+    The walk above lifts a chain that already owns its lines. It was right to
+    refuse this population: there is no run of field lines to relocate, and the
+    chain is not whole until the hard wrap is undone. Measured across the twelve
+    real queues, that population is 15 of the 17 items the walk left alone —
+    `**Classe:**` ending a line with `EXTERNA. **Esforço:** P.` opening the next,
+    a chain that starts mid-sentence, a value carrying a parenthetical.
+
+    So the licence is a different one, and the four gates below are what make
+    undoing a wrap safe on a file that has no other copy:
+
+      structure   NOTHING may open a Markdown block. Where the walk lifts a chain
+                  OVER a list and keeps it, this path has no chain to lift, so it
+                  declines instead of choosing which lines to flatten.
+      a marker    the LAST line has to carry one. A trailing note carries none,
+                  and joined it lands inside the last field's value — greedy by
+                  grammar — so `**Source:** 2026-08-13 nota solta.` becomes what
+                  every reader reports as the source. This gate is why that item
+                  is still left alone and named, and it costs the two items whose
+                  last line is a WRAPPED VALUE: undecidable from the text, and a
+                  refusal costs one command.
+      the class   the joined chain has to name a class some gate reads — one of
+                  CLASSES, or a spelling CLASS_ALIASES maps. A note absorbed as a
+                  class value produces a word that is neither, which is the exact
+                  failure the old refusal feared, caught after the join and before
+                  anything is written.
+      the position the chain has to BEGIN at **Class:**, with every readable
+                  marker inside it. A segment ahead of the anchor is prose wearing
+                  a field's name — `ver a **Deferred:** nota de contexto.` ends in
+                  a period, so it joins the chain from the left — and the join
+                  would promote it. That is the T164/T166 population, refused with
+                  the code-span remedy named rather than folded.
+
+    The geometry audit runs last, over every continuation line: a break far short
+    of the wrap column is a line the author ENDED, not one an editor wrapped.
+    """
+    if any(opens_a_block(lines, k) for k in range(1, len(lines))):
+        return None, FOLD_REFUSAL
+    if not markers(lines[-1]):
+        return None, FOLD_REFUSAL
+    folded = (" ".join(ln.strip() for ln in lines)
+              + block[len(block.rstrip("\n")):])
+    cls = chain_class(folded)
+    if cls is None or (cls not in CLASSES and cls.upper() not in CLASS_ALIASES):
+        return None, FOLD_REFUSAL
+    # asked AFTER the class, so an item that has no class at all is reported as
+    # the different thing it is
+    chain = field_chain(folded)
+    if len(markers(folded)) != len(chain) or chain[0].canonical != "Class":
+        return None, FOLD_PROSE_MARKER_REFUSAL
+    refusal = absorption_audit(lines, len(lines))
+    if refusal:
+        return None, refusal
+    return folded, None
+
+
 def fold_chain_onto_first_line(block):
     """(the block with its field chain lifted onto the first line, why it was
     left alone) — at most one of the two is not None, and (None, None) means
@@ -5082,7 +5215,9 @@ def fold_chain_onto_first_line(block):
         run[:0] = segs
         first -= 1
     if not run:
-        return None, FOLD_REFUSAL
+        # not a refusal yet: the walk found no run of field LINES, which is what
+        # the second path is for
+        return fold_wrapped(lines, block)
     # the lines BETWEEN the head and the field run, split where the paragraph
     # stops: the wrapped ones are absorbed, and everything from the first block
     # onwards keeps its own line, in its own place, with its own indentation
@@ -5106,7 +5241,9 @@ def fold_chain_onto_first_line(block):
     chain = field_chain(folded)
     if ([seg.rstrip() for seg in run]
             != [f.text.rstrip() for f in chain]):
-        return None, FOLD_REFUSAL
+        # the join gave back a chain the run does not account for — a segment
+        # came from the head, so this is the wrapped shape, not a relocation
+        return fold_wrapped(lines, block)
     # Where the PROSE readback used to be. It stood here as two comparisons, and a
     # review measured both unable to fail — so they are gone rather than kept as
     # decoration, and what each was for now sits where it can:
@@ -5198,6 +5335,7 @@ def cmd_migrate(args):
             save(log_path, log)
     out, dropped_prev = [], False
     folded, left_alone = [], []
+    translated, untranslated = [], []
     backdated, undated = [], []
     today = datetime.date.today()
     for kind, text in blocks:
@@ -5218,6 +5356,17 @@ def cmd_migrate(args):
                 folded.append(item_label(text))
             elif refusal:
                 left_alone.append((item_label(text), refusal))
+            # AFTER the fold, which is what puts a legacy chain on the line
+            # `chain_class` reads: a class value on a continuation line is not a
+            # class value to any reader, so translating it there would repair
+            # nothing and report a repair
+            text, pair = translate_class_value(text)
+            if pair:
+                translated.append(f"{item_label(text)} ({pair[0]} \u2192 {pair[1]})")
+            else:
+                unmapped = chain_class(text)
+                if unmapped is not None and unmapped not in CLASSES:
+                    untranslated.append((item_label(text), NO_CLASS_MAPPING))
             # AFTER the fold and the ID: the fold is what puts a legacy item's
             # fields where a field can be placed beside them, and the label is
             # read once the item carries the number it will be reported under.
@@ -5256,6 +5405,17 @@ def cmd_migrate(args):
         for why, labels in group_by_reason(left_alone):
             print(f"{len(labels)} item(s) left exactly as they are: {why} — "
                   + ", ".join(labels) + ". Close each with `cancel` and re-add it clean.")
+    # The class values, in the same two shapes: what was translated, and what was
+    # NAMED instead. An unmapped value leaves the item out of every package on
+    # every machine, and a silent decline is an item nobody learns about
+    if translated:
+        print(f"{len(translated)} item(s) with a class value in Portuguese: written as "
+              "the enum every gate reads — " + ", ".join(translated))
+    if untranslated:
+        for why, labels in group_by_reason(untranslated):
+            print(f"{len(labels)} item(s) left with a class value no gate reads: {why} — "
+                  + ", ".join(labels) + ". Give each one of "
+                  + ", ".join(CLASSES) + " with `tk-queue edit <id> --class <CLASS>`.")
     # The backdating, reported in the same two shapes as the fold: what it did,
     # and — grouped by reason — what it declined to do. The second half is the
     # load-bearing one. An item this command leaves undated shows `?` in `list`

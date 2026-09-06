@@ -1745,7 +1745,7 @@ MUTATIONS = [
       "TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too",
       "TestMigrateFold.test_an_idless_legacy_item_is_folded_AND_numbered_in_one_pass",
       "TestMigrateFold.test_the_two_populations_are_separated_in_ONE_run",
-      "TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_folded_NOW",
       "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
       "TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED",
       "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
@@ -1762,17 +1762,17 @@ MUTATIONS = [
      "    if False:",
      ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
 
-    # the block whose lines carry no field RUN, joined blindly and returned — the
-    # decision the `not run` refusal and the readback make TOGETHER, and the only
-    # one that answers the marker-and-value-on-different-lines shape. The join
-    # itself still runs: what is switched off is the rule, not the step
+    # the block whose lines carry no field RUN, joined blindly and returned. Since
+    # T301 slice 4 the `not run` branch HANDS OVER to `fold_wrapped`, so the
+    # mutant is that second path with its four gates removed — which is exactly
+    # the blind join the first version of this entry restored
     ("T121 the fold trusts the join on a block it can read no field run out of",
-     "    if not run:\n        return None, FOLD_REFUSAL",
-     "    if not run:\n        return (\" \".join(ln.strip() for ln in lines)\n"
-     "                + block[len(block.rstrip(\"\\n\")):]), None",
-     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
-      "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
-      "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
+     "        return fold_wrapped(lines, block)\n    # the lines BETWEEN",
+     "        return ((\" \".join(ln.strip() for ln in lines)\n"
+     "                 + block[len(block.rstrip(\"\\n\")):]), None)\n    # the lines BETWEEN",
+     ["TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED",
+      "TestMigrateFold.test_a_line_that_opens_a_block_stops_the_wrapped_fold"]),
 
     # the whitespace half of that comparison, on its own: a chain WRAPPED over two
     # continuation lines is whole, and refusing it repairs an item the fold could lift
@@ -1785,8 +1785,8 @@ MUTATIONS = [
     # a fold that lifts nothing still rewrites the user's line and reports it as
     # repaired — the one direction a data-rewriting command may never take
     ("T121 an item whose lines carry no field RUN is folded anyway",
-     "    if not run:\n        return None, FOLD_REFUSAL",
-     "    if False:\n        return None, FOLD_REFUSAL",
+     "    if not run:\n        # not a refusal yet",
+     "    if False:\n        # not a refusal yet",
      ["TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
 
     # the weaker question the guard deliberately does not ask: "does ANY chain end
@@ -1795,7 +1795,7 @@ MUTATIONS = [
     # in SILENCE, which is the outcome the report exists to prevent
     ("T121 the skip asks for any chain instead of one that reaches the class",
      "    if chain_class(block) is not None:", "    if field_chain(block):",
-     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED"]),
+     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_folded_NOW"]),
 
     ("T121 an item with no field off the first line is dragged into the fold's report",
      "    if not fields_off_first_line(block):", "    if False:",
@@ -1812,7 +1812,7 @@ MUTATIONS = [
     ("T121 the items the fold could NOT lift go unreported (silent partial success)",
      "    if left_alone:\n        for why, labels in group_by_reason(left_alone):",
      "    if False:\n        for why, labels in group_by_reason(left_alone):",
-     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED",
+     ["TestMigrateFold.test_a_line_that_opens_a_block_stops_the_wrapped_fold",
       "TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED",
       "TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED",
       "TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED",
@@ -3776,6 +3776,63 @@ MUTATIONS = [
      "        spans.append((opener_start, len(line)))\n"
      "        i += 1",
      ["TestAMarkerInACodeSpanIsNotAField.test_an_odd_backtick_leaves_the_field_a_field"]),
+
+    # --- T301 slice 4: the wrapped fold, and the class VALUE ---------------
+    # Every entry here restores a rewrite of the user's only copy of an item.
+    ("T159 the second fold path is gone, and the wrapped chain stays unreadable",
+     "        return fold_wrapped(lines, block)\n    # the lines BETWEEN",
+     "        return None, FOLD_REFUSAL\n    # the lines BETWEEN",
+     ["TestMigrateFold.test_a_marker_whose_value_sits_on_the_NEXT_line_is_folded_NOW",
+      "TestMigrateFold.test_a_chain_that_opens_MID_LINE_is_folded_too"]),
+
+    ("T159 the wrapped fold absorbs a line that OPENS a Markdown block",
+     "    if any(opens_a_block(lines, k) for k in range(1, len(lines))):",
+     "    if False:",
+     ["TestMigrateFold.test_a_line_that_opens_a_block_stops_the_wrapped_fold"]),
+
+    ("T159 a trailing line with no marker is joined into the last field's value",
+     "    if not markers(lines[-1]):", "    if False:",
+     ["TestMigrateFold.test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED"]),
+
+    ("T159 the joined line is accepted with a class value no gate reads",
+     "    if cls is None or (cls not in CLASSES and cls.upper() not in CLASS_ALIASES):",
+     "    if False:",
+     ["TestMigrateFold.test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED"]),
+
+    ("T164/T166 the wrapped fold promotes a marker sitting ahead of the anchor",
+     '    if len(markers(folded)) != len(chain) or chain[0].canonical != "Class":',
+     "    if False:",
+     ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
+
+    ("T135 the class value in Portuguese is left as it is, invisible to every gate",
+     "            text, pair = translate_class_value(text)",
+     "            pair = None",
+     ["TestAClassValueInPortuguese."
+      "test_a_mapped_value_is_written_as_the_enum_and_the_item_leaves_pack"]),
+
+    ("T135 the translation replaces the whole segment, so the value's clause dies",
+     '    field.rewrite(re.sub(r"(\\*\\*[^*]+:\\*\\*\\s*)" + re.escape(written),\n'
+     "                         lambda m: m.group(1) + enum, field.text, count=1))",
+     '    field.rewrite(f"**{field.name}:** {enum}.")',
+     ["TestAClassValueInPortuguese."
+      "test_a_mapped_value_is_written_as_the_enum_and_the_item_leaves_pack"]),
+
+    ("T135 a value no mapping carries is guessed at instead of named",
+     "    enum = CLASS_ALIASES.get(written.upper())",
+     '    enum = CLASS_ALIASES.get(written.upper(), "AUTONOMOUS")',
+     ["TestAClassValueInPortuguese.test_a_value_no_mapping_carries_is_left_and_NAMED"]),
+
+    ("T135 the item left with an unreadable class value goes unreported",
+     "                if unmapped is not None and unmapped not in CLASSES:",
+     "                if False:",
+     ["TestAClassValueInPortuguese.test_a_value_no_mapping_carries_is_left_and_NAMED"]),
+
+    ("T134 the pack repair respells the map by hand instead of deriving it",
+     '"a class value that is no class: `tk-queue migrate` writes the "\n'
+     '                        "spellings it maps (" + class_alias_summary() + ") and NAMES the "',
+     '"a class value that is no class: `tk-queue migrate` writes the "\n'
+     '                        "spellings it maps (EXTERNA \u2192 EXTERNAL) and NAMES the "',
+     ["TestAClassValueInPortuguese.test_the_pack_repair_offers_exactly_what_migrate_translates"]),
 
     # --- T301 slice 5: the close whose log half landed, and whose queue half
     # did not. Every entry here restores a SECOND write of a record that has one
