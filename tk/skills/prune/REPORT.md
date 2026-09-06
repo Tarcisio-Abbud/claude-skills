@@ -1,6 +1,8 @@
 # The pruning report
 
-One markdown file per pruning pass, named `prune-report.md`, whose first line is its own path.
+One markdown file per pruning pass: `prune-report.md` in the output directory, copied to its
+committed home `docs/prune/<skill-name>-report.md` by the pruning PR. Its first line is its own
+path.
 
 1. **Numbers** — the bin's metrics for every file read, before and after.
 2. **Table** — one row per table unit (step 4 of `SKILL.md`), plus a CLAUSE row per cut clause.
