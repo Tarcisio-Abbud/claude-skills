@@ -315,9 +315,12 @@ def prunable(repo, name, upstream, track, default):
     return None
 
 
-def unmerged_content(repo, name, default):
-    """None when merging `name` into `default` would change nothing there,
+def unmerged_content(repo, rev, default):
+    """None when merging `rev` into `default` would change nothing there,
     otherwise the reason the branch stays.
+
+    `rev` is a branch name from the local step and a SHA from the remote one, so
+    it is named for what it is rather than for either caller.
 
     Asked only of a branch that FAILED the ancestry test, and it is the strongest
     reading of "already merged": merge the branch into the default in memory, and
@@ -333,11 +336,22 @@ def unmerged_content(repo, name, default):
     A merge that CONFLICTS is a branch kept: a merge that did not happen says
     nothing about where the branch's work is. Same for a git that cannot answer
     at all — the silent direction of every guard here is to keep.
+
+    The two are KEPT alike and REPORTED apart. `merge-tree` exits 1 for a
+    conflict and for a merge it never got to attempt — an unknown flag on a git
+    older than 2.38, a ref that vanished — and `tk-collisions` refuses that same
+    blur beside its own call to it. Only a run that NAMED a conflict is reported
+    as one; the other says the merge was not measured, which is what a reader
+    needs to go look at their git.
     """
-    code, out, err = git(repo, "merge-tree", "--write-tree", default, name)
+    code, out, err = git(repo, "merge-tree", "--write-tree", default, rev)
     if code != 0:
-        return f"does not merge into {default}: " + first_line(err or out, code,
-                                                               "git merge-tree")
+        conflict = next((line for line in out.splitlines()
+                         if line.startswith("CONFLICT (")), None)
+        if conflict:
+            return f"does not merge into {default}: {conflict}"
+        return (f"the merge into {default} was not measured: "
+                + first_line(err or out, code, "git merge-tree"))
     code, tree, _ = git(repo, "rev-parse", f"{default}^{{tree}}")
     if code != 0 or not out:
         return f"the merge into {default} could not be read"

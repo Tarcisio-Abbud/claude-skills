@@ -95,9 +95,15 @@ MUTATIONS = [
      HYGIENE),
 
     ("T281 hygiene a merge that CONFLICTED is read as an answer about content",
-     '    if code != 0:\n        return f"does not merge into {default}: "',
-     '    if False:\n        return f"does not merge into {default}: "',
+     '    if code != 0:\n        conflict = next(',
+     '    if False:\n        conflict = next(',
      ["TestPrunedByContent.test_a_branch_that_does_not_merge_into_the_default_is_kept"],
+     HYGIENE),
+
+    ("T281 hygiene a merge that could not be ATTEMPTED is reported as a conflict",
+     "        if conflict:", "        if True:",
+     ["TestPrunedByContent."
+      "test_a_merge_that_could_not_run_is_not_reported_as_a_conflict"],
      HYGIENE),
 
     ("T281 hygiene content the default does not have no longer holds a branch back",

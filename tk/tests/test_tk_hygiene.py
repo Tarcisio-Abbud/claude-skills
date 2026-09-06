@@ -245,6 +245,22 @@ class HygieneTest(unittest.TestCase):
         self.advance_origin(repo)
         return name
 
+    def unrelated(self, repo, name="unrelated-gone"):
+        """A branch with no commit in common with the default.
+
+        `merge-tree` REFUSES that merge instead of conflicting over it, and the
+        two are not one fact: a run that never happened says nothing about a
+        conflict. Fetched from a repository of its own, because a history with no
+        common commit cannot be grown inside this one.
+        """
+        other = os.path.join(self.tmp, name + "-elsewhere")
+        os.makedirs(other)
+        self.git(other, "init", "-q", "-b", "main")
+        self.commit(other, "a history of its own")
+        self.git(repo, "fetch", "-q", other, f"main:{name}")
+        self.track(repo, name, name)
+        return name
+
     def write(self, repo, path, text):
         """One file, committed on whatever branch is checked out."""
         with open(os.path.join(repo, path), "w", encoding="utf-8") as f:
@@ -601,6 +617,22 @@ class TestPrunedByContent(HygieneTest):
         r = self.run_hygiene()
         self.assertIn(name, self.branch_names(repo))
         self.assertTrue(any(l.startswith("kept") and name in l and "does not merge" in l
+                            for l in self.branch_lines(r.stdout, repo)),
+                        self.branch_lines(r.stdout, repo))
+
+    def test_a_merge_that_could_not_run_is_not_reported_as_a_conflict(self):
+        # `merge-tree` exits 1 for a conflict AND for a merge it never attempted,
+        # and the branch is kept either way — but a report that calls the second
+        # one a conflict sends the reader after a merge that never happened
+        repo = self.repo("unrelated",
+                         origin="https://github.com/example-owner/unrelated.git")
+        self.forge("example-owner/unrelated", "true")
+        name = self.unrelated(repo)
+
+        r = self.run_hygiene()
+        self.assertIn(name, self.branch_names(repo))
+        self.assertTrue(any(l.startswith("kept") and name in l
+                            and "was not measured" in l
                             for l in self.branch_lines(r.stdout, repo)),
                         self.branch_lines(r.stdout, repo))
 
