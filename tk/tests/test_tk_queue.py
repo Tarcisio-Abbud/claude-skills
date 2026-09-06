@@ -8180,6 +8180,22 @@ class TestTheDoorNormalisesWhatNoReaderCanSee(QueueTest):
         self.assertIn("**T003**", self.body())
         self.assertNotIn(self.BOM, self.body())
 
+    def test_a_bom_glued_to_a_DONE_LOG_entry_still_spends_that_id(self):
+        """The other file the allocator reads. A spent id lives in a done-log
+        ENTRY, so a BOM glued to one hides it exactly as a BOM glued to an item
+        marker hides an open item's — and the number is handed out a second time,
+        which is the whole of T163 on the file the first repair did not reach.
+
+        Measured before this: `done_log_ids` answered [] for an entry the file
+        plainly carries, with no warning anywhere."""
+        self.seed(log="# Done log\n\n" + self.BOM
+                  + "- 2026-08-01 — tk — T001 — feito — how: PR #1\n")
+        r = self.run_tk("add", "o proximo", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: y")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**T002**", self.body())
+        self.assertNotIn("**T001**", self.body())
+
     def test_a_utf16_file_is_read_and_the_warning_says_what_the_next_write_does(self):
         """A raw UnicodeDecodeError is a traceback the caller cannot act on. And
         reading it silently would be worse than the error: this script writes
@@ -8332,12 +8348,71 @@ class TestAMarkerInACodeSpanIsNotAField(QueueTest):
         """T134's dead end: the `edit --text` the exclusion prints was refused by
         `ensure_no_embedded_marker` whenever the text carried a marker of its
         own, so the prescribed remedy could not repair the item it addressed.
-        The guard now asks the SAME tokenizer the reader asks."""
+        The guard now asks the SAME tokenizer the reader asks.
+
+        The assertion is the WHOLE line, never `assertIn` on the text that went
+        in: the text the caller passed is written at the head of the line, so it
+        is present in a body the command also CORRUPTED. Measured on this very
+        fixture while the tail was cut by a regex of its own — the cut landed
+        inside the code span, the item came back as
+        `cita o `**Risk:** alto` de outra fila **Risk:** alto` de outra fila.
+        **Class:** …`, and this test passed over it.
+        """
         self.seed(self.QUOTED)
         r = self.run_tk("edit", "T007", "--text",
                         "cita o `**Risk:** alto` de outra fila")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("cita o `**Risk:** alto` de outra fila", self.body())
+        self.assertEqual(
+            self.body().strip().splitlines()[-1],
+            "- [ ] **T007** — cita o `**Risk:** alto` de outra fila "
+            "**Class:** AUTONOMOUS. **Effort:** M. **Risk:** alto de verdade. "
+            "**Criterion:** A: x. **Project:** tk. **Source:** 2026-08-21")
+
+    def test_the_tail_the_remedy_KEEPS_is_cut_outside_the_code_span(self):
+        """The other half of the same write, and the one no `assertIn` sees: the
+        chain `--text` preserves is found with the reader's tokenizer, so the cut
+        never lands between a code span's two backticks.
+
+        Cut inside it, the opening backtick stayed in the text being replaced and
+        the closing one did not, so the quotation came back as a REAL marker
+        sitting before the chain — the item's prose duplicated around it, and the
+        item pushed out of `pack` into the cancel-and-re-add dead end this rule
+        exists to open a way out of. Exit code 0, "T007 updated", both times.
+        """
+        self.seed(self.QUOTED)
+        r = self.run_tk("edit", "T007", "--text", "texto novo, sem marcador nenhum")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        line = self.body().strip().splitlines()[-1]
+        self.assertEqual(
+            line,
+            "- [ ] **T007** — texto novo, sem marcador nenhum "
+            "**Class:** AUTONOMOUS. **Effort:** M. **Risk:** alto de verdade. "
+            "**Criterion:** A: x. **Project:** tk. **Source:** 2026-08-21")
+        # the discriminating half: the corrupted line above put a **Risk:**
+        # marker in front of the chain, and `pack` answered "a **Risk:** marker
+        # sits where no gate reads it" — the exclusion whose only printed remedy
+        # is cancel + re-add
+        p = self.run_tk("pack")
+        self.assertNotIn("no gate reads it", p.stdout)
+
+    def test_a_quoted_marker_does_not_block_GIVING_the_item_that_field(self):
+        """The refusal that guards `edit` against a marker OUTSIDE the chain asks
+        the same tokenizer too: a quoted marker is not one it may fire on.
+
+        Measured before this: an item that merely CITES `**Project:**` in a code
+        span and carries no real Project field answered `--project tk` with "has a
+        **Project:** marker OUTSIDE its field chain … Close the item with `cancel`
+        and re-add it clean" — prescribing the done-log lie for prose the caller
+        had already quoted precisely to say it was prose.
+        """
+        self.seed("- [ ] **T001** — o item cita `**Project:**` numa code span. "
+                  "**Class:** AUTONOMOUS. **Effort:** M. **Criterion:** A: x. "
+                  "**Source:** 2026-08-21\n")
+        r = self.run_tk("edit", "T001", "--project", "tk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertIn("o item cita `**Project:**` numa code span.", body)
+        self.assertIn("**Project:** tk.", body)
 
     def test_a_BARE_marker_in_free_text_is_still_refused(self):
         """The position rule outside a code span is unchanged, and so is the

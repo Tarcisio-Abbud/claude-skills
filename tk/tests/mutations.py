@@ -455,17 +455,37 @@ MUTATIONS = [
      ["TestFieldChain.test_a_field_appended_after_source_stays_editable"]),
 
     ("review#2 a marker only outside the chain is silently written instead of refused",
-     '        if not found and re.search(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
-     'r"):\\*\\*", new):',
+     "        if not found and markers(new, field):",
      "        if False:",
      ["TestFieldChain.test_a_marker_only_outside_the_chain_is_refused_not_guessed"]),
 
     # over-refusal, the direction the tests above cannot see: a guard that fires on
     # every edit makes the fields unwritable instead of merely un-guessable
     ("review#2 the outside-the-chain guard fires on every edit",
-     "        if not found and re.search(",
-     "        if re.search(",
+     "        if not found and markers(",
+     "        if markers(",
      ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
+
+    # the code-span half of the same guard: a marker the READER does not read is
+    # not one this refusal may fire on, or quoting the prose — the way out this
+    # rule exists to open — is answered with the dead end it exists to close
+    # the WRITER's half of the same rule: the cut that keeps the chain is found
+    # with the reader's tokenizer, so it never lands between a code span's two
+    # backticks. Blind, it kept the opening backtick in the text being replaced
+    # and not the closing one, and wrote the quotation back as a real marker
+    ("cold review#95 the tail --text keeps is cut by a code-span-blind regex",
+     "        marks = markers(block)",
+     "        marks = [(m.group(1), m.start(), m.end())\n"
+     "                 for m in FIELD_MARKER_ANY_RE.finditer(block)]",
+     ["TestAMarkerInACodeSpanIsNotAField."
+      "test_the_tail_the_remedy_KEEPS_is_cut_outside_the_code_span"]),
+
+    ("cold review#95 the outside-the-chain guard reads a QUOTED marker again",
+     "        if not found and markers(new, field):",
+     '        if not found and re.search(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
+     'r"):\\*\\*", new):',
+     ["TestAMarkerInACodeSpanIsNotAField."
+      "test_a_quoted_marker_does_not_block_GIVING_the_item_that_field"]),
 
     ("review#2 a duplicated field in the chain is guessed instead of refused",
      "        if len(in_chain) > 1:", "        if False:",
@@ -845,7 +865,7 @@ MUTATIONS = [
     # a field the item does not carry at all is APPENDED, and `--class` on a
     # class-less item is exactly that append
     ("review#3 a field the item does not carry at all is refused instead of appended",
-     '        if not found and re.search(r"\\*\\*(?:" + FIELD_VARIANTS[field] + r"):\\*\\*", new):',
+     "        if not found and markers(new, field):",
      "        if not found:",
      ["TestAClassLessChainIsNotAField.test_a_class_less_item_can_still_be_GIVEN_a_class"]),
 
@@ -1673,10 +1693,17 @@ MUTATIONS = [
     ("BOM read() lets one at the head through to the `^`-anchored grammars again",
      ['        return data.decode("utf-8-sig")',
       '    f"{BOM}*" + r"-[ \\t" + INVISIBLE_BLANKS + r"]\\[( |x)\\][ \\t" '
-      '+ INVISIBLE_BLANKS + r"]"'],
+      '+ INVISIBLE_BLANKS + r"]"',
+      # the THIRD part, and it earned its place the way the second did: the door
+      # now repairs the done-log entry head too, so that file's byte-0 BOM was
+      # protected twice and the two-part mutant SURVIVED on the log test alone
+      '    f"{BOM}*" + r"-[ \\t" + INVISIBLE_BLANKS '
+      '+ r"][0-9]{4}-[0-9]{2}-[0-9]{2}[ \\t"'],
      ['        return data.decode("utf-8")',
       '    r"-[ \\t" + INVISIBLE_BLANKS + r"]\\[( |x)\\][ \\t" '
-      '+ INVISIBLE_BLANKS + r"]"'],
+      '+ INVISIBLE_BLANKS + r"]"',
+      '    r"-[ \\t" + INVISIBLE_BLANKS '
+      '+ r"][0-9]{4}-[0-9]{2}-[0-9]{2}[ \\t"'],
      ["TestByteOrderMark.test_the_first_item_is_neither_hidden_nor_blamed_on_a_concurrent_writer",
       "TestByteOrderMark.test_the_hidden_items_id_is_never_handed_out_twice",
       "TestByteOrderMark.test_a_bom_in_the_done_log_keeps_its_first_entry_allocated"]),
@@ -2624,7 +2651,7 @@ MUTATIONS = [
 
     ("T172 the [?] is decided by a whole-block search again",
      '    if not real_fields(block, "Ticket"):\n        return ""',
-     '    if not FIELD_MARKER_RE["Ticket"].search(block):\n        return ""',
+     '    if not markers(block, "Ticket"):\n        return ""',
      ["TestPackLane.test_a_marker_QUOTED_IN_PROSE_earns_no_mark_at_all"]),
 
     ("T172 pack_closes asks the ambiguity itself, of the whole block",
@@ -2945,7 +2972,9 @@ MUTATIONS = [
 
     ("T198 the repo is read from the whole BLOCK, so prose becomes an address",
      '    segs = real_fields(block, "Repo")',
-     '    segs = list(re.finditer(FIELD_MARKER_RE["Repo"].pattern + r"[^*\\n]*", block))',
+     '    segs = [make_field(line[s:e]) for line in block.split("\\n")\n'
+     '            for name, s, e in field_segments(line)\n'
+     '            if canonical_field(name) == "Repo"]',
      ["TestPackRepo.test_a_marker_QUOTED_IN_PROSE_is_not_read_as_the_repo"]),
 
     ("T198 two Repo fields in the chain are no longer ambiguous — the first wins",
@@ -3689,6 +3718,14 @@ MUTATIONS = [
      '            fixed = head.replace(BOM, "")', "            fixed = head",
      ["TestTheDoorNormalisesWhatNoReaderCanSee."
       "test_a_bom_glued_to_a_marker_in_the_MIDDLE_of_the_file"]),
+
+    # the door on the OTHER file's head: the allocator reads both, so an entry
+    # whose head no reader sees spends nothing and the id goes out twice
+    ("cold review#95 the door reaches the item marker only, so a spent id hides",
+     "HEADS = ((LOOSE_MARKER_RE, ITEM_ID_RE), (LOOSE_LOG_RE, LOG_ID_RE))",
+     "HEADS = ((LOOSE_MARKER_RE, ITEM_ID_RE),)",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_bom_glued_to_a_DONE_LOG_entry_still_spends_that_id"]),
 
     ("T171 a UTF-16 file is read in silence, and the conversion is a surprise",
      '            warn_once(f"{path} is UTF-16 — read as UTF-16, and the next write stores "\n'
