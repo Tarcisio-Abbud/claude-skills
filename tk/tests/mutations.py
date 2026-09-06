@@ -130,14 +130,15 @@ MUTATIONS = [
      ["TestMissingItemMessage"]),
 
     ("T064 the project tag is dropped on close",
-     '        line += f" **Project:** {tag_m.group(1)}."',
+     '        line += f" **Project:** {tag}."',
      '        pass',
      ["TestProjectTagInDoneLog.test_tag_reaches_the_done_log",
       "TestProjectTagInDoneLog.test_report_groups_by_tag_untagged_last"]),
 
     ("T064 --summary drops the tag (tag read from the title instead of the block)",
-     "tag_m = PROJECT_TAG_RE.search(block)",
-     "tag_m = PROJECT_TAG_RE.search(args.summary or item_title(block, limit=400))",
+     '    tag = marker_value(block, "Project", PROJECT_TAG_VALUE_RE)',
+     '    tag = marker_value(args.summary or item_title(block, limit=400), "Project",'
+     " PROJECT_TAG_VALUE_RE)",
      ["TestProjectTagInDoneLog.test_tag_survives_summary_replacing_the_text"]),
 
     ("T064 report stops grouping by tag",
@@ -178,15 +179,15 @@ MUTATIONS = [
      ["TestEmbeddedMarker.test_close_refuses_a_marker_in_summary_and_outcome"]),
 
     ("T065 the guard's decision inverts (marker shape no longer matches)",
-     'EMBEDDED_MARKER_RE = re.compile(r"\\*\\*(?:" + ANY_FIELD + r"):\\*\\*")',
-     'EMBEDDED_MARKER_RE = re.compile(r"(?!x)x")',
+     'FIELD_MARKER_ANY_RE = re.compile(r"\\*\\*(" + ANY_FIELD + r"):\\*\\*")',
+     'FIELD_MARKER_ANY_RE = re.compile(r"(?!x)(x)")',
      ["TestEmbeddedMarker.test_add_refuses_a_marker_in_the_text"]),
 
     # the opposite direction, which no other mutation covers: a guard that over-refuses
     # blocks legitimate prose, and only the false-positive test can see it
     ("T065 the guard broadens to the bare field name, refusing ordinary prose",
-     'EMBEDDED_MARKER_RE = re.compile(r"\\*\\*(?:" + ANY_FIELD + r"):\\*\\*")',
-     'EMBEDDED_MARKER_RE = re.compile(r"(?:" + ANY_FIELD + r")")',
+     'FIELD_MARKER_ANY_RE = re.compile(r"\\*\\*(" + ANY_FIELD + r"):\\*\\*")',
+     'FIELD_MARKER_ANY_RE = re.compile(r"(" + ANY_FIELD + r")")',
      ["TestEmbeddedMarker.test_plain_prose_naming_the_fields_is_not_refused"]),
 
     ("T064/T060 an ID quoted in a --note or an outcome counts as closed again",
@@ -442,14 +443,14 @@ MUTATIONS = [
       "TestRiskDeletion.test_clearing_rewrites_the_real_field_not_prose_that_looks_like_one"]),
 
     ("review#2 the chain admits prose (the period discriminator goes away)",
-     '        ends_field = (m.group(0).rstrip().endswith(".")\n'
-     '                      or canonical_field(m.group(1)) == "Source")',
+     '        ends_field = (line[seg[1]:seg[2]].rstrip().endswith(".")\n'
+     '                      or canonical_field(seg[0]) == "Source")',
      "        ends_field = True",
      ["TestEmbeddedMarker.test_edit_rewrites_the_real_field_not_prose_that_looks_like_one",
       "TestFieldChain.test_a_marker_before_the_fields_is_still_prose"]),
 
     ("review#2 the chain stops at Source (fields appended after it become unreachable)",
-     '                      or canonical_field(m.group(1)) == "Source")',
+     '                      or canonical_field(seg[0]) == "Source")',
      "                      or False)",
      ["TestFieldChain.test_a_field_appended_after_source_stays_editable"]),
 
@@ -743,8 +744,7 @@ MUTATIONS = [
     ("T121 `list` reads the chain ALONE, so a legacy item loses its class",
      '    if real_fields(block, "Class"):\n'
      '        return chain_class(block)\n'
-     '    m = CLASS_VALUE_RE.search(block)\n'
-     '    return m.group(1) if m else None',
+     '    return marker_value(block, "Class", CLASS_VALUE_RE)',
      "    return chain_class(block)",
      ["TestListReadsTheClassFromTheChain."
       "test_a_legacy_item_with_its_fields_OFF_the_first_line_still_shows_its_class"]),
@@ -797,7 +797,7 @@ MUTATIONS = [
 
     ("re-check the gate reads the class the loose way `list` displays it",
      "    result_class = args.classe or chain_class(block)",
-     "    result_class = args.classe or (lambda m: m.group(1) if m else None)(CLASS_VALUE_RE.search(block))",
+     '    result_class = args.classe or marker_value(block, "Class", CLASS_VALUE_RE)',
      ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
 
     ("re-check an ambiguous class in the chain is guessed instead of refused",
@@ -1149,13 +1149,13 @@ MUTATIONS = [
     # the continuation-line shape `edit --class` is refused too, and for the missing
     # period it repairs nothing
     ("T121/T126 an item with NO class at all is classified as one whose fields moved",
-     '    if not FIELD_MARKER_RE["Class"].search(block):\n        return CLASS_SHAPE_NONE',
+     '    if not markers(block, "Class"):\n        return CLASS_SHAPE_NONE',
      "    if False:\n        return CLASS_SHAPE_NONE",
      ["TestClaim.test_an_item_whose_chain_has_no_class_refuses_the_claim",
       "TestPack.test_no_class_at_all_is_named_and_the_CLASS_repair_works"]),
 
     ("T121/T126 the class shape stops discriminating: everything is 'no class'",
-     '    if not FIELD_MARKER_RE["Class"].search(block):\n        return CLASS_SHAPE_NONE',
+     '    if not markers(block, "Class"):\n        return CLASS_SHAPE_NONE',
      "    if True:\n        return CLASS_SHAPE_NONE",
      ["TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it",
       "TestPack.test_a_class_off_the_first_line_is_named_and_the_FOLD_repair_works"]),
@@ -1188,7 +1188,7 @@ MUTATIONS = [
     # "the chain has no Class" is BROADER than "the fields are elsewhere": it also
     # catches an item whose fields are on line 1 and whose Class merely lost its period
     ("T121/T126 the fold shape is decided by the CHAIN, not by where the marker is",
-     '    if not FIELD_MARKER_RE["Class"].search(block.split("\\n", 1)[0]):\n'
+     '    if not markers(block.split("\\n", 1)[0], "Class"):\n'
      "        return CLASS_SHAPE_OFF_LINE",
      '    if not any(f.canonical == "Class" for f in field_chain(block)):\n'
      "        return CLASS_SHAPE_OFF_LINE",
@@ -1196,9 +1196,9 @@ MUTATIONS = [
       "TestPack.test_a_chain_that_never_reaches_the_class_is_named_as_that"]),
 
     ("T121 the refusal names where the chain STARTS instead of where it stops",
-     "    before = [m for m in FIELD_SEGMENT_RE.finditer(line) if m.start() < chain[0].start()]\n"
-     "    return canonical_field(before[-1].group(1)) if before else None",
-     "    return canonical_field(chain[-1].group(1))",
+     "    before = [seg for seg in field_segments(line) if seg[1] < chain[0].start()]\n"
+     "    return canonical_field(before[-1][0]) if before else None",
+     "    return chain[-1].canonical",
      ["TestClaim.test_the_refusal_names_where_the_chain_STOPS_not_where_it_starts"]),
 
     # the message went back to DIAGNOSING the break and prescribing a per-field
@@ -1757,7 +1757,7 @@ MUTATIONS = [
     # field RUN), so it passes with this one off — naming it would claim a proof
     # this run cannot make. The pair below is what decides that shape
     ("T121 the fold stops asking the reader what the folded line gives back",
-     "    if ([m.group(0).rstrip() for m in run]\n"
+     "    if ([seg.rstrip() for seg in run]\n"
      "            != [f.text.rstrip() for f in chain]):",
      "    if False:",
      ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
@@ -1777,9 +1777,9 @@ MUTATIONS = [
     # the whitespace half of that comparison, on its own: a chain WRAPPED over two
     # continuation lines is whole, and refusing it repairs an item the fold could lift
     ("T121 the readback counts the blank at a line joint as a changed value",
-     "    if ([m.group(0).rstrip() for m in run]\n"
+     "    if ([seg.rstrip() for seg in run]\n"
      "            != [f.text.rstrip() for f in chain]):",
-     "    if [m.group(0) for m in run] != [f.text for f in chain]:",
+     "    if [seg for seg in run] != [f.text for f in chain]:",
      ["TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too"]),
 
     # a fold that lifts nothing still rewrites the user's line and reports it as
@@ -1901,7 +1901,7 @@ MUTATIONS = [
 
     # half a chain lifted leaves an item that reads as repaired and is not
     ("review#3 the fold lifts half a chain, leaving a marker off the first line",
-     '    if EMBEDDED_MARKER_RE.search("\\n".join(kept)):\n        return None, FOLD_SPLIT_REFUSAL',
+     '    if markers("\\n".join(kept)):\n        return None, FOLD_SPLIT_REFUSAL',
      '    if False:\n        return None, FOLD_SPLIT_REFUSAL',
      ["TestFoldKeepsTheItemsMarkdown."
       "test_a_marker_stranded_on_a_BLOCK_line_is_left_and_REPORTED"]),
@@ -2996,7 +2996,7 @@ MUTATIONS = [
       "TestMigrateBackdates.test_a_source_with_no_date_leaves_the_item_undated_and_says_so"]),
 
     ("T148 an unreadable **Source:** is reported as no **Source:** at all",
-     '        return block, ("unreadable" if FIELD_MARKER_RE["Source"].search(block)\n'
+     '        return block, ("unreadable" if markers(block, "Source")\n'
      "                       else \"none\")",
      '        return block, "none"',
      ["TestMigrateBackdates.test_a_source_no_reader_may_use_is_reported_as_its_own_case"]),
@@ -3122,8 +3122,15 @@ MUTATIONS = [
      '            path, "A queue file is Markdown written by `tk-queue`",\n'
      '            " — the offending byte arrived with text pasted from another encoding")',
      "        content = read(path)",
-     ["TestWipCap.test_a_sibling_queue_that_is_not_utf8_is_diagnosed_and_not_crashed",
-      "TestWipCap.test_an_invisible_bom_in_a_sibling_queue_does_not_undercount_it"]),
+     ["TestWipCap.test_a_sibling_queue_that_is_not_utf8_is_diagnosed_and_not_crashed"]),
+
+    ("T345/T163 the unguarded reader AND the door stop repairing a sibling's header",
+     ['        content = tk_site.read_text(\n'
+      '            path, "A queue file is Markdown written by `tk-queue`",\n'
+      '            " — the offending byte arrived with text pasted from another encoding")',
+      '            fixed = head.replace(BOM, "")'],
+     ["        content = read(path)", "            fixed = head"],
+     ["TestWipCap.test_an_invisible_bom_in_a_sibling_queue_does_not_undercount_it"]),
 
     ("T345 the roster is loaded at import again, so every command depends on it",
      "        _ROSTER = mod\n    return _ROSTER",
@@ -3633,19 +3640,25 @@ MUTATIONS = [
      ["TestOneParseOneWriter.test_every_shape_round_trips_byte_for_byte"]),
 
     ("T301 the parse normalises the blank between the title and the chain",
-     "        title=line[len(head):chain[0].start() if chain else len(line)],",
-     "        title=line[len(head):chain[0].start() if chain else len(line)].rstrip(),",
+     "        title=line[len(head):chain[0][1] if chain else len(line)],",
+     "        title=line[len(head):chain[0][1] if chain else len(line)].rstrip(),",
      ["TestOneParseOneWriter.test_the_blocks_the_script_itself_writes_round_trip"]),
 
     ("T301 a field keeps only its canonical name, so the file's own spelling is lost",
-     "        self.name = m.group(1)",
-     "        self.name = canonical_field(m.group(1)) or m.group(1)",
+     "        self.name = segs[0][0]",
+     "        self.name = canonical_field(segs[0][0]) or segs[0][0]",
      ["TestOneParseOneWriter."
       "test_a_field_carries_the_spelling_the_file_uses_and_its_canonical_name"]),
 
-    ("T301 the parse forgets which markers were quoted",
-     "in_code_span(spans, m.start())", "False",
-     ["TestOneParseOneWriter.test_a_marker_inside_a_code_span_is_recorded_as_quoted"]),
+    ("T164/T166 a marker inside a code span is read as a field again",
+     "            if in_code_span(spans, m.start()):\n                continue",
+     "            if False:\n                continue",
+     ["TestAMarkerInACodeSpanIsNotAField."
+      "test_a_marker_inside_a_code_span_is_not_a_field_at_all",
+      "TestAMarkerInACodeSpanIsNotAField."
+      "test_the_quoted_marker_is_not_the_anchor_and_the_real_risk_survives",
+      "TestAMarkerInACodeSpanIsNotAField."
+      "test_the_quoted_marker_is_never_rewritten_by_an_edit"]),
 
     ("T301 an unmatched backtick closes on the next run of ANY width",
      "            if closer_end - closer_start == width:", "            if True:",
@@ -3711,6 +3724,56 @@ MUTATIONS = [
      "    text, repaired = normalize_marker_headers(text)", "    repaired = 0",
      ["TestTheDoorNormalisesWhatNoReaderCanSee."
       "test_the_round_trip_holds_over_the_NORMALISED_text"]),
+
+    # --- T301 slice 3: the code-span rule and the value grammar ------------
+    ("T134 the embedded-marker guard keeps a grammar of its own",
+     "        if val and markers(val):",
+     "        if val and FIELD_MARKER_ANY_RE.search(val):",
+     ["TestAMarkerInACodeSpanIsNotAField.test_the_remedy_the_pack_prints_is_ACCEPTED_by_the_guard"]),
+
+    ("T065/T166 the guard stops refusing a BARE marker in free text",
+     "        if val and markers(val):", "        if False:",
+     ["TestAMarkerInACodeSpanIsNotAField.test_a_BARE_marker_in_free_text_is_still_refused"]),
+
+    ("T063 the whole-block value reads go back to a blind search",
+     "    for _, _, end in markers(text, field):",
+     "    for _, _, end in [(0, 0, m.end()) for m in FIELD_MARKER_ANY_RE.finditer(text)\n"
+     "                      if canonical_field(m.group(1)) == field]:",
+     ["TestAMarkerInACodeSpanIsNotAField.test_list_groups_it_under_the_real_tag_not_the_quoted_one"]),
+
+    ("T164/T166 the marker COUNT goes back to a blind whole-block count",
+     "    return real_fields(block, field), len(markers(block, field))",
+     "    return real_fields(block, field), len(re.findall(\n"
+     '        r"\\*\\*(?:" + FIELD_VARIANTS[field] + r"):\\*\\*", block))',
+     ["TestAMarkerInACodeSpanIsNotAField."
+      "test_pack_stops_excluding_it_for_a_marker_no_gate_reads"]),
+
+    # T258 takes a two-part mutant: the truncating body ALONE no longer breaks
+    # the chain, because the anchoring condition it used to trip became
+    # structural. Restoring the defect means restoring both halves.
+    ("T258 the value stops at the first asterisk, and the chain has to reach the line end",
+     ["    marks = markers(line)\n"
+      "    return [(m[0], m[1], marks[i + 1][1] if i + 1 < len(marks) else len(line))\n"
+      "            for i, m in enumerate(marks)]",
+      "    segs = field_segments(line)\n    if not segs:\n        return []"],
+     ['    marks = markers(line)\n'
+      '    return [(m[0], m[1], m[2] + len(re.match(r"[^*\\n]*", line[m[2]:]).group(0)))\n'
+      "            for i, m in enumerate(marks)]",
+      "    segs = field_segments(line)\n"
+      "    if not segs or segs[-1][2] < len(line.rstrip()):\n        return []"],
+     ["TestAMarkerInACodeSpanIsNotAField.test_an_asterisk_in_a_value_no_longer_cuts_the_chain"]),
+
+    ("T258 an unmatched backtick swallows the rest of the line",
+     "        for j in range(i + 1, len(runs)):\n"
+     "            closer_start, closer_end = runs[j]\n"
+     "            if closer_end - closer_start == width:\n"
+     "                spans.append((opener_start, closer_end))\n"
+     "                i = j\n"
+     "                break\n"
+     "        i += 1",
+     "        spans.append((opener_start, len(line)))\n"
+     "        i += 1",
+     ["TestAMarkerInACodeSpanIsNotAField.test_an_odd_backtick_leaves_the_field_a_field"]),
 ]
 
 

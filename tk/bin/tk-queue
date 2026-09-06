@@ -778,19 +778,25 @@ def ensure_no_embedded_marker(**fields):
 
     Once composed into the block, an embedded marker is indistinguishable from
     the real field it precedes, and every reader takes the FIRST match:
-    item_title truncates the title there, PROJECT_TAG_RE reads the next word as
-    the project tag, `list` then groups the item under it, and `edit` rewrites
+    item_title truncates the title there, the project tag is read off the next
+    word, `list` then groups the item under it, and `edit` rewrites
     the prose instead of the field. That is the whole T063 incident — an item
     whose text said "**Project:** para o done-log" acquired the tag "para".
 
     The trigger is deliberately narrow: the literal bold-colon shape with a
-    capitalised field name. Prose that merely says "risk" or "projeto" never
-    matches — only bolding it with a trailing colon does. Refusing beats
-    escaping: an escape would need a matching unescape in every reader and in
-    the display path, each one a fresh chance to reintroduce this same bug.
+    capitalised field name, OUTSIDE a code span. Refusing beats escaping: an
+    escape would need a matching unescape in every reader and in the display
+    path, each one a fresh chance to reintroduce this same bug.
+
+    It asks `markers`, the tokenizer the READER asks, and that identity is the
+    whole of T134: the remedy `pack` prints for an item whose text carries a
+    marker is `edit --text "<the whole text>"`, and while this guard kept a
+    grammar of its own that remedy was refused by the very guard that had to
+    accept it — a prescription that could not repair the item it addressed. The
+    quoted form this message names is now the form that gets through.
     """
     for name, val in fields.items():
-        if val and EMBEDDED_MARKER_RE.search(val):
+        if val and markers(val):
             fail(f"--{name} contains a field-marker shape (e.g. **Project:**), which would "
                  "be read as the real field and silently hijack it. Rephrase without the "
                  "bold '**Word:**' shape — e.g. 'the Project field', or `Project:` in a "
@@ -837,17 +843,10 @@ FIELD_VARIANTS = {
     "Born": r"Born",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
-# the marker SHAPE alone, with no trailing value — every other use of ANY_FIELD
-# parses a real field; this one refuses the shape inside free text
-EMBEDDED_MARKER_RE = re.compile(r"\*\*(?:" + ANY_FIELD + r"):\*\*")
-# the same shape, per field: what a reader asks when the question is "does a marker
-# for THIS field sit anywhere in the block, including where no reader may use it?"
-FIELD_MARKER_RE = {name: re.compile(r"\*\*(?:" + variants + r"):\*\*")
-                   for name, variants in FIELD_VARIANTS.items()}
 PROJECT_RE = re.compile(r"\A[a-z0-9][a-z0-9_-]*\Z")
 # single source for reading a tag back out: the warning and the grouping must
 # see the same tag, or an item warns as unprecedented and then groups elsewhere
-PROJECT_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)")
+PROJECT_TAG_VALUE_RE = re.compile(r"\s*([^\s.*]+)")
 # same field, but anchored to end-of-line, for reading the tag back out of a
 # done-log entry's FIRST line only (see log_entry_tag). An entry's remaining
 # lines are a free-text --note that can itself quote "**Project:**" in prose —
@@ -856,7 +855,7 @@ PROJECT_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*
 LOG_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)\.\s*$")
 
 
-FIELD_SEGMENT_RE = re.compile(r"\*\*(" + ANY_FIELD + r"):\*\*[^*\n]*")
+FIELD_MARKER_ANY_RE = re.compile(r"\*\*(" + ANY_FIELD + r"):\*\*")
 # the marker and the blank after it, for reading a segment's VALUE back out.
 # Spelled once: two readers stripping the same prefix their own way is how one of
 # them comes to print a value the file does not carry
@@ -891,6 +890,73 @@ def canonical_field(raw):
 # rewrite text nobody pointed at.
 
 
+def markers(text, field=None):
+    r"""Every field marker of `text` a reader may READ, as (spelling, start, end)
+    with positions relative to `text` — of `field` alone when one is named.
+
+    THE CODE-SPAN RULE, spelled once for every reader that asks "is there a
+    marker here": a `**Field:**` inside a Markdown code span is never a field.
+    Outside one nothing changes — the POSITION rule still decides which of the
+    markers on the first line are the item's real fields, and `edit` still
+    refuses a bare marker in prose rather than guessing at it.
+
+    Why a code span and not an escape. An escape (`\*\*Class:\*\*`) would need a
+    matching unescape in every reader AND in the display path, each one a fresh
+    chance to reintroduce the bug it is fixing, and no legacy item carries one —
+    the migration would have to invent them. A code span is standard Markdown, it
+    renders as the quotation it IS, and the refusal in `ensure_no_embedded_marker`
+    has been printing it as the way out since before this rule existed.
+
+    Asked per LINE, because a code span does not cross one.
+    """
+    out, base = [], 0
+    for line in text.split("\n"):
+        spans = code_spans(line)
+        for m in FIELD_MARKER_ANY_RE.finditer(line):
+            if in_code_span(spans, m.start()):
+                continue
+            if field is None or canonical_field(m.group(1)) == field:
+                out.append((m.group(1), base + m.start(), base + m.end()))
+        base += len(line) + 1
+    return out
+
+
+def marker_value(text, field, value_re):
+    """The value the FIRST readable marker of `field` in `text` is followed by,
+    read with `value_re`, or None.
+
+    One spelling for the two whole-block reads that want a value rather than a
+    position — the class `list` falls back to, and the project tag it groups by.
+    Both used to search the block with a regex of their own, so a marker the
+    chain refuses to read still answered them: that is the whole T063 incident,
+    an item whose text said `**Project:** para o done-log` acquiring the tag
+    "para".
+    """
+    for _, _, end in markers(text, field):
+        m = value_re.match(text, end)
+        if m:
+            return m.group(1)
+    return None
+
+
+def field_segments(line):
+    """The `**Field:** value` segments of `line`, as (spelling, start, end).
+
+    A segment runs from its marker to the NEXT readable marker, or to the end of
+    the line. `*` is not a terminator, and that is T258: the old grammar cut the
+    value at the first asterisk, so `--criterion 'A: o glob *.md casa'` broke the
+    chain BEFORE **Class:** and the item left `pack` with no error visible
+    anywhere and an age of `?`.
+
+    It also makes the chain's old "anchored" condition structural rather than
+    checked: the last segment now ends the line by construction, so what remains
+    of the rule is the period walk in `chain_segments`.
+    """
+    marks = markers(line)
+    return [(m[0], m[1], marks[i + 1][1] if i + 1 < len(marks) else len(line))
+            for i, m in enumerate(marks)]
+
+
 def code_spans(line):
     """The (start, end) ranges of `line` that are Markdown code spans.
 
@@ -901,9 +967,6 @@ def code_spans(line):
     backtick swallow the rest of the line, which is the `*` defect (T258) with a
     different character: there the value's grammar stopped at the first `*` and
     the chain broke behind it, and the item left `pack` with no error at all.
-
-    Provenance only for now: `Field.quoted` records what this answers, and no
-    reader acts on it yet.
     """
     runs = [m.span() for m in re.finditer(r"`+", line)]
     spans, i = [], 0
@@ -938,6 +1001,10 @@ class Field:
     what `render_item` writes back — the reason the round-trip is byte-exact
     rather than nearly so.
 
+    There is no `quoted` flag any more, and its absence is the rule: a marker
+    inside a code span is not a field, so no Field can carry one. It was a
+    provenance while the reader still read those markers.
+
     The offsets keep the match's own spelling (`span()`, `start()`, `end()`) on
     purpose: every reader that measures an offset then reads it the same way it
     always did, and no anchor of the mutation list is rewritten for a rename.
@@ -945,10 +1012,9 @@ class Field:
     invalidates them the moment it changes the item — see `Item.stale`.
     """
 
-    __slots__ = ("name", "canonical", "value", "text", "quoted", "offsets")
+    __slots__ = ("name", "canonical", "value", "text", "offsets")
 
-    def __init__(self, text, quoted=False, offsets=None):
-        self.quoted = quoted
+    def __init__(self, text, offsets=None):
         self.rewrite(text)
         # AFTER the rewrite, which forgets them: a Field built by a reader knows
         # where it sits, and one composed by a writer sits nowhere until the
@@ -956,12 +1022,17 @@ class Field:
         self.offsets = offsets
 
     def rewrite(self, text):
-        """Take a new segment, verbatim, and re-read the three names from it."""
-        m = FIELD_SEGMENT_RE.fullmatch(text)
-        if not m:
+        """Take a new segment, verbatim, and re-read the three names from it.
+
+        Read with the same tokenizer as the file, so a value a WRITER composes
+        is a value the reader will give back: an asterisk or a code span in it
+        is text, and a second marker in it is refused as the two segments it is.
+        """
+        segs = field_segments(text)
+        if len(segs) != 1 or segs[0][1] != 0 or segs[0][2] != len(text):
             raise ValueError(f"not a field segment: {text!r}")
         self.text = text
-        self.name = m.group(1)
+        self.name = segs[0][0]
         self.canonical = canonical_field(self.name)
         self.value = FIELD_BODY_RE.sub("", text)
         self.forget_offsets()
@@ -992,12 +1063,7 @@ class Field:
         return self.span()[1]
 
     def __repr__(self):
-        return f"Field({self.text!r}, quoted={self.quoted})"
-
-
-def field_from_match(m, quoted=False):
-    """The Field a READER found: the segment, and where on the line it sits."""
-    return Field(m.group(0), quoted, m.span())
+        return f"Field({self.text!r})"
 
 
 def make_field(text):
@@ -1114,10 +1180,10 @@ class Item:
         self.stale()
 
 
-def chain_matches(line):
-    """The item's REAL field chain, as matches on its first line: the maximal run
-    of `**Field:** value.` segments ENDING that line. Empty when no such run
-    exists.
+def chain_segments(line):
+    """The item's REAL field chain, as (spelling, start, end) on its first line:
+    the maximal run of `**Field:** value.` segments ENDING that line. Empty when
+    no such run exists.
 
     Why a chain, and not "the last marker in the block". An item block absorbs
     its continuation lines, and a legacy item — precisely the population the
@@ -1130,10 +1196,15 @@ def chain_matches(line):
     command claimed to change, plus destruction of text nobody asked it to touch,
     on the DELETION path.
 
-    Two conditions separate chain from prose, and neither works alone:
+    The rule was two conditions and is now one, because the other became
+    structural:
 
-      anchored   the run must reach the end of the line. The fields are a suffix
-                 of the first line, by construction (compose_item).
+      anchored   the run must reach the end of the line — the fields are a suffix
+                 of the first line, by construction (compose_item). Since
+                 `field_segments` runs the last value to the end of the line, no
+                 segment can stop short of it, and the condition is a fact rather
+                 than a check. It USED to fail on an asterisk, which is how T258
+                 knocked an item out of `pack` with no error anywhere.
       periods    each segment's value ends in '.', because compose_item writes
                  `**Field:** value.` — the ONE exception being Source, which is
                  written last and without one. Contiguity cannot stand in for
@@ -1142,30 +1213,31 @@ def chain_matches(line):
                  what tells `**Project:** para o done-log **Class:** ...` (prose)
                  from `**Project:** tk. **Source:** ...` (a real field).
 
-    Neither condition separates prose that carries a REAL FIELD NAME in bold-colon
-    and ends in a period — `o item cita o **Project:** de outra fila inteira.
-    **Class:** …` — from the field it imitates: it is contiguous, it ends in a
-    period, so it joins the run. Ordinary prose ending in '.' is not a segment at
-    all and never had this problem; quoting the marker is what creates it. That is
-    why no writer LOCATES a field in this chain raw — the POSITION rule
-    (real_fields) is what separates the two, and both directions are measured on
-    the shape above: `edit --project tk` overwrote those four words and
-    `edit --risk none` DELETED the imitating segment whole, each exiting 0 and
-    printing "updated", with no other copy of the text anywhere.
+The period does not separate prose that carries a REAL FIELD NAME in
+    bold-colon and ends in a period — `o item cita o **Project:** de outra fila
+    inteira. **Class:** …` — from the field it imitates: it is contiguous, it
+    ends in a period, so it joins the run. That is why no writer LOCATES a field
+    in this chain raw — the POSITION rule (real_fields) is what separates the
+    two, and both directions are measured on the shape above: `edit --project tk`
+    overwrote those four words and `edit --risk none` DELETED the imitating
+    segment whole, each exiting 0 and printing "updated", with no other copy of
+    the text anywhere. The way OUT of that ambiguity is the code-span rule (see
+    `markers`): quoted, the prose is prose to every reader, which is what lets a
+    legacy item be repaired instead of cancelled and re-added.
 
     Ambiguity is left for the caller to resolve (see cmd_edit), never guessed:
     a refusal costs one command, deleted text is not recoverable.
     """
-    segs = list(FIELD_SEGMENT_RE.finditer(line))
-    if not segs or segs[-1].end() < len(line.rstrip()):
+    segs = field_segments(line)
+    if not segs:
         return []
     chain = [segs[-1]]
-    for m in reversed(segs[:-1]):
-        ends_field = (m.group(0).rstrip().endswith(".")
-                      or canonical_field(m.group(1)) == "Source")
-        if m.end() != chain[0].start() or not ends_field:
+    for seg in reversed(segs[:-1]):
+        ends_field = (line[seg[1]:seg[2]].rstrip().endswith(".")
+                      or canonical_field(seg[0]) == "Source")
+        if not ends_field:
             break
-        chain.insert(0, m)
+        chain.insert(0, seg)
     return chain
 
 
@@ -1173,8 +1245,7 @@ def parse_item(block):
     """The block read ONCE, into the structure every reader and every writer of
     this file works from. See the note above the class for what that buys."""
     line = block.split("\n", 1)[0]
-    chain = chain_matches(line)
-    spans = code_spans(line)
+    chain = chain_segments(line)
     head_m = CANONICAL_HEAD_RE.match(block)
     head = head_m.group(0) if head_m else ""
     box_m = ITEM_ID_RE.match(block)
@@ -1182,8 +1253,8 @@ def parse_item(block):
         raw=block,
         box=box_m.group(1) if box_m else None,
         head=head,
-        title=line[len(head):chain[0].start() if chain else len(line)],
-        fields=[field_from_match(m, in_code_span(spans, m.start())) for m in chain],
+        title=line[len(head):chain[0][1] if chain else len(line)],
+        fields=[Field(line[s:e], (s, e)) for _, s, e in chain],
         prose=block[len(line):],
     )
 
@@ -1234,7 +1305,10 @@ def clear_field_segment(block, segment):
     return render_item(item)
 
 
-CLASS_VALUE_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Class"] + r"):\*\*\s*([A-Za-zÀ-ÿ]+)")
+# the value HALF of the two whole-block reads. The marker is found by `markers`
+# — which is what keeps a quoted one out of both answers — and these two say
+# only what a value looks like once one has been found.
+CLASS_VALUE_RE = re.compile(r"\s*([A-Za-zÀ-ÿ]+)")
 
 
 def item_class(block):
@@ -1260,8 +1334,7 @@ def item_class(block):
     """
     if real_fields(block, "Class"):
         return chain_class(block)
-    m = CLASS_VALUE_RE.search(block)
-    return m.group(1) if m else None
+    return marker_value(block, "Class", CLASS_VALUE_RE)
 
 
 def chain_class(block):
@@ -1357,7 +1430,7 @@ def qualified_fields(block, field):
     writer, which reads `real_fields` directly: a rule the gates applied and the
     writer did not is exactly the asymmetry that bug was made of.
     """
-    return real_fields(block, field), len(FIELD_MARKER_RE[field].findall(block))
+    return real_fields(block, field), len(markers(block, field))
 
 
 def append_to_first_line(block, segment):
@@ -1387,7 +1460,7 @@ def fields_off_first_line(block):
     lift is a dead end; one withheld from an item it does lift sends the caller to
     `cancel` + re-add for nothing.
     """
-    return bool(EMBEDDED_MARKER_RE.search("\n".join(block.rstrip("\n").split("\n")[1:])))
+    return bool(markers("\n".join(block.rstrip("\n").split("\n")[1:])))
 
 
 def write_class_segment(block, value):
@@ -1448,8 +1521,8 @@ def chain_breaker(candidate):
     chain = field_chain(candidate)
     if not chain:
         return None
-    before = [m for m in FIELD_SEGMENT_RE.finditer(line) if m.start() < chain[0].start()]
-    return canonical_field(before[-1].group(1)) if before else None
+    before = [seg for seg in field_segments(line) if seg[1] < chain[0].start()]
+    return canonical_field(before[-1][0]) if before else None
 
 
 def claim_readback(candidate):
@@ -1606,9 +1679,9 @@ def class_shape(block):
     which then got a message saying its fields sat elsewhere (false) and a remedy
     that rewrote the item and left the same refusal standing.
     """
-    if not FIELD_MARKER_RE["Class"].search(block):
+    if not markers(block, "Class"):
         return CLASS_SHAPE_NONE
-    if not FIELD_MARKER_RE["Class"].search(block.split("\n", 1)[0]):
+    if not markers(block.split("\n", 1)[0], "Class"):
         return CLASS_SHAPE_OFF_LINE
     return CLASS_SHAPE_BROKEN
 
@@ -2039,9 +2112,9 @@ def open_project_tags(content):
     for kind, text in split_blocks(content or ""):
         if kind != "item-open":
             continue
-        m = PROJECT_TAG_RE.search(text)
-        if m:
-            tags.add(m.group(1))
+        tag = marker_value(text, "Project", PROJECT_TAG_VALUE_RE)
+        if tag:
+            tags.add(tag)
     return tags
 
 
@@ -2077,7 +2150,11 @@ def group_by_tag(pairs, by_position=False):
 def item_title(text, limit=100):
     t = re.sub("^" + MARKER, "", text.strip())
     t = ID_RE.sub("", t)
-    t = re.sub(r"\*\*(" + ANY_FIELD + r"):\*\*.*", "", t, flags=re.S)
+    # cut at the first READABLE marker: cutting at a quoted one would truncate
+    # the title of the very item the code-span rule exists to make repairable
+    found = markers(t)
+    if found:
+        t = t[:found[0][1]]
     t = re.sub(r"\s+", " ", t).strip(" —-~*")
     return t if len(t) <= limit else t[: limit - 1] + "…"
 
@@ -2327,7 +2404,7 @@ def backdate(block, today):
         # before anything recorded provenance, and an item whose Source the
         # POSITION rule refuses is one repair away from an age. Reporting both as
         # "no Source" would send a reader looking for a field the item carries
-        return block, ("unreadable" if FIELD_MARKER_RE["Source"].search(block)
+        return block, ("unreadable" if markers(block, "Source")
                        else "none")
     born, why = source_birthdate(field_value(src[0]), today)
     if born is None:
@@ -2387,10 +2464,10 @@ def cmd_list(args):
     today = datetime.date.today()
     rows = []
     for text, iid in zip(opens, ids):
-        pm = PROJECT_TAG_RE.search(text)
         rows.append((item_label(text), item_class(text) or "?",
                      age_cell(item_age(text, today)), item_title(text),
-                     pm.group(1) if pm else None, displayed_claim(text),
+                     marker_value(text, "Project", PROJECT_TAG_VALUE_RE),
+                     displayed_claim(text),
                      iid if iid in ambiguous else None, displayed_blocker(text)))
     if not rows:
         print("(queue empty)")
@@ -2710,7 +2787,7 @@ def pack_classless_reason(block):
     refused for two of them — the dead end this file has already paid for once (see
     claim_unwritable_message, which discriminates the same three at the length a
     single-item refusal can afford). Not shared with it: what the two have in common
-    is the CONDITION, spelled from the same FIELD_MARKER_RE, while the messages
+    is the CONDITION, spelled from the same `markers`, while the messages
     differ in kind — one line inside a list here, a paragraph of diagnosis there.
 
     The remedies are that function's, and each was RUN against the real queues
@@ -3058,7 +3135,7 @@ def pack_closes(block):
 
     Which of the three an item gets is decided at the WRITER's position, like
     everything else here, and the first measured attempt at it was not: asking
-    `FIELD_MARKER_RE["Ticket"].search(block)` is the same whole-block question the
+    `markers(block, "Ticket")` is the same whole-block question the
     pre-gate was condemned for, turned around. It printed `[?]` for an item whose
     only `**Ticket:**` was a continuation-line note CITING the marker — an item
     that never had a ticket at all, sent to whoever writes the PR as one whose
@@ -4092,13 +4169,13 @@ def close_item(args, marker, outcome, marker_flag):
     today = datetime.date.today().isoformat()
     # read the tag from the ORIGINAL block: item_title strips every field, and
     # --summary replaces the text wholesale, so by then the tag is already gone
-    tag_m = PROJECT_TAG_RE.search(block)
+    tag = marker_value(block, "Project", PROJECT_TAG_VALUE_RE)
     text = args.summary or item_title(block, limit=400)
     line = f"- {today} — {marker} — {label} {text} — {outcome}"
-    if tag_m:
+    if tag:
         # appended last so LOG_TAG_RE's end-of-line anchor reads this field, not
         # any earlier lookalike in the item's own text
-        line += f" **Project:** {tag_m.group(1)}."
+        line += f" **Project:** {tag}."
     if args.note:
         line += "\n  " + args.note.replace("\n", "\n  ")
     append_done_line(memdir, line, today)
@@ -4856,18 +4933,26 @@ def field_run(line):
                          end there and the rest is prose the fold would carry
                          into the chain.
 
-    Not asked: whether a note trails the LAST field on this same line. There
-    FIELD_SEGMENT_RE's greedy body has already absorbed it, identically before
-    and after the fold — the fold neither creates that ambiguity nor cures it.
+    Not asked: whether a note trails the LAST field on this same line. There the
+    value grammar has already absorbed it, identically before and after the fold
+    — the fold neither creates that ambiguity nor cures it.
+
+    "Stops short" is now asked of the BOLD rather than of the segments. A value
+    runs to the next marker or to the end of the line, so a bold that is no
+    marker can no longer stop a segment — it is absorbed into a value, and the
+    fold would carry that prose into the chain. So every `**` on the line has to
+    belong to a marker, which is the same refusal, spelled where the grammar
+    left it.
     """
     text = line.strip()
-    segs, pos = [], 0
-    for m in FIELD_SEGMENT_RE.finditer(text):
-        if m.start() != pos:
-            return None
-        segs.append(m)
-        pos = m.end()
-    return segs if segs and pos == len(text) else None
+    segs = field_segments(text)
+    if not segs or segs[0][1] != 0:
+        return None
+    bold = [(start, start + len(f"**{name}:**")) for name, start, _ in segs]
+    if any(not any(s <= m.start() < e for s, e in bold)
+           for m in re.finditer(r"\*\*", text)):
+        return None
+    return [text[start:end] for _, start, end in segs]
 
 
 def fold_chain_onto_first_line(block):
@@ -4947,18 +5032,18 @@ def fold_chain_onto_first_line(block):
     if refusal:
         return None, refusal
     kept = lines[j:first]
-    if EMBEDDED_MARKER_RE.search("\n".join(kept)):
+    if markers("\n".join(kept)):
         return None, FOLD_SPLIT_REFUSAL
     head = " ".join([ln.strip() for ln in lines[:j]] + [ln.strip() for ln in lines[first:]])
     folded = "\n".join([head] + kept) + block[len(block.rstrip("\n")):]
-    # rstripped, and only rstripped: FIELD_SEGMENT_RE's body is greedy, so a
-    # segment swallows the blank that separates it from the next marker — one
+    # rstripped, and only rstripped: a segment runs up to the next marker, so it
+    # carries the blank that separated it from that marker — one
     # blank where the line ended, none where the file's newline used to be. A
     # raw comparison called that whitespace a changed value and refused an item
     # whose chain merely spanned two continuation lines. Absorbed PROSE, the
     # thing this gate is for, is not whitespace and still shows.
     chain = field_chain(folded)
-    if ([m.group(0).rstrip() for m in run]
+    if ([seg.rstrip() for seg in run]
             != [f.text.rstrip() for f in chain]):
         return None, FOLD_REFUSAL
     # Where the PROSE readback used to be. It stood here as two comparisons, and a
