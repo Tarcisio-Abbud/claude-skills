@@ -191,16 +191,44 @@ MUTATIONS = [
      ["TestEmbeddedMarker.test_plain_prose_naming_the_fields_is_not_refused"]),
 
     ("T064/T060 an ID quoted in a --note or an outcome counts as closed again",
-     "    return wanted_id in done_log_ids(memdir)",
+     "    return wanted_id in done_log_ids(memdir, log)",
      '    log = read(os.path.join(memdir, "done-log.md")) or ""\n'
      '    return re.search(r"\\bT%03d\\b" % wanted_id, log) is not None',
      ["TestMissingItemMessage.test_an_id_merely_quoted_in_the_log_is_not_closed"]),
 
+    # --- C-17: one decision, one snapshot of each file ------------------------
+
+    ("C-17 the closed-ID question takes its own second read of the done-log",
+     "    if id_in_done_log(memdir, wanted_id, log):",
+     "    if id_in_done_log(memdir, wanted_id):",
+     ["TestTheDiagnosticReadsEachFileOnce."
+      "test_a_close_landing_between_the_reads_blames_no_writer",
+      "TestTheDiagnosticReadsEachFileOnce.test_neither_queue_file_is_read_a_second_time"]),
+
+    ("C-17 the allocation question re-reads BOTH files instead of taking the "
+     "caller's queue and log",
+     "    top = max_id(memdir, content, log)", "    top = max_id(memdir)",
+     ["TestTheDiagnosticReadsEachFileOnce."
+      "test_a_close_landing_between_the_reads_blames_no_writer",
+      "TestTheDiagnosticReadsEachFileOnce.test_neither_queue_file_is_read_a_second_time"]),
+
+    # the over-narrowing direction of the same change: threading the text through
+    # may not cost the caller that holds a directory ALONE its read, and the
+    # sibling bins are exactly that caller
+    ("C-17 the caller with no content in hand stops getting a read at all",
+     "    return ids_at(read_done_log(memdir) if log is None else log,\n"
+     "                  LOG_ID_RE, ITEM_ID_RE)",
+     '    return ids_at(log or "", LOG_ID_RE, ITEM_ID_RE)',
+     ["TestTheDiagnosticReadsEachFileOnce."
+      "test_the_sibling_bins_still_ask_holding_a_directory_alone"]),
+
     # --- T088: an ID is allocated at a POSITION, not wherever the text says it ---
 
     ("T088 allocation goes back to regexing the whole text of both files",
-     '    open_items = read(os.path.join(memdir, "next-steps.md")) or ""\n'
-     "    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir), default=0)",
+     '    if open_items is None:\n'
+     '        open_items = read(os.path.join(memdir, "next-steps.md")) or ""\n'
+     "    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir, log), "
+     "default=0)",
      '    ids = set()\n'
      '    for name in ("next-steps.md", "done-log.md"):\n'
      '        content = read(os.path.join(memdir, name)) or ""\n'
@@ -222,8 +250,9 @@ MUTATIONS = [
     # allocation hands out an ID already in use — the very failure the whole-file
     # scan existed to prevent, and no test above can see it
     ("T088 open items stop counting as allocations",
-     "    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir), default=0)",
-     "    return max(done_log_ids(memdir), default=0)",
+     "    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir, log), "
+     "default=0)",
+     "    return max(done_log_ids(memdir, log), default=0)",
      ["TestIdAllocationScope.test_an_open_item_still_blocks_reuse_of_its_id"]),
 
     ("T088 done-log entries stop counting as allocations",
@@ -233,9 +262,9 @@ MUTATIONS = [
       "TestMissingItemMessage.test_a_genuinely_closed_id_is_still_recognised"]),
 
     ("T088 a legacy [x] line moved verbatim by migrate stops counting",
-     "    return ids_at(read(os.path.join(memdir, \"done-log.md\")) or \"\", "
-     "LOG_ID_RE, ITEM_ID_RE)",
-     "    return ids_at(read(os.path.join(memdir, \"done-log.md\")) or \"\", LOG_ID_RE)",
+     "    return ids_at(read_done_log(memdir) if log is None else log,\n"
+     "                  LOG_ID_RE, ITEM_ID_RE)",
+     "    return ids_at(read_done_log(memdir) if log is None else log, LOG_ID_RE)",
      ["TestIdAllocationScope.test_a_legacy_x_line_moved_by_migrate_still_blocks_reuse"]),
 
     # --- review#4: the same LINE must answer the same before and after migrate ---

@@ -803,7 +803,14 @@ def ids_at(content, *positions):
     return {int(m.group(2)) for rx in positions for m in rx.finditer(content)}
 
 
-def done_log_ids(memdir):
+def read_done_log(memdir):
+    """The done-log's text, or "" where the file is not there yet — the ONE read
+    every question about that log goes through, so a caller already holding the
+    content hands it on instead of taking a second snapshot of the same file."""
+    return read(os.path.join(memdir, "done-log.md")) or ""
+
+
+def done_log_ids(memdir, log=None):
     """Every ID the done-log has really handed out: an entry's ID column, and
     the marker's ID slot on a legacy [x] line moved verbatim by `migrate`.
 
@@ -811,13 +818,31 @@ def done_log_ids(memdir):
     `add` gets, `id_in_done_log` decides whether a missing one was closed. Two
     copies of this loop is how one of them would keep a position the other had
     already dropped.
+
+    `log` is that file's text when the caller already read it — the same rule
+    `append_done_line` and `remove_block` state for the writing side, asked here
+    of the reading one. `missing_item_message` puts BOTH questions above to this
+    log in one breath, and reading the file once per question answers one
+    decision from two snapshots: a close landing between the two reads leaves
+    the first saying "not closed" and the second saying "allocated", and the
+    diagnosis that comes out sends the caller hunting a writer that clobbered
+    nothing. Without it the file is read here, for the caller that holds a
+    directory and nothing else.
     """
-    return ids_at(read(os.path.join(memdir, "done-log.md")) or "", LOG_ID_RE, ITEM_ID_RE)
+    return ids_at(read_done_log(memdir) if log is None else log,
+                  LOG_ID_RE, ITEM_ID_RE)
 
 
-def max_id(memdir):
-    open_items = read(os.path.join(memdir, "next-steps.md")) or ""
-    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir), default=0)
+def max_id(memdir, open_items=None, log=None):
+    """The highest ID either file has handed out.
+
+    Both texts may come from the caller, for the reason `done_log_ids` gives:
+    the error path already holds the queue it just walked and the log it just
+    asked about, and re-reading either here would let this answer come from a
+    different state of the file than the answer beside it."""
+    if open_items is None:
+        open_items = read(os.path.join(memdir, "next-steps.md")) or ""
+    return max(ids_at(open_items, ITEM_ID_RE) | done_log_ids(memdir, log), default=0)
 
 
 def ensure_single_line(**fields):
@@ -2424,9 +2449,13 @@ def remove_block(memdir, content, block, start):
     write_atomic(os.path.join(memdir, "next-steps.md"), excise(content, block, start))
 
 
-def id_in_done_log(memdir, wanted_id):
+def id_in_done_log(memdir, wanted_id, log=None):
     """Whether the ID really was closed — asked of the positions a close writes
     (see done_log_ids), never of the log's free text.
+
+    `log` is the done-log's text when the caller already read it, and `memdir`
+    is what answers for the caller that did not — the sibling bins ask this
+    question holding a directory alone.
 
     Anywhere else the ID is prose. This queue's own log carries a --note saying
     "atribuiu IDs até T022" and an outcome naming a sibling ticket "T054" that
@@ -2434,7 +2463,7 @@ def id_in_done_log(memdir, wanted_id):
     and answers "already left the queue", a confident wrong diagnosis from the
     error path that exists to prevent confident wrong diagnoses.
     """
-    return wanted_id in done_log_ids(memdir)
+    return wanted_id in done_log_ids(memdir, log)
 
 
 def missing_item_message(memdir, content, wanted_id):
@@ -2442,8 +2471,14 @@ def missing_item_message(memdir, content, wanted_id):
     answer, and a flat "no open item" is the one that does damage: it reads as
     "never existed", so the caller adds the item again and the queue ends up
     with two. Every branch below says what to do instead of re-adding.
+
+    ONE snapshot of each file answers all four. `content` is the queue the caller
+    already walked, and the done-log is read once here and handed to both readers
+    that ask about it — the rule `done_log_ids` spells out, and the reason this
+    path reads neither file a second time for itself.
     """
     label = f"T{wanted_id:03d}"
+    log = read_done_log(memdir)
     for kind, text in split_blocks(content):
         if kind == "item-done" and item_id(text) == wanted_id:
             # THIS branch found the item, so it is named by its own spelling —
@@ -2452,10 +2487,10 @@ def missing_item_message(memdir, content, wanted_id):
             return (f"{item_label(text)} is in next-steps.md but already ticked [x], "
                     "so it never reached the done-log. Run `tk-queue migrate` to move "
                     "it, then read the log line — do NOT add a replacement item.")
-    if id_in_done_log(memdir, wanted_id):
+    if id_in_done_log(memdir, wanted_id, log):
         return (f"{label} already left the queue — it is in done-log.md. Read that line "
                 "before acting, and do NOT add a replacement item.")
-    top = max_id(memdir)
+    top = max_id(memdir, content, log)
     if wanted_id > top:
         return (f"{label} was never allocated in {memdir} — the highest ID in use is "
                 f"T{top:03d}. Check the ID with `tk-queue list`.")

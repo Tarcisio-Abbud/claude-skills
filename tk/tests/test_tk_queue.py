@@ -431,6 +431,83 @@ class TestMissingItemMessage(QueueTest):
         self.assert_no_duplicate_invited(r.stderr)
 
 
+# --- C-17: the diagnostic answers from ONE snapshot of each file -------------
+#
+# The writing side of this rule was already spelled twice — `append_done_line`
+# and `remove_block` both take the content the caller read under the lock and
+# say why re-reading would be wrong. The READING side did not follow it: the
+# error path asked the done-log whether the ID was closed, and then asked the
+# same file, in a second read, what the highest ID handed out was. One decision,
+# two snapshots — and a close landing between the two reads is enough to make
+# the two answers disagree.
+
+class TestTheDiagnosticReadsEachFileOnce(QueueTest):
+    """A file that changes between the two reads is not a hypothetical here: the
+    queue takes an exclusive lock, the done-log does not, and every close writes
+    the log FIRST and the queue second (see `interrupted_close`) — so the window
+    this path reads across is exactly the one another writer is inside of."""
+
+    QUEUE = HEADER + item(5, "cinco")
+    # the second snapshot: the close of T009 landed between the two reads
+    CLOSED_LATER = "- 2026-08-01 — FEITO — T009 nove — PR #1\n"
+
+    def reader(self, snapshots):
+        """A `read` that serves each file a QUEUE of snapshots, last one
+        repeating, and counts the calls per file."""
+        self.reads = {}
+
+        def read(path):
+            name = os.path.basename(path)
+            self.reads[name] = self.reads.get(name, 0) + 1
+            texts = snapshots.get(name, [None])
+            return texts.pop(0) if len(texts) > 1 else texts[0]
+        return read
+
+    def message(self, wanted, snapshots):
+        tk = load_tk()
+        tk.read = self.reader(snapshots)
+        return tk.missing_item_message(self.mem, self.QUEUE, wanted)
+
+    def test_a_close_landing_between_the_reads_blames_no_writer(self):
+        """T009 was never in the caller's queue, and the done-log the path read
+        does not carry it either — "never allocated" is what that state says.
+        Read twice, the ID check saw the log without T009 and `max_id` saw the
+        log WITH it, so the ID came back inside the allocated range and out came
+        "another writer very likely removed or clobbered it" — the confident
+        wrong diagnosis, from the path that exists to stop confident wrong
+        diagnoses, about a writer that clobbered nothing."""
+        msg = self.message(9, {"next-steps.md": [self.QUEUE],
+                               "done-log.md": ["", self.CLOSED_LATER]})
+        self.assertIn("was never allocated", msg)
+        self.assertIn("the highest ID in use is T005", msg)
+        self.assertNotIn("Another writer", msg)
+        self.assertNotIn("already left the queue", msg)
+
+    def test_neither_queue_file_is_read_a_second_time(self):
+        """The rule itself, asked of the reads and not of the message: the
+        done-log is read once here, and the queue not at all — the caller walked
+        it already and handed it in. Counting is what keeps the rule from being
+        satisfied by luck on a fixture whose two snapshots happen to agree.
+
+        The log carries an ID that is NOT the one asked about, on purpose: a log
+        holding T009 answers the first question with a return, and every read
+        below that question then goes unmeasured."""
+        self.message(9, {"next-steps.md": [self.QUEUE],
+                         "done-log.md": ["- 2026-08-01 — FEITO — T007 sete — x\n"]})
+        self.assertEqual(self.reads.get("done-log.md"), 1)
+        self.assertIsNone(self.reads.get("next-steps.md"))
+
+    def test_the_sibling_bins_still_ask_holding_a_directory_alone(self):
+        """`tk-ticket-ref` calls `id_in_done_log(memdir, wanted)` with no content
+        in hand, and `add` calls `max_id(memdir)` the same way. Threading the
+        text through may not cost them the read they depend on."""
+        tk = load_tk()
+        tk.read = self.reader({"next-steps.md": [self.QUEUE],
+                               "done-log.md": [self.CLOSED_LATER]})
+        self.assertTrue(tk.id_in_done_log(self.mem, 9))
+        self.assertEqual(tk.max_id(self.mem), 9)
+
+
 # --- T088: an ID is ALLOCATED at a position, not wherever the text says it ---
 
 class TestIdAllocationScope(QueueTest):
