@@ -122,6 +122,16 @@ class HygieneTest(unittest.TestCase):
         with open(path, encoding="utf-8") as f:
             return [line.strip() for line in f if line.strip()]
 
+    def run_git(self, *args, check=True):
+        env = dict(os.environ,
+                   GIT_AUTHOR_NAME="fixture", GIT_AUTHOR_EMAIL="fixture@example.invalid",
+                   GIT_COMMITTER_NAME="fixture", GIT_COMMITTER_EMAIL="fixture@example.invalid",
+                   HOME=self.home, GIT_CONFIG_NOSYSTEM="1")
+        p = subprocess.run(("git", *args), env=env, capture_output=True, text=True)
+        if check:
+            self.assertEqual(p.returncode, 0, f"git {args}: {p.stderr}")
+        return p
+
     def git(self, repo, *args, check=True):
         env = dict(os.environ,
                    GIT_AUTHOR_NAME="fixture", GIT_AUTHOR_EMAIL="fixture@example.invalid",
@@ -252,6 +262,56 @@ class HygieneTest(unittest.TestCase):
         head = self.git(repo, "rev-parse", default).stdout.strip()
         self.git(repo, "update-ref", f"refs/remotes/origin/{default}", head)
 
+    def lane_repo(self, name="lane"):
+        """A repository whose `origin` is a BARE REPO ON DISK, with main pushed.
+
+        Real pushes, a real `ls-remote` and a real delete, with no network at
+        all: the remote step's own act is `git push --delete`, and a fake remote
+        would prove the argv it was called with rather than the deletion.
+        """
+        origin = os.path.join(self.tmp, name + "-origin.git")
+        self.run_git("init", "-q", "--bare", "-b", "main", origin)
+        path = os.path.join(self.tmp, name)
+        os.makedirs(path)
+        self.git(path, "init", "-q", "-b", "main")
+        self.git(path, "remote", "add", "origin", origin)
+        self.commit(path, "root commit")
+        self.git(path, "push", "-q", "-u", "origin", "main")
+        self.git(path, "remote", "set-head", "origin", "main")
+        self.queue(path)
+        return path, origin
+
+    def pushed_branch(self, repo, name, merged):
+        """A branch pushed to the remote, its work squashed into main or not.
+
+        `merged=True` is the shape T342 measured: the lane's pull request merged,
+        the forge deleted the PR's own head, and this branch — which was never any
+        PR's head — stayed behind on the remote.
+        """
+        self.git(repo, "checkout", "-q", "-b", name, "main")
+        self.commit(repo, "work of " + name.replace("/", "-"))
+        self.git(repo, "push", "-q", "-u", "origin", name)
+        self.git(repo, "checkout", "-q", "main")
+        if merged:
+            self.git(repo, "merge", "-q", "--squash", name)
+            self.git(repo, "commit", "-m", "squash of " + name)
+            self.git(repo, "push", "-q", "origin", "main")
+        self.git(repo, "fetch", "-q", "origin")
+        return name
+
+    def push_from_elsewhere(self, origin, branch):
+        """Another machine adds a commit to `branch` after this repo's last fetch."""
+        other = os.path.join(self.tmp, "elsewhere")
+        self.run_git("clone", "-q", origin, other)
+        self.git(other, "checkout", "-q", branch)
+        self.commit(other, "a commit pushed after the fetch")
+        self.git(other, "push", "-q", "origin", branch)
+
+    def remote_branches(self, repo):
+        out = self.git(repo, "ls-remote", "--heads", "origin").stdout
+        return sorted(line.split("refs/heads/")[-1] for line in out.splitlines()
+                      if "refs/heads/" in line)
+
     # --- driving the bin ---------------------------------------------------
     def run_hygiene(self, *argv, hygiene=None):
         # GIT_CEILING_DIRECTORIES is the second lock on "the suite never reaches
@@ -287,12 +347,19 @@ class HygieneTest(unittest.TestCase):
         self.queue(tree)
         return tree
 
-    def branch_lines(self, out, repo):
-        """The report lines under `repo`'s heading in the local-branches block."""
-        lines, keeping = [], False
+    def branch_lines(self, out, repo, section="## local branches"):
+        """The report lines under `repo`'s heading in one of the branch blocks.
+
+        Scoped to a SECTION because both blocks head their rows with the same
+        repository path: unscoped, an assertion about the local block would be
+        satisfied by a line in the remote one.
+        """
+        lines, keeping, inside = [], False, False
         for line in out.splitlines():
             if line.startswith("## "):
-                keeping = False
+                inside, keeping = line.startswith(section), False
+            elif not inside:
+                continue
             elif line and not line.startswith(" "):
                 keeping = line.strip() == repo
             elif keeping and line.strip():
@@ -568,6 +635,74 @@ class TestTheRepositoryThisBinLivesIn(HygieneTest):
         r = self.run_hygiene(hygiene=installed)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.branch_names(repo), ["local-only", "main", "unmerged-gone"])
+
+
+# --- the remote side: the branch no pull request ever had as its head -------
+
+REMOTE = "## remote branches"
+
+
+class TestRemoteResidue(HygieneTest):
+    """`delete_branch_on_merge` deletes the head of the PR, and a lane's
+    per-ticket branch is never one. Four of them were alive on one remote on
+    2026-09-02, after the lane's PR had merged."""
+
+    def lane(self, name="lane"):
+        repo, origin = self.lane_repo(name)
+        self.forge("example-owner/example-repo", "true")
+        return repo, origin
+
+    def test_a_per_ticket_branch_already_in_the_default_is_deleted_from_the_remote(self):
+        repo, _ = self.lane()
+        branch = self.pushed_branch(repo, "spec/163/T234", merged=True)
+        self.assertIn(branch, self.remote_branches(repo))
+
+        r = self.run_hygiene()
+        self.assertNotIn(branch, self.remote_branches(repo))
+        self.assertTrue(any(l.startswith("deleted") and branch in l
+                            for l in self.branch_lines(r.stdout, repo, REMOTE)),
+                        r.stdout)
+
+    def test_a_per_ticket_branch_still_carrying_its_work_survives(self):
+        repo, _ = self.lane()
+        branch = self.pushed_branch(repo, "spec/163/T235", merged=False)
+
+        r = self.run_hygiene()
+        self.assertIn(branch, self.remote_branches(repo))
+        self.assertTrue(any(l.startswith("kept") and branch in l
+                            for l in self.branch_lines(r.stdout, repo, REMOTE)),
+                        r.stdout)
+
+    def test_the_lane_s_own_branch_is_never_a_candidate(self):
+        # `spec/<m>-<slug>` IS a pull request's head, so the forge deletes it on
+        # the merge and this bin has no business touching it
+        repo, _ = self.lane()
+        branch = self.pushed_branch(repo, "spec/163-tk-hygiene", merged=True)
+
+        r = self.run_hygiene()
+        self.assertIn(branch, self.remote_branches(repo))
+        self.assertEqual(self.branch_lines(r.stdout, repo, REMOTE), [])
+
+    def test_a_branch_the_remote_moved_since_the_last_fetch_is_not_touched(self):
+        repo, origin = self.lane()
+        branch = self.pushed_branch(repo, "spec/163/T247", merged=True)
+        self.push_from_elsewhere(origin, branch)
+
+        r = self.run_hygiene()
+        self.assertIn(branch, self.remote_branches(repo))
+        self.assertTrue(any(l.startswith("kept") and branch in l
+                            and "moved" in l
+                            for l in self.branch_lines(r.stdout, repo, REMOTE)),
+                        r.stdout)
+
+    def test_the_remote_step_can_be_switched_off(self):
+        repo, _ = self.lane()
+        branch = self.pushed_branch(repo, "spec/163/T255", merged=True)
+
+        r = self.run_hygiene("--no-remote")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(branch, self.remote_branches(repo))
+        self.assertNotIn(REMOTE, r.stdout)
 
 
 # --- idempotence ------------------------------------------------------------

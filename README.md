@@ -207,10 +207,13 @@ tk/
                                   where their projects are, minus the site file's lists
   bin/tk-hygiene                  audits delete_branch_on_merge across every repo it
                                   reaches — the roster's, plus the clone it is installed
-                                  in — and prunes local branches whose remote is gone and
-                                  whose content the default branch already has, by
-                                  ancestry or after a squash. Exit 0 green, 1 a box still
-                                  off, 2 a repo it could not reach
+                                  in — and prunes what the default branch already has, by
+                                  ancestry or after a squash: a local branch whose remote
+                                  is gone, and a lane's spec/<m>/T<id> left on the remote,
+                                  which no PR's head ever was and the forge never deletes.
+                                  `--no-remote` skips that second one, the only step here
+                                  that reaches the network for git. Exit 0 green, 1 a box
+                                  still off, 2 a repo it could not reach
   bin/tk-collisions               merges each pair of open branches for real, so a pair
                                   that cannot both land is named before either does. No
                                   network: the refs must already be local

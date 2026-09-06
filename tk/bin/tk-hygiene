@@ -15,6 +15,12 @@ session opens on a clean tree instead of ending on a tired questionnaire:
      ONLY when the default branch already has everything it carries — either by
      ancestry, or by CONTENT when a squash or a rebase rewrote its commits; see
      `prunable` and `unmerged_content`.
+  3. PRUNE the remote side, for ONE shape of branch: `spec/<m>/T<id>`, the
+     per-ticket branch a lane cuts a worktree on. `delete_branch_on_merge`
+     deletes the head of the pull request, and that head is the LANE's branch;
+     a per-ticket branch is never any PR's head, so nothing on the forge ever
+     deletes it. Measured 2026-09-02: four alive on one remote after the lane's
+     PR merged, and a sibling repo's were deleted by hand.
 
 WHICH REPOS. Two sources, and no repo name written down in either — this repo is
 PUBLIC, and the machine's repos are whatever is on its disk. The first is
@@ -52,6 +58,21 @@ narrower one — `rev-list --count <default>..<branch>` is zero, i.e. the branch
 an ancestor of the default — and it is proved by mutation in the suite. Where the
 default branch cannot be resolved at all, NOTHING in that repo is pruned: an
 un-anchored comparison is not a safer one.
+
+WHAT THE REMOTE STEP WILL NOT DELETE, beyond the content test every branch here
+must pass:
+
+  - anything whose name is not `spec/<m>/T<id>` — the lane's own branch
+    included, since that one IS a pull request's head and the forge owns it;
+  - a branch the remote has moved since this repo last fetched. The candidates
+    come from the remote-tracking refs and the live shas from `git ls-remote`,
+    and a difference between the two is work this machine has never seen;
+  - and the delete carries `--force-with-lease` pinned to the sha that was
+    tested, so a push landing between the listing and the delete refuses it.
+
+The candidates are read from LOCAL refs first, so a repository with none of them
+never reaches the network at all — and none of this touches the exit code, which
+answers about the forge audit and nothing else.
 
 EXIT CODES, so a caller can act on the result without reading the prose. The
 first three are `tk-collisions`' convention, kept deliberately: a finding and a
@@ -125,6 +146,12 @@ REMOTE_RE = re.compile(
          (?:\.git)?/?$""",
     re.VERBOSE,
 )
+
+
+# the per-ticket branch of a lane, and deliberately NOT the lane's own
+# `spec/<m>-<slug>`: that one is a pull request's head, which the forge deletes
+# on the merge. `<m>` is a milestone name and `<id>` a queue item's number
+PER_TICKET_RE = re.compile(r"^spec/[^/]+/T[0-9]+$")
 
 
 def fail(msg):
@@ -337,6 +364,84 @@ def candidate(name, upstream, track, default):
     return track == "[gone]" or not upstream
 
 
+def remote_candidates(repo):
+    """[(branch, sha)] — the per-ticket branches this repo last saw on `origin`.
+
+    Read from the LOCAL remote-tracking refs, which is what keeps an ordinary
+    repository off the network: no candidate here and the remote is never asked
+    anything. A branch pushed by another machine and never fetched here is
+    invisible, and that is the safe direction — this step misses residue rather
+    than acting on a ref it has never seen.
+    """
+    code, out, _ = git(repo, "for-each-ref", "refs/remotes/origin",
+                       "--format=%(refname:short)%09%(objectname)")
+    if code != 0:
+        return []
+    found = []
+    for line in out.splitlines():
+        short, _, sha = line.partition("\t")
+        name = short.split("/", 1)[1] if short.startswith("origin/") else ""
+        if PER_TICKET_RE.match(name):
+            found.append((name, sha))
+    return found
+
+
+def remote_heads(repo):
+    """({branch: sha}, None) for what `origin` holds RIGHT NOW, or (None, why).
+
+    The tracking refs say what the last fetch saw; this says what is there. The
+    two are compared before anything is deleted, because the whole act of this
+    step is irreversible on a machine that is not this one.
+    """
+    code, out, err = git(repo, "ls-remote", "--heads", "origin")
+    if code != 0:
+        return None, first_line(err, code, "git ls-remote")
+    heads = {}
+    for line in out.splitlines():
+        sha, _, ref = line.partition("\t")
+        if ref.startswith("refs/heads/"):
+            heads[ref[len("refs/heads/"):]] = sha
+    return heads, None
+
+
+def prune_remote(repo):
+    """[(action, branch, detail)] — what this repo's per-ticket branches did.
+
+    Empty when there is no candidate, which is the ordinary case and the one
+    that must cost nothing: the report block is printed only when this is not.
+    """
+    candidates = remote_candidates(repo)
+    if not candidates:
+        return []
+    default = default_branch(repo)
+    if default is None:
+        return [("kept", name, "no default branch to measure against")
+                for name, _ in candidates]
+    heads, err = remote_heads(repo)
+    if heads is None:
+        return [("kept", name, f"the remote could not be listed: {err}")
+                for name, _ in candidates]
+    out = []
+    for name, sha in candidates:
+        live = heads.get(name)
+        if live is None:
+            continue          # already gone; only the tracking ref is stale
+        if live != sha:
+            out.append(("kept", name, "the remote moved it since the last fetch"))
+            continue
+        held = unmerged_content(repo, sha, default)
+        if held is not None:
+            out.append(("kept", name, held))
+            continue
+        code, _, err = git(repo, "push", f"--force-with-lease=refs/heads/{name}:{sha}",
+                           "origin", "--delete", name)
+        if code != 0:
+            out.append(("kept", name, first_line(err, code, "git push --delete")))
+        else:
+            out.append(("deleted", name, f"already in {default}, and no PR's head"))
+    return out
+
+
 def audit(named):
     """[(path, slug, value, detail)] for every repo, GitHub-remote or not."""
     answers, cache = [], {}
@@ -404,6 +509,22 @@ def report_branches(pruned):
             print(f"  {action.ljust(6)}  {name}  ({detail})")
 
 
+def report_remote(rows):
+    """The remote block, printed only when there is something under it.
+
+    A heading that is there every kickoff with nothing beneath it teaches the
+    reader to skip the block — the same argument that keeps the default branch
+    out of the local one.
+    """
+    if not rows:
+        return
+    print("\n## remote branches — the lane's per-ticket ones")
+    for repo, out in rows:
+        print(f"\n{repo}")
+        for action, name, detail in out:
+            print(f"  {action.ljust(7)}  {name}  ({detail})")
+
+
 def load_site():
     """The site file's allow/denylist, or None — never fatal on absence."""
     try:
@@ -413,12 +534,20 @@ def load_site():
 
 
 def main(argv=None):
-    argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         prog="tk-hygiene",
         description="Audit the forge's delete-branch-on-merge setting across "
-                    "this machine's repositories, and prune local branches whose "
-                    "remote is gone and which carry no commit of their own.",
-    ).parse_args(argv)
+                    "this machine's repositories, prune local branches whose "
+                    "remote is gone and whose content the default branch "
+                    "already has, and prune the lane's per-ticket branches "
+                    "left behind on the remote.",
+    )
+    parser.add_argument(
+        "--no-remote", action="store_true",
+        help="skip the remote step. It is the only part of this bin that reaches "
+             "the network for git, and on a slow or absent one a kickoff would "
+             "wait for it")
+    args = parser.parse_args(argv)
 
     site = load_site()
     if site is None:
@@ -438,6 +567,14 @@ def main(argv=None):
         if rows:
             pruned.append((repo, rows))
     report_branches(pruned)
+
+    remote = []
+    if not args.no_remote:
+        for repo in repos:
+            rows = prune_remote(repo)
+            if rows:
+                remote.append((repo, rows))
+    report_remote(remote)
 
     # `false` outranks `unknown`, per the exit codes at the top of this file
     values = [value for _, _, value, _ in answers]
