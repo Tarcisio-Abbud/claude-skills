@@ -1884,6 +1884,24 @@ MUTATIONS = [
      ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
       "test_the_orphan_is_lifted_and_every_other_line_keeps_its_place"]),
 
+    # the two the LIFT owes on its own: it may cost the item its line breaks and
+    # its class only by REFUSING, never by writing. Both shapes reached neither
+    # outcome before C-16 removed the exit above, so both are silent rewrites of
+    # the user's only copy under a line reporting the item as folded
+    ("C-16 the lift stops asking what the orphan is lifted out from UNDER, so a "
+     "break the author wrote dies with nothing left to break before",
+     "    if already and 1 < first and HARD_BREAK_RE.search(lines[first - 1]):",
+     "    if False and 1 < first and HARD_BREAK_RE.search(lines[first - 1]):",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_a_break_the_orphan_is_lifted_out_from_UNDER_stops_the_lift"]),
+
+    ("C-16 the lift stops asking whether the chain it writes still names ONE "
+     "class, so an orphan repeating the head's class leaves the item classless",
+     "    if already and chain_class(folded) is None:",
+     "    if False and chain_class(folded) is None:",
+     ["TestAFieldOrphanedUnderAChainThatIsAlreadyRead."
+      "test_an_orphan_repeating_the_head_s_CLASS_is_left_and_REPORTED"]),
+
     ("T121 an item with no field off the first line is dragged into the fold's report",
      "    if not fields_off_first_line(block):", "    if False:",
      ["TestMigrateFold.test_an_item_with_no_field_at_all_is_neither_folded_nor_reported"]),

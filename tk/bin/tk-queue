@@ -804,9 +804,15 @@ def ids_at(content, *positions):
 
 
 def read_done_log(memdir):
-    """The done-log's text, or "" where the file is not there yet — the ONE read
-    every question about that log goes through, so a caller already holding the
-    content hands it on instead of taking a second snapshot of the same file."""
+    """The done-log's text, or "" where the file is not there yet — the one read
+    every question about the IDs that log has HANDED OUT goes through, so a
+    caller already holding the content hands it on instead of taking a second
+    snapshot of the same file.
+
+    Not every read of the file: `close` and `migrate` open it to WRITE, and there
+    a missing file is DONE_LOG_TEMPLATE and not "" — an empty string would give
+    those two a log with no header to insert under. Claiming all of them would be
+    a sentence a reader could check and find false."""
     return read(os.path.join(memdir, "done-log.md")) or ""
 
 
@@ -5113,6 +5119,19 @@ FOLD_SETEXT_REFUSAL = (
 FOLD_BLOCK_REFUSAL = ("a continuation line OPENS a Markdown block, and the wrapped fold has "
                       "no chain to lift over it — joining would flatten a list the author "
                       "wrote, so it declines instead of choosing which lines survive")
+# the two refusals the LIFT owns — the shape where the first line already carries
+# a chain the gates read, so the run is relocated onto it and nothing between the
+# two is absorbed. Neither may borrow FOLD_HARDBREAK_REFUSAL's sentence: that one
+# addresses a line the join ABSORBS, and here the line keeps its place. Naming a
+# geometry the item does not have is the defect C-15 repaired.
+FOLD_SECOND_CLASS_REFUSAL = (
+    "the lift would put a SECOND **Class:** in the chain, and a chain naming two "
+    "classes is one no gate reads at all — the item is left with the class it "
+    "already has")
+FOLD_ORPHAN_BREAK_REFUSAL = (
+    "the line the field is lifted out from under ends in a HARD line break (two "
+    "spaces, or a backslash), and the lift leaves that break with nothing to break "
+    "before — the item is left with its rendering intact")
 
 
 # every line-shape that OPENS a Markdown block, from CommonMark's block-start
@@ -5581,6 +5600,14 @@ def fold_chain_onto_first_line(block):
     refusal = absorption_audit(lines, j)
     if refusal:
         return None, refusal
+    if already and 1 < first and HARD_BREAK_RE.search(lines[first - 1]):
+        # the audit above asks about the lines the join ABSORBS, and with a head
+        # that already carries a chain it absorbs none: `j` is 1, so it reaches
+        # the head alone. The line the run is lifted out from UNDER keeps its
+        # place and still loses its break, because what the break broke before
+        # has moved onto the first line. Asked here rather than widened into the
+        # audit, whose range is the join's and not the lift's.
+        return None, FOLD_ORPHAN_BREAK_REFUSAL
     kept = lines[j:first]
     if markers("\n".join(kept)):
         return None, FOLD_SPLIT_REFUSAL
@@ -5602,6 +5629,23 @@ def fold_chain_onto_first_line(block):
         # the join gave back a chain the run does not account for — a segment
         # came from the head, so this is the wrapped shape, not a relocation
         return fold_wrapped(lines, block)
+    if already and chain_class(folded) is None:
+        # `already` says the head's chain named exactly one class, and the chain
+        # read back above is `already + run`, so None here means the run brought a
+        # SECOND **Class:** — the one answer `chain_class` refuses to guess. The
+        # item is readable as it stands and unreadable folded: `list` and every
+        # gate would show its class as `?` afterwards, in the user's only copy,
+        # under a line reporting the item as folded. The lift may cost the item
+        # its line breaks only by refusing; it may never cost it its class.
+        #
+        # The CLASS alone, and the asymmetry is the point: an orphan repeating
+        # any OTHER field of the head lands in the chain twice, and `edit
+        # --<field>` then refuses that item — loudly, naming the field, with
+        # every value still on the screen. That is the recoverable direction. A
+        # doubled class is the silent one: `list` and `pack` go back to showing
+        # `?` and no command anywhere says why, which is the defect this fold was
+        # widened to repair.
+        return None, FOLD_SECOND_CLASS_REFUSAL
     # Where the PROSE readback used to be. It stood here as two comparisons, and a
     # review measured both unable to fail — so they are gone rather than kept as
     # decoration, and what each was for now sits where it can:

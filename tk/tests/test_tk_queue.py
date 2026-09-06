@@ -9209,6 +9209,61 @@ class TestAFieldOrphanedUnderAChainThatIsAlreadyRead(QueueTest):
                                  HEADER + C16_HEAD + f" **Born:** {born}\n" + middle)
                 self.assertIn("T004  AUTONOMOUS   12d", self.run_tk("list").stdout)
 
+    def left_alone(self, why, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: {why} — "
+                + ", ".join(labels) + ". Close each with `cancel` and re-add it clean.\n")
+
+    SECOND_CLASS = ("the lift would put a SECOND **Class:** in the chain, and a chain "
+                    "naming two classes is one no gate reads at all — the item is left "
+                    "with the class it already has")
+    ORPHAN_BREAK = ("the line the field is lifted out from under ends in a HARD line "
+                    "break (two spaces, or a backslash), and the lift leaves that break "
+                    "with nothing to break before — the item is left with its rendering "
+                    "intact")
+
+    def test_an_orphan_repeating_the_head_s_CLASS_is_left_and_REPORTED(self):
+        """The lift may cost the item line breaks by refusing; it may never cost
+        it its class. The head names one class, the orphan names another, and the
+        chain the lift would write names TWO — which `chain_class` refuses to
+        read, so `list` and every gate would answer `?` for an item that answers
+        AUTONOMOUS today.
+
+        The class is asserted on BOTH sides of the run, not just the file: a
+        refusal that left the file byte-identical and the class unreadable would
+        pass a file assertion, and the class is the whole of what this guard is
+        for."""
+        seeded = C16_HEAD + "\n  **Class:** DECISION. **Born:** 2026-01-01.\n"
+        self.seed(seeded)
+        self.assertIn("T004  AUTONOMOUS", self.run_tk("list").stdout)
+        r = self.migrate()
+        self.assertIn(self.left_alone(self.SECOND_CLASS, "T004"), r.stdout)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertEqual(self.body(), HEADER + seeded)
+        self.assertIn("T004  AUTONOMOUS", self.run_tk("list").stdout)
+
+    def test_a_break_the_orphan_is_lifted_out_from_UNDER_stops_the_lift(self):
+        """Both spellings, because the rule reads both and a fixture for one
+        leaves the other free to go on flattening.
+
+        This is not the break `absorption_audit` asks about. With a head that
+        already carries a chain the window is empty, so the audit reaches
+        `lines[0]` alone — and the line the orphan sat under keeps its place and
+        still loses its break, because what it broke before has moved onto the
+        first line. Measured with the guard removed: the item folded, `migrate`
+        printed it as folded up, and the author's `<br>` was gone from the user's
+        only copy."""
+        prosa = ("  uma linha de prosa comprida o bastante para que a geometria "
+                 "licenciasse a absorcao dela")
+        for name, quebra in (("dois espacos", "  "), ("contrabarra", "\\")):
+            with self.subTest(grafia=name):
+                seeded = (C16_HEAD + "\n" + prosa + quebra + "\n"
+                          + "  **Born:** 2026-01-01.\n")
+                self.seed(seeded)
+                r = self.migrate()
+                self.assertIn(self.left_alone(self.ORPHAN_BREAK, "T004"), r.stdout)
+                self.assertNotIn("folded up", r.stdout)
+                self.assertEqual(self.body(), HEADER + seeded)
+
 
 class TestMutationHarness(unittest.TestCase):
     """The harness is what says this suite protects anything, and until T152
