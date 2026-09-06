@@ -362,15 +362,17 @@ MUTATIONS = [
      ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
 
     ("T070 clearing leaves the separator blank dangling at end of line",
-     '    if tail[:1] in ("", "\\n"):', "    if False:",
+     "        if i == len(self.fields):", "        if False:",
      ["TestRiskDeletion.test_no_trailing_blank_is_left_when_risk_was_the_last_field"]),
 
     # the same repair in the other direction: too WIDE instead of absent
     ("review#2 the blank repair sweeps the whole block again, eating a hard break",
-     '    if tail[:1] in ("", "\\n"):\n'
-     '        head = head.rstrip(" \\t")\n'
-     "    return head + tail",
-     '    return re.sub(r"[ \\t]+(?=\\n|\\Z)", "", head + tail)',
+     "    item = parse_item(block)\n"
+     "    item.drop_field(item.field_at(segment.start()))\n"
+     "    return render_item(item)",
+     "    item = parse_item(block)\n"
+     "    item.fields.remove(item.field_at(segment.start()))\n"
+     '    return re.sub(r"[ \\t]+(?=\\n|\\Z)", "", render_item(item))',
      ["TestRiskDeletion.test_a_hard_break_elsewhere_in_the_block_survives"]),
 
     # the block-ceiling exemption (T071) is only safe because the field ceiling
@@ -1113,7 +1115,7 @@ MUTATIONS = [
       "TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
 
     ("T121 a claim that does not parse is reported as somebody unnamed",
-     '    return FIELD_BODY_RE.sub("", segment.group(0)).strip(), None',
+     "    return segment.value.strip(), None",
      '    return "somebody", None',
      ["TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
 
@@ -1140,7 +1142,7 @@ MUTATIONS = [
     # because appending the claim CHANGES the chain it is asked about
     ("T121 the gate asks the chain it READ instead of the one it would WRITE",
      "    if len(claim_readback(new)) != 1:",
-     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):',
+     '    if not any(f.canonical == "Class" for f in field_chain(block)):',
      ["TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it"]),
 
     # a refusal that prescribes a command which is ITSELF refused is a dead end: for
@@ -1163,7 +1165,7 @@ MUTATIONS = [
     # does not even have
     ("T121 release demands a host it does not need",
      "    held = claim_segment(block)\n    if held is None:",
-     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
+     '    if not any(f.canonical == "Class" for f in field_chain(block)):\n'
      '        fail(f"{label} cannot hold a claim")\n'
      "    held = claim_segment(block)\n    if held is None:",
      ["TestClaim.test_release_on_a_chainless_item_with_no_marker_is_still_an_honest_no_op"]),
@@ -1172,7 +1174,7 @@ MUTATIONS = [
     # printed a remedy that MUTATED the file and left the real refusal standing
     ("T121 the missing-host refusal preempts the terminal stray one",
      "    held = claim_segment(block)\n    if held is not None:",
-     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
+     '    if not any(f.canonical == "Class" for f in field_chain(block)):\n'
      '        fail(f"{label}: give it a class first: `tk-queue edit '
      '{label} --class AUTONOMOUS`")\n'
      "    held = claim_segment(block)\n    if held is not None:",
@@ -1188,7 +1190,7 @@ MUTATIONS = [
     ("T121/T126 the fold shape is decided by the CHAIN, not by where the marker is",
      '    if not FIELD_MARKER_RE["Class"].search(block.split("\\n", 1)[0]):\n'
      "        return CLASS_SHAPE_OFF_LINE",
-     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
+     '    if not any(f.canonical == "Class" for f in field_chain(block)):\n'
      "        return CLASS_SHAPE_OFF_LINE",
      ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix",
       "TestPack.test_a_chain_that_never_reaches_the_class_is_named_as_that"]),
@@ -1317,9 +1319,9 @@ MUTATIONS = [
      ["TestPack.test_a_class_QUOTED_IN_PROSE_does_not_decide_the_package"]),
 
     ("T126 pack guesses a class where the chain names two",
-     "    found = [m for m in field_chain(block) if canonical_field(m.group(1)) == \"Class\"]\n"
+     '    found = [f for f in field_chain(block) if f.canonical == "Class"]\n'
      "    if len(found) > 1:",
-     "    found = [m for m in field_chain(block) if canonical_field(m.group(1)) == \"Class\"]\n"
+     '    found = [f for f in field_chain(block) if f.canonical == "Class"]\n'
      "    if False:",
      ["TestPack.test_two_classes_in_the_chain_are_ambiguous_not_guessed"]),
 
@@ -1753,7 +1755,7 @@ MUTATIONS = [
     # this run cannot make. The pair below is what decides that shape
     ("T121 the fold stops asking the reader what the folded line gives back",
      "    if ([m.group(0).rstrip() for m in run]\n"
-     "            != [m.group(0).rstrip() for m in chain]):",
+     "            != [f.text.rstrip() for f in chain]):",
      "    if False:",
      ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
 
@@ -1773,8 +1775,8 @@ MUTATIONS = [
     # continuation lines is whole, and refusing it repairs an item the fold could lift
     ("T121 the readback counts the blank at a line joint as a changed value",
      "    if ([m.group(0).rstrip() for m in run]\n"
-     "            != [m.group(0).rstrip() for m in chain]):",
-     "    if [m.group(0) for m in run] != [m.group(0) for m in chain]:",
+     "            != [f.text.rstrip() for f in chain]):",
+     "    if [m.group(0) for m in run] != [f.text for f in chain]:",
      ["TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too"]),
 
     # a fold that lifts nothing still rewrites the user's line and reports it as
@@ -2113,12 +2115,8 @@ MUTATIONS = [
     # the line strands every field already there. Each entry below is one of the
     # positions that shipped or was tried, and the tests read the FILE.
     ("T169 the class goes back to the END of the line, behind the fields already there",
-     '    at = chain[0].start()\n'
-     '    return (block[:at] + segment + " " + block[at:],\n'
-     '            [canonical_field(m.group(1)) for m in chain])',
-     '    at = len(block.split("\\n", 1)[0].rstrip())\n'
-     '    return (block[:at] + " " + segment + block[at:],\n'
-     '            [canonical_field(m.group(1)) for m in chain])',
+     "    item.insert_field(0, segment)\n    return render_item(item), promoted",
+     "    item.append_field(segment)\n    return render_item(item), promoted",
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
       "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written",
       "TestTheClassLandsAheadOfTheChain."
@@ -2129,7 +2127,7 @@ MUTATIONS = [
     # "before the LAST field" is the near miss: it reads as ahead of the chain and
     # is not, and everything from the run's head up to it stays unreadable
     ("T169 the class lands after the first field instead of ahead of the run",
-     "    at = chain[0].start()", "    at = chain[0].end()",
+     "    item.insert_field(0, segment)", "    item.insert_field(1, segment)",
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
       "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written",
       "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair"]),
@@ -2144,7 +2142,7 @@ MUTATIONS = [
     # an item with nothing on the line has nothing to sit ahead of: the over-refusal
     # direction, and the population --class was written for
     ("T169 an item with no chain gets its class inserted at the head of an empty run",
-     "    if not chain:\n"
+     "    if not item.fields:\n"
      "        return append_to_first_line(block, segment), []",
      "    if False:\n"
      "        return append_to_first_line(block, segment), []",
@@ -2161,13 +2159,9 @@ MUTATIONS = [
     # readback's own EXACTNESS load-bearing: relaxed on its own, behind a correct
     # writer, nothing falls.
     ("T169 the class at the END of the line, with the readback relaxed to a set",
-     ['    at = chain[0].start()\n'
-      '    return (block[:at] + segment + " " + block[at:],\n'
-      '            [canonical_field(m.group(1)) for m in chain])',
+     ["    item.insert_field(0, segment)\n    return render_item(item), promoted",
       '                if back != ["Class"] + promoted or chain_class(candidate) != flag:'],
-     ['    at = len(block.split("\\n", 1)[0].rstrip())\n'
-      '    return (block[:at] + " " + segment + block[at:],\n'
-      '            [canonical_field(m.group(1)) for m in chain])',
+     ["    item.append_field(segment)\n    return render_item(item), promoted",
       '                if sorted(back) != sorted(["Class"] + promoted) '
       'or chain_class(candidate) != flag:'],
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
@@ -2176,9 +2170,9 @@ MUTATIONS = [
       "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair"]),
 
     ("T169 the class after the first field, with the readback relaxed to a set",
-     ["    at = chain[0].start()",
+     ["    item.insert_field(0, segment)",
       '                if back != ["Class"] + promoted or chain_class(candidate) != flag:'],
-     ["    at = chain[0].end()",
+     ["    item.insert_field(1, segment)",
       '                if sorted(back) != sorted(["Class"] + promoted) '
       'or chain_class(candidate) != flag:'],
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
@@ -2614,8 +2608,8 @@ MUTATIONS = [
     # measured green against the whole suite before this test existed
     ("T172 the one reader drops the anchor, so prose in the chain is a field",
      "    segs = real_fields(block, field)\n    if len(segs) != 1:",
-     "    segs = [m for m in field_chain(block)\n"
-     "            if canonical_field(m.group(1)) == field]\n    if len(segs) != 1:",
+     "    segs = [f for f in field_chain(block)\n"
+     "            if f.canonical == field]\n    if len(segs) != 1:",
      ["TestPackLane.test_the_ONE_reader_refuses_a_reference_quoted_before_the_ANCHOR"]),
 
     ("T172 the one reader reads the FIRST of two fields in the chain",
@@ -3623,6 +3617,46 @@ MUTATIONS = [
      "        if key not in REQUIRED + CEILINGS + FLEET_LISTS:\n"
      '            raise SiteError(f"{path}:{n}: unknown key {key!r}.")',
      ["test_tk_roster.TestSiteFile.test_an_unknown_key_is_still_ignored"], SITE),
+
+    # --- T301 slice 1: one parse, one structure, one writer ----------------
+    # The invariant is `render_item(parse_item(b)) == b`, byte for byte, so each
+    # entry here is a way the structure could stop BEING a partition of the
+    # block — a piece dropped, a blank normalised, a provenance forgotten — and
+    # the round-trip is what falls. A parse that only nearly gives the block back
+    # is the shape in which every command rewrites text nobody pointed at.
+    ("T301 the renderer drops the item's continuation lines",
+     '    return item.head + item.title + "".join(f.text for f in item.fields) + item.prose',
+     '    return item.head + item.title + "".join(f.text for f in item.fields)',
+     ["TestOneParseOneWriter.test_every_shape_round_trips_byte_for_byte"]),
+
+    ("T301 the parse normalises the blank between the title and the chain",
+     "        title=line[len(head):chain[0].start() if chain else len(line)],",
+     "        title=line[len(head):chain[0].start() if chain else len(line)].rstrip(),",
+     ["TestOneParseOneWriter.test_the_blocks_the_script_itself_writes_round_trip"]),
+
+    ("T301 a field keeps only its canonical name, so the file's own spelling is lost",
+     "        self.name = m.group(1)",
+     "        self.name = canonical_field(m.group(1)) or m.group(1)",
+     ["TestOneParseOneWriter."
+      "test_a_field_carries_the_spelling_the_file_uses_and_its_canonical_name"]),
+
+    ("T301 the parse forgets which markers were quoted",
+     "in_code_span(spans, m.start())", "False",
+     ["TestOneParseOneWriter.test_a_marker_inside_a_code_span_is_recorded_as_quoted"]),
+
+    ("T301 an unmatched backtick closes on the next run of ANY width",
+     "            if closer_end - closer_start == width:", "            if True:",
+     ["TestOneParseOneWriter.test_an_odd_backtick_opens_no_span"]),
+
+    ("T301 the writer drops the blank the greedy segment had swallowed",
+     "        trailing = field.text[len(field.text.rstrip()):]", '        trailing = ""',
+     ["TestOneParseOneWriter."
+      "test_a_writer_hands_back_the_structure_and_touches_nothing_else"]),
+
+    ("T301 a written field keeps the offsets it no longer has",
+     "    def forget_offsets(self):\n        self.offsets = None",
+     "    def forget_offsets(self):\n        pass",
+     ["TestOneParseOneWriter.test_the_offsets_of_a_mutated_item_are_refused_not_stale"]),
 ]
 
 
