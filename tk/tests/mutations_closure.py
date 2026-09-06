@@ -428,7 +428,7 @@ MUTATIONS = [
 
     # --- the prose that dispatches -----------------------------------------
     ("T238 the attended dispatch stops naming the reference command",
-     "`../../bin/tk-ticket-ref <id> --closing-line`, composed there and never here",
+     "`../../bin/tk-ticket-ref <id> --dir \"<queue dir>\" --closing-line`, composed there and never here",
      "the reference, composed elsewhere and never here",
      ["TestTheDispatchProseNamesTheCommands."
       "test_the_attended_dispatch_names_the_contract_block_and_the_reference"], KICKOFF),

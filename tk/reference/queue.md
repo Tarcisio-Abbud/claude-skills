@@ -16,7 +16,8 @@ second line. Any session where an item is born or dies calls the script on the s
 
 **The commands, the flags and each field's shape live in `tk-queue --help` and the
 subcommands' own `--help`** — this file carries only what those helps do not confess.
-`<id>` is accepted as displayed (`T006`) or bare (`6`).
+`<id>` is accepted as displayed (`T006`) or bare (`6`). What a `--criterion` may ANCHOR on is
+one of those: `../skills/verify/SKILL.md`, *The anchor outlives the tree*.
 
 ## Priority, claims and two writers
 
