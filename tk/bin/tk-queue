@@ -322,16 +322,22 @@ def memory_dir(explicit):
 
 
 def read(path):
-    """The file's text, with a leading BOM read OFF.
+    """The file's text, normalised at the door — see `normalize_source`.
 
-    utf-8-sig, not utf-8, and the asymmetry with `write_atomic` (which stays
-    utf-8, so nothing here ever EMITS a BOM) is the point. Every reader of these
-    files anchors with `^` under re.M — ITEM_START, ITEM_ID_RE, LOG_ID_RE — and a
-    BOM surviving at byte 0 is a CHARACTER sitting between `^` and the first
-    line's marker, so that one line stops matching. Only the first line: `^` also
-    matches after every newline, and those are untouched. The vector is a hand
-    edit from an editor that writes one (Windows), on a file that syncs between
-    machines.
+    The bytes are read RAW and handed there, rather than opened with an encoding
+    argument, because one argument answers only one of the three questions a
+    queue file poses: which encoding, a BOM that is not at byte 0, and a blank
+    that is not a blank. All three are the same failure — a character no reader
+    can see — and answering them in one place is what lets every reader and
+    every writer downstream work on one text.
+
+    The head of that story is the oldest: utf-8-sig, not utf-8, asymmetric with
+    `write_atomic` (which stays utf-8, so nothing here ever EMITS a BOM). Every
+    reader of these files anchors with `^` under re.M — ITEM_START, ITEM_ID_RE,
+    LOG_ID_RE — and a BOM surviving at byte 0 is a CHARACTER sitting between `^`
+    and the first line's marker, so that one line stops matching. The vector is a
+    hand edit from an editor that writes one (Windows), on a file that syncs
+    between machines.
 
     Measured on this script before the fix, on a next-steps.md whose first line
     is an item: `list` printed everything BUT that item; `edit` on its ID
@@ -345,8 +351,8 @@ def read(path):
     """
     if not os.path.exists(path):
         return None
-    with open(path, encoding="utf-8-sig") as f:
-        return f.read()
+    with open(path, "rb") as f:
+        return normalize_source(f.read(), os.path.basename(path))
 
 
 def write_atomic(path, text):
@@ -521,6 +527,144 @@ LOG_ID_RE = re.compile("^" + LOG_LINE + r"\S+ — T([0-9]{3,})\b", re.M)
 CANONICAL_HEAD_RE = re.compile(MARKER + DECOR + ID_SLOT + " — ")
 
 
+# --- THE DOOR: what a queue file may carry that no reader can SEE ---------
+# These files are written only by `tk-queue` (reference/queue.md), so nothing
+# below was ever produced from inside. The vectors are hand edits from outside:
+# an editor that writes a BOM, a paste that carries a non-breaking space, a file
+# that came back from a Windows tool as UTF-16.
+#
+# What makes them the worst shape a queue file takes is that they are INVISIBLE.
+# The item does not fall over — it disappears, and the ID it was holding is
+# handed out again. Measured on this script, each one separately: an NBSP after
+# the checkbox made `list` print "(queue empty)" with the item in the file and
+# the next creation re-emit T001; a BOM glued to a marker in the middle of the
+# file turned that item into prose of the block above, and its ID was invisible
+# to the allocator; UTF-16 raised a raw UnicodeDecodeError, a traceback naming a
+# line of THIS script, which is the one place the caller cannot fix.
+#
+# NORMALISED AT THE MARKER HEADER, AND NOWHERE ELSE. The rule is not "clean the
+# file": a queue file is the user's own prose, and a reader that tidied it would
+# be editing what it was asked to display. Only the header — the bullet, the
+# box, the decoration and the ID slot — is repaired, only on a line that the
+# strict reader FAILS on, and the repaired text is what every reader and every
+# writer downstream sees, so the next write stores it repaired.
+BOM = "﻿"
+# NBSP, narrow NBSP, figure space, zero-width space: what a paste out of a
+# browser, a spreadsheet or a chat leaves where a plain blank was meant. They
+# are mapped to a blank rather than deleted — the marker's grammar wants a blank
+# in each of those positions, and deleting one would break a header that a
+# substitution repairs.
+INVISIBLE_BLANKS = "   ​"
+# a marker header the STRICT reader would miss, spelled from the same pieces as
+# MARKER + DECOR + ID_SLOT so the two cannot drift: the same bullet, box, slot
+# and decoration, with the invisible characters admitted where a blank belongs.
+# Anchored at the head of the line, like every other reader of these files.
+LOOSE_MARKER_RE = re.compile(
+    f"{BOM}*" + r"-[ \t" + INVISIBLE_BLANKS + r"]\[( |x)\][ \t" + INVISIBLE_BLANKS + r"]"
+    + DECOR + ID_SLOT)
+# THE SAME DOOR, ON THE OTHER FILE'S HEAD. A done-log ENTRY is where a SPENT id
+# lives, so the allocator reads both files (see `done_log_ids`) and a BOM glued to
+# an entry hides that id exactly as one glued to an item marker hides an open
+# item's. Measured, with no warning anywhere: `done_log_ids` answered [] for an
+# entry the file plainly carries, and the next creation handed its number out a
+# second time — T163's own failure, on the file the repair had not reached.
+#
+# Spelled from LOG_LINE's pieces for the reason above: read only as far as the ID
+# SLOT, because everything after it is the entry's free text — a `--note` a human
+# wrote — and the door does not touch prose.
+LOOSE_LOG_RE = re.compile(
+    f"{BOM}*" + r"-[ \t" + INVISIBLE_BLANKS + r"][0-9]{4}-[0-9]{2}-[0-9]{2}[ \t"
+    + INVISIBLE_BLANKS + r"]—[ \t" + INVISIBLE_BLANKS + r"]\S+[ \t" + INVISIBLE_BLANKS
+    + r"]—[ \t" + INVISIBLE_BLANKS + r"]T[0-9]{3,}\b")
+# (loose reader, strict reader) — a line is repaired only where the first sees a
+# head the second misses. The two never both match: one wants a checkbox where the
+# other wants a date.
+HEADS = ((LOOSE_MARKER_RE, ITEM_ID_RE), (LOOSE_LOG_RE, LOG_ID_RE))
+
+WARNED = set()
+
+
+def warn_once(msg):
+    """One warning per message per run. `read` is called several times by a
+    single command — the allocator, the finder and the display each ask — and a
+    warning repeated four times reads as four separate files being wrong."""
+    if msg in WARNED:
+        return
+    WARNED.add(msg)
+    print(f"tk-queue: warning: {msg}", file=sys.stderr)
+
+
+def decode_source(data, path):
+    """The bytes of a queue file as text, or a refusal that NAMES what failed.
+
+    UTF-16 is read rather than refused, because refusing would leave the caller
+    with a file this script cannot open and no way to convert it — but it is
+    read out loud: `write_atomic` emits UTF-8, so the next command that touches
+    the file CONVERTS it, and that has to be said before it happens rather than
+    discovered after.
+
+    Anything else that will not decode is a refusal naming the FILE, the BYTE
+    and the encoding tried. A raw UnicodeDecodeError names a line of this script
+    instead, which is the one place the caller cannot act on.
+    """
+    for bom, encoding in ((b"\xff\xfe", "utf-16"), (b"\xfe\xff", "utf-16")):
+        if data.startswith(bom):
+            warn_once(f"{path} is UTF-16 — read as UTF-16, and the next write stores "
+                      "it as UTF-8, which is what this script emits.")
+            return data.decode(encoding)
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError as e:
+        fail(f"{path} is not valid utf-8: byte {e.start} is {data[e.start]:#04x}. "
+             "Nothing was read. These files are written only by `tk-queue`, so a "
+             "file it cannot decode came from somewhere else — convert it to UTF-8 "
+             "and run the command again.")
+
+
+def normalize_marker_headers(text):
+    """(the text with every unreadable marker header repaired, how many).
+
+    A line is touched only when it WANTS to be one of the two heads an ID lives
+    in — an item marker or a done-log entry — and the strict reader misses it.
+    The strict reader is asked FIRST, so a head that already parses is left byte
+    for byte. Everything after the ID slot is the user's own text and is never
+    looked at.
+
+    Both heads, not just the item's: the allocator reads next-steps.md AND
+    done-log.md, so an id hidden in either is an id handed out twice.
+    """
+    repaired, out = 0, []
+    for line in text.splitlines(keepends=True):
+        for loose, strict in HEADS:
+            m = loose.match(line)
+            if not m or strict.match(line):
+                continue
+            head = m.group(0)
+            fixed = head.replace(BOM, "")
+            for ch in INVISIBLE_BLANKS:
+                fixed = fixed.replace(ch, " ")
+            if fixed != head:
+                line = fixed + line[len(head):]
+                repaired += 1
+            break
+        out.append(line)
+    return "".join(out), repaired
+
+
+def normalize_source(data, path):
+    """The text a queue file's bytes mean — decoded, and its marker headers made
+    readable. Called at the door by `read`, so the whole rest of this script
+    works on ONE text: the offsets a reader hands a writer are offsets into it,
+    and the parse's round-trip invariant is stated over it."""
+    text = decode_source(data, path)
+    text, repaired = normalize_marker_headers(text)
+    if repaired:
+        warn_once(f"{path}: {repaired} line head(s) carried a character no reader can "
+                  "see (a BOM, a non-breaking or zero-width space) and were read as if "
+                  "they did not. The next write stores them repaired.")
+    return text
+
+
 def split_blocks(body):
     """Return a list of (kind, text) where kind is 'item-open'/'item-done'/'other'."""
     blocks, buf, kind = [], [], "other"
@@ -530,7 +674,14 @@ def split_blocks(body):
             if buf:
                 blocks.append((kind, "".join(buf)))
             buf, kind = [line], ("item-done" if m.group(1) == "x" else "item-open")
-        elif kind.startswith("item") and (line.strip() == "" or line.startswith("#")):
+        # `line.strip("\r\n")`, not `line.strip()`: a line of only SPACES looks
+        # blank and is not one. Closing the block on it stranded every field
+        # below it — measured, `list` showed `?` for the class and `migrate`,
+        # the one command that repairs the shape, could not see the item to
+        # report it, while `claim` diagnosed a missing class and would have
+        # written a SECOND one, orphaning the real fields for good.
+        elif kind.startswith("item") and (line.strip("\r\n") == ""
+                                          or line.startswith("#")):
             blocks.append((kind, "".join(buf)))
             buf, kind = [line], "other"
         else:
@@ -652,19 +803,25 @@ def ensure_no_embedded_marker(**fields):
 
     Once composed into the block, an embedded marker is indistinguishable from
     the real field it precedes, and every reader takes the FIRST match:
-    item_title truncates the title there, PROJECT_TAG_RE reads the next word as
-    the project tag, `list` then groups the item under it, and `edit` rewrites
+    item_title truncates the title there, the project tag is read off the next
+    word, `list` then groups the item under it, and `edit` rewrites
     the prose instead of the field. That is the whole T063 incident — an item
     whose text said "**Project:** para o done-log" acquired the tag "para".
 
     The trigger is deliberately narrow: the literal bold-colon shape with a
-    capitalised field name. Prose that merely says "risk" or "projeto" never
-    matches — only bolding it with a trailing colon does. Refusing beats
-    escaping: an escape would need a matching unescape in every reader and in
-    the display path, each one a fresh chance to reintroduce this same bug.
+    capitalised field name, OUTSIDE a code span. Refusing beats escaping: an
+    escape would need a matching unescape in every reader and in the display
+    path, each one a fresh chance to reintroduce this same bug.
+
+    It asks `markers`, the tokenizer the READER asks, and that identity is the
+    whole of T134: the remedy `pack` prints for an item whose text carries a
+    marker is `edit --text "<the whole text>"`, and while this guard kept a
+    grammar of its own that remedy was refused by the very guard that had to
+    accept it — a prescription that could not repair the item it addressed. The
+    quoted form this message names is now the form that gets through.
     """
     for name, val in fields.items():
-        if val and EMBEDDED_MARKER_RE.search(val):
+        if val and markers(val):
             fail(f"--{name} contains a field-marker shape (e.g. **Project:**), which would "
                  "be read as the real field and silently hijack it. Rephrase without the "
                  "bold '**Word:**' shape — e.g. 'the Project field', or `Project:` in a "
@@ -711,17 +868,10 @@ FIELD_VARIANTS = {
     "Born": r"Born",
 }
 ANY_FIELD = "|".join(FIELD_VARIANTS.values())
-# the marker SHAPE alone, with no trailing value — every other use of ANY_FIELD
-# parses a real field; this one refuses the shape inside free text
-EMBEDDED_MARKER_RE = re.compile(r"\*\*(?:" + ANY_FIELD + r"):\*\*")
-# the same shape, per field: what a reader asks when the question is "does a marker
-# for THIS field sit anywhere in the block, including where no reader may use it?"
-FIELD_MARKER_RE = {name: re.compile(r"\*\*(?:" + variants + r"):\*\*")
-                   for name, variants in FIELD_VARIANTS.items()}
 PROJECT_RE = re.compile(r"\A[a-z0-9][a-z0-9_-]*\Z")
 # single source for reading a tag back out: the warning and the grouping must
 # see the same tag, or an item warns as unprecedented and then groups elsewhere
-PROJECT_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)")
+PROJECT_TAG_VALUE_RE = re.compile(r"\s*([^\s.*]+)")
 # same field, but anchored to end-of-line, for reading the tag back out of a
 # done-log entry's FIRST line only (see log_entry_tag). An entry's remaining
 # lines are a free-text --note that can itself quote "**Project:**" in prose —
@@ -730,7 +880,7 @@ PROJECT_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*
 LOG_TAG_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Project"] + r"):\*\*\s*([^\s.*]+)\.\s*$")
 
 
-FIELD_SEGMENT_RE = re.compile(r"\*\*(" + ANY_FIELD + r"):\*\*[^*\n]*")
+FIELD_MARKER_ANY_RE = re.compile(r"\*\*(" + ANY_FIELD + r"):\*\*")
 # the marker and the blank after it, for reading a segment's VALUE back out.
 # Spelled once: two readers stripping the same prefix their own way is how one of
 # them comes to print a value the file does not carry
@@ -745,9 +895,320 @@ def canonical_field(raw):
     return None
 
 
-def field_chain(block):
-    """The item's REAL field chain: the maximal run of `**Field:** value.`
-    segments ENDING the block's first line. Empty when no such run exists.
+# --- ONE PARSE, ONE STRUCTURE, ONE WRITER ---------------------------------
+# Every reader below asks `parse_item` for a block, and every writer that
+# changes an item's field chain hands the structure back to `render_item`. What
+# that buys is not tidiness. The chain's ambiguity used to be decided TWICE per
+# command — once by the reader that LOCATED the field, once by the writer that
+# spliced it — and the two answered differently: measured on one item, in one
+# command, each exiting 0, `edit --class AUTONOMOUS --project tk` overwrote four
+# words of the item's own title, and `--risk none` DELETED the segment that
+# title's prose was imitating. A writer that can only hand the structure back
+# cannot splice a position the parse never named.
+#
+# The invariant the suite pins: `render_item(parse_item(b)) == b`, byte for
+# byte, over every block of every real queue on this machine and of the
+# fixtures. It holds BY CONSTRUCTION — `Item` is a partition of the block, not
+# a description of it — and that is the whole design decision: a renderer that
+# recomposed an item from its parts would normalise a blank, a period or a
+# field order somewhere, and the first command to touch a legacy item would
+# rewrite text nobody pointed at.
+
+
+def markers(text, field=None):
+    r"""Every field marker of `text` a reader may READ, as (spelling, start, end)
+    with positions relative to `text` — of `field` alone when one is named.
+
+    THE CODE-SPAN RULE, spelled once for every reader that asks "is there a
+    marker here": a `**Field:**` inside a Markdown code span is never a field.
+    Outside one nothing changes — the POSITION rule still decides which of the
+    markers on the first line are the item's real fields, and `edit` still
+    refuses a bare marker in prose rather than guessing at it.
+
+    Why a code span and not an escape. An escape (`\*\*Class:\*\*`) would need a
+    matching unescape in every reader AND in the display path, each one a fresh
+    chance to reintroduce the bug it is fixing, and no legacy item carries one —
+    the migration would have to invent them. A code span is standard Markdown, it
+    renders as the quotation it IS, and the refusal in `ensure_no_embedded_marker`
+    has been printing it as the way out since before this rule existed.
+
+    Asked per LINE, because a code span does not cross one.
+    """
+    out, base = [], 0
+    for line in text.split("\n"):
+        spans = code_spans(line)
+        for m in FIELD_MARKER_ANY_RE.finditer(line):
+            if in_code_span(spans, m.start()):
+                continue
+            if field is None or canonical_field(m.group(1)) == field:
+                out.append((m.group(1), base + m.start(), base + m.end()))
+        base += len(line) + 1
+    return out
+
+
+def marker_value(text, field, value_re):
+    """The value the FIRST readable marker of `field` in `text` is followed by,
+    read with `value_re`, or None.
+
+    One spelling for the two whole-block reads that want a value rather than a
+    position — the class `list` falls back to, and the project tag it groups by.
+    Both used to search the block with a regex of their own, so a marker the
+    chain refuses to read still answered them: that is the whole T063 incident,
+    an item whose text said `**Project:** para o done-log` acquiring the tag
+    "para".
+    """
+    for _, _, end in markers(text, field):
+        m = value_re.match(text, end)
+        if m:
+            return m.group(1)
+    return None
+
+
+def field_segments(line):
+    """The `**Field:** value` segments of `line`, as (spelling, start, end).
+
+    A segment runs from its marker to the NEXT readable marker, or to the end of
+    the line. `*` is not a terminator, and that is T258: the old grammar cut the
+    value at the first asterisk, so `--criterion 'A: o glob *.md casa'` broke the
+    chain BEFORE **Class:** and the item left `pack` with no error visible
+    anywhere and an age of `?`.
+
+    It also makes the chain's old "anchored" condition structural rather than
+    checked: the last segment now ends the line by construction, so what remains
+    of the rule is the period walk in `chain_segments`.
+    """
+    marks = markers(line)
+    return [(m[0], m[1], marks[i + 1][1] if i + 1 < len(marks) else len(line))
+            for i, m in enumerate(marks)]
+
+
+def code_spans(line):
+    """The (start, end) ranges of `line` that are Markdown code spans.
+
+    CommonMark's rule, and the safe half of it is the half this file needs: a
+    backtick run OPENS a span only where a run of the SAME length closes it
+    later on the line. An unmatched backtick is literal text and opens nothing.
+    That direction is not a detail — the other one would let a single stray
+    backtick swallow the rest of the line, which is the `*` defect (T258) with a
+    different character: there the value's grammar stopped at the first `*` and
+    the chain broke behind it, and the item left `pack` with no error at all.
+    """
+    runs = [m.span() for m in re.finditer(r"`+", line)]
+    spans, i = [], 0
+    while i < len(runs):
+        opener_start, opener_end = runs[i]
+        width = opener_end - opener_start
+        for j in range(i + 1, len(runs)):
+            closer_start, closer_end = runs[j]
+            if closer_end - closer_start == width:
+                spans.append((opener_start, closer_end))
+                i = j
+                break
+        i += 1
+    return spans
+
+
+def in_code_span(spans, pos):
+    """Whether the character at `pos` sits inside one of `spans`."""
+    return any(start <= pos < end for start, end in spans)
+
+
+class Field:
+    """One `**Field:** value` segment of an item's chain, with its provenance.
+
+    Two names, deliberately, and collapsing them is a data loss: `name` is the
+    spelling the FILE carries (`Esforço`, `Critério` — the queues predate this
+    script and a human wrote those by hand), and `canonical` is the name every
+    reader asks by. A structure that kept only the canonical one would put
+    `**Effort:**` back into an item nobody asked to translate.
+
+    `text` is the segment VERBATIM, blanks and terminator included, and it is
+    what `render_item` writes back — the reason the round-trip is byte-exact
+    rather than nearly so.
+
+    There is no `quoted` flag any more, and its absence is the rule: a marker
+    inside a code span is not a field, so no Field can carry one. It was a
+    provenance while the reader still read those markers.
+
+    The offsets keep the match's own spelling (`span()`, `start()`, `end()`) on
+    purpose: every reader that measures an offset then reads it the same way it
+    always did, and no anchor of the mutation list is rewritten for a rename.
+    They are the position in the block this field was PARSED from, so a writer
+    invalidates them the moment it changes the item — see `Item.stale`.
+    """
+
+    __slots__ = ("name", "canonical", "value", "text", "offsets")
+
+    def __init__(self, text, offsets=None):
+        self.rewrite(text)
+        # AFTER the rewrite, which forgets them: a Field built by a reader knows
+        # where it sits, and one composed by a writer sits nowhere until the
+        # block it went into is parsed again
+        self.offsets = offsets
+
+    def rewrite(self, text):
+        """Take a new segment, verbatim, and re-read the three names from it.
+
+        Read with the same tokenizer as the file, so a value a WRITER composes
+        is a value the reader will give back: an asterisk or a code span in it
+        is text, and a second marker in it is refused as the two segments it is.
+        """
+        segs = field_segments(text)
+        if len(segs) != 1 or segs[0][1] != 0 or segs[0][2] != len(text):
+            raise ValueError(f"not a field segment: {text!r}")
+        self.text = text
+        self.name = segs[0][0]
+        self.canonical = canonical_field(self.name)
+        self.value = FIELD_BODY_RE.sub("", text)
+        self.forget_offsets()
+
+    def forget_offsets(self):
+        self.offsets = None
+
+    def span(self):
+        """This segment's (start, end) in the block it was parsed from.
+
+        A stale offset is REFUSED, never answered. The one corruption this file
+        has measured on an offset — a branch that spliced the item with the
+        field's own offsets in names the caller read as the file's — truncated
+        the frontmatter mid-word and duplicated the item, with the whole suite
+        still green. An offset that no longer means anything must not be
+        readable as one that does.
+        """
+        if self.offsets is None:
+            raise ValueError(
+                f"**{self.name}:** was written since the parse, so its offsets name "
+                "a position this item no longer has — re-parse the rendered block")
+        return self.offsets
+
+    def start(self):
+        return self.span()[0]
+
+    def end(self):
+        return self.span()[1]
+
+    def __repr__(self):
+        return f"Field({self.text!r})"
+
+
+def make_field(text):
+    """The Field a WRITER composed — it sits nowhere until the block is parsed
+    again, so it carries no offsets at all."""
+    return Field(text)
+
+
+class Item:
+    """A queue block, PARTITIONED — `head` + `title` + the field chain + `prose`.
+
+    Concatenated in that order the four give the block back byte for byte, which
+    is the whole point of storing them rather than describing them:
+
+      head    the marker, the ID slot and the separator `compose_item` writes
+              (`- [ ] **T007** — `), or "" for a block whose head is not
+              canonical — a legacy item with a different separator, or a line
+              that is no item at all.
+      title   the item's own free text, up to where the field chain begins.
+      fields  the chain, contiguous and ENDING the first line by construction
+              (see `chain_matches`), so nothing sits between them or after them.
+      prose   everything from the first line's newline on, raw: the continuation
+              lines with their own indentation, their hard breaks and their
+              nested lists, which no command of this file may touch.
+    """
+
+    __slots__ = ("raw", "box", "head", "title", "fields", "prose")
+
+    def __init__(self, raw, box, head, title, fields, prose):
+        self.raw = raw
+        self.box = box
+        self.head = head
+        self.title = title
+        self.fields = fields
+        self.prose = prose
+
+    # --- reading ---------------------------------------------------------
+
+    def field_at(self, offset):
+        """The chain field whose segment STARTS at `offset` — how a writer names
+        the field a reader located, without the two re-parsing separately.
+
+        A refusal, not a fallback, when the offset names no chain field: a
+        writer reaching for a marker OUTSIDE the chain is the destructive bug
+        this whole structure exists to make unspellable, and answering it with
+        something plausible is how it came back the first time.
+        """
+        for f in self.fields:
+            if f.offsets is not None and f.offsets[0] == offset:
+                return f
+        raise ValueError(f"no field of this item's chain starts at offset {offset}")
+
+    # --- writing ---------------------------------------------------------
+
+    def stale(self):
+        """Every offset this item handed out now names a position it has not
+        got. Called by each writer below, immediately."""
+        for f in self.fields:
+            f.forget_offsets()
+
+    def rstrip_first_line(self, chars=None, pad=""):
+        """Take the trailing blanks off whatever piece now ENDS the first line's
+        text, and put `pad` back — the field before the gap, or the title, or,
+        for an item whose title is blank, the head itself.
+
+        One implementation, because the two callers repair the same joint from
+        opposite sides: a field REMOVED leaves the blank that preceded it
+        dangling at end of line, and a field APPENDED needs exactly one blank in
+        front of it however much or little was there.
+        """
+        if self.fields:
+            self.fields[-1].rewrite(self.fields[-1].text.rstrip(chars) + pad)
+        elif self.title.rstrip(chars):
+            self.title = self.title.rstrip(chars) + pad
+        else:
+            self.title = ""
+            self.head = self.head.rstrip(chars) + pad
+
+    def set_field(self, field, name, value):
+        """Rewrite one segment in place, keeping the blank that separates it from
+        the next field: the segment's body is greedy, so the blank is INSIDE the
+        text being replaced, and a writer that dropped it glued two fields."""
+        trailing = field.text[len(field.text.rstrip()):]
+        field.rewrite(f"**{name}:** {value}." + trailing)
+        self.stale()
+
+    def drop_field(self, field):
+        """Remove one segment, and repair the removal site — the blank BEFORE a
+        field that was last on the line is what dangles once it goes.
+
+        Repaired exactly at the site: a sweep over the whole block would also
+        eat a two-space Markdown hard break on an unrelated continuation line,
+        silently rewrapping text this command was never asked to touch.
+        """
+        i = self.fields.index(field)
+        del self.fields[i]
+        if i == len(self.fields):
+            self.rstrip_first_line(" \t")
+        self.stale()
+
+    def insert_field(self, index, segment):
+        """Put a composed segment INTO the chain, with the blank that separates
+        it from the one it displaces."""
+        self.fields.insert(index, make_field(segment + " "))
+        self.stale()
+
+    def append_field(self, segment):
+        """Put a composed segment at the END of the first line, where the chain
+        lives. Appending after a continuation line writes the field OUTSIDE the
+        chain — i.e. produces on the spot the very shape every gate in this file
+        refuses to read."""
+        self.rstrip_first_line(pad=" ")
+        self.fields.append(make_field(segment))
+        self.stale()
+
+
+def chain_segments(line):
+    """The item's REAL field chain, as (spelling, start, end) on its first line:
+    the maximal run of `**Field:** value.` segments ENDING that line. Empty when
+    no such run exists.
 
     Why a chain, and not "the last marker in the block". An item block absorbs
     its continuation lines, and a legacy item — precisely the population the
@@ -760,10 +1221,15 @@ def field_chain(block):
     command claimed to change, plus destruction of text nobody asked it to touch,
     on the DELETION path.
 
-    Two conditions separate chain from prose, and neither works alone:
+    The rule was two conditions and is now one, because the other became
+    structural:
 
-      anchored   the run must reach the end of the line. The fields are a suffix
-                 of the first line, by construction (compose_item).
+      anchored   the run must reach the end of the line — the fields are a suffix
+                 of the first line, by construction (compose_item). Since
+                 `field_segments` runs the last value to the end of the line, no
+                 segment can stop short of it, and the condition is a fact rather
+                 than a check. It USED to fail on an asterisk, which is how T258
+                 knocked an item out of `pack` with no error anywhere.
       periods    each segment's value ends in '.', because compose_item writes
                  `**Field:** value.` — the ONE exception being Source, which is
                  written last and without one. Contiguity cannot stand in for
@@ -772,32 +1238,62 @@ def field_chain(block):
                  what tells `**Project:** para o done-log **Class:** ...` (prose)
                  from `**Project:** tk. **Source:** ...` (a real field).
 
-    Neither condition separates prose that carries a REAL FIELD NAME in bold-colon
-    and ends in a period — `o item cita o **Project:** de outra fila inteira.
-    **Class:** …` — from the field it imitates: it is contiguous, it ends in a
-    period, so it joins the run. Ordinary prose ending in '.' is not a segment at
-    all and never had this problem; quoting the marker is what creates it. That is
-    why no writer LOCATES a field in this chain raw — the POSITION rule
-    (real_fields) is what separates the two, and both directions are measured on
-    the shape above: `edit --project tk` overwrote those four words and
-    `edit --risk none` DELETED the imitating segment whole, each exiting 0 and
-    printing "updated", with no other copy of the text anywhere.
+The period does not separate prose that carries a REAL FIELD NAME in
+    bold-colon and ends in a period — `o item cita o **Project:** de outra fila
+    inteira. **Class:** …` — from the field it imitates: it is contiguous, it
+    ends in a period, so it joins the run. That is why no writer LOCATES a field
+    in this chain raw — the POSITION rule (real_fields) is what separates the
+    two, and both directions are measured on the shape above: `edit --project tk`
+    overwrote those four words and `edit --risk none` DELETED the imitating
+    segment whole, each exiting 0 and printing "updated", with no other copy of
+    the text anywhere. The way OUT of that ambiguity is the code-span rule (see
+    `markers`): quoted, the prose is prose to every reader, which is what lets a
+    legacy item be repaired instead of cancelled and re-added.
 
     Ambiguity is left for the caller to resolve (see cmd_edit), never guessed:
     a refusal costs one command, deleted text is not recoverable.
     """
-    line = block.split("\n", 1)[0]
-    segs = list(FIELD_SEGMENT_RE.finditer(line))
-    if not segs or segs[-1].end() < len(line.rstrip()):
+    segs = field_segments(line)
+    if not segs:
         return []
     chain = [segs[-1]]
-    for m in reversed(segs[:-1]):
-        ends_field = (m.group(0).rstrip().endswith(".")
-                      or canonical_field(m.group(1)) == "Source")
-        if m.end() != chain[0].start() or not ends_field:
+    for seg in reversed(segs[:-1]):
+        ends_field = (line[seg[1]:seg[2]].rstrip().endswith(".")
+                      or canonical_field(seg[0]) == "Source")
+        if not ends_field:
             break
-        chain.insert(0, m)
+        chain.insert(0, seg)
     return chain
+
+
+def parse_item(block):
+    """The block read ONCE, into the structure every reader and every writer of
+    this file works from. See the note above the class for what that buys."""
+    line = block.split("\n", 1)[0]
+    chain = chain_segments(line)
+    head_m = CANONICAL_HEAD_RE.match(block)
+    head = head_m.group(0) if head_m else ""
+    box_m = ITEM_ID_RE.match(block)
+    return Item(
+        raw=block,
+        box=box_m.group(1) if box_m else None,
+        head=head,
+        title=line[len(head):chain[0][1] if chain else len(line)],
+        fields=[Field(line[s:e], (s, e)) for _, s, e in chain],
+        prose=block[len(line):],
+    )
+
+
+def render_item(item):
+    """The block `item` spells — the ONE writer of an item's first line."""
+    return item.head + item.title + "".join(f.text for f in item.fields) + item.prose
+
+
+def field_chain(block):
+    """The item's REAL field chain, as `Field`s — one parse, `chain_matches`'s
+    rule. Spelled here because every reader in this file asks for the chain, not
+    for the whole item, and none of them may build a second parse of its own."""
+    return parse_item(block).fields
 
 
 def clears_field(value):
@@ -817,29 +1313,27 @@ def clear_field_segment(block, segment):
     neither half below is obvious, and a second copy is how one caller would keep a
     rule the other had already dropped.
 
-    Local names only, and that is not style: the caller's `start` holds the item's
-    offset in the FILE, and its final splice is computed from it. A branch that put
-    the field's own offsets into names spelled the same way truncated the
-    frontmatter mid-word and duplicated the item — measured on `--risk none`, with
-    the whole suite still green, because every clearing test asserted
-    `assertNotIn("**Risk:**")` and a corrupted file satisfies that too.
+    The field is named by its OFFSET and the item is re-parsed here, rather than
+    the caller carrying a structure in: the caller's own `start` holds the item's
+    offset in the FILE, and a branch that put the field's own offsets into names
+    spelled the same way truncated the frontmatter mid-word and duplicated the
+    item — measured on `--risk none`, with the whole suite still green, because
+    every clearing test asserted `assertNotIn("**Risk:**")` and a corrupted file
+    satisfies that too. Nothing below holds a file offset, and `Item.field_at`
+    REFUSES an offset that names no field of the chain instead of repairing
+    something else.
 
-    The repair: FIELD_SEGMENT_RE's body is greedy, so the match has already
-    swallowed the blank that separated this field from the next one — but when the
-    field was the LAST on its line there is nothing after it, and the blank BEFORE
-    it is left dangling at end of line. It is repaired exactly at the removal site:
-    a sweep over the whole block would also eat a two-space Markdown hard break on
-    an unrelated continuation line, silently rewrapping text this command was never
-    asked to touch.
+    The removal and the repair of its site are `Item.drop_field`'s.
     """
-    f_start, f_end = segment.span()
-    head, tail = block[:f_start], block[f_end:]
-    if tail[:1] in ("", "\n"):
-        head = head.rstrip(" \t")
-    return head + tail
+    item = parse_item(block)
+    item.drop_field(item.field_at(segment.start()))
+    return render_item(item)
 
 
-CLASS_VALUE_RE = re.compile(r"\*\*(?:" + FIELD_VARIANTS["Class"] + r"):\*\*\s*([A-Za-zÀ-ÿ]+)")
+# the value HALF of the two whole-block reads. The marker is found by `markers`
+# — which is what keeps a quoted one out of both answers — and these two say
+# only what a value looks like once one has been found.
+CLASS_VALUE_RE = re.compile(r"\s*([A-Za-zÀ-ÿ]+)")
 
 
 def item_class(block):
@@ -865,8 +1359,7 @@ def item_class(block):
     """
     if real_fields(block, "Class"):
         return chain_class(block)
-    m = CLASS_VALUE_RE.search(block)
-    return m.group(1) if m else None
+    return marker_value(block, "Class", CLASS_VALUE_RE)
 
 
 def chain_class(block):
@@ -886,10 +1379,10 @@ def chain_class(block):
     guessed: the same answer `edit`'s own field loop already gives for a duplicated
     field, and the gate then asks for `--class` explicitly, which costs one command.
     """
-    found = [m for m in field_chain(block) if canonical_field(m.group(1)) == "Class"]
+    found = [f for f in field_chain(block) if f.canonical == "Class"]
     if len(found) != 1:
         return None
-    value = re.match(r"\*\*[^*]+:\*\*\s*([A-Za-zÀ-ÿ]+)", found[0].group(0))
+    value = re.match(r"\*\*[^*]+:\*\*\s*([A-Za-zÀ-ÿ]+)", found[0].text)
     return value.group(1) if value else None
 
 
@@ -923,7 +1416,7 @@ def real_fields(block, field):
     because two copies is how one of them keeps a position the other dropped.
     """
     chain = field_chain(block)
-    names = [canonical_field(m.group(1)) for m in chain]
+    names = [f.canonical for f in chain]
     if "Class" not in names:
         return []
     lo = names.index("Class") + (0 if field == "Class" else 1)
@@ -962,7 +1455,7 @@ def qualified_fields(block, field):
     writer, which reads `real_fields` directly: a rule the gates applied and the
     writer did not is exactly the asymmetry that bug was made of.
     """
-    return real_fields(block, field), len(FIELD_MARKER_RE[field].findall(block))
+    return real_fields(block, field), len(markers(block, field))
 
 
 def append_to_first_line(block, segment):
@@ -977,8 +1470,9 @@ def append_to_first_line(block, segment):
     partition is how one of them keeps a rule the other two dropped, and each copy
     already carried its own comment saying this same thing.
     """
-    head, sep, rest = block.partition("\n")
-    return head.rstrip() + " " + segment + sep + rest
+    item = parse_item(block)
+    item.append_field(segment)
+    return render_item(item)
 
 
 def fields_off_first_line(block):
@@ -991,7 +1485,7 @@ def fields_off_first_line(block):
     lift is a dead end; one withheld from an item it does lift sends the caller to
     `cancel` + re-add for nothing.
     """
-    return bool(EMBEDDED_MARKER_RE.search("\n".join(block.rstrip("\n").split("\n")[1:])))
+    return bool(markers("\n".join(block.rstrip("\n").split("\n")[1:])))
 
 
 def write_class_segment(block, value):
@@ -1029,13 +1523,13 @@ def write_class_segment(block, value):
     ever and to everything, while a promoted one is printed by `list` and by
     `pack` the next time either runs.
     """
-    chain = field_chain(block)
+    item = parse_item(block)
     segment = f"**Class:** {value}."
-    if not chain:
+    if not item.fields:
         return append_to_first_line(block, segment), []
-    at = chain[0].start()
-    return (block[:at] + segment + " " + block[at:],
-            [canonical_field(m.group(1)) for m in chain])
+    promoted = [f.canonical for f in item.fields]
+    item.insert_field(0, segment)
+    return render_item(item), promoted
 
 
 def chain_breaker(candidate):
@@ -1052,8 +1546,8 @@ def chain_breaker(candidate):
     chain = field_chain(candidate)
     if not chain:
         return None
-    before = [m for m in FIELD_SEGMENT_RE.finditer(line) if m.start() < chain[0].start()]
-    return canonical_field(before[-1].group(1)) if before else None
+    before = [seg for seg in field_segments(line) if seg[1] < chain[0].start()]
+    return canonical_field(before[-1][0]) if before else None
 
 
 def claim_readback(candidate):
@@ -1210,9 +1704,9 @@ def class_shape(block):
     which then got a message saying its fields sat elsewhere (false) and a remedy
     that rewrote the item and left the same refusal standing.
     """
-    if not FIELD_MARKER_RE["Class"].search(block):
+    if not markers(block, "Class"):
         return CLASS_SHAPE_NONE
-    if not FIELD_MARKER_RE["Class"].search(block.split("\n", 1)[0]):
+    if not markers(block.split("\n", 1)[0], "Class"):
         return CLASS_SHAPE_OFF_LINE
     return CLASS_SHAPE_BROKEN
 
@@ -1345,10 +1839,10 @@ def claim_value(segment):
     "unclaimed": "held, and I cannot tell by whom" is still held, and reading it as
     free is exactly how the second session takes an item the first is working.
     """
-    m = CLAIM_VALUE_RE.match(segment.group(0))
+    m = CLAIM_VALUE_RE.match(segment.text)
     if m:
         return m.group(1), m.group(2)
-    return FIELD_BODY_RE.sub("", segment.group(0)).strip(), None
+    return segment.value.strip(), None
 
 
 def claim_mark(owner, since):
@@ -1643,9 +2137,9 @@ def open_project_tags(content):
     for kind, text in split_blocks(content or ""):
         if kind != "item-open":
             continue
-        m = PROJECT_TAG_RE.search(text)
-        if m:
-            tags.add(m.group(1))
+        tag = marker_value(text, "Project", PROJECT_TAG_VALUE_RE)
+        if tag:
+            tags.add(tag)
     return tags
 
 
@@ -1681,7 +2175,11 @@ def group_by_tag(pairs, by_position=False):
 def item_title(text, limit=100):
     t = re.sub("^" + MARKER, "", text.strip())
     t = ID_RE.sub("", t)
-    t = re.sub(r"\*\*(" + ANY_FIELD + r"):\*\*.*", "", t, flags=re.S)
+    # cut at the first READABLE marker: cutting at a quoted one would truncate
+    # the title of the very item the code-span rule exists to make repairable
+    found = markers(t)
+    if found:
+        t = t[:found[0][1]]
     t = re.sub(r"\s+", " ", t).strip(" —-~*")
     return t if len(t) <= limit else t[: limit - 1] + "…"
 
@@ -1931,7 +2429,7 @@ def backdate(block, today):
         # before anything recorded provenance, and an item whose Source the
         # POSITION rule refuses is one repair away from an age. Reporting both as
         # "no Source" would send a reader looking for a field the item carries
-        return block, ("unreadable" if FIELD_MARKER_RE["Source"].search(block)
+        return block, ("unreadable" if markers(block, "Source")
                        else "none")
     born, why = source_birthdate(field_value(src[0]), today)
     if born is None:
@@ -1945,8 +2443,10 @@ def backdate(block, today):
     # chain rule asks of every segment but the last, and sits after the **Class:**
     # `real_fields` measures from — because Source itself qualified, or this
     # function would have returned two lines up.
-    at = src[0].start()
-    return block[:at] + f"**Born:** {born.isoformat()}. " + block[at:], None
+    item = parse_item(block)
+    item.insert_field(item.fields.index(item.field_at(src[0].start())),
+                      f"**Born:** {born.isoformat()}.")
+    return render_item(item), None
 
 
 def item_age(block, today):
@@ -1989,10 +2489,10 @@ def cmd_list(args):
     today = datetime.date.today()
     rows = []
     for text, iid in zip(opens, ids):
-        pm = PROJECT_TAG_RE.search(text)
         rows.append((item_label(text), item_class(text) or "?",
                      age_cell(item_age(text, today)), item_title(text),
-                     pm.group(1) if pm else None, displayed_claim(text),
+                     marker_value(text, "Project", PROJECT_TAG_VALUE_RE),
+                     displayed_claim(text),
                      iid if iid in ambiguous else None, displayed_blocker(text)))
     if not rows:
         print("(queue empty)")
@@ -2015,6 +2515,12 @@ def cmd_list(args):
     if ambiguous:
         print("\nduplicate IDs: only the FIRST item under each is reachable — renumber "
               "the others by hand in next-steps.md.")
+    strange = [(item_label(t), unknown_class(t)) for t in opens if unknown_class(t)]
+    if strange:
+        print("\nclass values that are no class: "
+              + ", ".join(f"{label} ({cls})" for label, cls in strange)
+              + f" — the classes are {', '.join(CLASSES)}. No gate acts on any other "
+              "value; `tk-queue edit <id> --class <CLASS>` sets one.")
 
 
 def displayed_blocker(block):
@@ -2037,6 +2543,19 @@ def displayed_blocker(block):
     if not segs:
         return "a **Blocked-by:** marker no gate reads" if markers else ""
     return f"blocked by {field_value(segs[0])}"
+
+
+def unknown_class(block):
+    """The class value this item carries that is NOT one of CLASSES, or None.
+
+    Printed in the class column, `URGENTE` reads exactly like a class this queue
+    has: same place, same shape, and nothing anywhere saying that no gate will
+    ever act on it. The value is still SHOWN — it is what the file says, and
+    hiding it would send the reader to a file that disagrees with the screen —
+    and it is NAMED, once, under the listing.
+    """
+    cls = item_class(block)
+    return cls if cls and cls not in CLASSES else None
 
 
 def list_line(label, cls, age, title, mark, dup=None, blocked=""):
@@ -2091,6 +2610,13 @@ REPAIR_FOLD = ("fields off the first line: `tk-queue migrate` folds them up, eve
                "opens a Markdown block — it will not lift half a chain; the repair for both "
                "is `cancel` + re-add")
 REPAIR_CLASSLESS = "no **Class:** at all: `tk-queue edit <id> --class AUTONOMOUS`"
+# A class this queue does not have is not a state, and the difference decides
+# what the caller does next: `class is DECISION` is the item waiting for a human
+# and nothing to repair, while `class is URGENTE` is a value no gate will ever
+# read — the item is out of every package on every machine until someone gives
+# it one of the five.
+REPAIR_UNKNOWN_CLASS = ("a class value that is no class: `tk-queue edit <id> --class "
+                        "<CLASS>`, one of " + ", ".join(CLASSES))
 # The same shape with its fields still off the first line, and the ORDER is the
 # whole of it: `edit --class` appends the anchor to a first line that has no
 # chain, which strands those fields for good and stops `migrate` from ever
@@ -2258,7 +2784,7 @@ def field_value(segment):
 
     One period, not `rstrip('.')`: a value ending in an ellipsis is a value, and a
     reader that eats all three prints something the file does not contain."""
-    body = FIELD_BODY_RE.sub("", segment.group(0)).strip()
+    body = segment.value.strip()
     return re.sub(r"\.\Z", "", body).strip()
 
 
@@ -2286,12 +2812,12 @@ def pack_classless_reason(block):
     refused for two of them — the dead end this file has already paid for once (see
     claim_unwritable_message, which discriminates the same three at the length a
     single-item refusal can afford). Not shared with it: what the two have in common
-    is the CONDITION, spelled from the same FIELD_MARKER_RE, while the messages
+    is the CONDITION, spelled from the same `markers`, while the messages
     differ in kind — one line inside a list here, a paragraph of diagnosis there.
 
     The remedies are that function's, and each was RUN against the real queues
     before being printed."""
-    found = [m for m in field_chain(block) if canonical_field(m.group(1)) == "Class"]
+    found = [f for f in field_chain(block) if f.canonical == "Class"]
     if len(found) > 1:
         # asked FIRST: this item's markers are on the first line and in the chain, so
         # both questions below would answer "fine" and the line would name a break
@@ -2333,6 +2859,9 @@ def pack_exclusion(iid, block, identity, open_ids=frozenset(),
     twenty from being packaged — the same choice `displayed_claim` makes for `list`
     — so nothing here calls `fail`."""
     cls = chain_class(block)
+    if cls is not None and cls not in CLASSES:
+        return (f"class is {cls!r}, which is none of {', '.join(CLASSES)}, so no gate "
+                "reads it", REPAIR_UNKNOWN_CLASS)
     if cls != "AUTONOMOUS":
         return pack_classless_reason(block) if cls is None else (f"class is {cls}", None)
 
@@ -2631,7 +3160,7 @@ def pack_closes(block):
 
     Which of the three an item gets is decided at the WRITER's position, like
     everything else here, and the first measured attempt at it was not: asking
-    `FIELD_MARKER_RE["Ticket"].search(block)` is the same whole-block question the
+    `markers(block, "Ticket")` is the same whole-block question the
     pre-gate was condemned for, turned around. It printed `[?]` for an item whose
     only `**Ticket:**` was a continuation-line note CITING the marker — an item
     that never had a ticket at all, sent to whoever writes the PR as one whose
@@ -3665,13 +4194,13 @@ def close_item(args, marker, outcome, marker_flag):
     today = datetime.date.today().isoformat()
     # read the tag from the ORIGINAL block: item_title strips every field, and
     # --summary replaces the text wholesale, so by then the tag is already gone
-    tag_m = PROJECT_TAG_RE.search(block)
+    tag = marker_value(block, "Project", PROJECT_TAG_VALUE_RE)
     text = args.summary or item_title(block, limit=400)
     line = f"- {today} — {marker} — {label} {text} — {outcome}"
-    if tag_m:
+    if tag:
         # appended last so LOG_TAG_RE's end-of-line anchor reads this field, not
         # any earlier lookalike in the item's own text
-        line += f" **Project:** {tag_m.group(1)}."
+        line += f" **Project:** {tag}."
     if args.note:
         line += "\n  " + args.note.replace("\n", "\n  ")
     append_done_line(memdir, line, today)
@@ -3804,11 +4333,20 @@ def cmd_edit(args):
         head_m = CANONICAL_HEAD_RE.match(block)
         if not head_m:
             fail(f"{label} has a non-canonical head — use cancel + add instead of --text")
-        # keep everything from the FIRST field marker on, whichever field that is —
-        # anchoring on Class alone would silently drop Effort/Risk/Source of items
-        # that never carried a Class field
-        tail_m = re.search(r"\*\*(?:" + ANY_FIELD + r"):\*\*.*", block, re.S)
-        tail = tail_m.group(0) if tail_m else ""
+        # keep everything from the first READABLE field marker on, whichever field
+        # that is — anchoring on Class alone would silently drop Effort/Risk/Source
+        # of items that never carried a Class field.
+        #
+        # `markers`, not a regex of its own, and that is the whole code-span rule
+        # reaching the writer that cuts the line. Measured on the shape this slice
+        # exists to serve — an item whose text QUOTES a marker: the raw regex cut
+        # the tail inside the code span, so the opening backtick stayed in the text
+        # being replaced and the closing one did not. `--text` then wrote the
+        # quotation back as a REAL marker sitting before the chain, duplicated the
+        # prose around it, and pushed the item out of `pack` into the very
+        # cancel-and-re-add dead end the rule exists to open a way out of.
+        marks = markers(block)
+        tail = block[marks[0][1]:] if marks else ""
         new = head_m.group(0) + args.text.strip() + (" " + tail if tail else "\n")
     flags = ((args.classe, "Class"), (args.effort, "Effort"),
              (args.risk, "Risk"), (args.env, "Env"),
@@ -3836,13 +4374,18 @@ def cmd_edit(args):
         # ambiguous — the item that quotes **Project:** in its text AND carries a real
         # one — instead of letting the position rule quietly resolve it; the locator
         # is positional, so the same prose can never be the segment that gets written.
-        in_chain = [m for m in field_chain(new) if canonical_field(m.group(1)) == field]
+        in_chain = [f for f in field_chain(new) if f.canonical == field]
         found = real_fields(new, field)
         if len(in_chain) > 1:
             fail(f"{label} carries {len(in_chain)} **{field}:** fields in its field "
                  f"chain, so `--{field.lower()}` is ambiguous. Nothing was changed. Close "
                  "it with `cancel` and re-add it clean.")
-        if not found and re.search(r"\*\*(?:" + FIELD_VARIANTS[field] + r"):\*\*", new):
+        # `markers`, not a regex of its own: a marker the reader does not read is
+        # not a marker this guard may refuse over. Quoted, it used to block
+        # `--project tk` on an item that merely CITES the field and carries no real
+        # one, prescribing cancel-and-re-add — the opposite of what quoting the
+        # prose is for.
+        if not found and markers(new, field):
             # the class-less item gets its own sentence, because the generic one
             # below would send the caller looking for a **Class:** the item has
             # not got. `--class` is exempt: it is the flag that GIVES the item
@@ -3895,12 +4438,12 @@ def cmd_edit(args):
                 new = clear_field_segment(new, found[0])
             continue
         if found:
-            m = found[0]
-            matched = m.group(0)
-            # the body is greedy, so the match swallows the blank that separated this
-            # field from the next one — hand it back, or the two fields come out glued
-            new = (new[: m.start()] + f"**{field}:** {flag}."
-                   + matched[len(matched.rstrip()):] + new[m.end():])
+            # located and written through ONE parse: the reader that found the
+            # segment and the writer that replaces it read the same structure,
+            # which is what stops the two from answering differently
+            item = parse_item(new)
+            item.set_field(item.field_at(found[0].start()), field, flag)
+            new = render_item(item)
         else:
             # A chain with no **Class:** anchors nothing, so a field appended to it
             # is a field no reader may ever honour: real_fields and qualified_fields
@@ -3960,7 +4503,7 @@ def cmd_edit(args):
                 # in that order — because "a Class is in the chain somewhere" is
                 # true of the write this slice exists to stop.
                 candidate, promoted = write_class_segment(new, flag)
-                back = [canonical_field(m.group(1)) for m in field_chain(candidate)]
+                back = [f.canonical for f in field_chain(candidate)]
                 if back != ["Class"] + promoted or chain_class(candidate) != flag:
                     fail(f"{label} would not read back as a {flag} item carrying "
                          f"{len(promoted)} field(s) after the anchor. Nothing was "
@@ -4429,18 +4972,26 @@ def field_run(line):
                          end there and the rest is prose the fold would carry
                          into the chain.
 
-    Not asked: whether a note trails the LAST field on this same line. There
-    FIELD_SEGMENT_RE's greedy body has already absorbed it, identically before
-    and after the fold — the fold neither creates that ambiguity nor cures it.
+    Not asked: whether a note trails the LAST field on this same line. There the
+    value grammar has already absorbed it, identically before and after the fold
+    — the fold neither creates that ambiguity nor cures it.
+
+    "Stops short" is now asked of the BOLD rather than of the segments. A value
+    runs to the next marker or to the end of the line, so a bold that is no
+    marker can no longer stop a segment — it is absorbed into a value, and the
+    fold would carry that prose into the chain. So every `**` on the line has to
+    belong to a marker, which is the same refusal, spelled where the grammar
+    left it.
     """
     text = line.strip()
-    segs, pos = [], 0
-    for m in FIELD_SEGMENT_RE.finditer(text):
-        if m.start() != pos:
-            return None
-        segs.append(m)
-        pos = m.end()
-    return segs if segs and pos == len(text) else None
+    segs = field_segments(text)
+    if not segs or segs[0][1] != 0:
+        return None
+    bold = [(start, start + len(f"**{name}:**")) for name, start, _ in segs]
+    if any(not any(s <= m.start() < e for s, e in bold)
+           for m in re.finditer(r"\*\*", text)):
+        return None
+    return [text[start:end] for _, start, end in segs]
 
 
 def fold_chain_onto_first_line(block):
@@ -4520,19 +5071,19 @@ def fold_chain_onto_first_line(block):
     if refusal:
         return None, refusal
     kept = lines[j:first]
-    if EMBEDDED_MARKER_RE.search("\n".join(kept)):
+    if markers("\n".join(kept)):
         return None, FOLD_SPLIT_REFUSAL
     head = " ".join([ln.strip() for ln in lines[:j]] + [ln.strip() for ln in lines[first:]])
     folded = "\n".join([head] + kept) + block[len(block.rstrip("\n")):]
-    # rstripped, and only rstripped: FIELD_SEGMENT_RE's body is greedy, so a
-    # segment swallows the blank that separates it from the next marker — one
+    # rstripped, and only rstripped: a segment runs up to the next marker, so it
+    # carries the blank that separated it from that marker — one
     # blank where the line ended, none where the file's newline used to be. A
     # raw comparison called that whitespace a changed value and refused an item
     # whose chain merely spanned two continuation lines. Absorbed PROSE, the
     # thing this gate is for, is not whitespace and still shows.
     chain = field_chain(folded)
-    if ([m.group(0).rstrip() for m in run]
-            != [m.group(0).rstrip() for m in chain]):
+    if ([seg.rstrip() for seg in run]
+            != [f.text.rstrip() for f in chain]):
         return None, FOLD_REFUSAL
     # Where the PROSE readback used to be. It stood here as two comparisons, and a
     # review measured both unable to fail — so they are gone rather than kept as

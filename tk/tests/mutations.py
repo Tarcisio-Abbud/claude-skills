@@ -130,14 +130,15 @@ MUTATIONS = [
      ["TestMissingItemMessage"]),
 
     ("T064 the project tag is dropped on close",
-     '        line += f" **Project:** {tag_m.group(1)}."',
+     '        line += f" **Project:** {tag}."',
      '        pass',
      ["TestProjectTagInDoneLog.test_tag_reaches_the_done_log",
       "TestProjectTagInDoneLog.test_report_groups_by_tag_untagged_last"]),
 
     ("T064 --summary drops the tag (tag read from the title instead of the block)",
-     "tag_m = PROJECT_TAG_RE.search(block)",
-     "tag_m = PROJECT_TAG_RE.search(args.summary or item_title(block, limit=400))",
+     '    tag = marker_value(block, "Project", PROJECT_TAG_VALUE_RE)',
+     '    tag = marker_value(args.summary or item_title(block, limit=400), "Project",'
+     " PROJECT_TAG_VALUE_RE)",
      ["TestProjectTagInDoneLog.test_tag_survives_summary_replacing_the_text"]),
 
     ("T064 report stops grouping by tag",
@@ -178,15 +179,15 @@ MUTATIONS = [
      ["TestEmbeddedMarker.test_close_refuses_a_marker_in_summary_and_outcome"]),
 
     ("T065 the guard's decision inverts (marker shape no longer matches)",
-     'EMBEDDED_MARKER_RE = re.compile(r"\\*\\*(?:" + ANY_FIELD + r"):\\*\\*")',
-     'EMBEDDED_MARKER_RE = re.compile(r"(?!x)x")',
+     'FIELD_MARKER_ANY_RE = re.compile(r"\\*\\*(" + ANY_FIELD + r"):\\*\\*")',
+     'FIELD_MARKER_ANY_RE = re.compile(r"(?!x)(x)")',
      ["TestEmbeddedMarker.test_add_refuses_a_marker_in_the_text"]),
 
     # the opposite direction, which no other mutation covers: a guard that over-refuses
     # blocks legitimate prose, and only the false-positive test can see it
     ("T065 the guard broadens to the bare field name, refusing ordinary prose",
-     'EMBEDDED_MARKER_RE = re.compile(r"\\*\\*(?:" + ANY_FIELD + r"):\\*\\*")',
-     'EMBEDDED_MARKER_RE = re.compile(r"(?:" + ANY_FIELD + r")")',
+     'FIELD_MARKER_ANY_RE = re.compile(r"\\*\\*(" + ANY_FIELD + r"):\\*\\*")',
+     'FIELD_MARKER_ANY_RE = re.compile(r"(" + ANY_FIELD + r")")',
      ["TestEmbeddedMarker.test_plain_prose_naming_the_fields_is_not_refused"]),
 
     ("T064/T060 an ID quoted in a --note or an outcome counts as closed again",
@@ -362,15 +363,17 @@ MUTATIONS = [
      ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
 
     ("T070 clearing leaves the separator blank dangling at end of line",
-     '    if tail[:1] in ("", "\\n"):', "    if False:",
+     "        if i == len(self.fields):", "        if False:",
      ["TestRiskDeletion.test_no_trailing_blank_is_left_when_risk_was_the_last_field"]),
 
     # the same repair in the other direction: too WIDE instead of absent
     ("review#2 the blank repair sweeps the whole block again, eating a hard break",
-     '    if tail[:1] in ("", "\\n"):\n'
-     '        head = head.rstrip(" \\t")\n'
-     "    return head + tail",
-     '    return re.sub(r"[ \\t]+(?=\\n|\\Z)", "", head + tail)',
+     "    item = parse_item(block)\n"
+     "    item.drop_field(item.field_at(segment.start()))\n"
+     "    return render_item(item)",
+     "    item = parse_item(block)\n"
+     "    item.fields.remove(item.field_at(segment.start()))\n"
+     '    return re.sub(r"[ \\t]+(?=\\n|\\Z)", "", render_item(item))',
      ["TestRiskDeletion.test_a_hard_break_elsewhere_in_the_block_survives"]),
 
     # the block-ceiling exemption (T071) is only safe because the field ceiling
@@ -440,29 +443,49 @@ MUTATIONS = [
       "TestRiskDeletion.test_clearing_rewrites_the_real_field_not_prose_that_looks_like_one"]),
 
     ("review#2 the chain admits prose (the period discriminator goes away)",
-     '        ends_field = (m.group(0).rstrip().endswith(".")\n'
-     '                      or canonical_field(m.group(1)) == "Source")',
+     '        ends_field = (line[seg[1]:seg[2]].rstrip().endswith(".")\n'
+     '                      or canonical_field(seg[0]) == "Source")',
      "        ends_field = True",
      ["TestEmbeddedMarker.test_edit_rewrites_the_real_field_not_prose_that_looks_like_one",
       "TestFieldChain.test_a_marker_before_the_fields_is_still_prose"]),
 
     ("review#2 the chain stops at Source (fields appended after it become unreachable)",
-     '                      or canonical_field(m.group(1)) == "Source")',
+     '                      or canonical_field(seg[0]) == "Source")',
      "                      or False)",
      ["TestFieldChain.test_a_field_appended_after_source_stays_editable"]),
 
     ("review#2 a marker only outside the chain is silently written instead of refused",
-     '        if not found and re.search(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
-     'r"):\\*\\*", new):',
+     "        if not found and markers(new, field):",
      "        if False:",
      ["TestFieldChain.test_a_marker_only_outside_the_chain_is_refused_not_guessed"]),
 
     # over-refusal, the direction the tests above cannot see: a guard that fires on
     # every edit makes the fields unwritable instead of merely un-guessable
     ("review#2 the outside-the-chain guard fires on every edit",
-     "        if not found and re.search(",
-     "        if re.search(",
+     "        if not found and markers(",
+     "        if markers(",
      ["TestRiskDeletion.test_a_real_risk_is_still_written_and_still_replaceable"]),
+
+    # the code-span half of the same guard: a marker the READER does not read is
+    # not one this refusal may fire on, or quoting the prose — the way out this
+    # rule exists to open — is answered with the dead end it exists to close
+    # the WRITER's half of the same rule: the cut that keeps the chain is found
+    # with the reader's tokenizer, so it never lands between a code span's two
+    # backticks. Blind, it kept the opening backtick in the text being replaced
+    # and not the closing one, and wrote the quotation back as a real marker
+    ("cold review#95 the tail --text keeps is cut by a code-span-blind regex",
+     "        marks = markers(block)",
+     "        marks = [(m.group(1), m.start(), m.end())\n"
+     "                 for m in FIELD_MARKER_ANY_RE.finditer(block)]",
+     ["TestAMarkerInACodeSpanIsNotAField."
+      "test_the_tail_the_remedy_KEEPS_is_cut_outside_the_code_span"]),
+
+    ("cold review#95 the outside-the-chain guard reads a QUOTED marker again",
+     "        if not found and markers(new, field):",
+     '        if not found and re.search(r"\\*\\*(?:" + FIELD_VARIANTS[field] + '
+     'r"):\\*\\*", new):',
+     ["TestAMarkerInACodeSpanIsNotAField."
+      "test_a_quoted_marker_does_not_block_GIVING_the_item_that_field"]),
 
     ("review#2 a duplicated field in the chain is guessed instead of refused",
      "        if len(in_chain) > 1:", "        if False:",
@@ -741,8 +764,7 @@ MUTATIONS = [
     ("T121 `list` reads the chain ALONE, so a legacy item loses its class",
      '    if real_fields(block, "Class"):\n'
      '        return chain_class(block)\n'
-     '    m = CLASS_VALUE_RE.search(block)\n'
-     '    return m.group(1) if m else None',
+     '    return marker_value(block, "Class", CLASS_VALUE_RE)',
      "    return chain_class(block)",
      ["TestListReadsTheClassFromTheChain."
       "test_a_legacy_item_with_its_fields_OFF_the_first_line_still_shows_its_class"]),
@@ -795,7 +817,7 @@ MUTATIONS = [
 
     ("re-check the gate reads the class the loose way `list` displays it",
      "    result_class = args.classe or chain_class(block)",
-     "    result_class = args.classe or (lambda m: m.group(1) if m else None)(CLASS_VALUE_RE.search(block))",
+     '    result_class = args.classe or marker_value(block, "Class", CLASS_VALUE_RE)',
      ["TestDecisionDeferralGate.test_a_class_named_only_in_prose_does_not_open_the_gate"]),
 
     ("re-check an ambiguous class in the chain is guessed instead of refused",
@@ -843,7 +865,7 @@ MUTATIONS = [
     # a field the item does not carry at all is APPENDED, and `--class` on a
     # class-less item is exactly that append
     ("review#3 a field the item does not carry at all is refused instead of appended",
-     '        if not found and re.search(r"\\*\\*(?:" + FIELD_VARIANTS[field] + r"):\\*\\*", new):',
+     "        if not found and markers(new, field):",
      "        if not found:",
      ["TestAClassLessChainIsNotAField.test_a_class_less_item_can_still_be_GIVEN_a_class"]),
 
@@ -1113,7 +1135,7 @@ MUTATIONS = [
       "TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
 
     ("T121 a claim that does not parse is reported as somebody unnamed",
-     '    return FIELD_BODY_RE.sub("", segment.group(0)).strip(), None',
+     "    return segment.value.strip(), None",
      '    return "somebody", None',
      ["TestClaim.test_a_claim_that_does_not_parse_still_holds_the_item"]),
 
@@ -1140,20 +1162,20 @@ MUTATIONS = [
     # because appending the claim CHANGES the chain it is asked about
     ("T121 the gate asks the chain it READ instead of the one it would WRITE",
      "    if len(claim_readback(new)) != 1:",
-     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):',
+     '    if not any(f.canonical == "Class" for f in field_chain(block)):',
      ["TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it"]),
 
     # a refusal that prescribes a command which is ITSELF refused is a dead end: for
     # the continuation-line shape `edit --class` is refused too, and for the missing
     # period it repairs nothing
     ("T121/T126 an item with NO class at all is classified as one whose fields moved",
-     '    if not FIELD_MARKER_RE["Class"].search(block):\n        return CLASS_SHAPE_NONE',
+     '    if not markers(block, "Class"):\n        return CLASS_SHAPE_NONE',
      "    if False:\n        return CLASS_SHAPE_NONE",
      ["TestClaim.test_an_item_whose_chain_has_no_class_refuses_the_claim",
       "TestPack.test_no_class_at_all_is_named_and_the_CLASS_repair_works"]),
 
     ("T121/T126 the class shape stops discriminating: everything is 'no class'",
-     '    if not FIELD_MARKER_RE["Class"].search(block):\n        return CLASS_SHAPE_NONE',
+     '    if not markers(block, "Class"):\n        return CLASS_SHAPE_NONE',
      "    if True:\n        return CLASS_SHAPE_NONE",
      ["TestClaim.test_a_last_field_missing_its_period_refuses_the_claim_and_names_it",
       "TestPack.test_a_class_off_the_first_line_is_named_and_the_FOLD_repair_works"]),
@@ -1163,7 +1185,7 @@ MUTATIONS = [
     # does not even have
     ("T121 release demands a host it does not need",
      "    held = claim_segment(block)\n    if held is None:",
-     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
+     '    if not any(f.canonical == "Class" for f in field_chain(block)):\n'
      '        fail(f"{label} cannot hold a claim")\n'
      "    held = claim_segment(block)\n    if held is None:",
      ["TestClaim.test_release_on_a_chainless_item_with_no_marker_is_still_an_honest_no_op"]),
@@ -1172,7 +1194,7 @@ MUTATIONS = [
     # printed a remedy that MUTATED the file and left the real refusal standing
     ("T121 the missing-host refusal preempts the terminal stray one",
      "    held = claim_segment(block)\n    if held is not None:",
-     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
+     '    if not any(f.canonical == "Class" for f in field_chain(block)):\n'
      '        fail(f"{label}: give it a class first: `tk-queue edit '
      '{label} --class AUTONOMOUS`")\n'
      "    held = claim_segment(block)\n    if held is not None:",
@@ -1186,17 +1208,17 @@ MUTATIONS = [
     # "the chain has no Class" is BROADER than "the fields are elsewhere": it also
     # catches an item whose fields are on line 1 and whose Class merely lost its period
     ("T121/T126 the fold shape is decided by the CHAIN, not by where the marker is",
-     '    if not FIELD_MARKER_RE["Class"].search(block.split("\\n", 1)[0]):\n'
+     '    if not markers(block.split("\\n", 1)[0], "Class"):\n'
      "        return CLASS_SHAPE_OFF_LINE",
-     '    if not any(canonical_field(m.group(1)) == "Class" for m in field_chain(block)):\n'
+     '    if not any(f.canonical == "Class" for f in field_chain(block)):\n'
      "        return CLASS_SHAPE_OFF_LINE",
      ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix",
       "TestPack.test_a_chain_that_never_reaches_the_class_is_named_as_that"]),
 
     ("T121 the refusal names where the chain STARTS instead of where it stops",
-     "    before = [m for m in FIELD_SEGMENT_RE.finditer(line) if m.start() < chain[0].start()]\n"
-     "    return canonical_field(before[-1].group(1)) if before else None",
-     "    return canonical_field(chain[-1].group(1))",
+     "    before = [seg for seg in field_segments(line) if seg[1] < chain[0].start()]\n"
+     "    return canonical_field(before[-1][0]) if before else None",
+     "    return chain[-1].canonical",
      ["TestClaim.test_the_refusal_names_where_the_chain_STOPS_not_where_it_starts"]),
 
     # the message went back to DIAGNOSING the break and prescribing a per-field
@@ -1317,9 +1339,9 @@ MUTATIONS = [
      ["TestPack.test_a_class_QUOTED_IN_PROSE_does_not_decide_the_package"]),
 
     ("T126 pack guesses a class where the chain names two",
-     "    found = [m for m in field_chain(block) if canonical_field(m.group(1)) == \"Class\"]\n"
+     '    found = [f for f in field_chain(block) if f.canonical == "Class"]\n'
      "    if len(found) > 1:",
-     "    found = [m for m in field_chain(block) if canonical_field(m.group(1)) == \"Class\"]\n"
+     '    found = [f for f in field_chain(block) if f.canonical == "Class"]\n'
      "    if False:",
      ["TestPack.test_two_classes_in_the_chain_are_ambiguous_not_guessed"]),
 
@@ -1669,8 +1691,19 @@ MUTATIONS = [
      ["TestHandoffCreation.test_the_remedy_never_truncates_the_item_it_rewrites"]),
 
     ("BOM read() lets one at the head through to the `^`-anchored grammars again",
-     '    with open(path, encoding="utf-8-sig") as f:\n        return f.read()',
-     '    with open(path, encoding="utf-8") as f:\n        return f.read()',
+     ['        return data.decode("utf-8-sig")',
+      '    f"{BOM}*" + r"-[ \\t" + INVISIBLE_BLANKS + r"]\\[( |x)\\][ \\t" '
+      '+ INVISIBLE_BLANKS + r"]"',
+      # the THIRD part, and it earned its place the way the second did: the door
+      # now repairs the done-log entry head too, so that file's byte-0 BOM was
+      # protected twice and the two-part mutant SURVIVED on the log test alone
+      '    f"{BOM}*" + r"-[ \\t" + INVISIBLE_BLANKS '
+      '+ r"][0-9]{4}-[0-9]{2}-[0-9]{2}[ \\t"'],
+     ['        return data.decode("utf-8")',
+      '    r"-[ \\t" + INVISIBLE_BLANKS + r"]\\[( |x)\\][ \\t" '
+      '+ INVISIBLE_BLANKS + r"]"',
+      '    r"-[ \\t" + INVISIBLE_BLANKS '
+      '+ r"][0-9]{4}-[0-9]{2}-[0-9]{2}[ \\t"'],
      ["TestByteOrderMark.test_the_first_item_is_neither_hidden_nor_blamed_on_a_concurrent_writer",
       "TestByteOrderMark.test_the_hidden_items_id_is_never_handed_out_twice",
       "TestByteOrderMark.test_a_bom_in_the_done_log_keeps_its_first_entry_allocated"]),
@@ -1681,9 +1714,8 @@ MUTATIONS = [
     # the other direction, which no mutation above covers: a strip that reaches
     # PAST the head silently edits the user's own text
     ("BOM the strip reaches past the head, into the user's own text",
-     '    with open(path, encoding="utf-8-sig") as f:\n        return f.read()',
-     '    with open(path, encoding="utf-8") as f:\n'
-     '        return f.read().replace("\\ufeff", "")',
+     '        return normalize_source(f.read(), os.path.basename(path))',
+     '        return normalize_source(f.read(), os.path.basename(path)).replace(BOM, "")',
      ["TestByteOrderMark.test_a_bom_further_INTO_the_file_is_left_alone"]),
 
     ("ID the label is rebuilt from the parsed number, so T0001 prints as T001 again",
@@ -1752,8 +1784,8 @@ MUTATIONS = [
     # field RUN), so it passes with this one off — naming it would claim a proof
     # this run cannot make. The pair below is what decides that shape
     ("T121 the fold stops asking the reader what the folded line gives back",
-     "    if ([m.group(0).rstrip() for m in run]\n"
-     "            != [m.group(0).rstrip() for m in chain]):",
+     "    if ([seg.rstrip() for seg in run]\n"
+     "            != [f.text.rstrip() for f in chain]):",
      "    if False:",
      ["TestMigrateFold.test_a_marker_in_the_item_s_OWN_PROSE_is_left_and_REPORTED"]),
 
@@ -1772,9 +1804,9 @@ MUTATIONS = [
     # the whitespace half of that comparison, on its own: a chain WRAPPED over two
     # continuation lines is whole, and refusing it repairs an item the fold could lift
     ("T121 the readback counts the blank at a line joint as a changed value",
-     "    if ([m.group(0).rstrip() for m in run]\n"
-     "            != [m.group(0).rstrip() for m in chain]):",
-     "    if [m.group(0) for m in run] != [m.group(0) for m in chain]:",
+     "    if ([seg.rstrip() for seg in run]\n"
+     "            != [f.text.rstrip() for f in chain]):",
+     "    if [seg for seg in run] != [f.text for f in chain]:",
      ["TestMigrateFold.test_a_chain_spread_over_TWO_continuation_lines_is_folded_too"]),
 
     # a fold that lifts nothing still rewrites the user's line and reports it as
@@ -1896,7 +1928,7 @@ MUTATIONS = [
 
     # half a chain lifted leaves an item that reads as repaired and is not
     ("review#3 the fold lifts half a chain, leaving a marker off the first line",
-     '    if EMBEDDED_MARKER_RE.search("\\n".join(kept)):\n        return None, FOLD_SPLIT_REFUSAL',
+     '    if markers("\\n".join(kept)):\n        return None, FOLD_SPLIT_REFUSAL',
      '    if False:\n        return None, FOLD_SPLIT_REFUSAL',
      ["TestFoldKeepsTheItemsMarkdown."
       "test_a_marker_stranded_on_a_BLOCK_line_is_left_and_REPORTED"]),
@@ -2113,12 +2145,8 @@ MUTATIONS = [
     # the line strands every field already there. Each entry below is one of the
     # positions that shipped or was tried, and the tests read the FILE.
     ("T169 the class goes back to the END of the line, behind the fields already there",
-     '    at = chain[0].start()\n'
-     '    return (block[:at] + segment + " " + block[at:],\n'
-     '            [canonical_field(m.group(1)) for m in chain])',
-     '    at = len(block.split("\\n", 1)[0].rstrip())\n'
-     '    return (block[:at] + " " + segment + block[at:],\n'
-     '            [canonical_field(m.group(1)) for m in chain])',
+     "    item.insert_field(0, segment)\n    return render_item(item), promoted",
+     "    item.append_field(segment)\n    return render_item(item), promoted",
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
       "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written",
       "TestTheClassLandsAheadOfTheChain."
@@ -2129,7 +2157,7 @@ MUTATIONS = [
     # "before the LAST field" is the near miss: it reads as ahead of the chain and
     # is not, and everything from the run's head up to it stays unreadable
     ("T169 the class lands after the first field instead of ahead of the run",
-     "    at = chain[0].start()", "    at = chain[0].end()",
+     "    item.insert_field(0, segment)", "    item.insert_field(1, segment)",
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
       "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written",
       "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair"]),
@@ -2144,7 +2172,7 @@ MUTATIONS = [
     # an item with nothing on the line has nothing to sit ahead of: the over-refusal
     # direction, and the population --class was written for
     ("T169 an item with no chain gets its class inserted at the head of an empty run",
-     "    if not chain:\n"
+     "    if not item.fields:\n"
      "        return append_to_first_line(block, segment), []",
      "    if False:\n"
      "        return append_to_first_line(block, segment), []",
@@ -2161,13 +2189,9 @@ MUTATIONS = [
     # readback's own EXACTNESS load-bearing: relaxed on its own, behind a correct
     # writer, nothing falls.
     ("T169 the class at the END of the line, with the readback relaxed to a set",
-     ['    at = chain[0].start()\n'
-      '    return (block[:at] + segment + " " + block[at:],\n'
-      '            [canonical_field(m.group(1)) for m in chain])',
+     ["    item.insert_field(0, segment)\n    return render_item(item), promoted",
       '                if back != ["Class"] + promoted or chain_class(candidate) != flag:'],
-     ['    at = len(block.split("\\n", 1)[0].rstrip())\n'
-      '    return (block[:at] + " " + segment + block[at:],\n'
-      '            [canonical_field(m.group(1)) for m in chain])',
+     ["    item.append_field(segment)\n    return render_item(item), promoted",
       '                if sorted(back) != sorted(["Class"] + promoted) '
       'or chain_class(candidate) != flag:'],
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
@@ -2176,9 +2200,9 @@ MUTATIONS = [
       "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair"]),
 
     ("T169 the class after the first field, with the readback relaxed to a set",
-     ["    at = chain[0].start()",
+     ["    item.insert_field(0, segment)",
       '                if back != ["Class"] + promoted or chain_class(candidate) != flag:'],
-     ["    at = chain[0].end()",
+     ["    item.insert_field(1, segment)",
       '                if sorted(back) != sorted(["Class"] + promoted) '
       'or chain_class(candidate) != flag:'],
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
@@ -2614,8 +2638,8 @@ MUTATIONS = [
     # measured green against the whole suite before this test existed
     ("T172 the one reader drops the anchor, so prose in the chain is a field",
      "    segs = real_fields(block, field)\n    if len(segs) != 1:",
-     "    segs = [m for m in field_chain(block)\n"
-     "            if canonical_field(m.group(1)) == field]\n    if len(segs) != 1:",
+     "    segs = [f for f in field_chain(block)\n"
+     "            if f.canonical == field]\n    if len(segs) != 1:",
      ["TestPackLane.test_the_ONE_reader_refuses_a_reference_quoted_before_the_ANCHOR"]),
 
     ("T172 the one reader reads the FIRST of two fields in the chain",
@@ -2625,7 +2649,7 @@ MUTATIONS = [
 
     ("T172 the [?] is decided by a whole-block search again",
      '    if not real_fields(block, "Ticket"):\n        return ""',
-     '    if not FIELD_MARKER_RE["Ticket"].search(block):\n        return ""',
+     '    if not markers(block, "Ticket"):\n        return ""',
      ["TestPackLane.test_a_marker_QUOTED_IN_PROSE_earns_no_mark_at_all"]),
 
     ("T172 pack_closes asks the ambiguity itself, of the whole block",
@@ -2946,7 +2970,9 @@ MUTATIONS = [
 
     ("T198 the repo is read from the whole BLOCK, so prose becomes an address",
      '    segs = real_fields(block, "Repo")',
-     '    segs = list(re.finditer(FIELD_MARKER_RE["Repo"].pattern + r"[^*\\n]*", block))',
+     '    segs = [make_field(line[s:e]) for line in block.split("\\n")\n'
+     '            for name, s, e in field_segments(line)\n'
+     '            if canonical_field(name) == "Repo"]',
      ["TestPackRepo.test_a_marker_QUOTED_IN_PROSE_is_not_read_as_the_repo"]),
 
     ("T198 two Repo fields in the chain are no longer ambiguous — the first wins",
@@ -2999,7 +3025,7 @@ MUTATIONS = [
       "TestMigrateBackdates.test_a_source_with_no_date_leaves_the_item_undated_and_says_so"]),
 
     ("T148 an unreadable **Source:** is reported as no **Source:** at all",
-     '        return block, ("unreadable" if FIELD_MARKER_RE["Source"].search(block)\n'
+     '        return block, ("unreadable" if markers(block, "Source")\n'
      "                       else \"none\")",
      '        return block, "none"',
      ["TestMigrateBackdates.test_a_source_no_reader_may_use_is_reported_as_its_own_case"]),
@@ -3125,8 +3151,15 @@ MUTATIONS = [
      '            path, "A queue file is Markdown written by `tk-queue`",\n'
      '            " — the offending byte arrived with text pasted from another encoding")',
      "        content = read(path)",
-     ["TestWipCap.test_a_sibling_queue_that_is_not_utf8_is_diagnosed_and_not_crashed",
-      "TestWipCap.test_an_invisible_bom_in_a_sibling_queue_does_not_undercount_it"]),
+     ["TestWipCap.test_a_sibling_queue_that_is_not_utf8_is_diagnosed_and_not_crashed"]),
+
+    ("T345/T163 the unguarded reader AND the door stop repairing a sibling's header",
+     ['        content = tk_site.read_text(\n'
+      '            path, "A queue file is Markdown written by `tk-queue`",\n'
+      '            " — the offending byte arrived with text pasted from another encoding")',
+      '            fixed = head.replace(BOM, "")'],
+     ["        content = read(path)", "            fixed = head"],
+     ["TestWipCap.test_an_invisible_bom_in_a_sibling_queue_does_not_undercount_it"]),
 
     ("T345 the roster is loaded at import again, so every command depends on it",
      "        _ROSTER = mod\n    return _ROSTER",
@@ -3623,6 +3656,161 @@ MUTATIONS = [
      "        if key not in REQUIRED + CEILINGS + FLEET_LISTS:\n"
      '            raise SiteError(f"{path}:{n}: unknown key {key!r}.")',
      ["test_tk_roster.TestSiteFile.test_an_unknown_key_is_still_ignored"], SITE),
+
+    # --- T301 slice 1: one parse, one structure, one writer ----------------
+    # The invariant is `render_item(parse_item(b)) == b`, byte for byte, so each
+    # entry here is a way the structure could stop BEING a partition of the
+    # block — a piece dropped, a blank normalised, a provenance forgotten — and
+    # the round-trip is what falls. A parse that only nearly gives the block back
+    # is the shape in which every command rewrites text nobody pointed at.
+    ("T301 the renderer drops the item's continuation lines",
+     '    return item.head + item.title + "".join(f.text for f in item.fields) + item.prose',
+     '    return item.head + item.title + "".join(f.text for f in item.fields)',
+     ["TestOneParseOneWriter.test_every_shape_round_trips_byte_for_byte"]),
+
+    ("T301 the parse normalises the blank between the title and the chain",
+     "        title=line[len(head):chain[0][1] if chain else len(line)],",
+     "        title=line[len(head):chain[0][1] if chain else len(line)].rstrip(),",
+     ["TestOneParseOneWriter.test_the_blocks_the_script_itself_writes_round_trip"]),
+
+    ("T301 a field keeps only its canonical name, so the file's own spelling is lost",
+     "        self.name = segs[0][0]",
+     "        self.name = canonical_field(segs[0][0]) or segs[0][0]",
+     ["TestOneParseOneWriter."
+      "test_a_field_carries_the_spelling_the_file_uses_and_its_canonical_name"]),
+
+    ("T164/T166 a marker inside a code span is read as a field again",
+     "            if in_code_span(spans, m.start()):\n                continue",
+     "            if False:\n                continue",
+     ["TestAMarkerInACodeSpanIsNotAField."
+      "test_a_marker_inside_a_code_span_is_not_a_field_at_all",
+      "TestAMarkerInACodeSpanIsNotAField."
+      "test_the_quoted_marker_is_not_the_anchor_and_the_real_risk_survives",
+      "TestAMarkerInACodeSpanIsNotAField."
+      "test_the_quoted_marker_is_never_rewritten_by_an_edit"]),
+
+    ("T301 an unmatched backtick closes on the next run of ANY width",
+     "            if closer_end - closer_start == width:", "            if True:",
+     ["TestOneParseOneWriter.test_an_odd_backtick_opens_no_span"]),
+
+    ("T301 the writer drops the blank the greedy segment had swallowed",
+     "        trailing = field.text[len(field.text.rstrip()):]", '        trailing = ""',
+     ["TestOneParseOneWriter."
+      "test_a_writer_hands_back_the_structure_and_touches_nothing_else"]),
+
+    ("T301 a written field keeps the offsets it no longer has",
+     "    def forget_offsets(self):\n        self.offsets = None",
+     "    def forget_offsets(self):\n        pass",
+     ["TestOneParseOneWriter.test_the_offsets_of_a_mutated_item_are_refused_not_stale"]),
+
+    # --- T301 slice 2: the door -------------------------------------------
+    # Every entry here restores a byte no reader can see. What each test proves
+    # is that the item did not silently LEAVE the queue with its id still spent.
+    ("T171 the marker header stops repairing the blanks nothing can see",
+     '            for ch in INVISIBLE_BLANKS:',
+     '            for ch in "":',
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_non_breaking_space_after_the_checkbox_still_names_the_item"]),
+
+    ("T163 a BOM glued to a marker below byte 0 is left where it hides the item",
+     '            fixed = head.replace(BOM, "")', "            fixed = head",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_bom_glued_to_a_marker_in_the_MIDDLE_of_the_file"]),
+
+    # the door on the OTHER file's head: the allocator reads both, so an entry
+    # whose head no reader sees spends nothing and the id goes out twice
+    ("cold review#95 the door reaches the item marker only, so a spent id hides",
+     "HEADS = ((LOOSE_MARKER_RE, ITEM_ID_RE), (LOOSE_LOG_RE, LOG_ID_RE))",
+     "HEADS = ((LOOSE_MARKER_RE, ITEM_ID_RE),)",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_bom_glued_to_a_DONE_LOG_entry_still_spends_that_id"]),
+
+    ("T171 a UTF-16 file is read in silence, and the conversion is a surprise",
+     '            warn_once(f"{path} is UTF-16 — read as UTF-16, and the next write stores "\n'
+     '                      "it as UTF-8, which is what this script emits.")',
+     "            pass",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_utf16_file_is_read_and_the_warning_says_what_the_next_write_does"]),
+
+    ("T171 bytes that decode as nothing go back to a raw traceback",
+     '        fail(f"{path} is not valid utf-8: byte {e.start} is {data[e.start]:#04x}. "\n'
+     '             "Nothing was read. These files are written only by `tk-queue`, so a "\n'
+     '             "file it cannot decode came from somewhere else — convert it to UTF-8 "\n'
+     '             "and run the command again.")',
+     "        raise",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_bytes_that_are_no_encoding_name_the_file_the_byte_and_the_encoding"]),
+
+    ("T161 a line of only SPACES closes the item block again",
+     '        elif kind.startswith("item") and (line.strip("\\r\\n") == ""',
+     '        elif kind.startswith("item") and (line.strip() == ""',
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_continuation_line_of_only_spaces_does_not_split_the_item"]),
+
+    ("T171 `list` stops naming a class value that is no class",
+     "    return cls if cls and cls not in CLASSES else None", "    return None",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_class_value_outside_the_enum_is_named_not_displayed_as_valid"]),
+
+    ("T171 `pack` reads an invented class as a STATE the item is in",
+     "    if cls is not None and cls not in CLASSES:", "    if False:",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_a_class_value_outside_the_enum_is_named_not_displayed_as_valid"]),
+
+    ("T301 the door decodes but stops repairing the marker headers",
+     "    text, repaired = normalize_marker_headers(text)", "    repaired = 0",
+     ["TestTheDoorNormalisesWhatNoReaderCanSee."
+      "test_the_round_trip_holds_over_the_NORMALISED_text"]),
+
+    # --- T301 slice 3: the code-span rule and the value grammar ------------
+    ("T134 the embedded-marker guard keeps a grammar of its own",
+     "        if val and markers(val):",
+     "        if val and FIELD_MARKER_ANY_RE.search(val):",
+     ["TestAMarkerInACodeSpanIsNotAField.test_the_remedy_the_pack_prints_is_ACCEPTED_by_the_guard"]),
+
+    ("T065/T166 the guard stops refusing a BARE marker in free text",
+     "        if val and markers(val):", "        if False:",
+     ["TestAMarkerInACodeSpanIsNotAField.test_a_BARE_marker_in_free_text_is_still_refused"]),
+
+    ("T063 the whole-block value reads go back to a blind search",
+     "    for _, _, end in markers(text, field):",
+     "    for _, _, end in [(0, 0, m.end()) for m in FIELD_MARKER_ANY_RE.finditer(text)\n"
+     "                      if canonical_field(m.group(1)) == field]:",
+     ["TestAMarkerInACodeSpanIsNotAField.test_list_groups_it_under_the_real_tag_not_the_quoted_one"]),
+
+    ("T164/T166 the marker COUNT goes back to a blind whole-block count",
+     "    return real_fields(block, field), len(markers(block, field))",
+     "    return real_fields(block, field), len(re.findall(\n"
+     '        r"\\*\\*(?:" + FIELD_VARIANTS[field] + r"):\\*\\*", block))',
+     ["TestAMarkerInACodeSpanIsNotAField."
+      "test_pack_stops_excluding_it_for_a_marker_no_gate_reads"]),
+
+    # T258 takes a two-part mutant: the truncating body ALONE no longer breaks
+    # the chain, because the anchoring condition it used to trip became
+    # structural. Restoring the defect means restoring both halves.
+    ("T258 the value stops at the first asterisk, and the chain has to reach the line end",
+     ["    marks = markers(line)\n"
+      "    return [(m[0], m[1], marks[i + 1][1] if i + 1 < len(marks) else len(line))\n"
+      "            for i, m in enumerate(marks)]",
+      "    segs = field_segments(line)\n    if not segs:\n        return []"],
+     ['    marks = markers(line)\n'
+      '    return [(m[0], m[1], m[2] + len(re.match(r"[^*\\n]*", line[m[2]:]).group(0)))\n'
+      "            for i, m in enumerate(marks)]",
+      "    segs = field_segments(line)\n"
+      "    if not segs or segs[-1][2] < len(line.rstrip()):\n        return []"],
+     ["TestAMarkerInACodeSpanIsNotAField.test_an_asterisk_in_a_value_no_longer_cuts_the_chain"]),
+
+    ("T258 an unmatched backtick swallows the rest of the line",
+     "        for j in range(i + 1, len(runs)):\n"
+     "            closer_start, closer_end = runs[j]\n"
+     "            if closer_end - closer_start == width:\n"
+     "                spans.append((opener_start, closer_end))\n"
+     "                i = j\n"
+     "                break\n"
+     "        i += 1",
+     "        spans.append((opener_start, len(line)))\n"
+     "        i += 1",
+     ["TestAMarkerInACodeSpanIsNotAField.test_an_odd_backtick_leaves_the_field_a_field"]),
 ]
 
 

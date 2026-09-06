@@ -7945,6 +7945,483 @@ class TestTheCommandsSayWhatTheyDo(QueueTest):
         self.assertIn("tk/reference/queue.md", block)
         self.assertNotIn("the kickoff SKILL.md) cannot read", block)
 
+# --- one parse, one structure, one writer ---------------------------------
+
+# The shapes the parse is measured on. Every one of them is a real population:
+# the item `add` writes, the legacy item whose fields never got a Class, the
+# hand-decorated `[x]` line, the item that quotes a marker in its own prose, the
+# value carrying the `*` that used to cut the chain in half, and the Portuguese
+# field names the queues carried before the script existed.
+ROUND_TRIP_BLOCKS = (
+    ("as add writes it", item(1, "um texto", project="tk")),
+    ("no fields at all", "- [ ] **T002** — um item sem cadeia nenhuma\n"),
+    ("a continuation line", "- [ ] **T003** — texto **Class:** AUTONOMOUS. **Effort:** S.\n"
+                            "  uma nota de continuacao\n"),
+    ("a hard break on a continuation line",
+     "- [ ] **T004** — texto **Class:** AUTONOMOUS. **Effort:** S.\n"
+     "  uma nota que termina em quebra dura  \n  e continua\n"),
+    ("portuguese field names",
+     "- [ ] **T005** — texto **Classe:** AUTONOMOUS. **Esforço:** M. **Critério:** A: x.\n"),
+    ("a marker in the item's own prose",
+     "- [ ] **T006** — cita o **Project:** de outra fila. **Class:** AUTONOMOUS. "
+     "**Effort:** S. **Criterion:** A: x.\n"),
+    ("a decorated done marker", "- [x] ✅ **T007** — legado **Class:** AUTONOMOUS.\n"),
+    ("a marker inside a code span",
+     "- [ ] **T008** — cita `**Project:** x` na prosa. **Class:** AUTONOMOUS. "
+     "**Effort:** S. **Criterion:** A: x.\n"),
+    ("an odd backtick",
+     "- [ ] **T009** — o glob ` sozinho **Class:** AUTONOMOUS. **Effort:** S.\n"),
+    ("an asterisk inside a value",
+     "- [ ] **T010** — texto **Class:** AUTONOMOUS. **Criterion:** A: o glob *.md casa.\n"),
+    ("no trailing newline", "- [ ] **T011** — texto **Class:** AUTONOMOUS."),
+    ("blanks after the last field", "- [ ] **T012** — texto **Class:** AUTONOMOUS.   \n"),
+    ("a source with no period",
+     "- [ ] **T013** — texto **Class:** AUTONOMOUS. **Source:** conversa 2026-08-13\n"),
+    ("not an item at all", "## Uma secao\n\ntexto solto\n"),
+)
+
+
+class TestOneParseOneWriter(QueueTest):
+    """One parse into a structure, one writer out of it — and the invariant that
+    makes the swap safe: `render_item(parse_item(b))` is `b`, byte for byte.
+
+    The bug this closes is not untidiness. The chain's ambiguity used to be
+    decided TWICE per command — once by the reader that located the field, once
+    by the writer that spliced it — and the two answered differently: `edit
+    --class AUTONOMOUS --project tk` overwrote four words of an item's own title
+    and `--risk none` DELETED the segment its prose was imitating, each exiting 0.
+    A writer that can only hand the structure back cannot splice a position the
+    parse never named.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.tk = load_tk()
+
+    def test_every_shape_round_trips_byte_for_byte(self):
+        for name, block in ROUND_TRIP_BLOCKS:
+            with self.subTest(shape=name):
+                self.assertEqual(self.tk.render_item(self.tk.parse_item(block)), block)
+
+    def test_the_blocks_the_script_itself_writes_round_trip(self):
+        """The fixtures above are hand-written, so they prove the parse against
+        shapes a human chose. This proves it against what the WRITERS emit —
+        `add` with every optional field, then the edits that rewrite, append and
+        clear one — which is the population the queue actually holds."""
+        self.seed()
+        for argv in (
+                ("add", "um item completo", "--class", "DECISION",
+                 "--deferred", "afk: muda o contrato", "--effort", "M",
+                 "--risk", "alto", "--criterion", "A: x", "--project", "tk",
+                 "--ticket", "claude-skills#42", "--source", "2026-08-13"),
+                ("add", "outro", "--class", "AUTONOMOUS",
+                 "--effort", "S", "--criterion", "A: y"),
+                ("edit", "T002", "--project", "tk"),
+                ("claim", "T002", "--as", "sessao-a"),
+                ("edit", "T001", "--risk", "none")):
+            r = self.run_tk(*argv)
+            self.assertEqual(r.returncode, 0, f"{argv}: {r.stderr}")
+        body = self.body()
+        blocks = [text for kind, text in self.tk.split_blocks(body) if kind.startswith("item")]
+        self.assertEqual(len(blocks), 2)
+        for block in blocks:
+            with self.subTest(block=block[:40]):
+                self.assertEqual(self.tk.render_item(self.tk.parse_item(block)), block)
+                # the round trip ALONE is satisfied by a file the writers have
+                # already corrupted, since it round-trips the corruption too.
+                # The joint between the text of an item and its chain is what
+                # says they did not: one blank, where compose_item put it.
+                self.assertIn(" **Class:**", block)
+
+    def test_a_field_carries_the_spelling_the_file_uses_and_its_canonical_name(self):
+        """Provenance, not normalisation: the file's own spelling is what a
+        writer must put back, and the canonical name is what a reader asks by.
+        Collapsing the two is how `**Esforço:**` came back from an edit spelled
+        `**Effort:**` on an item nobody asked to translate."""
+        block = ("- [ ] **T001** — texto **Classe:** AUTONOMOUS. **Esforço:** M. "
+                 "**Critério:** A: x.\n")
+        fields = self.tk.parse_item(block).fields
+        self.assertEqual([f.name for f in fields], ["Classe", "Esforço", "Critério"])
+        self.assertEqual([f.canonical for f in fields], ["Class", "Effort", "Criterion"])
+        self.assertEqual([f.value for f in fields], ["AUTONOMOUS. ", "M. ", "A: x."])
+
+    def test_an_odd_backtick_opens_no_span(self):
+        """CommonMark's rule, and the safe direction: a backtick with no closer
+        of the same length is literal text. Opening a span there would swallow
+        the rest of the line — the `*` defect (T258) with a new character."""
+        self.assertEqual(self.tk.code_spans("um ` sozinho e **Class:** X"), [])
+        self.assertEqual(self.tk.code_spans("um `x` e ``y``"), [(3, 6), (9, 14)])
+        self.assertEqual(self.tk.code_spans("``a ` b``"), [(0, 9)])
+
+    def test_a_writer_hands_back_the_structure_and_touches_nothing_else(self):
+        """Each of the three chain writers, through the structure: the item's
+        prose, its continuation lines and every field the command did not name
+        come back byte-identical."""
+        block = ("- [ ] **T001** — texto  com  espacos **Class:** AUTONOMOUS. "
+                 "**Effort:** S. **Risk:** alto. **Criterion:** A: x.\n"
+                 "  uma nota com quebra dura  \n")
+        tk = self.tk
+        item_ = tk.parse_item(block)
+        risk = next(f for f in item_.fields if f.canonical == "Risk")
+        item_.set_field(risk, "Risk", "baixo")
+        self.assertEqual(tk.render_item(item_), block.replace("alto", "baixo"))
+        self.assertEqual(tk.clear_field_segment(block, tk.real_fields(block, "Risk")[0]),
+                         block.replace(" **Risk:** alto.", ""))
+        self.assertEqual(tk.append_to_first_line(block, "**Project:** tk."),
+                         block.replace("A: x.\n", "A: x. **Project:** tk.\n"))
+
+    def test_the_offsets_of_a_mutated_item_are_refused_not_stale(self):
+        """A Field's span names a position in the block it was PARSED from, so
+        after a write it names a position the render no longer has. Reading it
+        anyway is the corruption this file has already paid for once — a branch
+        that spliced with the wrong offsets truncated the frontmatter mid-word
+        and duplicated the item, with the whole suite still green."""
+        item_ = self.tk.parse_item(item(1, "um", project="tk"))
+        first = item_.fields[0]
+        self.assertEqual(first.start(), len("- [ ] **T001** — um "))
+        item_.set_field(first, "Class", "DECISION")
+        with self.assertRaises(ValueError):
+            first.start()
+
+
+# --- the door: what a queue file may carry that no reader can see ---------
+
+class TestTheDoorNormalisesWhatNoReaderCanSee(QueueTest):
+    """A byte no reader can SEE is the worst shape a queue file takes: the item
+    does not fall over, it disappears, and the id it was holding is handed out
+    again. All three vectors below are hand edits from outside this script — an
+    editor that writes a BOM, a paste carrying a non-breaking space, a file that
+    came back from a Windows tool as UTF-16 — and the contract says these files
+    are written only by `tk-queue`, so nothing inside ever produced one.
+
+    Normalisation is at the MARKER HEADER and nowhere else. The item's own text
+    keeps every byte the user typed: a queue file is the user's prose, and a
+    reader that tidied it would be editing what it was asked to display.
+    """
+
+    NBSP = " "
+    BOM = "﻿"
+
+    def setUp(self):
+        super().setUp()
+        self.tk = load_tk()
+
+    def test_a_non_breaking_space_after_the_checkbox_still_names_the_item(self):
+        """Measured before the fix: `list` printed `(queue empty)` with the item
+        right there in the file, and the next new item was handed T001 AGAIN —
+        the duplicate id this whole grammar exists to prevent."""
+        self.seed(f"- [ ]{self.NBSP}**T001** — item invisivel **Class:** AUTONOMOUS. "
+                  "**Effort:** S. **Criterion:** A: x.\n")
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+        self.assertIn("AUTONOMOUS", r.stdout)
+        r = self.run_tk("add", "o proximo", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: y")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T002", self.body())
+        self.assertEqual(self.body().count("**T001**"), 1)
+
+    def test_a_bom_glued_to_a_marker_in_the_MIDDLE_of_the_file(self):
+        """`read` strips a BOM at byte 0 and deliberately nowhere else. One glued
+        to a marker further down turns that item into prose of the block above:
+        `pack` counted "1 of 1" with two items in the file, and the id of the
+        second was invisible to the allocator."""
+        self.seed(item(1, "o primeiro"), self.BOM + item(2, "o segundo"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T002", r.stdout)
+        r = self.run_tk("add", "o terceiro", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: y")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**T003**", self.body())
+        self.assertNotIn(self.BOM, self.body())
+
+    def test_a_bom_glued_to_a_DONE_LOG_entry_still_spends_that_id(self):
+        """The other file the allocator reads. A spent id lives in a done-log
+        ENTRY, so a BOM glued to one hides it exactly as a BOM glued to an item
+        marker hides an open item's — and the number is handed out a second time,
+        which is the whole of T163 on the file the first repair did not reach.
+
+        Measured before this: `done_log_ids` answered [] for an entry the file
+        plainly carries, with no warning anywhere."""
+        self.seed(log="# Done log\n\n" + self.BOM
+                  + "- 2026-08-01 — tk — T001 — feito — how: PR #1\n")
+        r = self.run_tk("add", "o proximo", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: y")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**T002**", self.body())
+        self.assertNotIn("**T001**", self.body())
+
+    def test_a_utf16_file_is_read_and_the_warning_says_what_the_next_write_does(self):
+        """A raw UnicodeDecodeError is a traceback the caller cannot act on. And
+        reading it silently would be worse than the error: this script writes
+        UTF-8, so the next command CONVERTS the file, and the caller has to be
+        told before that happens rather than after."""
+        with open(os.path.join(self.mem, "next-steps.md"), "w", encoding="utf-16") as f:
+            f.write(HEADER + item(1, "em utf-16"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+        self.assertIn("UTF-16", r.stderr)
+        self.assertIn("UTF-8", r.stderr)
+
+    def test_bytes_that_are_no_encoding_name_the_file_the_byte_and_the_encoding(self):
+        """The other half: a file this cannot read must say WHICH file, WHICH
+        byte and which encoding it tried. A traceback names a line of the script
+        instead, which is the one place the caller cannot fix."""
+        with open(os.path.join(self.mem, "next-steps.md"), "wb") as f:
+            f.write((HEADER + item(1, "ok")).encode() + b"- [ ] **T002** \xff\xfe\n")
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("next-steps.md", r.stderr)
+        self.assertIn("utf-8", r.stderr.lower())
+        self.assertIn("byte", r.stderr.lower())
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_a_continuation_line_of_only_spaces_does_not_split_the_item(self):
+        """T161: `split_blocks` closed a block on any blank-LOOKING line, so an
+        item whose fields sit below a line of spaces lost them — `list` showed
+        `?`, and `migrate`, the one command that repairs the shape, could not
+        even see the item to report it."""
+        self.seed("- [ ] **T001** — item com linha de espacos\n"
+                  "   \n"
+                  "  **Class:** AUTONOMOUS. **Effort:** M. **Criterion:** A: x.\n")
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("AUTONOMOUS", r.stdout)
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+
+    def test_a_class_value_outside_the_enum_is_named_not_displayed_as_valid(self):
+        """`URGENTE` is not a class this queue has, and printing it in the class
+        column reads exactly like one that is. `pack` said `class is URGENTE`,
+        which reads as a state the item is IN rather than as a value nothing can
+        act on."""
+        self.seed(item(1, "com classe inventada", klass="URGENTE"))
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("URGENTE", r.stdout)
+        self.assertIn("AUTONOMOUS", r.stdout)          # the classes it could have carried
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("URGENTE", r.stdout)
+        self.assertIn("--class", r.stdout)             # the repair, not merely the fact
+
+    def test_the_round_trip_holds_over_the_NORMALISED_text(self):
+        """The parse's invariant is stated over what `read` returns, not over the
+        bytes on disk: normalisation happens ONCE, at the door, and every reader
+        and every writer downstream sees the same text."""
+        raw = (f"- [ ]{self.NBSP}**T001** — texto **Class:** AUTONOMOUS. **Effort:** S.\n"
+               "   \n"
+               "  uma nota\n").encode()
+        text = self.tk.normalize_source(raw, "next-steps.md")
+        blocks = [b for kind, b in self.tk.split_blocks(text) if kind.startswith("item")]
+        self.assertEqual(len(blocks), 1)
+        self.assertIn("- [ ] **T001**", blocks[0])
+        self.assertEqual(self.tk.render_item(self.tk.parse_item(blocks[0])), blocks[0])
+
+
+# --- a marker inside a code span is not a field ---------------------------
+
+class TestAMarkerInACodeSpanIsNotAField(QueueTest):
+    """The one shape the POSITION rule cannot judge: prose that quotes a real
+    field name in bold-colon and ends in a period is contiguous with the chain
+    and joins it, indistinguishable from the field it imitates. Measured, each
+    exiting 0 and printing "updated": `edit --class AUTONOMOUS --project tk`
+    overwrote four words of an item's own title, and `--risk none` DELETED the
+    imitating segment whole.
+
+    The rule: a marker inside a Markdown code span is NEVER a field. Outside
+    one, the position rule is exactly what it was — a marker before the
+    **Class:** the chain begins at is still prose, and `edit` still refuses it
+    rather than guessing. What changes is that an item now HAS a way to say so,
+    which is what makes a repair without the done-log possible: the house
+    already taught this exit, in the refusal that says "or `Project:` in a code
+    span".
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.tk = load_tk()
+
+    QUOTED = ("- [ ] **T007** — cita o `**Risk:** alto` de outra fila. "
+              "**Class:** AUTONOMOUS. **Effort:** M. **Risk:** alto de verdade. "
+              "**Criterion:** A: x. **Project:** tk. **Source:** 2026-08-21\n")
+    QUOTED_CLASS = ("- [ ] **T007** — cita a `**Class:** DECISION` de outra fila. "
+                    "**Class:** AUTONOMOUS. **Effort:** M. **Criterion:** A: x. "
+                    "**Project:** tk. **Source:** 2026-08-21\n")
+
+    def test_the_quoted_marker_is_not_the_anchor_and_the_real_risk_survives(self):
+        """T164: with two Class markers, one quoted in prose and one real, the
+        chain used to anchor on the FIRST — the prose one — and `--risk none`
+        deleted the real Risk field."""
+        self.seed(self.QUOTED)
+        r = self.run_tk("edit", "T007", "--risk", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertNotIn("**Risk:** alto de verdade.", body)
+        self.assertIn("cita o `**Risk:** alto` de outra fila.", body)
+        self.assertIn("**Class:** AUTONOMOUS.", body)
+
+    def test_the_quoted_marker_is_never_rewritten_by_an_edit(self):
+        """The other direction of the same defect: `edit --class` rewrote the
+        prose in place of the field."""
+        self.seed(self.QUOTED_CLASS)
+        r = self.run_tk("edit", "T007", "--class", "DECISION",
+                        "--deferred", "afk: decide primeiro")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertIn("cita a `**Class:** DECISION` de outra fila.", body)
+        self.assertEqual(body.count("**Class:** DECISION."), 1)
+
+    def test_pack_stops_excluding_it_for_a_marker_no_gate_reads(self):
+        """`pack` refuses an item that carries a **Risk:** marker the position
+        rule may not read: unknown danger is not dispatched unattended. A quoted
+        marker used to count, so an item that merely QUOTES the field left every
+        package on every machine — and `assertIn(id)` is not the check, since
+        the exclusion list names the id too."""
+        self.seed("- [ ] **T010** — cita o `**Risk:** de outra fila` na prosa. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Project:** tk. **Source:** 2026-08-21\n")
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("eligible (1 of 1", r.stdout)
+        self.assertNotIn("no gate reads it", r.stdout)
+
+    def test_list_groups_it_under_the_real_tag_not_the_quoted_one(self):
+        """The T063 incident with the repair in place: an item whose text said
+        `**Project:** para o done-log` acquired the tag "para"."""
+        self.seed("- [ ] **T008** — levar o campo `**Project:** para` o done-log. "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                  "**Project:** tk. **Source:** 2026-08-21\n")
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("## tk", r.stdout)
+        self.assertNotIn("## para", r.stdout)
+
+    def test_the_remedy_the_pack_prints_is_ACCEPTED_by_the_guard(self):
+        """T134's dead end: the `edit --text` the exclusion prints was refused by
+        `ensure_no_embedded_marker` whenever the text carried a marker of its
+        own, so the prescribed remedy could not repair the item it addressed.
+        The guard now asks the SAME tokenizer the reader asks.
+
+        The assertion is the WHOLE line, never `assertIn` on the text that went
+        in: the text the caller passed is written at the head of the line, so it
+        is present in a body the command also CORRUPTED. Measured on this very
+        fixture while the tail was cut by a regex of its own — the cut landed
+        inside the code span, the item came back as
+        `cita o `**Risk:** alto` de outra fila **Risk:** alto` de outra fila.
+        **Class:** …`, and this test passed over it.
+        """
+        self.seed(self.QUOTED)
+        r = self.run_tk("edit", "T007", "--text",
+                        "cita o `**Risk:** alto` de outra fila")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(
+            self.body().strip().splitlines()[-1],
+            "- [ ] **T007** — cita o `**Risk:** alto` de outra fila "
+            "**Class:** AUTONOMOUS. **Effort:** M. **Risk:** alto de verdade. "
+            "**Criterion:** A: x. **Project:** tk. **Source:** 2026-08-21")
+
+    def test_the_tail_the_remedy_KEEPS_is_cut_outside_the_code_span(self):
+        """The other half of the same write, and the one no `assertIn` sees: the
+        chain `--text` preserves is found with the reader's tokenizer, so the cut
+        never lands between a code span's two backticks.
+
+        Cut inside it, the opening backtick stayed in the text being replaced and
+        the closing one did not, so the quotation came back as a REAL marker
+        sitting before the chain — the item's prose duplicated around it, and the
+        item pushed out of `pack` into the cancel-and-re-add dead end this rule
+        exists to open a way out of. Exit code 0, "T007 updated", both times.
+        """
+        self.seed(self.QUOTED)
+        r = self.run_tk("edit", "T007", "--text", "texto novo, sem marcador nenhum")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        line = self.body().strip().splitlines()[-1]
+        self.assertEqual(
+            line,
+            "- [ ] **T007** — texto novo, sem marcador nenhum "
+            "**Class:** AUTONOMOUS. **Effort:** M. **Risk:** alto de verdade. "
+            "**Criterion:** A: x. **Project:** tk. **Source:** 2026-08-21")
+        # the discriminating half: the corrupted line above put a **Risk:**
+        # marker in front of the chain, and `pack` answered "a **Risk:** marker
+        # sits where no gate reads it" — the exclusion whose only printed remedy
+        # is cancel + re-add
+        p = self.run_tk("pack")
+        self.assertNotIn("no gate reads it", p.stdout)
+
+    def test_a_quoted_marker_does_not_block_GIVING_the_item_that_field(self):
+        """The refusal that guards `edit` against a marker OUTSIDE the chain asks
+        the same tokenizer too: a quoted marker is not one it may fire on.
+
+        Measured before this: an item that merely CITES `**Project:**` in a code
+        span and carries no real Project field answered `--project tk` with "has a
+        **Project:** marker OUTSIDE its field chain … Close the item with `cancel`
+        and re-add it clean" — prescribing the done-log lie for prose the caller
+        had already quoted precisely to say it was prose.
+        """
+        self.seed("- [ ] **T001** — o item cita `**Project:**` numa code span. "
+                  "**Class:** AUTONOMOUS. **Effort:** M. **Criterion:** A: x. "
+                  "**Source:** 2026-08-21\n")
+        r = self.run_tk("edit", "T001", "--project", "tk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.body()
+        self.assertIn("o item cita `**Project:**` numa code span.", body)
+        self.assertIn("**Project:** tk.", body)
+
+    def test_a_BARE_marker_in_free_text_is_still_refused(self):
+        """The position rule outside a code span is unchanged, and so is the
+        refusal: an unquoted marker in free text would still be read as the real
+        field and hijack it."""
+        self.seed(item(1, "um"))
+        r = self.run_tk("edit", "T001", "--text", "leva o **Project:** para o done-log")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("field-marker shape", r.stderr)
+        self.assertIn("code span", r.stderr)
+
+    def test_an_asterisk_in_a_value_no_longer_cuts_the_chain(self):
+        """T258: the value grammar stopped at the first `*`, so a criterion
+        naming a glob broke the chain BEFORE **Class:** — and the item left
+        `pack` with no error visible anywhere and an age of `?`."""
+        self.seed()
+        r = self.run_tk("add", "com um glob no criterio", "--class", "AUTONOMOUS",
+                        "--effort", "S", "--criterion", "A: o glob *.md casa",
+                        "--source", "2026-08-13")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        p = self.run_tk("pack")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("eligible (1 of 1", p.stdout)
+        li = self.run_tk("list")
+        # the CLASS COLUMN, never the whole line: with the chain broken the
+        # title stops being cut at the first marker and prints the fields
+        # verbatim, so `assertIn("AUTONOMOUS")` passes on the very output that
+        # shows the item has lost its class
+        self.assertRegex(li.stdout, r"T001\s+AUTONOMOUS")
+
+    def test_an_odd_backtick_leaves_the_field_a_field(self):
+        """The safe direction of the tokenizer: an opener with no closer of its
+        own width is literal text and opens nothing, so the fields after it are
+        still fields. The other direction would swallow the rest of the line —
+        the `*` defect with a different character."""
+        self.seed("- [ ] **T009** — fala de uma ` crase sozinha "
+                  "**Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+        r = self.run_tk("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # the class COLUMN: see the note in the asterisk test above
+        self.assertRegex(r.stdout, r"T009\s+AUTONOMOUS")
+
+    def test_a_marker_inside_a_code_span_is_not_a_field_at_all(self):
+        """The parse's own answer, under the rule: the quoted marker is not in
+        the chain, and the item's title keeps it verbatim."""
+        fields = self.tk.parse_item(self.QUOTED).fields
+        self.assertEqual([f.canonical for f in fields],
+                         ["Class", "Effort", "Risk", "Criterion", "Project", "Source"])
+        self.assertIn("`**Risk:** alto`", self.tk.parse_item(self.QUOTED).title)
+        self.assertEqual(self.tk.render_item(self.tk.parse_item(self.QUOTED)), self.QUOTED)
+
+
 class TestMutationHarness(unittest.TestCase):
     """The harness is what says this suite protects anything, and until T152
     nothing checked IT. Each test here is a way the harness could go on printing
