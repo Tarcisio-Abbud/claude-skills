@@ -137,7 +137,7 @@ MUTATIONS = [
 
     ("T064 --summary drops the tag (tag read from the title instead of the block)",
      '    tag = marker_value(block, "Project", PROJECT_TAG_VALUE_RE)',
-     '    tag = marker_value(args.summary or item_title(block, limit=400), "Project",'
+     '    tag = marker_value(args.summary or item_text(block, limit=400), "Project",'
      " PROJECT_TAG_VALUE_RE)",
      ["TestProjectTagInDoneLog.test_tag_survives_summary_replacing_the_text"]),
 
@@ -1310,7 +1310,7 @@ MUTATIONS = [
      ["TestClaim.test_edit_cannot_set_a_claim"]),
 
     ("T121 the close carries the item's fields, so the claim reaches the done-log",
-     "    text = args.summary or item_title(block, limit=400)",
+     "    text = args.summary or item_text(block, limit=400)",
      "    text = args.summary or block.strip()",
      ["TestClaim.test_done_takes_the_claim_with_the_item",
       "TestClaim.test_cancel_takes_the_claim_with_the_item"]),
@@ -1621,12 +1621,12 @@ MUTATIONS = [
       "TestHandoffCreation.test_writing_over_a_file_this_command_did_not_write_is_refused"]),
 
     ("T122 an unnumbered open item is dropped from the holders (a wrong DELETE)",
-     '            out.append(f"T{iid:03d}" if iid is not None else "an unnumbered item")',
-     '            out.append(f"T{iid:03d}") if iid is not None else None',
+     '            out.append(item_label(text) if iid is not None else "an unnumbered item")',
+     '            out.append(item_label(text)) if iid is not None else None',
      ["TestHandoffLifecycle.test_an_UNNUMBERED_open_item_holds_the_briefing_it_points_at"]),
 
     ("T122 an unnumbered holder is formatted as an ID and crashes an applied close",
-     '            out.append(f"T{iid:03d}" if iid is not None else "an unnumbered item")',
+     '            out.append(item_label(text) if iid is not None else "an unnumbered item")',
      '            out.append(f"T{iid:03d}")',
      ["TestHandoffLifecycle.test_an_UNNUMBERED_open_item_holds_the_briefing_it_points_at"]),
 
@@ -1686,8 +1686,8 @@ MUTATIONS = [
      ["TestHandoffCreation.test_the_missing_pointer_warning_names_a_remedy_that_runs"]),
 
     ("T122 the remedy prints an ABBREVIATED copy of the text it tells you to write back",
-     '        fixed = f"{item_title(block, limit=10 ** 6)} {link}"',
-     '        fixed = f"{item_title(block, limit=400)} {link}"',
+     '        fixed = f"{item_text(block, limit=10 ** 6)} {link}"',
+     '        fixed = f"{item_text(block, limit=400)} {link}"',
      ["TestHandoffCreation.test_the_remedy_never_truncates_the_item_it_rewrites"]),
 
     ("BOM read() lets one at the head through to the `^`-anchored grammars again",
@@ -1749,14 +1749,19 @@ MUTATIONS = [
      "    if len(found) >= 1:\n        print(ambiguous_id_message(",
      ["TestAmbiguousId.test_an_ID_carried_by_ONE_item_is_not_warned_about"]),
 
+    # ONE anchor for the two readers since T173: `ambiguous_ids` is the single
+    # spelling of the count, so each mutant below reaches the listing AND the
+    # package, and the tests named prove it in both
     ("ID `list` stops marking a duplicated ID (only a triple would count)",
      "ids.count(i) > 1", "ids.count(i) > 2",
-     ["TestAmbiguousId.test_list_marks_every_row_under_a_duplicated_id"]),
+     ["TestAmbiguousId.test_list_marks_every_row_under_a_duplicated_id",
+      "TestThePackShowsWhatTheListShows.test_the_package_marks_a_duplicated_id_the_way_the_listing_does"]),
 
     ("ID `list` marks every row as duplicated, which marks nothing",
      "ids.count(i) > 1", "ids.count(i) > 0",
      ["TestAmbiguousId.test_list_marks_every_row_under_a_duplicated_id",
-      "TestAmbiguousId.test_an_ID_carried_by_ONE_item_is_not_warned_about"]),
+      "TestAmbiguousId.test_an_ID_carried_by_ONE_item_is_not_warned_about",
+      "TestThePackShowsWhatTheListShows.test_an_ID_carried_by_ONE_item_is_marked_in_neither_reader"]),
 
     # --- T121 `migrate` folds a chain that sits off the first line ----------
     # The defect itself: `migrate` was the command documented as the repair for
@@ -2396,9 +2401,10 @@ MUTATIONS = [
       "test_the_other_two_fields_of_the_group_still_have_no_flag"]),
 
     ("T172 the lane column leaves the package listing",
-     '            eligible.append(f"{label}  {pack_effort(text):<12}  "\n'
+     '            eligible.append(f"{label:<{width}}  {pack_effort(text):<12}  "\n'
      '                            f"{lanes[n]:<20}  {item_title(text)}"',
-     '            eligible.append(f"{label}  {pack_effort(text):<12}  {item_title(text)}"',
+     '            eligible.append(f"{label:<{width}}  {pack_effort(text):<12}  '
+     '{item_title(text)}"',
      ["TestPackLane.test_an_item_with_no_spec_is_avulso",
       "TestPackLane.test_two_tickets_of_one_spec_share_the_accumulated_lane",
       "TestPack.test_an_eligible_item_carries_its_id_effort_and_text",
@@ -2623,8 +2629,8 @@ MUTATIONS = [
       "TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason"]),
 
     ("T172 the ticket the PR closes stops coming back from the command",
-     "                            + pack_closes(text) + pack_repo(text))",
-     '                            + "" + pack_repo(text))',
+     "                            + pack_closes(text) + pack_repo(text) + mark)",
+     '                            + "" + pack_repo(text) + mark)',
      ["TestPackLane.test_the_TICKET_the_PR_closes_comes_back_from_the_command",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
 
@@ -2958,15 +2964,15 @@ MUTATIONS = [
      ["TestRepoField.test_the_field_is_written_at_the_writers_position"]),
 
     ("T198 `pack` stops returning the repository",
-     "                            + pack_closes(text) + pack_repo(text))",
-     "                            + pack_closes(text))",
+     "                            + pack_closes(text) + pack_repo(text) + mark)",
+     "                            + pack_closes(text) + mark)",
      ["TestPackRepo.test_the_repo_of_an_eligible_item_comes_back",
       "TestPackRepo.test_the_repo_follows_the_ticket_on_the_line",
       "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     ("T198 the repo is appended BEFORE the ticket",
-     "                            + pack_closes(text) + pack_repo(text))",
-     "                            + pack_repo(text) + pack_closes(text))",
+     "                            + pack_closes(text) + pack_repo(text) + mark)",
+     "                            + pack_repo(text) + pack_closes(text) + mark)",
      ["TestPackRepo.test_the_repo_follows_the_ticket_on_the_line",
       "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
@@ -3039,8 +3045,8 @@ MUTATIONS = [
       "TestMigrateFold.test_a_second_migrate_is_a_no_op_on_the_file_and_says_nothing"]),
 
     ("T148 `list` drops the age column",
-     'return (f"{label}  {cls:<10}  {age:>4}  {title}"',
-     'return (f"{label}  {cls:<10}  {title}"',
+     'return (f"{label:<{width}}  {cls:<10}  {age:>4}  {title}"',
+     'return (f"{label:<{width}}  {cls:<10}  {title}"',
      ["TestListShowsTheAge.test_a_dated_item_shows_its_age_in_days",
       "TestListShowsTheAge.test_the_age_survives_the_project_grouping"]),
 
@@ -3910,6 +3916,83 @@ MUTATIONS = [
      '    print(f"{len(done)} [x] item(s) → done-log; IDs assigned up to T{nid:03d}")',
      ["TestAnInterruptedCloseIsFinishedNotRepeated."
       "test_a_migrate_replayed_after_a_crash_writes_no_second_copy"]),
+
+    # --- T173: the package and the listing show the SAME item ---------------
+    # Five display defects in one pair of functions, each measured on this tree
+    # before the slice that closes it.
+
+    ("T173 the package drops the duplicate-ID mark it takes from the listing",
+     "                            + pack_closes(text) + pack_repo(text) + mark)",
+     '                            + pack_closes(text) + pack_repo(text) + "")',
+     ["TestThePackShowsWhatTheListShows.test_the_package_marks_a_duplicated_id_the_way_the_listing_does"]),
+
+    ("T173 an excluded row loses the mark, so only the eligible half warns",
+     'excluded.append(f"{label:<{width}}  {item_title(text, PACK_TITLE)}{mark}  — {reason}")',
+     'excluded.append(f"{label:<{width}}  {item_title(text, PACK_TITLE)}  — {reason}")',
+     ["TestThePackShowsWhatTheListShows.test_an_EXCLUDED_row_carries_the_mark_ahead_of_its_reason"]),
+
+    ("T173 the package marks the rows and never says what the mark means",
+     "    if ambiguous:\n        repairs.append(AMBIGUOUS_NOTE)",
+     "    if False:\n        repairs.append(AMBIGUOUS_NOTE)",
+     ["TestThePackShowsWhatTheListShows.test_the_package_marks_a_duplicated_id_the_way_the_listing_does"]),
+
+    # the title's boundary: back to the first READABLE marker, which is where it
+    # cut the user's own sentence in half
+    ("T173 the title is cut at the first marker instead of at the field chain",
+     "    item = parse_item(text)\n"
+     "    names = [f.canonical for f in item.fields]\n"
+     "    lead = (\"\".join(f.text for f in item.fields[: names.index(\"Class\")])\n"
+     "            if \"Class\" in names else \"\")\n"
+     "    return one_line(item.title + lead, limit)",
+     "    return one_line(parse_item(text).title, limit)",
+     ["TestThePackShowsWhatTheListShows.test_a_field_name_in_the_users_own_sentence_does_not_cut_the_title"]),
+
+    # and the other half of the same reading: the whole BLOCK collapsed, which is
+    # how a note on its own line was columned as the tail of the sentence above it
+    ("T173 the title absorbs the item's continuation lines again",
+     "    item = parse_item(text)\n"
+     "    names = [f.canonical for f in item.fields]\n"
+     "    lead = (\"\".join(f.text for f in item.fields[: names.index(\"Class\")])\n"
+     "            if \"Class\" in names else \"\")\n"
+     "    return one_line(item.title + lead, limit)",
+     "    return item_text(text, limit)",
+     ["TestThePackShowsWhatTheListShows.test_a_continuation_line_is_not_absorbed_into_the_title"]),
+
+    # the over-correction direction, and the destructive one: the remedy that
+    # REWRITES the item must keep the prose the title now leaves out
+    ("T173 the printed remedy is cut to the item's first line, so it eats the note",
+     "    item = parse_item(block)\n    t = item.title + item.prose",
+     "    item = parse_item(block)\n    t = item.title",
+     ["TestThePackShowsWhatTheListShows."
+      "test_the_prose_the_title_keeps_is_STILL_kept_out_of_the_done_log_remedy"]),
+
+    ("T173 the ID column stops being measured, so a wide label shifts the class",
+     "    return max([4] + [len(l) for l in labels])",
+     "    return 4",
+     ["TestThePackShowsWhatTheListShows.test_a_wide_label_does_not_push_the_column_beside_it"]),
+
+    # the over-correction direction of the same column: a width wider than the
+    # widest label moves EVERY queue's listing for the sake of the few that carry
+    # a wide one
+    ("T173 the ID column is padded past the widest label it holds",
+     "    return max([4] + [len(l) for l in labels])",
+     "    return max([4] + [len(l) for l in labels]) + 1",
+     ["TestThePackShowsWhatTheListShows."
+      "test_a_queue_of_canonical_labels_prints_exactly_what_it_printed_before"]),
+
+    # and the default the same expression carries, which is a different question:
+    # the widest of NO labels is not a number
+    ("T173 the ID column has no width to fall back on when the queue is empty",
+     "    return max([4] + [len(l) for l in labels])",
+     "    return max([len(l) for l in labels])",
+     ["TestThePackShowsWhatTheListShows."
+      "test_the_package_prints_its_headings_over_an_empty_queue"]),
+
+    ("T173 the holder's label is rebuilt from the number instead of read",
+     '            out.append(item_label(text) if iid is not None else "an unnumbered item")',
+     '            out.append(f"T{iid:03d}" if iid is not None else "an unnumbered item")',
+     ["TestThePackShowsWhatTheListShows.test_a_kept_briefing_names_its_holder_by_the_items_own_spelling"]),
+
 ]
 
 

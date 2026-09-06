@@ -2238,16 +2238,84 @@ def group_by_tag(pairs, by_position=False):
     return [(tag, groups[tag]) for tag in order]
 
 
-def item_title(text, limit=100):
-    t = re.sub("^" + MARKER, "", text.strip())
+def one_line(raw, limit):
+    """`raw` as a single display line: the head's leftovers off the front, the
+    whitespace collapsed, the decoration trimmed, the length capped.
+
+    The head strip is not dead code for a canonical item — it is what a LEGACY
+    head needs. `CANONICAL_HEAD_RE` requires the ` — ` compose_item writes, so an
+    item whose ID is followed by anything else parses with no head at all and
+    arrives here still carrying `- [ ] **T007**`. ID_RE runs over the whole
+    string for the same reason it always did: `**~~T012~~**` is an ID to the
+    allocator, and leaving the fragment in leaked `T012~~**` into a title.
+    """
+    t = re.sub("^" + MARKER, "", raw.strip())
     t = ID_RE.sub("", t)
-    # cut at the first READABLE marker: cutting at a quoted one would truncate
-    # the title of the very item the code-span rule exists to make repairable
-    found = markers(t)
-    if found:
-        t = t[:found[0][1]]
     t = re.sub(r"\s+", " ", t).strip(" —-~*")
     return t if len(t) <= limit else t[: limit - 1] + "…"
+
+
+def item_title(text, limit=100):
+    """The item's title as `list` and `pack` COLUMN it — the first line, up to the
+    field chain, from the one parse.
+
+    Two defects lived in the reading this replaces, and both were measured on the
+    display of a real shape:
+
+      truncated   it cut at the first READABLE marker instead of at the CHAIN, so
+                  an item whose own prose says `o item cita **Project:** de outra
+                  fila e segue a frase.` was columned as `o item cita` — the
+                  user's sentence cut off mid-word, in both readers, with nothing
+                  saying anything had been cut. The code-span rule narrowed that
+                  to the UNQUOTED marker and could not close it: quoting is a
+                  repair of the file, and the display has to be right on the file
+                  as it stands. `Item.title` already ends where the chain begins,
+                  which is the only boundary that is not a guess.
+      absorbed    with no marker anywhere to cut at, the whitespace collapse ran
+                  over the item's CONTINUATION lines and pulled them into the
+                  title, so a note the author gave its
+                  own line was columned as part of the sentence above it. A title
+                  is one line by construction now, because `Item.title` is a slice
+                  of the first line and nothing else.
+
+    Where the title ENDS is the POSITION rule, not the raw chain: `Item.title`
+    stops at the first segment of the run, and a segment ahead of the **Class:**
+    anchor is the item own prose wearing a field name (real_fields). Stopping
+    there put the cut back one marker earlier, on exactly the population the two
+    rules above are about. So every segment before the anchor is title again, and
+    a chain that names no class anchors nothing and moves no boundary.
+
+    `item_text` is the other projection, for the two callers that must have the
+    prose too. Both read the SAME parse: the display and the remedy disagreeing
+    about what an item says is the class of defect this pair exists to end.
+    """
+    item = parse_item(text)
+    names = [f.canonical for f in item.fields]
+    lead = ("".join(f.text for f in item.fields[: names.index("Class")])
+            if "Class" in names else "")
+    return one_line(item.title + lead, limit)
+
+
+def item_text(block, limit=100):
+    """The item's WHOLE text — title and continuation prose — as one line, for the
+    two callers that rewrite or archive the item rather than column it.
+
+    `edit --text` REPLACES the item's text, so the remedy `handoff` prints has to
+    carry every line of it: handed `item_title`'s first line, that remedy would
+    run, report success and delete the author's note. The done-log line is the
+    item's only surviving record, and the same cut would drop the same prose out
+    of it.
+
+    It still stops at the first readable marker, and that is deliberate rather
+    than inherited: `ensure_no_embedded_marker` REFUSES a `--text` carrying one,
+    so a remedy that included it would be refused by the very command it prints.
+    Truncating there is the known dead end T134 names; printing a command that
+    cannot run is not better, and choosing between them is not this item's work.
+    """
+    item = parse_item(block)
+    t = item.title + item.prose
+    found = markers(t)
+    return one_line(t[: found[0][1]] if found else t, limit)
 
 
 # --- done-log writing -----------------------------------------------------
@@ -2392,6 +2460,27 @@ def missing_item_message(memdir, content, wanted_id):
 # is not there. `list` marks both rows, every command that resolves an ID names
 # the occurrence it acted on, and the repair is a human renumbering one of them.
 AMBIGUOUS_MARK = "duplicate ID %s"
+# the sentence that says what the mark MEANS, spelled once for the two readers
+# that print it. `pack` carried neither: a package listing two rows under one
+# label said nothing about only the first being reachable, so a caller who
+# dispatched the second one addressed the first.
+AMBIGUOUS_NOTE = ("duplicate IDs: only the FIRST item under each is reachable — "
+                  "renumber the others by hand in next-steps.md.")
+
+
+def ambiguous_ids(ids):
+    """The IDs that more than one OPEN item carries, from the ids in queue order.
+
+    One spelling for the two readers that mark them. `list` computed it and the
+    package did not compute it at all — which is how a package listing came to
+    show two rows under one label with nothing saying only the first was
+    reachable — and two copies of the count is how one of them would come back to
+    marking a row the other leaves plain.
+
+    The ID, never the label: `T001` and `T0001` are two spellings of one number,
+    so a set of labels would not see the collision at all.
+    """
+    return {i for i in ids if i is not None and ids.count(i) > 1}
 
 
 def ambiguous_id_message(wanted_id, blocks):
@@ -2584,7 +2673,7 @@ def cmd_list(args):
     # the ID, not the spelling: T001 and T0001 are one number and two rows, and a
     # reader who cannot see that only the first is reachable will keep addressing
     # the second one
-    ambiguous = {i for i in ids if i is not None and ids.count(i) > 1}
+    ambiguous = ambiguous_ids(ids)
     # ONE date for the whole listing: asking datetime per item would let a run
     # spanning midnight print two different ages for two items of the same age
     today = datetime.date.today()
@@ -2598,24 +2687,27 @@ def cmd_list(args):
     if not rows:
         print("(queue empty)")
         return
+    width = label_column(r[0] for r in rows)
     grouped = group_by_tag([(project, (label, cls, age, title, mark, dup, blocked))
                             for label, cls, age, title, project, mark, dup, blocked in rows],
                            by_position=True)
     if grouped is None:
         for label, cls, age, title, _, mark, dup, blocked in rows:
-            print(list_line(label, cls, age, title, mark, dup, blocked))
+            print(list_line(label, cls, age, title, mark, dup, blocked, width))
     else:
+        # ONE width for the whole listing, measured before the grouping: per group
+        # it would give two column positions to one screen, and the eye that reads
+        # a column down the page is the whole reason there is a column
         for n, (project, entries) in enumerate(grouped):
             if n:
                 print()
             print(f"## {project or 'no project'}")
             for label, cls, age, title, mark, dup, blocked in entries:
-                print(list_line(label, cls, age, title, mark, dup, blocked))
+                print(list_line(label, cls, age, title, mark, dup, blocked, width))
     if any(r[0] == "----" for r in rows):
         print("\nitems without ID: run `tk-queue migrate` to assign them.")
     if ambiguous:
-        print("\nduplicate IDs: only the FIRST item under each is reachable — renumber "
-              "the others by hand in next-steps.md.")
+        print("\n" + AMBIGUOUS_NOTE)
     strange = [(item_label(t), unknown_class(t)) for t in opens if unknown_class(t)]
     if strange:
         print("\nclass values that are no class: "
@@ -2659,7 +2751,31 @@ def unknown_class(block):
     return cls if cls and cls not in CLASSES else None
 
 
-def list_line(label, cls, age, title, mark, dup=None, blocked=""):
+def label_column(labels):
+    """The width the ID column needs — the widest label in the listing, never
+    narrower than the canonical four.
+
+    A label is the item's OWN spelling (item_label), so it is not one width: `T001`
+    is four characters and `T0001` and `T1000` are five. Printed with two spaces
+    after it, the wide one pushed the class column one character right and the
+    reader lost the very alignment the columns exist for — on the rows most in
+    need of a second look, since one of the two spellings of a duplicated ID is
+    wide by definition.
+
+    The 4 is the width an EMPTY listing falls back to, and it is not a floor:
+    every label a queue can carry is already four characters or more (`----`, and
+    `T` plus the three digits ID_SLOT demands), so nothing narrows below it. The
+    package prints its two block headings over an empty queue, and asking `max`
+    for the widest of no labels is how that run would end in a traceback.
+
+    Widening is paid for only by the listings that have something to widen for: a
+    queue whose labels are all canonical keeps the line every skill and every eye
+    already reads.
+    """
+    return max([4] + [len(l) for l in labels])
+
+
+def list_line(label, cls, age, title, mark, dup=None, blocked="", width=4):
     """The claim is appended, not given a column of its own: it is the exception
     (most items are free), and a column would indent every line of every queue for
     a field almost none of them carry.
@@ -2669,8 +2785,12 @@ def list_line(label, cls, age, title, mark, dup=None, blocked=""):
     read down a column is what makes "which of these is old" one glance instead of
     a line-by-line read. `?` marks the items that predate the field, and it is
     right-aligned with the rest so the digits line up under each other.
+
+    `width` is the ID column's, from `label_column`. Its default is the canonical
+    four, so a caller that has only one label to print still lands on the column
+    every other listing uses.
     """
-    return (f"{label}  {cls:<10}  {age:>4}  {title}"
+    return (f"{label:<{width}}  {cls:<10}  {age:>4}  {title}"
             + (f"  [{mark}]" if mark else "")
             # appended for the same reason as the claim, and AFTER it: an item is
             # far more often free than blocked, and the two can be true at once
@@ -3428,6 +3548,13 @@ def cmd_pack(args):
     # and one this queue never had is a blocker that has already left it
     open_ids = frozenset(i for i in (item_id(t) for kind, t in split_blocks(content)
                                      if kind == "item-open") if i is not None)
+    # the same ambiguity `list` marks, read the same way: the ID, not the
+    # spelling. The package printed two rows under one number with nothing saying
+    # only the first was reachable, so the reader who dispatched the second one
+    # dispatched the first — the silence the mark on `list` exists to end, in the
+    # output an unattended package is actually cut from
+    ambiguous = ambiguous_ids([item_id(t) for kind, t in split_blocks(content)
+                               if kind == "item-open"])
     rows, candidates = [], []
     for kind, text in split_blocks(content):
         if kind != "item-open":
@@ -3451,22 +3578,27 @@ def cmd_pack(args):
     lanes, pushed = pack_lanes(candidates, under_way)
 
     eligible, excluded, repairs = [], [], []
+    width = label_column(label for label, _, _ in rows)
     for n, (label, text, verdict) in enumerate(rows):
+        dup = item_id(text) if item_id(text) in ambiguous else None
+        mark = f"  [{AMBIGUOUS_MARK % dup}]" if dup is not None else ""
         if verdict is None and n not in pushed:
             # Effort is free text, so the column is padded and never TRUNCATED: a
             # long one pushes the title right, where a cut one would hide the very
             # wall-clock guess the caller sizes the package by. The lane sits
             # between them for the same reason: both columns keep their width and
             # only the title moves.
-            eligible.append(f"{label}  {pack_effort(text):<12}  "
+            eligible.append(f"{label:<{width}}  {pack_effort(text):<12}  "
                             f"{lanes[n]:<20}  {item_title(text)}"
-                            + pack_closes(text) + pack_repo(text))
+                            + pack_closes(text) + pack_repo(text) + mark)
             continue
         # the lane is the LAST step of the ladder: it is asked only of an item
         # every earlier rule let through, so an exclusion here never hides one
         # about the item itself
         reason, repair = verdict if verdict is not None else (pushed[n], None)
-        excluded.append(f"{label}  {item_title(text, PACK_TITLE)}  — {reason}")
+        # the mark goes BEFORE the reason and not after it: the reason ends an
+        # excluded line by contract, and a mark past it reads as part of the reason
+        excluded.append(f"{label:<{width}}  {item_title(text, PACK_TITLE)}{mark}  — {reason}")
         if repair and repair not in repairs:
             repairs.append(repair)
     total = len(eligible) + len(excluded)
@@ -3475,6 +3607,12 @@ def cmd_pack(args):
     print()
     print(f"excluded ({len(excluded)}):")
     print("\n".join(excluded) if excluded else "(none)")
+    # the mark says an item is unreachable; this says what to do about it, and the
+    # repair block is where the reader of this output looks for that. ONE spelling
+    # shared with the listing, so the two cannot come to describe the ambiguity
+    # differently
+    if ambiguous:
+        repairs.append(AMBIGUOUS_NOTE)
     if repairs:
         print("\nrepairs:")
         for r in repairs:
@@ -4158,8 +4296,12 @@ def handoff_gate(candidate, iid, block, values):
 def handoff_holders(content, n):
     """The labels of the OPEN items that still reach the briefing named for T<n>:
     the item it is named for, if it is still open, and every open item pointing at
-    it. Labels, not IDs, because an item `migrate` has not numbered yet holds a
-    briefing exactly as much as a numbered one."""
+    it. Labels, not IDs — and the label is the one `item_label` reads off the
+    block, for the reason every other display reads it that way: `f"T{iid:03d}"`
+    rebuilds the label from the NUMBER, so a holder spelled `T0001` in the file
+    was reported as `T001`, and the reader who went looking for T001 found either
+    nothing or a different item. An item `migrate` has not numbered yet holds a
+    briefing exactly as much as a numbered one, and has no spelling to print."""
     out = []
     for kind, text in split_blocks(content):
         if kind != "item-open":
@@ -4171,7 +4313,7 @@ def handoff_holders(content, n):
             # HOLDS it. Skipping it was a wrong delete, the one direction this
             # reader may not fail in, so it is labelled rather than dropped (and
             # `f"T{None:03d}"` is the crash that skipping was hiding)
-            out.append(f"T{iid:03d}" if iid is not None else "an unnumbered item")
+            out.append(item_label(text) if iid is not None else "an unnumbered item")
     return out
 
 
@@ -4263,7 +4405,7 @@ def cmd_handoff(args):
         # turned the remedy for a long item into `edit --text "<half of it>…"` —
         # a remedy that runs, reports success, and eats the item's own text.
         link = f"[[handoff-T{args.id:03d}]]"
-        fixed = f"{item_title(block, limit=10 ** 6)} {link}"
+        fixed = f"{item_text(block, limit=10 ** 6)} {link}"
         # …and it carries --force when the item it rewrites would cross the BLOCK
         # ceiling. Measured: on a 719-char item the printed command was refused by
         # the very ceiling adding the link crosses — a remedy that runs only after
@@ -4327,10 +4469,10 @@ def close_item(args, marker, outcome, marker_flag):
     check_field_ceilings(args.force, **{marker_flag: outcome},
                          summary=args.summary, note=args.note)
     today = datetime.date.today().isoformat()
-    # read the tag from the ORIGINAL block: item_title strips every field, and
+    # read the tag from the ORIGINAL block: item_text strips every field, and
     # --summary replaces the text wholesale, so by then the tag is already gone
     tag = marker_value(block, "Project", PROJECT_TAG_VALUE_RE)
-    text = args.summary or item_title(block, limit=400)
+    text = args.summary or item_text(block, limit=400)
     line = f"- {today} — {marker} — {label} {text} — {outcome}"
     if tag:
         # appended last so LOG_TAG_RE's end-of-line anchor reads this field, not

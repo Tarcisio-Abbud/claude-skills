@@ -4985,8 +4985,10 @@ class TestIdSpelling(QueueTest):
         # assertIn("T0001") would also pass on a listing that showed T0001 twice.
         # The duplicate mark belongs to the ambiguity these two also are — one
         # number, two items — and is measured by TestAmbiguousId
+        # the ID column is as wide as the widest label here, so the class column
+        # starts at one position and not two — see TestTheColumnsHoldUnderAWideLabel
         self.assertEqual(r.stdout,
-                         "T001  AUTONOMOUS     ?  item curto  [duplicate ID 1]\n"
+                         "T001   AUTONOMOUS     ?  item curto  [duplicate ID 1]\n"
                          "T0001  AUTONOMOUS     ?  item de id largo  [duplicate ID 1]\n"
                          "\nduplicate IDs: only the FIRST item under each is reachable"
                          " — renumber the others by hand in next-steps.md.\n")
@@ -4997,8 +4999,10 @@ class TestIdSpelling(QueueTest):
         self.seed(item(1, "item curto"), self.wide())
         r = self.run_tk("pack")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("T001  S             avulso                item curto\n", r.stdout)
-        self.assertIn("T0001  S             avulso                item de id largo\n", r.stdout)
+        self.assertIn("T001   S             avulso                item curto"
+                      "  [duplicate ID 1]\n", r.stdout)
+        self.assertIn("T0001  S             avulso                item de id largo"
+                      "  [duplicate ID 1]\n", r.stdout)
 
     def test_a_wide_spelling_is_still_an_allocated_id(self):
         """The one-way rule, at its sharp end: with `T0001` ALONE in the file, a
@@ -5623,7 +5627,7 @@ class TestResolvedItemKeepsItsOwnSpelling(QueueTest):
         name the one it is about."""
         other = item(1, "item curto de verdade")
         self.seed(WIDE_OFF_LINE, other)
-        self.assertIn("T001  AUTONOMOUS     ?  item curto de verdade",
+        self.assertIn("T001   AUTONOMOUS     ?  item curto de verdade",
                       self.run_tk("list").stdout)
         r = self.run_tk("claim", "T0001", "--as", "teste")
         self.assertEqual(r.returncode, 1)
@@ -8655,6 +8659,180 @@ class TestAnInterruptedCloseIsFinishedNotRepeated(QueueTest):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("1 [x] item(s) → done-log", r.stdout)
         self.assertIn("- [x] feito\n", self.body("done-log.md"))
+
+
+# --- T173: the package and the listing show the SAME item -------------------
+#
+# `list` and `pack` are one pair of functions over one file, and five display
+# defects lived in the gap between them. Each was measured on this tree before
+# the slice that closes it, and each is a way a caller reads one thing off the
+# screen and dispatches another:
+#
+#   the mark      `list` marks both rows of a duplicated ID and says only the
+#                 first is reachable; `pack` printed the two rows plain, and
+#                 `pack` is the output an unattended package is actually cut from
+#   the title     it was cut at the first READABLE marker instead of at the field
+#                 chain, so an item quoting a field name in its own sentence was
+#                 columned mid-phrase — in BOTH readers, with nothing saying so
+#   the prose     with no marker to cut at, the whitespace collapse pulled the
+#                 item's continuation lines into the title
+#   the column    a label is the item's own spelling, so `T0001` and `T1000` are
+#                 five characters where `T001` is four, and the wide one pushed
+#                 the class column one place right
+#   the holder    the briefing report rebuilt the holder's label from the NUMBER,
+#                 so the item spelled `T0001` was reported as `T001`
+
+WIDE = "**T0001**"
+
+
+class TestThePackShowsWhatTheListShows(QueueTest):
+
+    def wide(self, text="item de id largo"):
+        return item(1, text).replace("**T001**", WIDE, 1)
+
+    def eligible_line(self, out, label):
+        for ln in out.splitlines():
+            if ln.startswith(label + " ") or ln == label:
+                return ln
+        self.fail(f"{label} is not in:\n{out}")
+
+    # --- the mark ---------------------------------------------------------
+
+    def test_the_package_marks_a_duplicated_id_the_way_the_listing_does(self):
+        """Both blocks of the package, because the mark is what tells the reader
+        that dispatching the second row would act on the first."""
+        self.seed(item(5, "primeira ocorrencia"), item(5, "segunda ocorrencia"))
+        out = self.run_tk("pack").stdout
+        self.assertEqual(
+            [ln for ln in out.splitlines() if ln.startswith("T005")],
+            ["T005  S             avulso                primeira ocorrencia"
+             "  [duplicate ID 5]",
+             "T005  S             avulso                segunda ocorrencia"
+             "  [duplicate ID 5]"])
+        # and the sentence that says what the mark MEANS, in the block this
+        # command puts its remedies in. Taken from the LISTING rather than
+        # respelled here: the two describing one ambiguity differently is the
+        # divergence this whole class is about, and a hardcoded copy would go on
+        # passing while they drifted
+        note = self.run_tk("list").stdout.split("\n\n")[-1].strip()
+        self.assertTrue(note.startswith("duplicate IDs:"), note)
+        self.assertIn("- " + note + "\n", out)
+
+    def test_an_EXCLUDED_row_carries_the_mark_ahead_of_its_reason(self):
+        """The exclusion reason ends the line by contract, so the mark cannot be
+        appended after it — a caller reading `— class is DECISION [duplicate ID 5]`
+        reads the mark as part of the reason."""
+        self.seed(item(5, "excluida", klass="DECISION"), item(5, "outra", klass="DECISION"))
+        out = self.run_tk("pack").stdout
+        self.assertIn("T005  excluida  [duplicate ID 5]  — class is DECISION\n", out)
+
+    def test_an_ID_carried_by_ONE_item_is_marked_in_neither_reader(self):
+        """The other direction. A mark on every row says nothing, and the reader
+        who learns to skip it skips the two rows it was written for."""
+        self.seed(item(5, "unico"), item(6, "outro"))
+        for cmd in ("list", "pack"):
+            with self.subTest(cmd=cmd):
+                out = self.run_tk(cmd).stdout
+                self.assertNotIn("duplicate ID", out)
+
+    # --- the title --------------------------------------------------------
+
+    def quoting(self, tail):
+        return ("- [ ] **T002** — o item cita **Project:** de outra fila e segue a frase"
+                + tail + " **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                "**Source:** 2026-08-13\n")
+
+    def test_a_field_name_in_the_users_own_sentence_does_not_cut_the_title(self):
+        """Measured: both readers columned this item as `o item cita`, four words
+        into a sentence of eleven, and nothing anywhere said the rest existed.
+
+        Both subtests, because the period decides which BOUNDARY has to hold. With
+        it, the imitating segment joins the run and only the position rule — every
+        segment ahead of the **Class:** anchor is the item's own prose — puts the
+        sentence back. Without it the run breaks before the marker, and the title
+        is right as soon as it ends at the chain instead of at the first marker.
+        A fixture carrying only the second shape passes on the first reading too,
+        which is the vacuity this pair exists to avoid."""
+        for name, tail in (("com ponto", "."), ("sem ponto", "")):
+            with self.subTest(prosa=name):
+                self.seed(self.quoting(tail))
+                whole = ("o item cita **Project:** de outra fila e segue a frase"
+                         + tail)
+                self.assertEqual(
+                    self.run_tk("list").stdout.split("?  ")[1].rstrip("\n"), whole)
+                self.assertIn(whole, self.run_tk("pack").stdout)
+
+    def test_a_continuation_line_is_not_absorbed_into_the_title(self):
+        """A title is ONE line. With no marker anywhere to cut at, the collapse of
+        whitespace ran straight through the newline and columned the author's note
+        as the tail of their own sentence."""
+        self.seed("- [ ] **T004** — titulo sem campo nenhum.\n"
+                  "  uma nota de continuacao inteira.\n")
+        self.assertEqual(self.run_tk("list").stdout,
+                         "T004  ?              ?  titulo sem campo nenhum.\n")
+        self.assertIn("T004  titulo sem campo nenhum.  — no **Class:** field\n",
+                      self.run_tk("pack").stdout)
+
+    def test_the_prose_the_title_keeps_is_STILL_kept_out_of_the_done_log_remedy(self):
+        """The over-correction the title fix could buy, and the expensive one:
+        `edit --text` REPLACES an item's text, so the remedy `handoff` prints has
+        to carry the continuation lines the title now leaves out. Cut to the first
+        line, that remedy runs, reports success and deletes the author's note."""
+        self.seed("- [ ] **T004** — titulo do item.\n"
+                  "  uma nota de continuacao inteira.\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+        r = self.run_tk("handoff", "4", "--objective", "o", "--state", "s",
+                        "--blockers", "b")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("titulo do item. uma nota de continuacao inteira. "
+                      "[[handoff-T004]]", r.stderr)
+
+    # --- the column -------------------------------------------------------
+
+    def test_a_wide_label_does_not_push_the_column_beside_it(self):
+        """`T0001` is five characters and `T001` is four, and the ID column was
+        neither padded nor measured — so the class column of a queue carrying both
+        started in two places, on exactly the rows that need a second look."""
+        self.seed(item(1, "curto"), self.wide(), item(1000, "quatro digitos"))
+        rows = self.run_tk("list").stdout.splitlines()[:3]
+        self.assertEqual([ln.index("AUTONOMOUS") for ln in rows], [7, 7, 7])
+        pack = self.run_tk("pack").stdout.splitlines()
+        self.assertEqual([ln.index("S    ") for ln in pack[1:4]], [7, 7, 7])
+
+    def test_a_queue_of_canonical_labels_prints_exactly_what_it_printed_before(self):
+        """The over-correction direction. Widening is paid for by the listings
+        that have something to widen for: a queue whose labels are all
+        `T001`-shaped keeps the line every skill and every eye already reads, and
+        a column one character wider than it needs moves EVERY queue's output for
+        the sake of the few that carry a wide label."""
+        self.seed(item(1, "um"), item(2, "dois"))
+        self.assertEqual(self.run_tk("list").stdout,
+                         "T001  AUTONOMOUS     ?  um\n"
+                         "T002  AUTONOMOUS     ?  dois\n")
+
+    def test_the_package_prints_its_headings_over_an_empty_queue(self):
+        """The width is asked of the rows, and an empty queue has none — so the
+        default is what stands between this command and a traceback on the one
+        queue whose report is `nothing to do`."""
+        self.write("next-steps.md", HEADER)
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("eligible (0 of 0, in queue order):\n(none)\n", r.stdout)
+
+    # --- the holder -------------------------------------------------------
+
+    def test_a_kept_briefing_names_its_holder_by_the_items_own_spelling(self):
+        """`f"T{iid:03d}"` rebuilds a label from the NUMBER, and `int("0001")` is
+        1 — so the report sent the reader to look up a T001 that is either absent
+        or a DIFFERENT item. The report is the only place the surviving holder is
+        ever named."""
+        self.seed(self.wide("o item de grafia larga [[handoff-T001]]"),
+                  item(2, "outro que aponta [[handoff-T001]]"))
+        self.write("handoff-T001.md", "# Handoff T001\n\nobjetivo\n")
+        r = self.run_tk("done", "2", "--how", "PR #1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("handoff-T001.md kept — still reached by T0001\n", r.stdout)
 
 
 class TestMutationHarness(unittest.TestCase):
