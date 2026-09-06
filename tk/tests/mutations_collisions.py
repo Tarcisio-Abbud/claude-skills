@@ -105,7 +105,7 @@ MUTATIONS = [
     # --- the union half (`--against`) ------------------------------------
 
     ("the suite never runs, which is the pairwise blindness restored",
-     "            pair[\"suite\"] = run_suite(repo, tree, args.suite)",
+     "            pair[\"suite\"] = run_suite(repo, union[\"commit\"], args.suite)",
      '            pair["suite"] = {"returncode": 0, "tail": ""}',
      ["TestUnion.test_a_test_one_branch_adds_grades_a_file_the_other_branch_edits"],
      SCRIPT),
@@ -123,18 +123,23 @@ MUTATIONS = [
 
     ("a conflicted union hands its half-merged tree to the suite anyway",
      "    tree, paths, messages = measure(repo, landed, other)\n"
-     "    if paths or messages:\n        return None, paths, messages\n"
-     "    return tree, [], []",
+     "    if paths or messages:\n"
+     "        return {\"commit\": None, \"pair\": (pivot, other),\n"
+     "                \"paths\": paths, \"messages\": messages}",
      "    tree, paths, messages = measure(repo, landed, other)\n"
-     "    return tree, paths, messages",
+     "    if False:\n"
+     "        return {\"commit\": None, \"pair\": (pivot, other),\n"
+     "                \"paths\": paths, \"messages\": messages}",
      ["TestUnion.test_a_textual_conflict_in_the_union_is_reported_without_a_suite_run"],
      SCRIPT),
 
     ("the temporary worktree is left registered in the repository",
      "    finally:\n"
-     '        git(repo, "worktree", "remove", "--force", path)\n'
+     '        remove = git(repo, "worktree", "remove", "--force", path)\n'
      "        shutil.rmtree(path, ignore_errors=True)",
-     "    finally:\n        shutil.rmtree(path, ignore_errors=True)",
+     "    finally:\n"
+     '        remove = git(repo, "worktree", "list")\n'
+     "        shutil.rmtree(path, ignore_errors=True)",
      ["TestUnion.test_the_temporary_worktree_is_removed_even_when_the_union_is_red"],
      SCRIPT),
 

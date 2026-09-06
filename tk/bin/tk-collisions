@@ -11,7 +11,9 @@ textually clean — the collision is SEMANTIC, and no merge sees it. So the
 union `merge(merge(--base, --against), other)` is built, checked out into a
 TEMPORARY detached worktree, and `--suite` is run in it. That worktree is the
 one thing this script materialises, it lives only while the suite runs, and a
-`finally` removes it whether the suite came back green, red or not at all.
+`finally` removes it whether the suite came back green, red or not at all. A
+removal that git itself refuses is reported on stderr, naming the leftover and
+`git worktree prune`; it is never passed over in silence.
 
 WHY NOT ASK THE FORGE: `mergeable`/`mergeStateStatus` answer only "does this PR
 merge into its base", which is blind between two PRs. Two branches can each be
@@ -53,6 +55,15 @@ def fail(msg):
     """Stop with code 2. Distinct from a finding: the run did not happen."""
     print(f"tk-collisions: {msg}", file=sys.stderr)
     sys.exit(EXIT_FAILED)
+
+
+def warn(msg):
+    """Say what was left behind, without changing the answer.
+
+    Cleanup that failed is not a finding about the branches and not a run
+    that did not happen, so it moves neither exit code — but staying silent
+    would leave state in the measured repository that nobody was told about."""
+    print(f"tk-collisions: {msg}", file=sys.stderr)
 
 
 def git(repo, *argv):
@@ -116,7 +127,12 @@ def commit_of(repo, tree, *parents):
 
     The tree alone is not enough twice over: `merge-tree` needs COMMITS to
     find a merge base for the second merge, and `git worktree add` checks out
-    a commit."""
+    a commit. The PARENTS are not decoration either: a suite that asks git
+    anything about history — a three-dot diff, a changed-files-only runner —
+    reads an orphan when the union has none."""
+    if not tree:
+        fail("`git merge-tree --write-tree` returned success but named no "
+             "tree, so there is nothing to wrap and nothing was measured.")
     argv = [*IDENTITY, "commit-tree", tree, "-m", "tk-collisions union"]
     for parent in parents:
         argv += ["-p", parent]
@@ -129,7 +145,7 @@ def commit_of(repo, tree, *parents):
 
 
 def union_of(repo, base, pivot, other):
-    """The tree that exists after `pivot` lands on `base` and `other` follows.
+    """The commit that exists after `pivot` lands on `base` and `other` follows.
 
     NOT `merge-tree pivot other`: that merge starts from
     `merge-base(pivot, other)`, the base as it stood when the two branched.
@@ -139,25 +155,30 @@ def union_of(repo, base, pivot, other):
     first: `merge(merge(base, pivot), other)`.
 
     A conflict in EITHER step is the textual finding the pairwise path
-    already reports, and it leaves no tree for a suite to run in."""
+    already reports, and it leaves no tree for a suite to run in. Which two
+    refs could not be merged is part of the answer: a pivot that cannot even
+    land on the base is a finding about `base × pivot`, and naming the pair
+    the caller asked about instead would blame a branch that is innocent."""
     tree, paths, messages = measure(repo, base, pivot)
     if paths or messages:
-        return None, paths, messages
+        return {"commit": None, "pair": (base, pivot),
+                "paths": paths, "messages": messages}
     landed = commit_of(repo, tree, base, pivot)
     tree, paths, messages = measure(repo, landed, other)
     if paths or messages:
-        return None, paths, messages
-    return tree, [], []
+        return {"commit": None, "pair": (pivot, other),
+                "paths": paths, "messages": messages}
+    return {"commit": commit_of(repo, tree, landed, other),
+            "pair": (pivot, other), "paths": [], "messages": []}
 
 
-def run_suite(repo, tree, cmd):
+def run_suite(repo, commit, cmd):
     """`cmd`, run with the union as its working directory.
 
     NO TIMEOUT. A real gate runs one suite per open PR, minutes each, in the
     foreground; a wrapper that killed a slow one would report a union it
     never measured. A shell that cannot even start the command (126, 127) is
     a run that did not happen, never a red union."""
-    commit = commit_of(repo, tree)
     path = tempfile.mkdtemp(prefix="tk-collisions-union.")
     try:
         add = git(repo, "worktree", "add", "--detach", path, commit)
@@ -177,8 +198,14 @@ def run_suite(repo, tree, cmd):
         return {"returncode": run.returncode,
                 "tail": tail_of(run.stdout + run.stderr)}
     finally:
-        git(repo, "worktree", "remove", "--force", path)
+        remove = git(repo, "worktree", "remove", "--force", path)
         shutil.rmtree(path, ignore_errors=True)
+        if remove.returncode != 0:
+            warn(f"the temporary worktree {path} is still registered in "
+                 f"{repo}: `git worktree remove` exited {remove.returncode} "
+                 f"({(remove.stderr or remove.stdout).strip() or 'no output'}). "
+                 f"Its directory is gone, so `git -C {repo} worktree prune` "
+                 f"reclaims the entry.")
 
 
 def unions(args):
@@ -194,11 +221,14 @@ def unions(args):
 
     pairs = []
     for other in others:
-        tree, paths, messages = union_of(repo, args.base, pivot, other)
-        pair = {"a": pivot, "b": other, "conflicts": bool(paths or messages),
-                "paths": paths, "messages": messages, "suite": None}
-        if tree is not None:
-            pair["suite"] = run_suite(repo, tree, args.suite)
+        union = union_of(repo, args.base, pivot, other)
+        a, b = union["pair"]
+        pair = {"a": a, "b": b,
+                "conflicts": bool(union["paths"] or union["messages"]),
+                "paths": union["paths"], "messages": union["messages"],
+                "suite": None}
+        if union["commit"] is not None:
+            pair["suite"] = run_suite(repo, union["commit"], args.suite)
         pairs.append(pair)
 
     hit = [p for p in pairs
