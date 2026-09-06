@@ -590,6 +590,13 @@ MUTATIONS = [
      ["TestEnvironmentCopies.test_environment_copies_are_marked_against_no_target",
       "TestTargets.test_the_targets_the_bin_carries_are_the_ones_the_house_rule_names"]),
 
+    ("T293 the sentence is attributed by its first line alone, not by its span",
+     "        m = TOOL_SPAN.search(text)\n"
+     "        tool = (m.group(1), m.group(2)) if m else named.get(number)",
+     "        tool = named.get(number)",
+     ["TestEnvironmentCopies."
+      "test_a_sentence_is_attributed_by_a_span_of_its_own_after_its_first_line"]),
+
     # -- the boundary the subprocess sits behind (cold review of the lane) --
     ("T293 the help is decoded strictly, so a byte of it traces the bin back",
      '                                 text=True, errors="replace",',

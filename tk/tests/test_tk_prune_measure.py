@@ -1043,6 +1043,23 @@ class TestEnvironmentCopies(MeasureTest):
     def test_a_sentence_that_only_names_the_tool_is_not_a_copy(self):
         self.assertEqual(self.copies(self.RELEASE), [])
 
+    # the same sentence as STEP_ONE's description, with the invocation moved
+    # into its middle: the span now opens on the sentence's SECOND line
+    WRAPPED_MID = ("- The orchestrator writes the briefing with\n"
+                   "  `tk-queue handoff <id>`, which refuses a briefing whose\n"
+                   "  mandatory fields are empty and is what makes it deleted\n"
+                   "  when the item closes.\n")
+
+    def test_a_sentence_is_attributed_by_a_span_of_its_own_after_its_first_line(self):
+        """The brief attributes a sentence to the tool named IN THE SENTENCE or
+        earlier in the same block. The line map answered only the second half,
+        so the same sentence marked with its invocation first and not with the
+        invocation wrapped onto the line below — a difference the author's line
+        breaks make and the sentence's meaning does not."""
+        found = self.copies(self.WRAPPED_MID)
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["tool"].split()[-1], "handoff")
+
     def test_a_later_block_does_not_inherit_the_tool_of_an_earlier_one(self):
         """Two steps of one list, no blank line between them, and the second
         names no tool at all: without the block boundary it would answer for

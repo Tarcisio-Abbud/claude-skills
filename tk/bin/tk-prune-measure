@@ -842,7 +842,15 @@ def scan_environment(sents, body):
     prefetch(named.values(), tools, cache)
     resolved, prose, found = {}, {}, []
     for number, text in sents:
-        tool = named.get(number)
+        # THE SENTENCE IS ASKED BEFORE THE BLOCK. The brief attributes a
+        # sentence to the tool named `in the sentence OR earlier in the same
+        # block`, and `named` answers only the second half: it is keyed by line,
+        # and a sentence is filed under the line it OPENS on. A span sitting on
+        # the sentence's second physical line reached neither — the same
+        # sentence marked 1 with the invocation first and 0 with it wrapped —
+        # and a paragraph is wrapped by its author, not by its meaning.
+        m = TOOL_SPAN.search(text)
+        tool = (m.group(1), m.group(2)) if m else named.get(number)
         if tool is None:
             continue
         if tool not in resolved:
