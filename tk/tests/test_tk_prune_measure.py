@@ -58,6 +58,7 @@ LABELS = {
     "negations": "negations",
     "defined_terms": "defined terms",
     "terms_defined_in_sibling": "terms defined in a sibling too",
+    "environment_copies": "environment copies",
 }
 
 
@@ -833,6 +834,170 @@ class TestNegations(MeasureTest):
         context = report["negations"][0]["context"]
         self.assertLessEqual(len(context), 102)
         self.assertIn("never", context)
+
+
+class TestEnvironmentCopies(MeasureTest):
+    """Prose that caches the `--help` of a tool it names (T293).
+
+    The environment is the source of truth and a sentence repeating it grows a
+    second copy to keep in sync. It is the class with the highest recurrence the
+    pruning track measured: six of the twelve clauses one pass cut off `verify`
+    were this, and whole sections of `kickoff`.
+
+    THE FIXTURE OWNS ITS HELP. `TK_PRUNE_BIN` points the resolution at a stub
+    written here, so these numbers do not move when the real tool grows a flag —
+    and so the proof by mutation exists at all: editing the stub's help must
+    unmark the sentence that copies it.
+
+    The blocks are the pre-pruning `verify/SKILL.md`'s own steps, wrapped the
+    way that file wraps them.
+    """
+
+    STUB = '#!/usr/bin/env python3\n"""A stand-in for the queue gate, so the fixture measures a help it owns."""\nimport sys\n\nHANDOFF = (\n    "usage: tk-queue handoff [-h] --objective OBJECTIVE --state STATE id\\n\\n"\n    "write the item briefing\\n\\n"\n    "options:\\n"\n    "  --objective OBJECTIVE  where this front is going\\n"\n    "  --state STATE          what is done and decided\\n\\n"\n    "An empty mandatory field is refused, and the file is deleted when the item closes.\\n")\n\nHELP = {\n    (): "usage: tk-queue [-h] {done,handoff,release,edit} ...\\n\\n"\n        "tk-queue - the gate over a project queue.\\n",\n    ("handoff",): HANDOFF,\n    ("done",): "usage: tk-queue done [-h] [--dir DIR] --how HOW [--note NOTE] "\n               "[--force] id\\n\\nconclude the item\\n",\n    ("release",): "usage: tk-queue release [-h] id\\n\\nhand the item back\\n",\n    ("edit",): "usage: tk-queue edit [-h] [--force] id\\n\\nchange an open item\\n",\n}\n\nif __name__ == "__main__":\n    argv = tuple(a for a in sys.argv[1:] if a != "--help")\n    sys.stdout.write(HELP.get(argv, HELP[()]))\n'
+    CLAUSE = 'An empty mandatory field is refused, and the file is deleted when the item closes.'
+
+    # invocation whole on the opening line, description wrapped under it
+    STEP_ONE = ("- Write the briefing with the script — `tk-queue handoff <id> "
+                '--objective "..." --state "..."`.\n'
+                "  It writes the file beside the queue files, refuses a briefing\n"
+                "  whose mandatory fields are empty, and is what makes it deleted\n"
+                "  when the item closes.\n")
+    # the same step with its invocation BROKEN across the line, as the real file
+    # wraps it: the code span opens on one line and closes on the next
+    WRAPPED = ("- Write the briefing with the script — `tk-queue handoff <id>\n"
+               '  --objective "..."`. It writes the file beside the queue files,\n'
+               "  refuses a briefing whose mandatory fields are empty, and is\n"
+               "  what makes it deleted when the item closes.\n")
+    DONE = ('- `tk-queue done <id> --how "..." --force` — `--how` is required, and\n'
+            "  `--force` raises the ceiling without removing it, so that form\n"
+            "  keeps the output to a single line.\n")
+    NAMED_ONLY = ('- `tk-queue done <id> --how "..."` — the pointer to the delivery goes\n'
+                  "  in `--how`, and the outcome goes in front of it.\n")
+    NO_TOOL = ("- It writes the file beside the queue files, refuses a briefing\n"
+               "  whose mandatory fields are empty, and is what makes it deleted\n"
+               "  when the item closes.\n")
+    RELEASE = ("- `tk-queue release <id>` when the item was claimed, so the dead\n"
+               "  package ownership does not outlive it.\n")
+    FORCE = ("- `tk-queue edit <id> --class DECISION` — the `--force` flag is required\n"
+             "  where the link would cross the size ceiling of an open row.\n")
+
+    INVOCATION_LINE = 8              # the line a block opens on
+
+    def setUp(self):
+        super().setUp()
+        self.bin = os.path.join(self.tmp, "bin")
+        os.makedirs(self.bin, exist_ok=True)
+        self.stub(self.STUB)
+        previous = os.environ.get("TK_PRUNE_BIN")
+        os.environ["TK_PRUNE_BIN"] = self.bin
+        self.addCleanup(self.restore_bin, previous)
+
+    def restore_bin(self, previous):
+        if previous is None:
+            os.environ.pop("TK_PRUNE_BIN", None)
+        else:
+            os.environ["TK_PRUNE_BIN"] = previous
+
+    def stub(self, text):
+        path = os.path.join(self.bin, "tk-" + "queue")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.chmod(path, 0o755)
+
+    def copies(self, *blocks):
+        return self.report(self.write(QUIET + "\n" + "\n".join(blocks))
+                           )["environment_copies"]
+
+    def test_a_sentence_restating_the_help_of_the_tool_it_names_is_a_copy(self):
+        found = self.copies(self.STEP_ONE)
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["tool"].split()[-1], "handoff")
+        self.assertGreaterEqual(len(found[0]["shared"]), 4)
+
+    def test_the_sentence_that_only_invokes_the_tool_is_not_a_copy(self):
+        """The step opens by TYPING the command, and what it types carries the
+        help's own words. Held out of the comparison, that sentence describes
+        four things and shares two; left in, every call site is a copy."""
+        found = self.copies(self.STEP_ONE)
+        self.assertEqual(len(found), 1, found)
+        self.assertGreater(found[0]["line"], self.INVOCATION_LINE)
+
+    def test_the_tool_is_read_off_a_code_span_broken_across_a_line(self):
+        """The real file wraps that invocation, so the span opens on one line
+        and closes on the next — a pattern needing both ends reads the two
+        halves as neither, and the block resolves to no tool at all."""
+        found = self.copies(self.WRAPPED)
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["tool"].split()[-1], "handoff")
+
+    def test_the_tool_is_inherited_by_the_lines_under_the_one_that_named_it(self):
+        found = self.copies(self.STEP_ONE)
+        self.assertGreater(found[0]["line"], self.INVOCATION_LINE)
+
+    def test_a_sentence_claiming_an_obligation_the_usage_marks_is_a_copy(self):
+        """The second reading: not four stems, one fact. `--how` sits outside
+        the brackets of the usage, and the sentence says it is required."""
+        found = self.copies(self.DONE)
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["fact"], "--how required")
+        self.assertLess(len(found[0]["shared"]), 4)
+
+    def test_naming_a_required_flag_without_claiming_it_is_not_a_copy(self):
+        """The fact is the CLAIM, not the flag: prose may route a reader to
+        `--how` without restating what the usage says about it."""
+        self.assertEqual(self.copies(self.NAMED_ONLY), [])
+
+    def test_a_flag_the_usage_marks_optional_carries_no_fact(self):
+        """The mirror class (#223): the help does NOT know what the prose
+        knows, and the metric must not bend to it. `--force` is bracketed."""
+        self.assertEqual(self.copies(self.FORCE), [])
+
+    def test_a_sentence_that_only_names_the_tool_is_not_a_copy(self):
+        self.assertEqual(self.copies(self.RELEASE), [])
+
+    def test_a_later_block_does_not_inherit_the_tool_of_an_earlier_one(self):
+        """Two steps of one list, no blank line between them, and the second
+        names no tool at all: without the block boundary it would answer for
+        the `handoff` of the first, and describe its help word for word."""
+        found = self.copies(self.STEP_ONE, self.NO_TOOL)
+        self.assertEqual([e["tool"].split()[-1] for e in found], ["handoff"])
+
+    def test_editing_the_help_unmarks_the_sentence_that_copied_it(self):
+        """The proof by mutation, run against the ENVIRONMENT rather than the
+        code: take the clause out of the stub's help and the sentence stops
+        sharing enough of it to be a copy. It is also what proves the fixture
+        reads the stub at all rather than the tool installed beside the bin."""
+        self.assertEqual(len(self.copies(self.STEP_ONE)), 1)
+        self.stub(self.STUB.replace(self.CLAUSE, "It conducts a front."))
+        self.assertEqual(self.copies(self.STEP_ONE), [])
+
+    def test_a_tool_the_kit_does_not_carry_is_not_resolved(self):
+        """The allowlist is the derived directory: a name the prose invents
+        resolves to nothing, and the file measures all the same."""
+        m = self.metrics_of(QUIET + "\n"
+                            + self.STEP_ONE.replace("tk-queue handoff", "tk-nowhere"))
+        self.assertEqual(m["environment_copies"], 0)
+
+    def test_environment_copies_are_marked_against_no_target(self):
+        """Listed, never marked: whether a copy should go is the pruning
+        table's question, and the mirror class is a different ticket."""
+        marked = {m["metric"] for m in
+                  self.report(self.write(QUIET + "\n" + self.STEP_ONE),
+                              "--targets")["targets"]}
+        self.assertNotIn("environment_copies", marked)
+
+    def test_the_text_report_lists_the_copies_with_their_tool(self):
+        out = self.run_on(self.write(QUIET + "\n" + self.DONE)).stdout
+        self.assertIn("environment copies (1)", out)
+        self.assertIn("--how required", out)
+
+    def test_the_criterion_of_the_item_read_over_the_four_steps(self):
+        """Criterion A as the brief rewrote it: the environment clauses mark,
+        the step that only names does not, and the `--force` one — the mirror
+        class — does not either."""
+        found = self.copies(self.STEP_ONE, self.DONE, self.RELEASE, self.FORCE)
+        self.assertEqual([e["tool"].split()[-1] for e in found],
+                         ["handoff", "done"])
 
 
 class TestTargets(MeasureTest):

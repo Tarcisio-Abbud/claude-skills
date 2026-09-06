@@ -526,6 +526,75 @@ MUTATIONS = [
      ["TestTheKitIsTheUniverse."
       "test_two_skill_files_of_the_same_name_are_told_apart_by_their_path"]),
 
+    # -- the environment a file copies (T293) -------------------------------
+    ("T293 a tool span must close on the same line, so a wrapped one names none",
+     'TOOL_SPAN = re.compile(r"`(tk-[a-z][a-z0-9-]*)(?:\\s+([a-z][a-z0-9-]*))?")',
+     'TOOL_SPAN = re.compile(r"`(tk-[a-z][a-z0-9-]*)(?:\\s+([a-z][a-z0-9-]*))?[^`]*`")',
+     ["TestEnvironmentCopies.test_the_tool_is_read_off_a_code_span_broken_across_a_line"]),
+
+    ("T293 the invocation counts as prose, so every call site copies its help",
+     'CODE_SPAN = re.compile(r"`[^`]*(?:`|$)")',
+     'CODE_SPAN = re.compile(r"(?!x)x")',
+     ["TestEnvironmentCopies.test_the_sentence_that_only_invokes_the_tool_is_not_a_copy"]),
+
+    ("T293 one shared stem is a copy, so naming a tool is restating it",
+     "ENV_FLOOR = 4", "ENV_FLOOR = 1",
+     ["TestEnvironmentCopies.test_a_sentence_that_only_names_the_tool_is_not_a_copy",
+      "TestEnvironmentCopies.test_a_flag_the_usage_marks_optional_carries_no_fact"]),
+
+    ("T293 the floor is out of reach, so no sentence ever copies anything",
+     "ENV_FLOOR = 4", "ENV_FLOOR = 99",
+     ["TestEnvironmentCopies.test_a_sentence_restating_the_help_of_the_tool_it_names_is_a_copy",
+      "TestEnvironmentCopies.test_the_criterion_of_the_item_read_over_the_four_steps"]),
+
+    ("T293 the stems are the only reading, so a claimed obligation is invisible",
+     "        if len(shared) >= ENV_FLOOR or fact:",
+     "        if len(shared) >= ENV_FLOOR:",
+     ["TestEnvironmentCopies.test_a_sentence_claiming_an_obligation_the_usage_marks_is_a_copy"]),
+
+    ("T293 a bracketed flag reads as required, so the mirror class is marked",
+     "        elif depth == 0:\n            out.add(token)",
+     "        else:\n            out.add(token)",
+     ["TestEnvironmentCopies.test_a_flag_the_usage_marks_optional_carries_no_fact"]),
+
+    ("T293 naming the flag is the fact, with no claim made about it",
+     "        if OBLIGATION.search(text):", "        if True:",
+     ["TestEnvironmentCopies.test_naming_a_required_flag_without_claiming_it_is_not_a_copy"]),
+
+    ("T293 a tool reaches only the line that names it, and nothing under it",
+     "        out[line.number] = current", "        out[line.number] = current if m else None",
+     ["TestEnvironmentCopies."
+      "test_the_tool_is_inherited_by_the_lines_under_the_one_that_named_it",
+      "TestEnvironmentCopies."
+      "test_a_sentence_restating_the_help_of_the_tool_it_names_is_a_copy"]),
+
+    ("T293 the block never ends, so the third step answers for the first",
+     '        if line.role == "blank" or line.role in HARD_BREAK_ROLES:\n'
+     "            current = None",
+     "        if False:\n            current = None",
+     ["TestEnvironmentCopies.test_a_later_block_does_not_inherit_the_tool_of_an_earlier_one"]),
+
+    ("T293 the bin directory is fixed, so the fixture measures the real tool",
+     '    return os.environ.get("TK_PRUNE_BIN") or os.path.dirname(os.path.abspath(__file__))',
+     "    return os.path.dirname(os.path.abspath(__file__))",
+     ["TestEnvironmentCopies.test_editing_the_help_unmarks_the_sentence_that_copied_it"]),
+
+    ("T293 a tool that did not resolve is read as one that did",
+     "        if resolved[tool] is None:\n            continue",
+     "        if False:\n            continue",
+     ["TestEnvironmentCopies.test_a_tool_the_kit_does_not_carry_is_not_resolved"]),
+
+    ("T293 the copies are marked against a ceiling the count cannot support",
+     '    "terms_defined_in_sibling": 0,\n}',
+     '    "terms_defined_in_sibling": 0,\n    "environment_copies": 0,\n}',
+     ["TestEnvironmentCopies.test_environment_copies_are_marked_against_no_target",
+      "TestTargets.test_the_targets_the_bin_carries_are_the_ones_the_house_rule_names"]),
+
+    ("T293 the text report drops the section the JSON carries",
+     '    lines += section("environment copies", report["environment_copies"],',
+     '    lines += section("environment copies", [],',
+     ["TestEnvironmentCopies.test_the_text_report_lists_the_copies_with_their_tool"]),
+
     # -- targets ------------------------------------------------------------
     ("T185 a metric sitting exactly on its ceiling is marked over",
      '                              ("ok" if value <= TARGETS[key] else "over")})',
