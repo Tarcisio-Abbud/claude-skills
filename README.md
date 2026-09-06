@@ -205,9 +205,11 @@ tk/
                                   from memory, and carrying no copy of either
   bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
                                   where their projects are, minus the site file's lists
-  bin/tk-hygiene                  audits delete_branch_on_merge across the roster's repos
-                                  and prunes local branches whose remote is gone and which
-                                  carry no commit of their own. Exit 0 green, 1 a box still
+  bin/tk-hygiene                  audits delete_branch_on_merge across every repo it
+                                  reaches — the roster's, plus the clone it is installed
+                                  in — and prunes local branches whose remote is gone and
+                                  whose content the default branch already has, by
+                                  ancestry or after a squash. Exit 0 green, 1 a box still
                                   off, 2 a repo it could not reach
   bin/tk-collisions               merges each pair of open branches for real, so a pair
                                   that cannot both land is named before either does. No

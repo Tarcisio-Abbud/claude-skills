@@ -23,9 +23,9 @@ briefing whose `--state` names a package in flight has paid for steps 1–3 alre
 
 ## 1. Gather the agenda
 
-**Open on a clean tree.** Run `../../bin/tk-hygiene` first — it audits every roster repo for
-`delete_branch_on_merge` and prunes local branches whose remote is gone and which carry no
-commit of their own; safe to run twice, and it asks nothing. Report it in one or two lines. Exit 1 (a repo reads
+**Open on a clean tree.** Run `../../bin/tk-hygiene` first — it audits every repo it reaches
+for `delete_branch_on_merge` and prunes local branches whose remote is gone and whose content
+the default already has; safe to run twice, and it asks nothing. Report it in one or two lines. Exit 1 (a repo reads
 `delete_branch_on_merge=false`): queue an item, never a question. Exit 3: name the repo it
 could not audit and carry on. Exit 2: the run did not happen — the audit is unread, not clean.
 

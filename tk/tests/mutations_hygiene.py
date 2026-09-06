@@ -78,6 +78,40 @@ MUTATIONS = [
      ["TestPrune.test_a_branch_checked_out_in_another_worktree_survives_the_refusal"],
      HYGIENE),
 
+    # --- the content test, for what a squash or a rebase rewrote -----------
+    ("T281 hygiene a branch that fails the ancestry test is never asked about its content",
+     "        held = unmerged_content(repo, name, default)",
+     '        held = "commits of its own"',
+     ["TestPrunedByContent."
+      "test_a_squash_merged_branch_is_pruned_though_no_commit_of_it_is_an_ancestor"],
+     HYGIENE),
+
+    ("T281 hygiene the merge is compared with the BRANCH's tree instead of the default's",
+     'f"{default}^{{tree}}"', 'f"{name}^{{tree}}"',
+     ["TestPrunedByContent."
+      "test_a_squash_merged_branch_is_pruned_though_no_commit_of_it_is_an_ancestor"],
+     HYGIENE),
+
+    ("T281 hygiene a merge that CONFLICTED is read as an answer about content",
+     '    if code != 0:\n        return f"does not merge into {default}: "',
+     '    if False:\n        return f"does not merge into {default}: "',
+     ["TestPrunedByContent.test_a_branch_that_does_not_merge_into_the_default_is_kept"],
+     HYGIENE),
+
+    ("T281 hygiene content the default does not have no longer holds a branch back",
+     "    if out.splitlines()[0] != tree:", "    if False:",
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned",
+      "TestTheRepositoryThisBinLivesIn.test_the_branches_of_that_clone_are_pruned_like_any_other"],
+     HYGIENE),
+
+    # --- the second source of repositories ---------------------------------
+    ("T210 hygiene the roster is the only source, so a clone with no queue is unreachable",
+     "    repos = repos_of([path for _, path in swept] + [own_tree()])",
+     "    repos = repos_of([path for _, path in swept])",
+     ["TestTheRepositoryThisBinLivesIn.test_a_clone_with_no_queue_is_audited_when_the_bin_lives_in_it",
+      "TestTheRepositoryThisBinLivesIn.test_the_branches_of_that_clone_are_pruned_like_any_other"],
+     HYGIENE),
+
     # --- what the report is allowed to say ---------------------------------
     ("T128 hygiene the default branch is reported as residue like any other",
      '    if default is not None and default.rsplit("/", 1)[-1] == name:',

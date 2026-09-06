@@ -21,6 +21,13 @@ repos the roster reaches is the private tracker's own clone. So the tests below
 assert the slug where it is legitimately visible (the argv the fake `gh` records)
 and assert the PATH where the report is concerned.
 
+THE BIN IS RUN FROM A COPY, never from the checkout it lives in. `tk-hygiene`
+reaches the repository it is INSTALLED in — that is the second source of repos,
+the one that finds a clone with no queue — so running the checkout's own copy
+would audit this repository and PRUNE ITS BRANCHES while the suite runs. The copy
+goes under the test's temporary tree, which is not a repository, so that source is
+empty for every test but the one that stages a repository around a copy of its own.
+
 The path encoding is written out LITERALLY in `encode`, for the reason the roster
 suite gives beside its own copy: a test computing the expected name with the
 function under test would agree with any mutation of it.
@@ -35,7 +42,7 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-HYGIENE = os.path.join(HERE, os.pardir, "bin", "tk-hygiene")
+BIN_DIR = os.path.normpath(os.path.join(HERE, os.pardir, "bin"))
 
 HEADER = """---
 name: next-steps
@@ -89,6 +96,17 @@ class HygieneTest(unittest.TestCase):
         with open(gh, "w", encoding="utf-8") as f:
             f.write(FAKE_GH)
         os.chmod(gh, 0o755)
+        self.hygiene = self.install(os.path.join(self.tmp, "tk", "bin"))
+
+    def install(self, where):
+        """Copy `tk/bin` to `where` and answer the path of the copied bin.
+
+        The whole directory, because `tk-hygiene` loads `tk-roster` and
+        `tk_site.py` from beside itself — a copy of the one file would import the
+        checkout's siblings and resolve its own repository back to this one.
+        """
+        shutil.copytree(BIN_DIR, where, ignore=shutil.ignore_patterns("__pycache__"))
+        return os.path.join(where, "tk-hygiene")
 
     # --- fixtures ----------------------------------------------------------
     def forge(self, slug, value):
@@ -124,7 +142,7 @@ class HygieneTest(unittest.TestCase):
         return self.git(repo, "rev-parse", "HEAD").stdout.strip()
 
     def repo(self, name, origin="https://github.com/example-owner/example-repo.git",
-             default="main"):
+             default="main", queue=True):
         """A git repository under the tmp tree, with a queue so the roster finds it.
 
         `origin` is a URL, never a live remote: nothing here fetches, and the
@@ -142,7 +160,8 @@ class HygieneTest(unittest.TestCase):
             self.git(path, "symbolic-ref", "refs/remotes/origin/HEAD",
                      f"refs/remotes/origin/{default}")
             self.track(path, default, default)
-        self.queue(path)
+        if queue:
+            self.queue(path)
         return path
 
     def track(self, repo, branch, upstream_name):
@@ -180,14 +199,71 @@ class HygieneTest(unittest.TestCase):
 
         self.git(repo, "branch", "local-only", head)
 
+    def squashed(self, repo, name="squashed-gone"):
+        """A branch whose COMMITS are outside the default and whose CONTENT is in it.
+
+        The shape a squash merge leaves behind: the branch's two commits were
+        replayed on the default as one, so no commit of the branch is an ancestor
+        of it, and the default then moved on — which is why comparing the two TIPS
+        would answer that the branch still differs.
+        """
+        head = self.git(repo, "rev-parse", "HEAD").stdout.strip()
+        self.git(repo, "checkout", "-q", "-b", name, head)
+        self.commit(repo, "half of the work")
+        self.commit(repo, "the other half")
+        self.git(repo, "checkout", "-q", "main")
+        self.git(repo, "merge", "-q", "--squash", name)
+        self.git(repo, "commit", "-m", f"squash of {name}")
+        self.commit(repo, "the default moves on")
+        self.track(repo, name, name)
+        self.advance_origin(repo)
+        return name
+
+    def conflicting(self, repo, name="conflicting-gone"):
+        """A branch that cannot be merged into the default at all.
+
+        Both sides added the same path with different content, which is the one
+        answer the content test must read as `keep`: a merge that does not happen
+        says nothing about where the branch's work is.
+        """
+        head = self.git(repo, "rev-parse", "HEAD").stdout.strip()
+        self.git(repo, "checkout", "-q", "-b", name, head)
+        self.write(repo, "contested", "theirs")
+        self.git(repo, "checkout", "-q", "main")
+        self.write(repo, "contested", "ours")
+        self.track(repo, name, name)
+        self.advance_origin(repo)
+        return name
+
+    def write(self, repo, path, text):
+        """One file, committed on whatever branch is checked out."""
+        with open(os.path.join(repo, path), "w", encoding="utf-8") as f:
+            f.write(text + "\n")
+        self.git(repo, "add", "-A")
+        self.git(repo, "commit", "-m", f"{path}: {text}")
+
+    def advance_origin(self, repo, default="main"):
+        """Move `origin/<default>` up to the local one.
+
+        The prune measures against the REMOTE's default branch, and these fixtures
+        commit locally: left where `repo()` pinned it, the remote default would be
+        the root commit and every branch would carry content it does not have.
+        """
+        head = self.git(repo, "rev-parse", default).stdout.strip()
+        self.git(repo, "update-ref", f"refs/remotes/origin/{default}", head)
+
     # --- driving the bin ---------------------------------------------------
-    def run_hygiene(self, *argv):
+    def run_hygiene(self, *argv, hygiene=None):
+        # GIT_CEILING_DIRECTORIES is the second lock on "the suite never reaches
+        # the checkout": even were the temporary tree carved out of a repository
+        # one day, git may not walk up out of it looking for one
         env = dict(os.environ,
                    HOME=self.home,
                    PATH=self.bin + os.pathsep + os.environ["PATH"],
+                   GIT_CEILING_DIRECTORIES=self.tmp,
                    FAKE_GH_TABLE=self.table)
         env.pop("USERPROFILE", None)
-        return subprocess.run([sys.executable, HYGIENE, *argv], env=env,
+        return subprocess.run([sys.executable, hygiene or self.hygiene, *argv], env=env,
                               capture_output=True, text=True, timeout=120)
 
     def branch_names(self, repo):
@@ -422,6 +498,76 @@ class TestPrune(HygieneTest):
         self.assertTrue(any(l.startswith("kept") and "held" in l
                             for l in self.branch_lines(r.stdout, repo)),
                         self.branch_lines(r.stdout, repo))
+
+
+# --- the content test: a squash merge leaves no ancestor behind ------------
+
+class TestPrunedByContent(HygieneTest):
+    """A branch whose commits are its own but whose CONTENT the default already
+    carries. Ancestry answers `keep` on every one of them, and 4 of the 15
+    branches left over in one clone on 2026-08-29 were exactly this."""
+
+    def test_a_squash_merged_branch_is_pruned_though_no_commit_of_it_is_an_ancestor(self):
+        repo = self.repo("squash", origin="https://github.com/example-owner/squash.git")
+        self.forge("example-owner/squash", "true")
+        name = self.squashed(repo)
+        # the premise: ancestry says keep, and so would comparing the two tips
+        self.assertNotEqual(
+            self.git(repo, "rev-list", "--count", f"origin/main..{name}").stdout.strip(),
+            "0")
+        self.assertNotEqual(
+            self.git(repo, "diff", "--quiet", "origin/main", name, check=False).returncode,
+            0)
+
+        r = self.run_hygiene()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn(name, self.branch_names(repo))
+        self.assertTrue(any(l.startswith("pruned") and name in l
+                            for l in self.branch_lines(r.stdout, repo)),
+                        self.branch_lines(r.stdout, repo))
+
+    def test_a_branch_that_does_not_merge_into_the_default_is_kept(self):
+        repo = self.repo("conflict", origin="https://github.com/example-owner/conflict.git")
+        self.forge("example-owner/conflict", "true")
+        name = self.conflicting(repo)
+
+        r = self.run_hygiene()
+        self.assertIn(name, self.branch_names(repo))
+        self.assertTrue(any(l.startswith("kept") and name in l and "does not merge" in l
+                            for l in self.branch_lines(r.stdout, repo)),
+                        self.branch_lines(r.stdout, repo))
+
+
+# --- the second source: a repository the roster cannot reach ---------------
+
+class TestTheRepositoryThisBinLivesIn(HygieneTest):
+    """The roster sweeps for QUEUES, and the plugin's own clone has none — so it
+    was the one repository the audit never reached, and the only one whose box
+    stayed off. The second source is the bin's own installation directory."""
+
+    def test_a_clone_with_no_queue_is_audited_when_the_bin_lives_in_it(self):
+        repo = self.repo("plugin-clone", queue=False,
+                         origin="https://github.com/example-owner/plugin.git")
+        self.forge("example-owner/plugin", "true")
+        installed = self.install(os.path.join(repo, "tk", "bin"))
+
+        r = self.run_hygiene(hygiene=installed)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lines = self.forge_lines(r.stdout)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn(repo, lines[0])
+        self.assertIn("delete_branch_on_merge=true", lines[0])
+
+    def test_the_branches_of_that_clone_are_pruned_like_any_other(self):
+        repo = self.repo("plugin-clone", queue=False,
+                         origin="https://github.com/example-owner/plugin.git")
+        self.forge("example-owner/plugin", "true")
+        self.three_branches(repo)
+        installed = self.install(os.path.join(repo, "tk", "bin"))
+
+        r = self.run_hygiene(hygiene=installed)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.branch_names(repo), ["local-only", "main", "unmerged-gone"])
 
 
 # --- idempotence ------------------------------------------------------------

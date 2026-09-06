@@ -12,13 +12,18 @@ session opens on a clean tree instead of ending on a tired questionnaire:
      first two.
   2. PRUNE the local side. The forge deleting the remote branch leaves the local
      one behind with its upstream marked `[gone]`. That branch is deleted here
-     ONLY when it carries no commit outside the default branch — see `prunable`.
+     ONLY when the default branch already has everything it carries — either by
+     ancestry, or by CONTENT when a squash or a rebase rewrote its commits; see
+     `prunable` and `unmerged_content`.
 
-WHICH REPOS. The list comes from `tk-roster` beside this script, imported rather
-than parsed: the roster already answers "which projects exist on this machine",
-and a second answer to that question is a second thing to keep in step. No repo
-name is written down here — this repo is PUBLIC, and the machine's repos are
-whatever is on its disk.
+WHICH REPOS. Two sources, and no repo name written down in either — this repo is
+PUBLIC, and the machine's repos are whatever is on its disk. The first is
+`tk-roster` beside this script, imported rather than parsed: the roster already
+answers "which projects exist on this machine", and a second answer to that
+question is a second thing to keep in step. The second is the directory THIS BIN
+is installed in, see `own_tree`: the roster sweeps for queues, the plugin's own
+clone has none, and that clone was therefore the one repository the audit never
+reached — and the only one whose box was off.
 
 WHAT IS NEVER PRUNED, and why each guard exists:
 
@@ -30,6 +35,14 @@ WHAT IS NEVER PRUNED, and why each guard exists:
   - a branch whose upstream is alive — the ordinary case, and silent here;
   - a branch checked out in any worktree — git refuses, and the refusal is
     reported rather than forced.
+
+ANCESTRY IS NOT THE WHOLE QUESTION. A squash merge replays the branch as one new
+commit and a rebase replays it as several, and after either, no commit of the
+branch is an ancestor of the default while every line it wrote is already there.
+Measured on 2026-08-29 in one clone: of 15 leftover branches, 11 were ancestors
+and 4 were squash-merged, and the ancestry rule alone would have kept those 4
+forever. So a branch that fails the ancestry test is asked the CONTENT question
+before it is kept — see `unmerged_content`.
 
 The prunable check compares against the DEFAULT branch, not against HEAD, which
 is why the delete is `-D` rather than `-d`: `git branch -d` measures merged-ness
@@ -164,6 +177,25 @@ def repos_of(paths):
     return found
 
 
+def own_tree():
+    """This bin's own directory — the SECOND source of repositories to audit.
+
+    The roster answers "which project has a QUEUE", and the plugin's own clone
+    has none: no session's auto-memory is keyed to it. So it was the one clone
+    the audit never reached, which is how it stayed the only repository on the
+    machine with `delete_branch_on_merge` off — proved on 2026-08-27, when a
+    merge left its branch alive on the remote and someone deleted it by hand.
+
+    Derived from `__file__`, never written down. A list of repository names here
+    would be both a leak out of a public repo and a second list to keep in step,
+    which is the objection the module docstring raises against any such list.
+
+    LIMIT, taken deliberately: the site file's lists name PROJECTS, and a clone
+    with no queue is not one, so `fleet-deny` cannot hold this source back.
+    """
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 def slug_of(repo):
     """`owner/repo` for the `origin` remote, or None when there is no GitHub one."""
     code, url, _ = git(repo, "config", "--get", "remote.origin.url")
@@ -250,7 +282,40 @@ def prunable(repo, name, upstream, track, default):
     if code != 0:
         return f"cannot be counted against {default}: {err}"
     if count != "0":
-        return f"{count} commit(s) outside {default}"
+        held = unmerged_content(repo, name, default)
+        if held is not None:
+            return f"{count} commit(s) outside {default}: {held}"
+    return None
+
+
+def unmerged_content(repo, name, default):
+    """None when merging `name` into `default` would change nothing there,
+    otherwise the reason the branch stays.
+
+    Asked only of a branch that FAILED the ancestry test, and it is the strongest
+    reading of "already merged": merge the branch into the default in memory, and
+    compare the result with the default's own tree. Equal means the default
+    already carries every line the branch wrote, however its commits were
+    rewritten on the way in.
+
+    Comparing the two TIPS instead — an empty `git diff default branch` — answers
+    the same only while the default has not moved on since the merge, which it
+    always has. That comparison finds the residue of a rebase on a quiet repo and
+    misses every squash on a busy one.
+
+    A merge that CONFLICTS is a branch kept: a merge that did not happen says
+    nothing about where the branch's work is. Same for a git that cannot answer
+    at all — the silent direction of every guard here is to keep.
+    """
+    code, out, err = git(repo, "merge-tree", "--write-tree", default, name)
+    if code != 0:
+        return f"does not merge into {default}: " + first_line(err or out, code,
+                                                               "git merge-tree")
+    code, tree, _ = git(repo, "rev-parse", f"{default}^{{tree}}")
+    if code != 0 or not out:
+        return f"the merge into {default} could not be read"
+    if out.splitlines()[0] != tree:
+        return f"content {default} does not have"
     return None
 
 
@@ -360,7 +425,9 @@ def main(argv=None):
         print(f"tk-hygiene: no site file at {tk_site.site_path()}, so no allow/denylist "
               "— every repository on this machine's roster is audited.", file=sys.stderr)
     _, swept, _, _, _ = tk_roster.sweep(site)
-    repos = repos_of(path for _, path in swept)
+    # the roster first, so the report reads in its order, and this bin's own
+    # clone after it — de-duplicated by `repos_of` when it is one of them anyway
+    repos = repos_of([path for _, path in swept] + [own_tree()])
 
     answers = audit([(repo, slug_of(repo)) for repo in repos])
     report_forge(answers)
