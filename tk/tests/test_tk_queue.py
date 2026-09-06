@@ -153,7 +153,10 @@ class TestPrefixedId(QueueTest):
     def test_done_accepts_the_displayed_form(self):
         for form in ("T006", "t006", "006", "6", "T6"):
             with self.subTest(form=form):
-                self.seed(item(6, "item seis"))
+                # the LOG is reseeded too: five closes of one ID against one log
+                # is five replays of the first, and since T301 slice 5 a replay
+                # is recognised and writes no second entry
+                self.seed(item(6, "item seis"), log="")
                 r = self.run_tk("done", form, "--how", "PR #1")
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertIn("T006 → done-log as FEITO", r.stdout)
@@ -5131,6 +5134,22 @@ class TestMigrateFold(QueueTest):
                 "GUESS which text is a field value — " + ", ".join(labels)
                 + ". Close each with `cancel` and re-add it clean.\n")
 
+    def block_left_alone(self, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: a continuation line "
+                "OPENS a Markdown block, and the wrapped fold has no chain to lift over "
+                "it — joining would flatten a list the author wrote, so it declines "
+                "instead of choosing which lines survive — "
+                + ", ".join(labels)
+                + ". Close each with `cancel` and re-add it clean.\n")
+
+    def prose_marker_left_alone(self, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: a **Field:** marker "
+                "sits outside the chain the join would produce, so the fold would "
+                "promote the item's own prose to a field — quote that marker in a code "
+                "span (`**Class:**`) and the fold reads the rest as the chain it is — "
+                + ", ".join(labels)
+                + ". Close each with `cancel` and re-add it clean.\n")
+
     def migrate(self):
         r = self.run_tk("migrate")
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -5239,18 +5258,64 @@ class TestMigrateFold(QueueTest):
 
     # --- what the fold REFUSES to guess, and says it refused -------------
 
-    def test_a_marker_whose_value_sits_on_the_NEXT_line_is_left_and_REPORTED(self):
-        """The shape the repairs text names as unfoldable. Joined blindly the
-        **Class:** takes whatever follows as its value, and what follows may be a
-        note — a class nobody wrote. Silence here is the worst outcome available:
-        the caller reads a fold report, sees no mention of this item, and believes
-        the queue is repaired."""
-        seeded = ("- [ ] **T002** — marcador e valor em linhas diferentes **Class:**\n"
+    def test_a_marker_whose_value_sits_on_the_NEXT_line_is_folded_NOW(self):
+        """T159. This shape was refused, and the refusal's fear was precise: joined
+        blindly the **Class:** takes whatever follows as its value, and what follows
+        may be a note — a class nobody wrote. The second fold path undoes the wrap
+        and then CHECKS that fear, on the joined line: the class has to be one a
+        gate reads. Here it is AUTONOMOUS, so the item is repaired instead of sent
+        to `cancel` + re-add, which is the whole of T162. The note case is the test
+        below, and it is still left alone."""
+        self.seed("- [ ] **T002** — marcador e valor em linhas diferentes **Class:**\n"
                   "  AUTONOMOUS. **Effort:** S. **Source:** 2026-08-13\n")
+        r = self.migrate()
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T002** — marcador e valor em linhas diferentes "
+                         "**Class:** AUTONOMOUS. **Effort:** S. **Born:** 2026-08-13. "
+                         "**Source:** 2026-08-13\n")
+        self.assertIn("1 item(s) with fields off the first line: folded up, where every "
+                      "gate reads them — T002\n", r.stdout)
+        # DESIGN-L13 §3's idempotence proof, on the WRAPPED path: the chain now
+        # ends the first line, so the second run has nothing to lift and has to
+        # say so. The suite's other second-run test seeds the walk's shape and
+        # never reached this one
+        after = self.body()
+        again = self.migrate()
+        self.assertEqual(self.body(), after)
+        self.assertNotIn("with fields off the first line", again.stdout)
+
+    def test_a_chain_that_opens_MID_LINE_is_folded_too(self):
+        """The commonest of the fifteen: the chain shares its line with the prose
+        the item wrapped out of, so there is no field RUN to relocate and the walk
+        declined. The prose before it stays prose, in order, and the chain ends the
+        line where every gate reads it."""
+        self.seed("- [ ] **T006** — rodar a amostra de calibração numa praça fora do\n"
+                  "  Triângulo antes de usar a régua hiperlocal lá. **Class:** BLOCKED.\n")
+        r = self.migrate()
+        self.assertEqual(self.body(),
+                         HEADER + "- [ ] **T006** — rodar a amostra de calibração numa "
+                         "praça fora do Triângulo antes de usar a régua hiperlocal lá. "
+                         "**Class:** BLOCKED.\n")
+        self.assertIn("folded up, where every gate reads them — T006\n", r.stdout)
+
+    def test_a_line_that_opens_a_block_stops_the_wrapped_fold(self):
+        """The second path has no chain to lift OVER a list, so it declines rather
+        than choose which lines to flatten. Measured on the queues the first path
+        already serves: eight of the eleven items it folded carry prose in between,
+        and a bullet list joined into one line is not recoverable.
+
+        Reported under its OWN reason. This gate did not decline because it could
+        not tell a field value from a note — that is the other two gates — and a
+        reader who is told it did goes looking for a value to repair in an item
+        whose only trouble is the list."""
+        seeded = ("- [ ] **T009** — o item tem uma lista\n"
+                  "  - primeiro ponto\n"
+                  "  segue a frase e a cadeia. **Class:** BLOCKED.\n")
         self.seed(seeded)
         r = self.migrate()
         self.assertEqual(self.body(), HEADER + seeded)
-        self.assertIn(self.left_alone("T002"), r.stdout)
+        self.assertIn(self.block_left_alone("T009"), r.stdout)
+        self.assertNotIn("GUESS which text is a field value", r.stdout)
 
     def test_a_NOTE_line_after_the_field_line_is_left_and_REPORTED(self):
         """Folded, the note lands inside the last field's value — FIELD_SEGMENT_RE's
@@ -5273,7 +5338,7 @@ class TestMigrateFold(QueueTest):
         self.seed(seeded)
         r = self.migrate()
         self.assertEqual(self.body(), HEADER + seeded)
-        self.assertIn(self.left_alone("T004"), r.stdout)
+        self.assertIn(self.prose_marker_left_alone("T004"), r.stdout)
 
     def test_a_marker_that_forms_no_chain_at_all_is_left_and_REPORTED(self):
         """A continuation line carrying a marker whose run does not reach the end of
@@ -8420,6 +8485,176 @@ class TestAMarkerInACodeSpanIsNotAField(QueueTest):
                          ["Class", "Effort", "Risk", "Criterion", "Project", "Source"])
         self.assertIn("`**Risk:** alto`", self.tk.parse_item(self.QUOTED).title)
         self.assertEqual(self.tk.render_item(self.tk.parse_item(self.QUOTED)), self.QUOTED)
+
+
+
+
+# --- T135/T134: a class VALUE a human wrote in Portuguese --------------------
+#
+# The field NAME in Portuguese was never the exclusion — `**Classe:**` and
+# `**Esforço:**` are read as the fields they are, and the item statement of T135
+# is stale about that. What excludes is the VALUE: every gate compares it with
+# CLASSES, so `**Classe:** EXTERNA.` leaves the item invisible to `pack` and to
+# every afk package on every machine. Measured 2026-09-06 over the twelve real
+# queues: 26 items in five of them, spelled AUTÔNOMA, BLOQUEADA, DECISÃO and
+# EXTERNA — plus three (`USER`, `ASSISTANT`, `n`) that no mapping carries and
+# `migrate` therefore NAMES instead of guessing at.
+
+class TestAClassValueInPortuguese(QueueTest):
+    """`migrate` translates what the map carries, names the rest, and the
+    `pack` repair line is derived from that same map."""
+
+    LEGACY = ("- [ ] **T001** — item legado com classe em português "
+              "**Classe:** EXTERNA (João/contrato). **Esforço:** P. "
+              "**Critério:** A: x. **Fonte:** 2026-07-31\n")
+
+    def test_a_mapped_value_is_written_as_the_enum_and_the_item_leaves_pack(self):
+        """The whole file, because this command rewrites the user's only copy —
+        and the qualifier `(João/contrato)` is the item's substance, not
+        decoration, so a translation that replaced the segment would delete it."""
+        self.seed(self.LEGACY)
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.body(),
+                         HEADER + self.LEGACY.replace("EXTERNA (", "EXTERNAL (")
+                         .replace("**Fonte:** 2026-07-31",
+                                  "**Born:** 2026-07-31. **Fonte:** 2026-07-31"))
+        self.assertIn("1 item(s) with a class value in Portuguese: written as the enum "
+                      "every gate reads — T001 (EXTERNA → EXTERNAL)\n", r.stdout)
+        p = self.run_tk("pack")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("which is none of", p.stdout)
+        # DESIGN-L13 §3's idempotence proof, on THIS path: an enum is not a
+        # spelling the map carries, so a second run has to leave the bytes alone
+        # AND say nothing — a report naming work on a file it did not touch is
+        # what the caller acts on. The suite's other second-run test seeds the
+        # walk's shape, so it never reached the translation
+        after = self.body()
+        again = self.run_tk("migrate")
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(self.body(), after)
+        self.assertNotIn("with a class value in Portuguese", again.stdout)
+
+    def test_a_value_no_mapping_carries_is_left_and_NAMED(self):
+        """The other half, and the one that makes this a migration rather than a
+        rewrite: `USER` is not Portuguese for any of the five, so nothing here
+        chooses one for it. The item keeps the value it had and the report says
+        which item and why."""
+        seeded = self.LEGACY.replace("EXTERNA (João/contrato)", "USER")
+        self.seed(seeded)
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Classe:** USER.", self.body())
+        self.assertIn("1 item(s) left with a class value no gate reads: no "
+                      "Portuguese-to-enum mapping carries this spelling, and inventing "
+                      "one would be inventing a class — T001. Give each one of "
+                      "AUTONOMOUS, DECISION, BLOCKED, EXTERNAL, RECURRING with "
+                      "`tk-queue edit <id> --class <CLASS>`.\n", r.stdout)
+
+    def test_the_pack_repair_offers_exactly_what_migrate_translates(self):
+        """T134: the printed remedy fails by promising a repair the command does
+        not make. Derived from CLASS_ALIASES, so the line can only say what
+        `migrate` does — asserted against the map itself, never against a copy of
+        the sentence."""
+        tk = load_tk()
+        self.seed(self.LEGACY.replace("EXTERNA (João/contrato)", "USER"))
+        p = self.run_tk("pack")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        line = next(ln for ln in p.stdout.splitlines()
+                    if ln.startswith("- a class value that is no class:"))
+        self.assertIn("`tk-queue migrate` writes the spellings it maps", line)
+        for pt, enum in tk.CLASS_ALIASES.items():
+            self.assertIn(pt, line)
+            self.assertIn(enum, line)
+        self.assertIn("NAMES the rest", line)
+
+
+# --- T170/T216: the close whose LOG half landed and whose QUEUE half did not --
+#
+# `close_item` writes the done-log and then the queue, through two separate
+# `write_atomic` calls with nothing spanning them; `cmd_migrate` does the same.
+# `reference/queue.md` accepts that window on purpose — "log written first, so a
+# crash between the two writes can duplicate a line but never lose the item" —
+# and the correction belongs on the REPLAY side, which is what this class pins.
+#
+# Measured on the script before this slice: with an entry for T001 already in
+# the log and T001 still open, a second `done` wrote a SECOND line and printed
+# "done-log as FEITO"; a second `migrate` re-inserted every moved block right
+# under the migration header, duplicating the lines AND putting the newer copies
+# above the older ones, so the log's order stopped being its history.
+
+class TestAnInterruptedCloseIsFinishedNotRepeated(QueueTest):
+    """The queue half is finished, the log half is never written twice."""
+
+    def today(self):
+        return datetime.date.today().isoformat()
+
+    def test_done_and_cancel_finish_the_queue_write_without_a_second_line(self):
+        """T170. Both commands close through `close_item`, so neither can keep a
+        silence the other lost — and the WHOLE done-log is the assertion, because
+        an `assertNotIn` on the second line would pass just as happily on a log
+        this command had rewritten some other way."""
+        log = "- 2026-08-01 — FEITO — T001 um — PR #1\n"
+        for cmd, extra in (("done", ("--how", "PR #2")), ("cancel", ("--why", "n/a"))):
+            with self.subTest(cmd=cmd):
+                self.seed(item(1, "um"), log=log)
+                r = self.run_tk(cmd, "1", *extra)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("tk-queue: warning: T001 already has a done-log entry",
+                              r.stderr)
+                self.assertEqual(self.body("done-log.md"), log)
+                # the queue as any other close leaves it: excise collapses the
+                # blank line the removed item had held open
+                self.assertEqual(self.body(), HEADER.rstrip("\n") + "\n")
+                self.assertEqual(r.stdout, "T001 → out of the queue; its done-log "
+                                           "entry was already written\n")
+
+    def test_a_legacy_open_box_parked_in_the_log_is_not_an_interrupted_close(self):
+        """The constraint the detection is built on. `done_log_ids` also sees a
+        `- [ ] **T005**` parked in done-log.md — a deliberate tolerance, so an ID
+        left there is never handed out twice. Asking THAT question here invents
+        an interrupted close for an item whose entry was never written, and the
+        close then leaves the queue with no record of the item anywhere."""
+        self.seed(item(5, "cinco"), log="- [ ] **T005** — caixa aberta parada no log\n")
+        r = self.run_tk("done", "5", "--how", "PR #1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("already has a done-log entry", r.stderr)
+        self.assertEqual(r.stdout, f"T005 → done-log as FEITO ({self.today()})\n")
+        self.assertIn(f"- {self.today()} — FEITO — T005 cinco — PR #1",
+                      self.body("done-log.md"))
+
+    def test_a_migrate_replayed_after_a_crash_writes_no_second_copy(self):
+        """T216, the crash reconstructed. `migrate` saves the log and then the
+        queue, so a kill between the two leaves every moved block in BOTH files —
+        and restoring next-steps to what it was IS that state, byte for byte.
+        Both whole files are asserted: the duplication showed up as much in the
+        log's ORDER as in its length."""
+        seeded = ("- [x] legado feito, movido verbatim\n\n"
+                  "- [x] **T004** — outro legado, com ID\n\n" + item(1, "um"))
+        self.seed(seeded)
+        first = self.run_tk("migrate")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        after_queue, after_log = self.body(), self.body("done-log.md")
+        self.write("next-steps.md", HEADER + seeded)   # the crash: log yes, queue no
+        second = self.run_tk("migrate")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn("tk-queue: warning: 2 [x] item(s) are already in", second.stderr)
+        self.assertEqual(self.body("done-log.md"), after_log)
+        self.assertEqual(self.body(), after_queue)
+        self.assertIn("0 [x] item(s) → done-log", second.stdout)
+
+    def test_a_block_the_log_only_PREFIXES_is_still_moved(self):
+        """Line-anchored equality, never any substring. A legacy `- [x] feito`
+        whose text merely OPENS a longer line already in the log would otherwise
+        be read as already moved: it would leave the queue and its record would
+        never be written — losing the item, which is the one outcome the window
+        in `queue.md` is accepted for never causing."""
+        self.seed("- [x] feito\n\n" + item(1, "um"),
+                  log="- [x] feito junto com o outro tracker\n")
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("1 [x] item(s) → done-log", r.stdout)
+        self.assertIn("- [x] feito\n", self.body("done-log.md"))
 
 
 class TestMutationHarness(unittest.TestCase):
