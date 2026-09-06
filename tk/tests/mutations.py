@@ -1693,10 +1693,17 @@ MUTATIONS = [
     ("BOM read() lets one at the head through to the `^`-anchored grammars again",
      ['        return data.decode("utf-8-sig")',
       '    f"{BOM}*" + r"-[ \\t" + INVISIBLE_BLANKS + r"]\\[( |x)\\][ \\t" '
-      '+ INVISIBLE_BLANKS + r"]"'],
+      '+ INVISIBLE_BLANKS + r"]"',
+      # the THIRD part, and it earned its place the way the second did: the door
+      # now repairs the done-log entry head too, so that file's byte-0 BOM was
+      # protected twice and the two-part mutant SURVIVED on the log test alone
+      '    f"{BOM}*" + r"-[ \\t" + INVISIBLE_BLANKS '
+      '+ r"][0-9]{4}-[0-9]{2}-[0-9]{2}[ \\t"'],
      ['        return data.decode("utf-8")',
       '    r"-[ \\t" + INVISIBLE_BLANKS + r"]\\[( |x)\\][ \\t" '
-      '+ INVISIBLE_BLANKS + r"]"'],
+      '+ INVISIBLE_BLANKS + r"]"',
+      '    r"-[ \\t" + INVISIBLE_BLANKS '
+      '+ r"][0-9]{4}-[0-9]{2}-[0-9]{2}[ \\t"'],
      ["TestByteOrderMark.test_the_first_item_is_neither_hidden_nor_blamed_on_a_concurrent_writer",
       "TestByteOrderMark.test_the_hidden_items_id_is_never_handed_out_twice",
       "TestByteOrderMark.test_a_bom_in_the_done_log_keeps_its_first_entry_allocated"]),
