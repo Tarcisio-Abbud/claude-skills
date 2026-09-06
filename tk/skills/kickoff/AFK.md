@@ -111,7 +111,7 @@ a clean false negative), and read the exit code, not only the output — an unre
 lane; the report names it, deletion as the repair. An item printed `[repo: ?]`, or with no address
 you can supply, leaves the package saying so. Then call `pack` again with every hit —
 `tk-queue pack --dir "<queue dir>" --spec-under-way "<repo>#<n>"`, repeatable — and cut from the
-SECOND call's list: the lane passes to the next spec at the floor of two tickets.
+SECOND call's list: the lane passes to the deepest spec at the floor of two tickets.
 
 **Cut** from the top of that list until the package fits one session — around 3–6 items or ~2h of
 summed Effort, an opening bid step 6's measurement corrects; what multiplies a lane is the number

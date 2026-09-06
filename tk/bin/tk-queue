@@ -2163,6 +2163,11 @@ in the chain that ends the first line — never by searching the block:
              means unknown danger
   claimed    not held by a sibling session
   id         an item `migrate` never gave an ID to cannot be closed by ID
+  ticket     not a ticket `--blocked` names. The CALLER's fact about the tracker,
+             like `--spec-under-way` below and read at the same rung of the
+             ladder: this command opens no network connection, so a ticket
+             blocked on the forge is invisible to it. The item leaves the package
+             AND its spec's count with it
   lane       not a ticket of a SECOND spec, nor of one `--spec-under-way`
              names — see below
 
@@ -2182,11 +2187,15 @@ number without leading zeros — decided when the value is written and re-decide
 when it is read, so two spellings can never count as two specs.
 
 ONE spec per package, so there is one branch, one campaign and one tail. The lane
-goes to the FIRST spec in QUEUE ORDER that reaches the FLOOR of two tickets among
-the candidates — a spec with a single ticket in the package costs a draft PR and a
-three-step tail for one item, so that ticket is dispatched `avulso` instead. Asked
-of the candidates only: an item excluded for its class or its Risk is not in the
-package and cannot take its lane with it.
+goes to the spec with the MOST tickets among the candidates, ties broken by QUEUE
+ORDER. The accumulated branch is what pays for itself — one branch, one campaign,
+one tail, over as many tickets as possible — and queue order alone spent it on the
+spec that happened to be listed first, leaving the deeper one for a later package.
+The spec must still reach the FLOOR of two tickets: one ticket costs a draft PR
+and a three-step tail for a single item, so that ticket is dispatched `avulso`
+instead. Asked of the candidates only: an item excluded for its class, its Risk or
+`--blocked` is not in the package, cannot take its lane with it, and is not
+counted for one either.
 
 A ticket leaves the package for its lane in TWO cases, and the second half of the
 reason is what tells them apart — one read the queue, the other read the remote:
@@ -2204,6 +2213,13 @@ reason is what tells them apart — one read the queue, the other read the remot
                         which is a second pull request over that same branch's work
 
 Either way those tickets are the next package's, not lost.
+
+`--blocked` is repeatable and is the other half of that second call, asked of
+TICKETS instead of specs: `<repo>#<n>`, the value of an item's **Ticket:** field.
+The item leaves the package and its spec's count with it, so a spec whose second
+ticket is blocked drops under the floor instead of holding a lane on a ticket
+nobody can start — which is exactly what the count could not see while it counted
+ITEMS and the block lived on the forge.
 
 `--spec-under-way` is repeatable, and it is the one input this command cannot
 derive: it reads the queue and opens no network connection. So the caller runs
@@ -2288,7 +2304,8 @@ def pack_classless_reason(block):
     return "the field chain breaks before **Class:**, so no gate reads it", REPAIR_CANCEL
 
 
-def pack_exclusion(iid, block, identity, open_ids=frozenset()):
+def pack_exclusion(iid, block, identity, open_ids=frozenset(),
+                   blocked=frozenset()):
     """(why this item stays OUT of the package, the repair) — or None when it is a
     candidate.
 
@@ -2402,6 +2419,19 @@ def pack_exclusion(iid, block, identity, open_ids=frozenset()):
     # every other command names an item, and a package cannot close one without it
     if iid is None:
         return "no ID", REPAIR_MIGRATE
+
+    # AFTER the ID, and last of all, because this rung is not the QUEUE's: it is
+    # the caller's answer about the forge, the same source and so the same place
+    # in the ladder as `--spec-under-way`. Everything above it the item's own
+    # text answers, and a reason the file explains outranks one it cannot.
+    #
+    # Read through `pack_ref`, the reader the lane and the `closes` line already
+    # share, so a **Ticket:** the position rule may not use matches no reference
+    # and costs the item nothing — the safe default both provenance fields take,
+    # and the one `pack_closes` takes for the same value one line later.
+    ref = pack_ref(block, "Ticket") if blocked else None
+    if ref is not None and ref in blocked:
+        return TICKET_BLOCKED % ref, None
     return None
 
 
@@ -2463,6 +2493,15 @@ LANE_TAKEN = "lane de spec ocupada por %s; esta é %s"
 # supplied this one, and a reason that did not say so would read as a fact the
 # queue holds.
 LANE_UNDER_WAY = "lane de spec ocupada por %s; declarada em curso por --spec-under-way"
+# The ticket the CALLER found blocked on the tracker. Same source as
+# `--spec-under-way` above — a question this command cannot ask, opening no
+# network connection — and so the same shape of reason: the value, and the flag
+# that supplied it, because a reason that did not name the flag would read as a
+# fact the queue holds. ENGLISH, unlike the two lane reasons beside it, because
+# it is read next to `blocked by T006, still open` in the same excluded block:
+# one names an item this queue holds, the other a ticket on a forge, and two
+# spellings of "blocked" in two languages is the collision to avoid.
+TICKET_BLOCKED = "ticket %s is blocked on the forge; declared by --blocked"
 # how many tickets of one spec earn the accumulated lane. Below it the ticket is
 # dispatched as an ordinary PR: a draft PR, a merge per item and a three-step
 # tail cost more than a single item is worth. A FLOOR, never a filter — the lone
@@ -2694,9 +2733,10 @@ def pack_lanes(candidates, under_way=frozenset()):
     for _, ref in specs:
         if ref is not None:
             tickets[ref] = tickets.get(ref, 0) + 1
-    taken = next((ref for _, ref in specs
+    contenders = [ref for _, ref in specs
                   if ref is not None and ref not in under_way
-                  and tickets[ref] >= SPEC_LANE_FLOOR), None)
+                  and tickets[ref] >= SPEC_LANE_FLOOR]
+    taken = max(contenders, key=lambda ref: tickets[ref], default=None)
     lanes, pushed = {}, {}
     for n, ref in specs:
         if ref is not None and ref in under_way:
@@ -2720,6 +2760,10 @@ def cmd_pack(args):
     # exists to end, wearing a typo instead of a missing call.
     under_way = frozenset(validate_ref("spec-under-way", v)
                           for v in (args.spec_under_way or []))
+    # the same gate, for the same reason: a malformed ticket reference matches no
+    # item, so the ticket the caller called a second time to take OUT would be
+    # dispatched — the blindness back, wearing a typo
+    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))
     memdir = memory_dir(args.dir)
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
@@ -2749,7 +2793,7 @@ def cmd_pack(args):
         # asks `iid is None`, and truthiness here packaged T000 under the `----` of
         # an item with no ID at all
         label = item_label(text)
-        verdict = pack_exclusion(iid, text, identity, open_ids)
+        verdict = pack_exclusion(iid, text, identity, open_ids, blocked)
         # ROW POSITION, never the label, is what addresses an item here. A label is
         # not unique: `----` is every ID-less item's, and a duplicate ID is a shape
         # `list` warns about rather than refuses. Keying the lane by it was measured
@@ -4831,6 +4875,12 @@ def main():
                          "lane is elected, and its tickets leave the package on the lane "
                          "rung whatever their count. This command opens no network "
                          "connection, so this flag is the only way it can know (see LANE)")
+    pk.add_argument("--blocked", action="append", metavar="<repo>#<n>",
+                    help="a TICKET the caller has found blocked on the tracker, "
+                         "`<repo>#<n>` — REPEATABLE. The item carrying it leaves the "
+                         "package, and its spec's ticket COUNT with it, so a spec held "
+                         "up by one blocked ticket stops winning the accumulated lane "
+                         "on that ticket's strength (see LANE)")
 
     mg = sub.add_parser("migrate", parents=[common],
                         help="move legacy [x] items to the done-log, assign IDs to open "

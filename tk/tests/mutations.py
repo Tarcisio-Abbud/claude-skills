@@ -2378,14 +2378,14 @@ MUTATIONS = [
       "TestPack.test_an_eligible_item_carries_its_id_effort_and_text",
       "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
-    ("T172 the lane's spec is the LAST ticket's instead of the first's",
-     "    taken = next((ref for _, ref in specs\n"
-     "                  if ref is not None and ref not in under_way\n"
-     "                  and tickets[ref] >= SPEC_LANE_FLOOR), None)",
-     "    taken = next((ref for _, ref in reversed(specs)\n"
-     "                  if ref is not None and ref not in under_way\n"
-     "                  and tickets[ref] >= SPEC_LANE_FLOOR), None)",
-     ["TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order"]),
+    # RE-ANCHORED by T271, which moved this rule: `next()` over the queue's
+    # order became `max()` over the ticket count, so the direction this entry
+    # switches is no longer "the first ticket" but the TIE-BREAK — the half of
+    # the old rule that survived the rewrite
+    ("T271 a tie goes to the LAST spec in queue order instead of the first",
+     "    taken = max(contenders, key=lambda ref: tickets[ref], default=None)",
+     "    taken = max(reversed(contenders), key=lambda ref: tickets[ref], default=None)",
+     ["TestPackLane.test_a_TIE_on_ticket_count_is_broken_by_QUEUE_ORDER"]),
 
     ("T172 the floor goes, so a lone spec becomes a SECOND lane and is excluded",
      "        elif ref is not None and tickets[ref] >= SPEC_LANE_FLOOR:",
@@ -2407,16 +2407,22 @@ MUTATIONS = [
      "            pushed[n] = LANE_TAKEN % (taken, ref)",
      "            lanes[n] = LANE_SPEC % ref",
      ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason",
-      "TestPackLane.test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order",
+      "TestPackLane.test_a_TIE_on_ticket_count_is_broken_by_QUEUE_ORDER",
       "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
 
-    ("T172 the lane goes to the first spec seen, floor or no floor",
-     '    taken = next((ref for _, ref in specs\n'
-     '                  if ref is not None and ref not in under_way\n'
-     '                  and tickets[ref] >= SPEC_LANE_FLOOR), None)',
-     "    taken = next((ref for _, ref in specs\n"
-     "                  if ref is not None and ref not in under_way), None)",
-     ["TestPackLane.test_a_spec_under_the_floor_does_not_take_the_lane_it_cannot_use"]),
+    # The test this named before T271 stopped falling for it, and the entry was
+    # VACUOUS for one run: with the lane going to the deepest spec, dropping the
+    # floor here still elects the two-ticket spec over the lone one, so the case
+    # that put a lone FIRST spec against a fuller second one no longer separates
+    # the two readings. The queue that does is the one where NO spec reaches the
+    # floor — there `max()` hands the lane to a spec that may not hold one.
+    ("T172 the lane goes to any spec that has a ticket, floor or no floor",
+     "    contenders = [ref for _, ref in specs\n"
+     "                  if ref is not None and ref not in under_way\n"
+     "                  and tickets[ref] >= SPEC_LANE_FLOOR]",
+     "    contenders = [ref for _, ref in specs\n"
+     "                  if ref is not None and ref not in under_way]",
+     ["TestPackLane.test_no_spec_reaching_the_floor_leaves_every_ticket_avulso"]),
 
     ("T172 the lane is decided over EVERY item, not the candidates only",
      "    lanes, pushed = pack_lanes(candidates, under_way)",
@@ -2429,12 +2435,12 @@ MUTATIONS = [
     # T172 wrote; what is new is the SOURCE of the fact — the caller's remote
     # check, which this command cannot make for itself.
     ("T249 the election ignores the specs the caller reported under way",
-     '    taken = next((ref for _, ref in specs\n'
-     '                  if ref is not None and ref not in under_way\n'
-     '                  and tickets[ref] >= SPEC_LANE_FLOOR), None)',
-     "    taken = next((ref for _, ref in specs\n"
+     "    contenders = [ref for _, ref in specs\n"
+     "                  if ref is not None and ref not in under_way\n"
+     "                  and tickets[ref] >= SPEC_LANE_FLOOR]",
+     "    contenders = [ref for _, ref in specs\n"
      "                  if ref is not None\n"
-     "                  and tickets[ref] >= SPEC_LANE_FLOOR), None)",
+     "                  and tickets[ref] >= SPEC_LANE_FLOOR]",
      ["TestPackLaneUnderWay.test_the_named_spec_loses_the_lane_and_the_next_one_takes_it"]),
 
     ("T249 a spec under way keeps its tickets in the package",
@@ -2479,6 +2485,75 @@ MUTATIONS = [
      '    under_way = frozenset(validate_ref("spec-under-way", v)\n'
      "                          for v in (args.spec_under_way or [])[-1:])",
      ["TestPackLaneUnderWay.test_every_spec_under_way_leaves_a_package_of_avulsos"]),
+
+
+    # --- T271: the deepest spec takes the lane, and the blocked ticket goes --
+    ("T271 the lane goes to the first spec in order again, however few tickets",
+     "    taken = max(contenders, key=lambda ref: tickets[ref], default=None)",
+     "    taken = contenders[0] if contenders else None",
+     ["TestPackLane.test_the_lane_goes_to_the_spec_with_the_MOST_tickets"]),
+
+    ("T271 the lane goes to the SHALLOWEST spec",
+     "    taken = max(contenders, key=lambda ref: tickets[ref], default=None)",
+     "    taken = min(contenders, key=lambda ref: tickets[ref], default=None)",
+     ["TestPackLane.test_the_lane_goes_to_the_spec_with_the_MOST_tickets"]),
+
+    ("T271 the ticket the caller reported blocked stays in the package",
+     '    ref = pack_ref(block, "Ticket") if blocked else None\n'
+     "    if ref is not None and ref in blocked:",
+     '    ref = pack_ref(block, "Ticket") if blocked else None\n'
+     "    if False:",
+     ["TestPackBlockedTicket.test_the_named_ticket_leaves_the_package_with_the_reason",
+      "TestPackBlockedTicket.test_the_blocked_ticket_leaves_its_specs_COUNT_too"]),
+
+    ("T271 the flag never reaches the ladder",
+     "        verdict = pack_exclusion(iid, text, identity, open_ids, blocked)",
+     "        verdict = pack_exclusion(iid, text, identity, open_ids)",
+     ["TestPackBlockedTicket.test_the_named_ticket_leaves_the_package_with_the_reason",
+      "TestPackBlockedTicket.test_the_blocked_ticket_leaves_its_specs_COUNT_too"]),
+
+    ("T271 the flag value is neither shape-checked nor canonicalised",
+     '    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))',
+     "    blocked = frozenset(v for v in (args.blocked or []))",
+     ["TestPackBlockedTicket.test_a_malformed_value_is_refused_the_way_spec_refuses_one",
+      "TestPackBlockedTicket.test_the_value_is_read_in_the_ONE_canonical_spelling"]),
+
+    ("T271 only the LAST --blocked counts, so the flag stops repeating",
+     '    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))',
+     '    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or [])[-1:])',
+     ["TestPackBlockedTicket.test_the_flag_repeats"]),
+
+    ("T271 the reason stops naming the source of the fact",
+     'TICKET_BLOCKED = "ticket %s is blocked on the forge; declared by --blocked"',
+     'TICKET_BLOCKED = "ticket %s is blocked"',
+     ["TestPackBlockedTicket.test_the_named_ticket_leaves_the_package_with_the_reason",
+      "TestPackBlockedTicket.test_the_blocked_ticket_leaves_its_specs_COUNT_too"]),
+
+    # the three over-trigger directions, each one a package emptied instead of
+    # a ticket taken out of it
+    ("T271 every item carrying a ticket leaves, named or not",
+     "    if ref is not None and ref in blocked:",
+     "    if ref is not None:",
+     ["TestPackBlockedTicket.test_the_named_ticket_leaves_the_package_with_the_reason"]),
+
+    ("T271 the rung reads the flag inverted, so every ticket NOT named leaves",
+     '    ref = pack_ref(block, "Ticket") if blocked else None\n'
+     "    if ref is not None and ref in blocked:",
+     '    ref = pack_ref(block, "Ticket")\n'
+     "    if ref is not None and ref not in blocked:",
+     ["TestPackBlockedTicket.test_the_run_with_no_flag_is_what_it_has_always_been"]),
+
+    ("T271 a **Ticket:** no reader may use costs the item its place",
+     "    if ref is not None and ref in blocked:",
+     "    if blocked and (ref in blocked or real_fields(block, \"Ticket\")):",
+     ["TestPackBlockedTicket."
+      "test_a_ticket_the_position_rule_cannot_read_is_not_excluded"]),
+
+    # the prose half: a skill's orchestrator reads the election rule from here
+    ("T271 the documented election goes back to queue order",
+     "goes to the spec with the MOST tickets among the candidates, ties broken by QUEUE",
+     "goes to the FIRST spec in QUEUE ORDER among the candidates, ties broken by QUEUE",
+     ["TestPackBlockedTicket.test_the_flag_is_documented_in_the_help_the_skill_reads"]),
 
     ("T172 a ticket the taken lane pushed out is listed as eligible TOO",
      "        if verdict is None and n not in pushed:",

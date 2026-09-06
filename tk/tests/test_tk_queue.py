@@ -3460,10 +3460,10 @@ class TestPackLane(PackOutput):
         for label in ("T002", "T004"):
             self.assertEqual(self.reason(out, label), "lane de spec ocupada por repo#171; esta é repo#180")
 
-    def test_the_spec_that_takes_the_lane_is_the_FIRST_ones_in_queue_order(self):
-        """Both specs reach the floor, so ORDER is the only thing that can decide.
-        Picking the spec with the most tickets — or the last one seen — would
-        re-prioritise the queue silently, from a heuristic nothing here has."""
+    def test_a_TIE_on_ticket_count_is_broken_by_QUEUE_ORDER(self):
+        """Two tickets each: the depth rule cannot separate them, so the file's
+        own order does — the one priority this queue has. Reading the tie the
+        other way, the LAST spec seen, would re-prioritise the queue silently."""
         self.seed(ticket_item(1, "um", spec="repo#171")
                   + ticket_item(2, "dois", spec="repo#171")
                   + ticket_item(3, "tres", spec="repo#180")
@@ -3472,6 +3472,24 @@ class TestPackLane(PackOutput):
         self.assertEqual(self.lanes(out), {"T001": "spec repo#171", "T002": "spec repo#171"})
         for label in ("T003", "T004"):
             self.assertEqual(self.reason(out, label), "lane de spec ocupada por repo#171; esta é repo#180")
+
+    def test_the_lane_goes_to_the_spec_with_the_MOST_tickets(self):
+        """The accumulated branch is what pays for itself — one branch, one
+        campaign, one tail, over as many tickets as it can hold — and queue order
+        alone spent it on whichever spec was listed first. Measured on the real
+        queue: two tickets of the spec at the top took the lane and three ready
+        tickets of the spec below it left the package, package after package."""
+        self.seed(ticket_item(1, "um", spec="repo#171")
+                  + ticket_item(2, "dois", spec="repo#171")
+                  + ticket_item(3, "tres", spec="repo#180")
+                  + ticket_item(4, "quatro", spec="repo#180")
+                  + ticket_item(5, "cinco", spec="repo#180"))
+        out = self.pack()
+        self.assertEqual(self.lanes(out), {"T003": "spec repo#180", "T004": "spec repo#180",
+                                           "T005": "spec repo#180"})
+        for label in ("T001", "T002"):
+            self.assertEqual(self.reason(out, label),
+                             "lane de spec ocupada por repo#180; esta é repo#171")
 
     def test_a_spec_under_the_floor_does_not_take_the_lane_it_cannot_use(self):
         """The interaction #171 left open, decided by its own US 27. The lone
@@ -3930,6 +3948,113 @@ repairs:
         r = self.run_tk("pack", "--help")
         self.assertIn("--spec-under-way", r.stdout)
         self.assertIn("declarada em curso", r.stdout)
+
+
+# --- T271: the ticket the caller found blocked on the tracker ---------------
+
+class TestPackBlockedTicket(PackOutput):
+    """The floor counts ITEMS, and it counted them blind to the forge. A spec
+    whose second ticket is blocked on the tracker won the accumulated lane on the
+    strength of a ticket nobody could start, and the package ran a whole branch,
+    campaign and tail for the one item that was actually ready.
+
+    `pack` opens no network connection, so the fact arrives the way
+    `--spec-under-way` arrives: the caller runs `pack`, asks the remote about the
+    tickets the report names, and runs it a second time carrying the answer."""
+
+    def packed(self, *flags):
+        r = self.run_tk("pack", *flags)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r.stdout
+
+    # --- the flag does its work -------------------------------------------
+    def test_the_named_ticket_leaves_the_package_with_the_reason(self):
+        """The reason names the VALUE and the FLAG, like the lane rung above it:
+        the caller supplied this fact, and a reason that did not say so would read
+        as something the queue holds and the reader could go and fix."""
+        self.seed(ticket_item(1, "um", ticket="repo#10")
+                  + ticket_item(2, "dois", ticket="repo#11"))
+        out = self.packed("--blocked", "repo#10")
+        self.assertEqual(self.eligible(out), ["T002"])
+        self.assertEqual(self.reason(out, "T001"),
+                         "ticket repo#10 is blocked on the forge; declared by --blocked")
+
+    def test_the_blocked_ticket_leaves_its_specs_COUNT_too(self):
+        """The half the exclusion alone does not buy, and the whole reason the
+        flag exists. #171 has two tickets and one of them is blocked, so it is a
+        spec with ONE candidate: under the floor, holding no lane, and #180 — two
+        tickets, both ready — takes the accumulated branch instead."""
+        self.seed(ticket_item(1, "um", spec="repo#171", ticket="repo#10")
+                  + ticket_item(2, "dois", spec="repo#171", ticket="repo#11")
+                  + ticket_item(3, "tres", spec="repo#180", ticket="repo#12")
+                  + ticket_item(4, "quatro", spec="repo#180", ticket="repo#13"))
+        # blind to the block, #171 wins the tie on queue order and #180 leaves
+        self.assertEqual(self.lanes(self.packed()),
+                         {"T001": "spec repo#171", "T002": "spec repo#171"})
+        out = self.packed("--blocked", "repo#10")
+        self.assertEqual(self.lanes(out), {"T002": "avulso (repo#171)",
+                                           "T003": "spec repo#180",
+                                           "T004": "spec repo#180"})
+        self.assertEqual(self.blocks(out)["excluded"],
+                         ["T001  um  — ticket repo#10 is blocked on the forge; "
+                          "declared by --blocked"])
+
+    def test_the_flag_repeats(self):
+        """One call carries every ticket the caller found blocked. Keeping only
+        the last would dispatch the others, and the second call exists precisely
+        because there is more than one answer to bring back."""
+        self.seed(ticket_item(1, "um", ticket="repo#10")
+                  + ticket_item(2, "dois", ticket="repo#11")
+                  + ticket_item(3, "tres", ticket="repo#12"))
+        out = self.packed("--blocked", "repo#10", "--blocked", "repo#11")
+        self.assertEqual(self.eligible(out), ["T003"])
+
+    # --- the value is gated exactly as `--spec-under-way` is ---------------
+    def test_a_malformed_value_is_refused_the_way_spec_refuses_one(self):
+        """A refusal, never a warning: a value matching nothing would dispatch the
+        very ticket the caller called a second time to take out."""
+        self.seed(ticket_item(1, "um", ticket="repo#10"))
+        for bad in ("nao-e-ref", "repo#", "#10", "repo#10 solto", ""):
+            with self.subTest(value=bad):
+                r = self.run_tk("pack", "--blocked", bad)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("is not a forge reference", r.stderr)
+                self.assertEqual(r.stdout, "")
+
+    def test_the_value_is_read_in_the_ONE_canonical_spelling(self):
+        """`Repo#0010` and `repo#10` are one reference. Comparing the flag raw
+        would answer "no such ticket" to a caller who copied it out of a tracker
+        that title-cases the repository."""
+        self.seed(ticket_item(1, "um", ticket="repo#10") + ticket_item(2, "dois"))
+        self.assertEqual(self.packed("--blocked", "Repo#0010"),
+                         self.packed("--blocked", "repo#10"))
+        self.assertEqual(self.eligible(self.packed("--blocked", "Repo#0010")), ["T002"])
+
+    # --- and where it may NOT bite ----------------------------------------
+    def test_a_ticket_the_position_rule_cannot_read_is_not_excluded(self):
+        """Ticket decides no lane, so an unreadable one may not cost the item its
+        place — the split the two provenance fields take, and the one
+        `pack_closes` takes for this same value when it prints `[?]`. It matches
+        no reference either way, so no flag can reach it."""
+        self.seed(ticket_item(1, "um", ticket="repo#10").replace(
+            "**Ticket:** repo#10.", "**Ticket:** repo#10. **Ticket:** repo#11.", 1))
+        out = self.packed("--blocked", "repo#10")
+        self.assertEqual(self.eligible(out), ["T001"])
+        self.assertIn("[?]", self.blocks(out)["eligible"][0])
+
+    def test_the_run_with_no_flag_is_what_it_has_always_been(self):
+        """A flag whose default path rewrites a column silently rewrites what
+        every skill parsing this output reads."""
+        self.seed(ticket_item(1, "um", ticket="repo#10")
+                  + ticket_item(2, "dois", ticket="repo#11"))
+        self.assertEqual(self.eligible(self.packed()), ["T001", "T002"])
+        self.assertEqual(self.blocks(self.packed())["excluded"], [])
+
+    def test_the_flag_is_documented_in_the_help_the_skill_reads(self):
+        r = self.run_tk("pack", "--help")
+        self.assertIn("--blocked", r.stdout)
+        self.assertIn("MOST tickets", r.stdout)
 
 
 # --- T198: the repository the item's code LANDS in -------------------------
