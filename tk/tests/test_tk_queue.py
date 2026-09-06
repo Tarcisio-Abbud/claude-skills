@@ -4985,8 +4985,10 @@ class TestIdSpelling(QueueTest):
         # assertIn("T0001") would also pass on a listing that showed T0001 twice.
         # The duplicate mark belongs to the ambiguity these two also are — one
         # number, two items — and is measured by TestAmbiguousId
+        # the ID column is as wide as the widest label here, so the class column
+        # starts at one position and not two — see TestTheColumnsHoldUnderAWideLabel
         self.assertEqual(r.stdout,
-                         "T001  AUTONOMOUS     ?  item curto  [duplicate ID 1]\n"
+                         "T001   AUTONOMOUS     ?  item curto  [duplicate ID 1]\n"
                          "T0001  AUTONOMOUS     ?  item de id largo  [duplicate ID 1]\n"
                          "\nduplicate IDs: only the FIRST item under each is reachable"
                          " — renumber the others by hand in next-steps.md.\n")
@@ -4997,8 +4999,10 @@ class TestIdSpelling(QueueTest):
         self.seed(item(1, "item curto"), self.wide())
         r = self.run_tk("pack")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("T001  S             avulso                item curto\n", r.stdout)
-        self.assertIn("T0001  S             avulso                item de id largo\n", r.stdout)
+        self.assertIn("T001   S             avulso                item curto"
+                      "  [duplicate ID 1]\n", r.stdout)
+        self.assertIn("T0001  S             avulso                item de id largo"
+                      "  [duplicate ID 1]\n", r.stdout)
 
     def test_a_wide_spelling_is_still_an_allocated_id(self):
         """The one-way rule, at its sharp end: with `T0001` ALONE in the file, a
@@ -5623,7 +5627,7 @@ class TestResolvedItemKeepsItsOwnSpelling(QueueTest):
         name the one it is about."""
         other = item(1, "item curto de verdade")
         self.seed(WIDE_OFF_LINE, other)
-        self.assertIn("T001  AUTONOMOUS     ?  item curto de verdade",
+        self.assertIn("T001   AUTONOMOUS     ?  item curto de verdade",
                       self.run_tk("list").stdout)
         r = self.run_tk("claim", "T0001", "--as", "teste")
         self.assertEqual(r.returncode, 1)
@@ -8655,6 +8659,357 @@ class TestAnInterruptedCloseIsFinishedNotRepeated(QueueTest):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("1 [x] item(s) → done-log", r.stdout)
         self.assertIn("- [x] feito\n", self.body("done-log.md"))
+
+
+# --- T173: the package and the listing show the SAME item -------------------
+#
+# `list` and `pack` are one pair of functions over one file, and five display
+# defects lived in the gap between them. Each was measured on this tree before
+# the slice that closes it, and each is a way a caller reads one thing off the
+# screen and dispatches another:
+#
+#   the mark      `list` marks both rows of a duplicated ID and says only the
+#                 first is reachable; `pack` printed the two rows plain, and
+#                 `pack` is the output an unattended package is actually cut from
+#   the title     it was cut at the first READABLE marker instead of at the field
+#                 chain, so an item quoting a field name in its own sentence was
+#                 columned mid-phrase — in BOTH readers, with nothing saying so
+#   the prose     with no marker to cut at, the whitespace collapse pulled the
+#                 item's continuation lines into the title
+#   the column    a label is the item's own spelling, so `T0001` and `T1000` are
+#                 five characters where `T001` is four, and the wide one pushed
+#                 the class column one place right
+#   the holder    the briefing report rebuilt the holder's label from the NUMBER,
+#                 so the item spelled `T0001` was reported as `T001`
+
+WIDE = "**T0001**"
+
+
+class TestThePackShowsWhatTheListShows(QueueTest):
+
+    def wide(self, text="item de id largo"):
+        return item(1, text).replace("**T001**", WIDE, 1)
+
+    def eligible_line(self, out, label):
+        for ln in out.splitlines():
+            if ln.startswith(label + " ") or ln == label:
+                return ln
+        self.fail(f"{label} is not in:\n{out}")
+
+    # --- the mark ---------------------------------------------------------
+
+    def test_the_package_marks_a_duplicated_id_the_way_the_listing_does(self):
+        """Both blocks of the package, because the mark is what tells the reader
+        that dispatching the second row would act on the first."""
+        self.seed(item(5, "primeira ocorrencia"), item(5, "segunda ocorrencia"))
+        out = self.run_tk("pack").stdout
+        self.assertEqual(
+            [ln for ln in out.splitlines() if ln.startswith("T005")],
+            ["T005  S             avulso                primeira ocorrencia"
+             "  [duplicate ID 5]",
+             "T005  S             avulso                segunda ocorrencia"
+             "  [duplicate ID 5]"])
+        # and the sentence that says what the mark MEANS, in the block this
+        # command puts its remedies in. Taken from the LISTING rather than
+        # respelled here: the two describing one ambiguity differently is the
+        # divergence this whole class is about, and a hardcoded copy would go on
+        # passing while they drifted
+        note = self.run_tk("list").stdout.split("\n\n")[-1].strip()
+        self.assertTrue(note.startswith("duplicate IDs:"), note)
+        self.assertIn("- " + note + "\n", out)
+
+    def test_an_EXCLUDED_row_carries_the_mark_ahead_of_its_reason(self):
+        """The exclusion reason ends the line by contract, so the mark cannot be
+        appended after it — a caller reading `— class is DECISION [duplicate ID 5]`
+        reads the mark as part of the reason."""
+        self.seed(item(5, "excluida", klass="DECISION"), item(5, "outra", klass="DECISION"))
+        out = self.run_tk("pack").stdout
+        self.assertIn("T005  excluida  [duplicate ID 5]  — class is DECISION\n", out)
+
+    def test_an_ID_carried_by_ONE_item_is_marked_in_neither_reader(self):
+        """The other direction. A mark on every row says nothing, and the reader
+        who learns to skip it skips the two rows it was written for."""
+        self.seed(item(5, "unico"), item(6, "outro"))
+        for cmd in ("list", "pack"):
+            with self.subTest(cmd=cmd):
+                out = self.run_tk(cmd).stdout
+                self.assertNotIn("duplicate ID", out)
+
+    # --- the title --------------------------------------------------------
+
+    def quoting(self, tail):
+        return ("- [ ] **T002** — o item cita **Project:** de outra fila e segue a frase"
+                + tail + " **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x. "
+                "**Source:** 2026-08-13\n")
+
+    def test_a_field_name_in_the_users_own_sentence_does_not_cut_the_title(self):
+        """Measured: both readers columned this item as `o item cita`, four words
+        into a sentence of eleven, and nothing anywhere said the rest existed.
+
+        Both subtests, because the period decides which BOUNDARY has to hold. With
+        it, the imitating segment joins the run and only the position rule — every
+        segment ahead of the **Class:** anchor is the item's own prose — puts the
+        sentence back. Without it the run breaks before the marker, and the title
+        is right as soon as it ends at the chain instead of at the first marker.
+        A fixture carrying only the second shape passes on the first reading too,
+        which is the vacuity this pair exists to avoid."""
+        for name, tail in (("com ponto", "."), ("sem ponto", "")):
+            with self.subTest(prosa=name):
+                self.seed(self.quoting(tail))
+                whole = ("o item cita **Project:** de outra fila e segue a frase"
+                         + tail)
+                self.assertEqual(
+                    self.run_tk("list").stdout.split("?  ")[1].rstrip("\n"), whole)
+                self.assertIn(whole, self.run_tk("pack").stdout)
+
+    def test_a_continuation_line_is_not_absorbed_into_the_title(self):
+        """A title is ONE line. With no marker anywhere to cut at, the collapse of
+        whitespace ran straight through the newline and columned the author's note
+        as the tail of their own sentence."""
+        self.seed("- [ ] **T004** — titulo sem campo nenhum.\n"
+                  "  uma nota de continuacao inteira.\n")
+        self.assertEqual(self.run_tk("list").stdout,
+                         "T004  ?              ?  titulo sem campo nenhum.\n")
+        self.assertIn("T004  titulo sem campo nenhum.  — no **Class:** field\n",
+                      self.run_tk("pack").stdout)
+
+    def test_the_prose_the_title_keeps_is_STILL_kept_out_of_the_done_log_remedy(self):
+        """The over-correction the title fix could buy, and the expensive one:
+        `edit --text` REPLACES an item's text, so the remedy `handoff` prints has
+        to carry the continuation lines the title now leaves out. Cut to the first
+        line, that remedy runs, reports success and deletes the author's note."""
+        self.seed("- [ ] **T004** — titulo do item.\n"
+                  "  uma nota de continuacao inteira.\n"
+                  "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n")
+        r = self.run_tk("handoff", "4", "--objective", "o", "--state", "s",
+                        "--blockers", "b")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("titulo do item. uma nota de continuacao inteira. "
+                      "[[handoff-T004]]", r.stderr)
+
+    # --- the column -------------------------------------------------------
+
+    def test_a_wide_label_does_not_push_the_column_beside_it(self):
+        """`T0001` is five characters and `T001` is four, and the ID column was
+        neither padded nor measured — so the class column of a queue carrying both
+        started in two places, on exactly the rows that need a second look."""
+        self.seed(item(1, "curto"), self.wide(), item(1000, "quatro digitos"))
+        rows = self.run_tk("list").stdout.splitlines()[:3]
+        self.assertEqual([ln.index("AUTONOMOUS") for ln in rows], [7, 7, 7])
+        pack = self.run_tk("pack").stdout.splitlines()
+        self.assertEqual([ln.index("S    ") for ln in pack[1:4]], [7, 7, 7])
+
+    def test_a_queue_of_canonical_labels_prints_exactly_what_it_printed_before(self):
+        """The over-correction direction. Widening is paid for by the listings
+        that have something to widen for: a queue whose labels are all
+        `T001`-shaped keeps the line every skill and every eye already reads, and
+        a column one character wider than it needs moves EVERY queue's output for
+        the sake of the few that carry a wide label."""
+        self.seed(item(1, "um"), item(2, "dois"))
+        self.assertEqual(self.run_tk("list").stdout,
+                         "T001  AUTONOMOUS     ?  um\n"
+                         "T002  AUTONOMOUS     ?  dois\n")
+
+    def test_the_package_prints_its_headings_over_an_empty_queue(self):
+        """The width is asked of the rows, and an empty queue has none — so the
+        default is what stands between this command and a traceback on the one
+        queue whose report is `nothing to do`."""
+        self.write("next-steps.md", HEADER)
+        r = self.run_tk("pack")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("eligible (0 of 0, in queue order):\n(none)\n", r.stdout)
+
+    # --- the holder -------------------------------------------------------
+
+    def test_a_kept_briefing_names_its_holder_by_the_items_own_spelling(self):
+        """`f"T{iid:03d}"` rebuilds a label from the NUMBER, and `int("0001")` is
+        1 — so the report sent the reader to look up a T001 that is either absent
+        or a DIFFERENT item. The report is the only place the surviving holder is
+        ever named."""
+        self.seed(self.wide("o item de grafia larga [[handoff-T001]]"),
+                  item(2, "outro que aponta [[handoff-T001]]"))
+        self.write("handoff-T001.md", "# Handoff T001\n\nobjetivo\n")
+        r = self.run_tk("done", "2", "--how", "PR #1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("handoff-T001.md kept — still reached by T0001\n", r.stdout)
+
+
+# --- T174: what the fold does to the user's own RENDERING --------------------
+#
+# Two limits of the fold were declared in the source and had no test, so nothing
+# said whether either was still true — and each is a silent change of how the
+# item RENDERS, made under a line reporting the item as folded. Both are measured
+# here on this branch before the slice that closes them:
+#
+#   the hard break   two spaces ending a line are CommonMark asking for a line
+#                    break. The join strips them and the item comes back one
+#                    paragraph, reported as folded. There is no preserving
+#                    answer — a join is the operation that destroys a line break
+#                    — so the fold declines and names the item.
+#   the underline    a setext underline promotes the WHOLE paragraph above it.
+#                    `opens_a_block` protects only the line directly above, so a
+#                    title hard-wrapped over two lines had its earlier lines
+#                    absorbed into the head and its last one left under the
+#                    underline: half a heading in each place.
+#
+# Every test here asserts the WHOLE file. This command rewrites the queue, which
+# holds the user's own prose and has no other copy, and both defects survive any
+# narrower assertion — the FIELDS end up right either way, which is all a
+# substring check ever looked at.
+
+T174_HEAD = ("- [ ] **T007** — primeira linha do titulo que passa bem da coluna de "
+             "dobra para que a geometria licencie a absorcao")
+T174_CHAIN = "  **Class:** AUTONOMOUS. **Effort:** S. **Criterion:** A: x.\n"
+
+
+class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
+
+    def migrate(self):
+        r = self.run_tk("migrate")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def left_alone(self, why, *labels):
+        return (f"{len(labels)} item(s) left exactly as they are: {why} — "
+                + ", ".join(labels) + ". Close each with `cancel` and re-add it clean.\n")
+
+    HARD = ("a line the join would absorb ends in a HARD line break (two spaces), "
+            "which is a break the author wrote and the join cannot carry — the item "
+            "is left with its rendering intact")
+    SETEXT = ("a setext underline promotes the WHOLE paragraph above it, and the join "
+              "would absorb part of that paragraph into the first line and leave the "
+              "rest under the underline — half a heading in each place")
+
+    # --- the hard break ---------------------------------------------------
+
+    def test_a_hard_break_above_an_absorbed_line_stops_the_fold(self):
+        """Both fold paths, because they join by two different routes and the
+        break dies on either. The walk relocates a chain that owns its own lines;
+        the wrapped path undoes the hard wrap that split the chain itself. A
+        fixture exercising one leaves the other free to go on flattening."""
+        for name, tail in (
+                ("dobra por caminhada", "  segunda linha comprida o bastante para a "
+                                        "geometria licenciar.\n" + T174_CHAIN),
+                ("dobra da linha quebrada", "  segunda linha comprida o bastante. "
+                                            "**Class:** AUTONOMOUS. **Effort:** S. "
+                                            "**Criterion:** A: x.\n")):
+            with self.subTest(caminho=name):
+                seeded = T174_HEAD + "  \n" + tail
+                self.seed(seeded)
+                r = self.migrate()
+                self.assertIn(self.left_alone(self.HARD, "T007"), r.stdout)
+                self.assertNotIn("folded up", r.stdout)
+                self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_a_break_on_an_INTERIOR_absorbed_line_stops_the_fold_too(self):
+        """The scan is asked of every line the join absorbs, and the pair above
+        proves only the FIRST of them: both of their fixtures put the two spaces
+        at the end of the head line. Measured, with the scan narrowed to the head
+        alone — `range(min(j, len(lines) - 1, 1))` — the whole suite stayed green
+        while a break the author wrote on a continuation line went on dying at the
+        join, under a run reporting the item as folded.
+
+        The walk path on purpose: it is the one that absorbs a paragraph of more
+        than one line, so it is the only one where `k` has anywhere to reach that
+        `k == 0` does not."""
+        seeded = (T174_HEAD + "\n  segunda linha comprida o bastante para a "
+                  "geometria licenciar.  \n" + T174_CHAIN)
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertIn(self.left_alone(self.HARD, "T007"), r.stdout)
+        self.assertNotIn("folded up", r.stdout)
+        self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_the_break_is_TWO_spaces_and_not_one(self):
+        """The over-refusal direction. One trailing space is not a hard break in
+        any Markdown — it is whitespace nobody meant as anything, and a rule that
+        read it as an author's break would refuse the wrapped population the fold
+        exists for, on files editors leave trailing spaces in every day."""
+        seeded = (T174_HEAD + " \n  segunda linha comprida o bastante para a "
+                  "geometria licenciar.\n" + T174_CHAIN)
+        self.seed(seeded)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T007\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + T174_HEAD + " segunda linha comprida o bastante para "
+                         "a geometria licenciar. **Class:** AUTONOMOUS. **Effort:** S. "
+                         "**Criterion:** A: x.\n")
+
+    def test_a_break_at_the_END_of_the_block_breaks_nothing(self):
+        """The other over-refusal, and the one that would cost the fold real items:
+        a hard break needs a line UNDER it to break before. Trailing spaces on the
+        block's LAST line are the end of the item, and refusing there would take a
+        whole population out over whitespace that renders as nothing.
+
+        The fixture is the wrapped path on purpose. It is the only one that ever
+        asks about the last line — the walk asks only as far as the paragraph it
+        absorbs, which stops above the field run — so a walk fixture here would
+        leave the rule unmeasured and read as if it had been proved."""
+        self.seed(T174_HEAD + "\n  segunda linha comprida o bastante para a "
+                  "geometria licenciar. **Class:** AUTONOMOUS. **Effort:** S. "
+                  "**Criterion:** A: x.  \n")
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T007\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + T174_HEAD + " segunda linha comprida o bastante "
+                         "para a geometria licenciar. **Class:** AUTONOMOUS. "
+                         "**Effort:** S. **Criterion:** A: x.\n")
+
+    # --- the setext underline ---------------------------------------------
+
+    def test_a_paragraph_an_underline_promotes_is_not_split_by_the_fold(self):
+        """Both spellings of the underline, and TWO lines above it — which is what
+        makes the paragraph reach past the line `opens_a_block` protects. Measured
+        on this branch: the middle line went up into the head with the chain, the
+        last one stayed under the underline, and the run reported `folded up`."""
+        for name, rule in (("igual", "  ===============\n"),
+                           ("hifen", "  ---------------\n")):
+            with self.subTest(sublinhado=name):
+                seeded = (T174_HEAD + "\n"
+                          "  segunda linha do mesmo paragrafo, escrita comprida o bastante "
+                          "para quebrar na coluna de wrap e nao antes dela\n"
+                          "  terceira linha do mesmo paragrafo, tambem comprida o "
+                          "bastante, que fica logo acima do risco do sublinhado\n"
+                          + rule + T174_CHAIN)
+                self.seed(seeded)
+                r = self.migrate()
+                self.assertIn(self.left_alone(self.SETEXT, "T007"), r.stdout)
+                self.assertNotIn("folded up", r.stdout)
+                self.assertEqual(self.body(), HEADER + seeded)
+
+    def test_a_heading_that_is_WHOLE_where_it_stands_is_still_folded_around(self):
+        """The over-refusal direction, and the shape
+        TestASetextTitleIsKeptWithItsUnderline already pins: with the underlined
+        line directly under the head, nothing of the promoted paragraph is
+        absorbed and the fold has nothing to split. A rule that refused here would
+        take back a population the fold was measured handling correctly."""
+        middle = "  Titulo da secao\n  ===============\n"
+        self.seed(R5_LONG_HEAD + middle + R4_CHAIN)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T005\n", r.stdout)
+        self.assertEqual(self.body(), HEADER + R5_FOLDED_HEAD + middle)
+
+    def test_the_walk_still_stops_at_a_block_that_is_no_heading(self):
+        """What decides the refusal has to be the SETEXT question and not "the
+        walk stopped early". The walk stops at every Markdown block, and folding
+        AROUND one — prose absorbed into the head, the block left with its own
+        line — is the behaviour this command was measured getting right. A rule
+        that fired wherever the walk stopped would refuse that whole population.
+
+        A bullet, then, with a wrapped line above it: the walk stops at the same
+        place the underline stops it, and nothing here is a promoted heading."""
+        second = ("segunda linha do mesmo paragrafo, escrita comprida o bastante "
+                  "para quebrar na coluna de wrap e nao antes dela")
+        bullet = "  - um item de lista que o usuario escreveu\n"
+        self.seed(T174_HEAD + "\n  " + second + "\n" + bullet + T174_CHAIN)
+        r = self.migrate()
+        self.assertIn("folded up, where every gate reads them — T007\n", r.stdout)
+        self.assertEqual(self.body(),
+                         HEADER + T174_HEAD + " " + second
+                         + " **Class:** AUTONOMOUS. **Effort:** S. "
+                         "**Criterion:** A: x.\n" + bullet)
 
 
 class TestMutationHarness(unittest.TestCase):
