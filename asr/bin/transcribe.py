@@ -196,12 +196,21 @@ def write_markdown(out, engine_name):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("target", help="folder with audio, a single audio file, or a .zip export")
-    ap.add_argument("--engine", default="parakeet", choices=("parakeet", "whisper"))
-    ap.add_argument("--lang", default="pt")
+    ap.add_argument("--engine", default="parakeet", choices=("parakeet", "whisper"),
+                    help="recognizer to run (default: parakeet)")
+    ap.add_argument("--lang", default="pt",
+                    help="language code handed to the engine (default: pt)")
     ap.add_argument("--model", default="small", help="whisper size (whisper engine only)")
-    ap.add_argument("--glob", default=None)
-    ap.add_argument("--out", default=None)
-    ap.add_argument("--chunk", type=float, default=30.0)
+    ap.add_argument("--glob", default=None,
+                    help="shell pattern matched under the target, recursively; it "
+                         "REPLACES the audio-extension filter, so the pattern alone "
+                         "decides what is transcribed (default: every audio extension)")
+    ap.add_argument("--out", default=None,
+                    help="path of the .jsonl to append to; the .md takes its stem "
+                         "(default: transcript.jsonl beside the target)")
+    ap.add_argument("--chunk", type=float, default=30.0,
+                    help="seconds per chunk, parakeet only; lower it on a box that "
+                         "OOMs (default: 30)")
     args = ap.parse_args()
 
     root, out_dir, cleanup = resolve_target(args.target)
