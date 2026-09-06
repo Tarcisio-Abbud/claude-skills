@@ -104,6 +104,11 @@ NO_QUEUE_TO_NAME = "--help"
 # same package owns the file. Keyed by the command itself, which is unique across
 # the tree; `test_the_exemptions_are_still_earned` reddens the day one is repaired,
 # so the list cannot outlive its reason.
+#
+# The `tk-ticket-ref ... --closing-line` entry is ALSO a mutation anchor, verbatim,
+# at `mutations_closure.py` "T238 the attended dispatch stops naming the reference
+# command". Repairing that line means editing both files in the same commit: the
+# exemption here reddens, and the anchor there matches nothing.
 AWAITING_A_SWEEP = {
     '../../bin/tk-closure-check "<id>" --dir "<queue dir>" --pr <n>':
         "skills/kickoff/AFK.md",
@@ -111,8 +116,6 @@ AWAITING_A_SWEEP = {
         "skills/kickoff/SKILL.md",
     '../../bin/tk-ticket-ref <id> --dir "<queue dir>" --closing-line':
         "skills/kickoff/SKILL.md",
-    'tk-queue list --dir <that path>':
-        "skills/fleet/SKILL.md",
     '(cd "<the project\'s directory>" && python3 <.../tk/bin>/tk-queue pack)':
         "skills/fleet/SKILL.md",
 }
@@ -160,17 +163,20 @@ def command_spans(text):
 
     The fences are cut OUT before the code spans are read, rather than read on top of
     them: a ``` opener is a three-backtick run, and letting `CODE_SPAN` meet one puts
-    the scan out of phase for the rest of the file. A fenced line carrying its own
-    code span is read as that span, so a prompt template quoting a command still
-    yields the command.
+    the scan out of phase for the rest of the file. Inside a fence a line is read
+    WHOLE unless one of its own code spans names a bin — that way a prompt template
+    quoting a command still yields the command, while a plain command line carrying a
+    backticked comment yields the command instead of the comment.
     """
     joined = re.sub(r"\\\n\s*", " ", text)
     spans, prose, cut = [], [], 0
-    for fence in re.finditer(r"^```[a-z]*\n(.*?)^```", joined, re.M | re.S):
+    for fence in re.finditer(r"^```[^\n]*\n(.*?)^```", joined, re.M | re.S):
         prose.append(joined[cut:fence.start()])
         cut = fence.end()
         for line in fence.group(1).splitlines():
-            spans += code_spans(line) if "`" in line else [line]
+            inner = code_spans(line)
+            spans += (inner if any(NAMES_A_BIN.search(s) for s in inner)
+                      else [line])
     prose.append(joined[cut:])
     for chunk in prose:
         spans += code_spans(chunk)
@@ -181,6 +187,17 @@ def code_spans(text):
     return [m.group(2) for m in CODE_SPAN.finditer(text)]
 
 
+def outside_quotes(span):
+    """`span` without its double-quoted runs — what the shell reads as syntax.
+
+    What sits inside double quotes is text, and the two questions this sweep asks are
+    both about syntax. A `--dir` or a `--help` written INSIDE an item's own text is
+    prose the shell never reads as a flag, and a command exempted on the strength of
+    a word somebody wrote in a `--note` names no queue at all.
+    """
+    return DOUBLE_QUOTED.sub("", span)
+
+
 def unquoted_metavariables(span):
     """The `<...>` of `span` a shell reads as a redirect rather than as text.
 
@@ -189,7 +206,7 @@ def unquoted_metavariables(span):
     first is what tells the two apart — hunting `<...>` in the raw span calls every
     quoted placeholder a defect.
     """
-    return METAVARIABLE.findall(DOUBLE_QUOTED.sub("", span))
+    return METAVARIABLE.findall(outside_quotes(span))
 
 
 def prescribes_a_run(span):
@@ -508,14 +525,30 @@ class TheQueueFlagSweep(unittest.TestCase):
 
     def test_every_pasteable_command_names_the_queue_it_writes(self):
         for name, span in self.swept():
-            if not prescribes_a_run(span) or NO_QUEUE_TO_NAME in span:
+            if not prescribes_a_run(span) or NO_QUEUE_TO_NAME in outside_quotes(span):
                 continue
             with self.subTest(file=name, cmd=span):
-                self.assertIn("--dir", span,
+                self.assertIn("--dir", outside_quotes(span),
                               "a prescribed command names no queue directory — without "
                               "`--dir` the bin resolves from the cwd, which while a "
                               "package runs is the code's clone, and the write lands in "
                               "another project's queue")
+
+    def test_a_fenced_command_line_is_read_whole_when_its_backticks_are_a_comment(self):
+        """The shape that made the sweep blind: a command inside a fence with a
+        backticked comment beside it. Read as its code spans alone, what comes back
+        is the COMMENT, and the command is never asked either question."""
+        fence = "```sh\ntk-queue done \"<id>\"   # see `queue.md`\n```\n"
+        self.assertEqual(command_spans(fence),
+                         ['tk-queue done "<id>" # see `queue.md`'])
+
+    def test_a_flag_written_inside_a_quoted_run_is_not_a_flag(self):
+        """`--dir` and `--help` inside an item's own text are prose the shell never
+        reads as syntax. Asked of the raw span, either one exempts a command that
+        names no queue at all."""
+        span = 'tk-queue done "<pass --dir later>" --how "<pointer>"'
+        self.assertIn("--dir", span)
+        self.assertNotIn("--dir", outside_quotes(span))
 
     def test_the_exemptions_are_still_earned(self):
         """An exemption outlives its reason in silence: the command is repaired, the
@@ -527,9 +560,10 @@ class TheQueueFlagSweep(unittest.TestCase):
                 self.assertEqual(present.get(span), where,
                                  f"{span!r} is no longer in {where} — drop its entry "
                                  f"from AWAITING_A_SWEEP")
+                syntax = outside_quotes(span)
                 red = (unquoted_metavariables(span)
-                       or (prescribes_a_run(span) and NO_QUEUE_TO_NAME not in span
-                           and "--dir" not in span))
+                       or (prescribes_a_run(span) and NO_QUEUE_TO_NAME not in syntax
+                           and "--dir" not in syntax))
                 self.assertTrue(red,
                                 f"{span!r} passes the sweep now — drop its entry from "
                                 f"AWAITING_A_SWEEP so the file is held")

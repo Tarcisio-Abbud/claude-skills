@@ -42,7 +42,7 @@ report.
 encoding is one-way: `/w/p/x-y` and `/w/p/x/y` produce the same name. That is why the second
 section exists. Those projects have a live queue and no trustworthy directory, and the bin
 refuses to guess. The fleet refuses with it. Their queues stay readable without a session,
-through the `queue:` path the section prints: `tk-queue list --dir <that path>`. Read them when
+through the `queue:` path the section prints: `tk-queue list --dir "<queue dir>"`. Read them when
 the report is better for saying what is waiting there.
 
 **The allow/denylist belongs to the site file (`~/.claude/tk/env`), not to this skill.** The bin
