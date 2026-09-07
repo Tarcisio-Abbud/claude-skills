@@ -13,15 +13,20 @@ more than it measures is worse than one that measures less:
 2. The five blocks of the contract are present, by marker.
 3. Each card names an outcome from the closed vocabulary, carries a risk tag,
    and links a proof that is not still a placeholder.
-4. The page answers the dark colour scheme.
+4. A card that gives ANY of the five safe-to-merge verdicts gives all five, and
+   names each from the closed vocabulary.
+5. The page answers the dark colour scheme.
 
-WHAT IT DOES NOT MEASURE, in the same four items `../reference/vista.md` lists
+WHAT IT DOES NOT MEASURE, in the same five items `../reference/vista.md` lists
 to the human side, so no report can borrow authority this gate lacks:
 
 - LEGIBILITY. It sees that the page answers the dark scheme, never that either
   palette is readable — that is measured by RENDERING the file.
 - BLOCK 1's CONTENT. A `stats` marker around an empty list passes; what is in a
   block is the writer's, and so is whether the prose is worth reading.
+- WHETHER A CARD OWES VERDICTS AT ALL. A card is a PR here and an item in a
+  consolidated report, and only the first kind has verdicts to give — so a card
+  giving none passes. What is refused is a card that gives some of them.
 - WHERE A LINK LEADS. `<a href>` is exempt by design, and only the placeholder
   rule touches it: a link to the wrong PR is a green page.
 - ONE WAY. That nothing is read back from a vista is a rule of the flow, held by
@@ -76,6 +81,12 @@ PAGE_BLOCKS = tuple(m for m in BLOCKS if m != CARD_BLOCK)
 # colours a card and the report that groups them have to agree, and a value
 # outside it renders as an uncoloured card nobody notices
 OUTCOMES = ("merged", "closed", "open", "carried", "blocked", "discarded")
+
+# The five safe-to-merge verdicts a card gives when it stands for a PR offered as
+# merge. Closed for the same reason as OUTCOMES, and checked ALL-OR-NONE: the
+# template enumerates one `<li data-vista-veredito>` per verdict, and a list that
+# lost one still reads as complete to the human who is signing the merge off
+VERDICTS = ("tests", "review", "criterion", "reversal", "closure")
 
 # A proof link that still points at a placeholder is not a proof. These names
 # are reserved by RFC 2606 and RFC 6761 to never resolve to anything real, so a
@@ -296,6 +307,10 @@ class Vista(HTMLParser):
             if block == CARD_BLOCK and self.open_cards:
                 self.cards[self.open_cards[-1]]["provas"].append(a.get("href", "").strip())
 
+        verdict = a.get("data-vista-veredito", "").strip()
+        if verdict and self.open_cards:
+            self.cards[self.open_cards[-1]]["vereditos"].append(verdict)
+
         if "data-vista-card" not in a:
             return False
         self.cards.append({
@@ -303,6 +318,7 @@ class Vista(HTMLParser):
             "desfecho": a.get("data-vista-desfecho", "").strip(),
             "risco": a.get("data-vista-risco", "").strip(),
             "provas": [],
+            "vereditos": [],
             # the depth OUTSIDE the card: this runs before the tag is pushed
             "depth": len(self.stack),
         })
@@ -360,6 +376,17 @@ def check(path):
             if why and all(why):
                 bad.append(f'block {number}: card {card["id"]} links no real proof — '
                            f"{why[0]}")
+        given = card["vereditos"]
+        if given:
+            for name in given:
+                if name not in VERDICTS:
+                    bad.append(f'block 2: card {card["id"]} gives a verdict "{name}", which is '
+                               f"outside the vocabulary ({', '.join(VERDICTS)})")
+            for name in VERDICTS:
+                if name not in given:
+                    bad.append(f'block 2: card {card["id"]} gives verdicts and not "{name}" — '
+                               "a card that gives any of the five gives all five, because a "
+                               "short list reads as a complete one")
     for text_out in v.loose if v.declared_structure else []:
         bad.append(f"text printed outside <body>: {text_out!r} — the usual cause is a "
                    "comment holding a nested comment, which ends at the first -->")

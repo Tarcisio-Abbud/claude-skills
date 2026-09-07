@@ -23,6 +23,12 @@ What a subclass gets:
 
 No real memory dir is reachable from here: every route into `tk-queue` carries `--dir`, and
 the directory it names is made by `tempfile` and removed on cleanup.
+
+THAT SAME `--dir` MASKS THE PROSE, and a subclass that forgets it tests nothing. Appended
+after the prescribed arguments, it is the one argparse keeps — so a recipe that lost its own
+`--dir "<queue dir>"` still runs green through here. A file running a prescription must
+assert the flag on the ARGV the prose produced, before either route is reached; both
+subclasses do (`test_afk_audit.py`, `test_window_wall.py`).
 """
 
 import os

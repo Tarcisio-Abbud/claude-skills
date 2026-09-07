@@ -20,6 +20,7 @@ file we hand people still valid — and it is asked separately on purpose.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,18 @@ PAGE = """<!doctype html>
 <div data-vista-bloco="saldo">1 closed, 2 open</div>
 </main></body></html>
 """
+
+VERDICTS_UL = """    <ul class="verdicts">
+      <li data-vista-veredito="tests"><b>Tests</b> — green on the final tree</li>
+      <li data-vista-veredito="review"><b>Review</b> — one lens, findings fixed</li>
+      <li data-vista-veredito="criterion"><b>Criterion</b> — the claim the proof carries</li>
+      <li data-vista-veredito="reversal"><b>Reversal</b> — revert the commit</li>
+      <li data-vista-veredito="closure"><b>Closure</b> — Fixes acme/repo#1</li>
+    </ul>
+"""
+
+PROOF_LINE = '    <p><a data-vista-bloco="prova" href="https://github.com/acme/repo/pull/1">proof \u2014 PR #1</a></p>\n'
+WITH_VERDICTS = PAGE.replace(PROOF_LINE, VERDICTS_UL + PROOF_LINE)
 
 SECOND_CARD = """  <article data-vista-card="T002" data-vista-desfecho="merged" data-vista-risco="high">
     <h4>T002</h4>
@@ -337,6 +350,39 @@ class TestFiveBlocks(CheckTest):
         self.assertRefused(PAGE.replace('data-vista-bloco="saldo"', 'class="saldo"'), "block 5")
 
 
+class TestVerdicts(CheckTest):
+    """The five safe-to-merge verdicts, when a card gives any of them.
+
+    A card is a PR here and an item in a consolidated report, and only the first
+    kind has verdicts to give — so the gate never REQUIRES them. What it refuses
+    is a card that gives some and not the rest: four verdicts read as a complete
+    list, and the missing one is the one nobody checked."""
+
+    def test_a_card_giving_no_verdict_is_accepted(self):
+        self.assertAccepted(PAGE)
+
+    def test_a_card_giving_all_five_verdicts_is_accepted(self):
+        self.assertAccepted(WITH_VERDICTS)
+
+    def test_a_card_missing_one_verdict_is_refused_naming_it(self):
+        gap = WITH_VERDICTS.replace(
+            '      <li data-vista-veredito="closure"><b>Closure</b> \u2014 Fixes acme/repo#1</li>\n', "")
+        self.assertRefused(gap, "T001", "closure")
+
+    def test_every_missing_verdict_is_named_on_its_own(self):
+        only_tests = re.sub(r'      <li data-vista-veredito="(?!tests)[a-z]+">.*\n', "",
+                            WITH_VERDICTS)
+        r = self.check(only_tests)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        for name in ("review", "criterion", "reversal", "closure"):
+            self.assertIn(name, r.stdout)
+
+    def test_a_verdict_outside_the_vocabulary_is_refused(self):
+        self.assertRefused(WITH_VERDICTS.replace('data-vista-veredito="tests"',
+                                                 'data-vista-veredito="green"'),
+                           "outside the vocabulary")
+
+
 class TestWhatTheReaderSEES(CheckTest):
     """The page is judged by a human reading it, so text that should not be on
     it at all is a defect the five markers cannot see."""
@@ -379,6 +425,19 @@ class TestShippedTemplate(CheckTest):
         findings = [l.strip("- ").strip() for l in r.stdout.splitlines() if l.startswith("  - ")]
         self.assertEqual(len(findings), 1, findings)
         self.assertIn("placeholder name", findings[0])
+
+    def test_deleting_a_verdict_from_the_template_is_refused_naming_it(self):
+        # T212's acceptance criterion, run against the shipped file itself:
+        # drop one <li data-vista-veredito> and the gate names the verdict gone
+        with open(TEMPLATE, encoding="utf-8") as f:
+            html = f.read()
+        gone = re.sub(r'\s*<li data-vista-veredito="reversal">.*?</li>', "", html, count=1)
+        self.assertNotEqual(gone, html, "the template no longer carries a reversal verdict")
+        r = self.check(gone, name="template-gap.html")   # a name with no verdict in it
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        findings = [l.strip("- ").strip() for l in r.stdout.splitlines() if l.startswith("  - ")]
+        named = [f for f in findings if "reversal" in f]
+        self.assertEqual(len(named), 1, findings)
 
 
 class TestUsage(CheckTest):

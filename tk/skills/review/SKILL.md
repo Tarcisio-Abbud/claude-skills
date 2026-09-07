@@ -7,36 +7,34 @@ A **lens** is a subagent that attacks the slice from one angle. The **parent** i
 that acts on the findings. The lens fires **once**, on the committed slice, before the repo's
 mandatory two-axis review.
 
-**Site extensions:** read `~/.claude/tk/review.md` and `.claude/tk/review.md` if they exist
-(README, "Site extensions") — they name the tier and every rule's proof. Read the trigger items
-in the site's CLAUDE.md, or wherever the extension points; where neither carries a list, §1's
-site-list line decides.
+**Site extensions:** read `~/.claude/tk/review.md` and `.claude/tk/review.md` if they exist —
+they name the tier and every rule's proof. Read the trigger items in the site's CLAUDE.md, or
+wherever the extension points; where neither carries a list, §1 decides.
 
 ## 1. Decide whether it fires
 
 The lens covers code and the data that code writes. Prose an agent follows — a skill, a
 CLAUDE.md, a runbook — takes the mandatory review alone, in one round. One exception: where the
-changed paragraphs prescribe commands, one lens may fire. The exception's brief adds two
-constraints to the block in `BRIEF.md`. Report only findings proven by RUNNING a prescribed
-command, and refuse a finding whose fix is more prose about the prose. A firing the trigger
-allowed that returns nothing runnable retires the exception. Say so in the PR body, and edit this
-paragraph through its own PR. A report or document a human reads gets no review: the reader is
-the review.
+changed paragraphs prescribe commands, one lens may fire. Its brief adds two constraints to
+`BRIEF.md`. Report only findings proven by RUNNING a prescribed command, and refuse a finding
+whose fix is more prose about the prose. A firing the trigger allowed that returns nothing
+runnable retires the exception, said in the PR body and edited here through its own PR. A
+report or document a human reads gets no review: the reader is the review.
 
 Inside a code slice the same line holds. Prose is what the artifact says ABOUT ITSELF and no
-program reads: a comment, a docstring, a contract doc. A docstring a program consumes —
-generated help, a parser — is the lens's. So is everything else the slice carries, its
-identifiers and the strings a run emits alike.
+program reads: a comment, a contract doc. A docstring a program consumes — generated help, a
+parser — is the lens's, and so is everything else the slice carries, identifiers and emitted
+strings alike.
 
 The trigger is judged per diff, not per file: a mixed file counts only what changed. Measure the
 diff against the site's trigger items at the slice's **base**: the branch point of the work
-item. A rewrite split across PRs then measures as one rewrite. Capture the command once, `git
+item. A rewrite split across pull requests then measures as one. Capture the command once, `git
 diff <base>...HEAD`, confirming `<base>` resolves first. Three dots exclude the working tree, so
 the slice is committed before the lens fires. A hit item fires the lens, unless the parent
 declines it in one line as worth less than it costs.
 
-Two **exemptions** cancel every item they answer. Each is a one-line **exemption receipt** in
-the PR, which the wrap-up gate shows to the user:
+Two **exemptions** cancel every item they answer, each a one-line **exemption receipt** in the
+PR that the wrap-up gate shows the user:
 
 - A behaviour-preserving refactor with mutation proved: enumerated tests, no vacuous kill. It
   answers every item except the user-data one.
@@ -51,10 +49,11 @@ Where the slice has no PR, the item's note carries it.
 ## 2. Fire the lens
 
 Check that the window fits (§5). Announce the **firing receipt**: the item hit, the base, the
-estimated cost. Fire **one** subagent, on the tier the site extension names, at `effort:
-"high"`; where no site names one, the tier is `opus`. Findings live in the parent's context, so
-the parent fires it directly. Pick the angle from the slice's class; a slice matching two rows,
-or none cleanly, takes `system`.
+estimated cost. Fire **one** `Agent`, `subagent_type: "tk:lens"`: that definition pins `model:
+opus` and `effort: high`, an effort no dispatch can carry. A site extension naming another tier
+passes it as `model:`. Findings live in the parent's context, so the parent fires it directly.
+Pick the angle from the slice's class; a slice matching two rows, or none cleanly, takes
+`system`.
 
 | Slice class | Angle |
 |---|---|
@@ -73,22 +72,22 @@ against the base; the size of the fix is not a grade. A **nit** changes nothing 
 depends on. Everything else is a **defect**, a one-character boundary bug included. Fix nits on
 the spot and list them.
 
-A finding that reproduces at the **branch point** is the repo's backlog, not this slice's. It goes
-to the slice's ticket, failing that to ONE item holding every branch-point finding of the firing.
-`tk-queue edit --text` REPLACES the item's text: a later finding reads it and writes the union.
-One `tk-queue add` per finding is the hydra of `../../reference/session-finding.md`.
+A finding that reproduces at the **branch point** is the repo's backlog, not this slice's. It
+takes the slice's ticket, failing that ONE item per firing (`../../reference/session-finding.md`).
+`tk-queue edit --text` REPLACES the item's text, so a later finding reads it and writes the union.
 
-A mismatch between what the program does and what its words say is graded by the **wrong side**.
-A wrong run is a code defect; stale words are prose, fixed on the spot like a nit.
+A mismatch between run and words is graded by the **wrong side**. A wrong run is a code defect;
+stale words are prose, fixed on the spot like a nit.
 
 Defects force a **correction batch**: fix each one, or reject it with a reason specific to the
 finding, recorded in the inventory. A defect has a fourth exit: a `fixer` dispatched on the spot
-(`../../reference/subagent-policy.md`), committing into the slice's branch, its work joining the
-batch. Two conditions hold together: the defect is in THIS session's diff, and it carries a
-criterion a run can check. One dispatch carries every eligible defect of the firing.
+(`../../reference/subagent-policy.md`), committing into the slice's branch in a window of its
+own. Two conditions hold together: the defect is in THIS session's diff, and it carries a
+criterion a run can check.
 
-Late in a session every fix reads as too big for the window left. A `fixer` opens a window of
-its own, outside the effort gate.
+**One `fixer` cycle per firing**, never resumed: `../kickoff/AFK.md`'s *The fixer cap* counts
+it. One dispatch carries every eligible defect, and what it leaves unclosed goes to ONE item
+carrying its inventory.
 
 **The correction batch goes to the repo's mandatory two-axis review, never to another lens**. Its
 brief carries the invariant each finding violated: the spec of a repair is the finding. A batch
@@ -99,12 +98,10 @@ correction that writes one statement in one more place, means the next instance 
 written. An incomplete repair is a correction, not a signal.
 
 A design signal blocks the merge, and the repository decides who answers. Where its code handles no
-business data, the call is the parent's own (`../../reference/subagent-policy.md`). The firing's one
-`fixer` cycle consolidates the mechanism into a single source, lifting the block; the close reports
-the call with a veto line. Code earns its form where the answer must be identical every run or fail
-loudly; everywhere else the form is prose. The user's question is reserved for money or business
-data, an edit to a criterion or spec, a discard, and anything hard to undo. Handling business data,
-the unattended slice stays **blocked** and parks (`../../reference/session-finding.md`).
+business data, the call is the parent's own (`../../reference/subagent-policy.md`). The cycle
+consolidates the mechanism into a single source, lifting the block; the close reports the call
+with a veto line. Handling business data, the unattended slice stays **blocked** and parks
+(`../../reference/session-finding.md`).
 
 **Done when:** every finding carries a grade the parent reproduced, and a fix, a dispatched
 `fixer`, a rejection or a carried-over item naming its destination.
@@ -121,18 +118,17 @@ The lens ships an **attack inventory**:
 A lens that found nothing ships the inventory too: the artifacts prove the work. An empty
 or one-line inventory is a failure, not approval. Merge stays with the user.
 
-**Done when:** the inventory is in the PR body (unattended: there or on the item's handoff
-briefing), and every finding appears in it.
+**Done when:** the inventory is one comment on the slice's ticket, failing that the PR body,
+rejections first, and every finding is in it.
 
 ## 5. Window and handoff
 
 **The lens and the review of its correction batch may not cost more window together than the
 implementation they review**. Where the lens alone would breach that ceiling, the slice takes
-the mandatory review alone, with the reason in the PR.
+the mandatory review alone, the reason in the PR.
 
 Reviews serialize: the lens fires only when the remaining window fits it and every review
-already running in this session. One that does not fit waits whole, as a queue item heading the
-next window's review line.
+already running. One that does not fit waits whole, as a queue item for the next window.
 
 A lens is **dead** when the window ended, the subagent failed or the wall killed it before its
 report arrived. A handoff then names the slice, the base and the angle. The lens has not run:

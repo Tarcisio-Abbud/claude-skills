@@ -19,6 +19,7 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
     # ceilings, per machine
     max-local-subagents = 3
     max-cloud-subagents = 4
+    max-open-items = 40
 
   identity              REQUIRED. Which roster entry this machine IS. An item
                         whose Env names it — or names nothing — runs here.
@@ -31,6 +32,33 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
   max-cloud-subagents   optional. Concurrent CLOUD subagents — a concurrency
                         ceiling only; it says nothing about quota, which is one
                         window shared by both venues.
+  max-open-items        optional. The WIP cap: how many OPEN items this machine
+                        may hold at once, summed across every queue on the
+                        roster. `tk-queue add` refuses AT it, with no bypass —
+                        room is made by taking an item out (`done`/`cancel`).
+                        Unset means NO cap, which is what every queue had before
+                        the gate: a ceiling nobody chose is not a ceiling, and a
+                        number shipped in the plugin would refuse every add on
+                        the first machine already above it. The word `auto`
+                        DERIVES it instead: (per-queue - discount) x the number
+                        of queues the roster counts, so the total follows a
+                        roster that grows rather than tightening on everyone the
+                        day a project is added. `auto` needs the per-queue key.
+  max-open-items-per-queue
+                        optional. The same cap asked of ONE queue, and the brake
+                        that the total alone is not: the total does not see
+                        CONCENTRATION, and 194 of 280 open items sat in two
+                        queues on the day this was measured (2026-09-04). ONE
+                        number for every queue on the roster, deliberately not a
+                        map: a map is configuration nobody maintains, and every
+                        new queue would be born without an entry.
+  max-open-items-discount
+                        optional, and only read by `max-open-items = auto`.
+                        per-queue x N is the WORST case — every queue at its
+                        maximum at once. The discount says "some queues may be
+                        at the cap, not all of them", so the total bites when
+                        the AVERAGE occupancy passes (per-queue - discount).
+                        Zero is allowed and means the worst case exactly.
   fleet-allow           optional. If present, the ONLY projects the fleet may
                         sweep. Absent means every queue on the machine enters.
   fleet-deny            optional. Projects the fleet must not touch. Applied
@@ -74,7 +102,22 @@ SITE_FILE = os.path.join("~", ".claude", "tk", "env")
 NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}\Z")
 RESERVED_NAME = "none"
 REQUIRED = ("identity", "environments")
-CEILINGS = ("max-local-subagents", "max-cloud-subagents")
+# Every key whose value is a positive whole number. All optional, and read by a
+# DIFFERENT caller each: the two subagent ceilings by the contract generator,
+# `max-open-items` by `tk-queue add`. They share this tuple because they share
+# the validation — a ceiling that is not a number, or is zero, is refused here
+# once rather than in each reader.
+CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items",
+            "max-open-items-per-queue")
+# The WIP keys, spelled once. `max-open-items` is the only ceiling that also
+# takes a WORD, and the other two are read by nothing but the gate it feeds.
+WIP_TOTAL = "max-open-items"
+WIP_PER_QUEUE = "max-open-items-per-queue"
+# NOT in CEILINGS: every key there is refused at zero, and zero is a legitimate
+# discount — it is the worst case, `per-queue x N`, asked for deliberately.
+WIP_DISCOUNT = "max-open-items-discount"
+# The value that DERIVES the total from the roster instead of pinning it.
+WIP_AUTO = "auto"
 # The fleet's allow/denylist. Both optional, both comma-separated like
 # `environments`, and both read by the roster sweep rather than by this module,
 # which only says whether the file is trustworthy.
@@ -92,7 +135,8 @@ PROJECT_NAME_RE = re.compile(f"[{PROJECT_ALPHABET}]+\\Z")
 TEMPLATE = """  identity = <this machine's environment name>
   environments = <name>, <name>
   max-local-subagents = <concurrent local subagents>
-  max-cloud-subagents = <concurrent cloud subagents>"""
+  max-cloud-subagents = <concurrent cloud subagents>
+  max-open-items = <open items this machine may hold at once>"""
 
 
 class SiteError(Exception):
@@ -102,7 +146,7 @@ class SiteError(Exception):
 
 class Site:
     def __init__(self, path, identity, environments, ceilings,
-                 fleet_allow=(), fleet_deny=()):
+                 fleet_allow=(), fleet_deny=(), open_items_auto=False):
         self.path = path
         self.identity = identity          # str, always a member of environments
         self.environments = environments  # tuple, in the file's own order
@@ -113,17 +157,23 @@ class Site:
         # refused below instead of read as this same tuple
         self.fleet_allow = fleet_allow
         self.fleet_deny = fleet_deny
+        # `max-open-items = auto`: the total is DERIVED from the per-queue cap
+        # and the roster's size, and this module does not derive it — counting
+        # queues is the roster's question, and a second sweep here would be a
+        # second answer to it. So the flag travels and `tk-queue`'s gate, which
+        # already has the queue list in hand, does the arithmetic.
+        self.open_items_auto = open_items_auto
 
 
 def project_slug(path):
     """The directory under ~/.claude/projects that holds `path`'s queue.
 
-    The rule is `tk-queue`'s — it derives its own queue directory from the
-    working directory this way, inline in memory_dir(). It lives here because
-    two readers of the site file now need it (this module, to validate a
-    fleet list; the roster sweep, to run it backwards), and a rule copied per
-    reader is a rule that stops agreeing. The copy still in tk-queue is one
-    import away from this one, and merges the day that file is free to edit.
+    The rule is the queue directory's: `tk-queue`'s memory_dir() derives its own
+    from the working directory by CALLING this, this module runs it to validate a
+    fleet list, and the roster sweep runs it BACKWARDS to recover the directory
+    each name encodes. It lives here because a rule copied per reader is a rule
+    that stops agreeing — the copy tk-queue used to carry inline was folded into
+    this one, so there is one encoder and one decoder for "which queue is this".
 
     It is ONE-WAY: `/w/p/x-y` and `/w/p/x/y` produce the same name.
     """
@@ -204,6 +254,23 @@ def parse(text, path):
             "where NOTHING counts as local — every item would look like another "
             "machine's. Add it to `environments`, or fix the spelling.")
     ceilings = {}
+    # asked BEFORE the numeric loop, and taken out of `pairs` on the way, because
+    # `auto` is the one ceiling value that is not a number: left in, it would be
+    # refused by the loop below with a message about whole numbers
+    open_items_auto = pairs.get(WIP_TOTAL) == WIP_AUTO
+    if open_items_auto:
+        del pairs[WIP_TOTAL]
+        if WIP_PER_QUEUE not in pairs:
+            raise SiteError(
+                f"{path}: `{WIP_TOTAL} = {WIP_AUTO}` derives the total from "
+                f"`{WIP_PER_QUEUE}`, and that key is not in this file. Write it, or "
+                f"give `{WIP_TOTAL}` a number.")
+    if WIP_DISCOUNT in pairs:
+        raw = pairs[WIP_DISCOUNT]
+        if not re.fullmatch(r"[0-9]+", raw):
+            raise SiteError(f"{path}: {WIP_DISCOUNT} must be a whole number of items, "
+                            f"not {raw!r}.")
+        ceilings[WIP_DISCOUNT] = int(raw)
     for key in CEILINGS:
         if key not in pairs:
             continue
@@ -215,6 +282,18 @@ def parse(text, path):
             raise SiteError(f"{path}: {key} is {value} — a ceiling of zero lets nothing "
                             "run at all. Use 1 or more, or drop the line to leave it unset.")
         ceilings[key] = int(value)
+    # Asked after both are known, and refused rather than clamped: a discount at
+    # or above the per-queue cap derives a total of zero or less, which is a
+    # machine that may open no item at all — and it would arrive as an `add`
+    # refused with a number nobody wrote anywhere.
+    per_queue = ceilings.get(WIP_PER_QUEUE)
+    discount = ceilings.get(WIP_DISCOUNT)
+    if per_queue is not None and discount is not None and discount >= per_queue:
+        raise SiteError(
+            f"{path}: {WIP_DISCOUNT} is {discount} and {WIP_PER_QUEUE} is {per_queue}, "
+            f"so the derived total is {(per_queue - discount)} per queue — zero or less, "
+            "and no item could ever be opened. The discount says some queues may be at "
+            "the cap, not that none may be.")
     lists = {}
     for key in FLEET_LISTS:
         raw = pairs.get(key)
@@ -243,13 +322,20 @@ def parse(text, path):
         lists[key] = tuple(entries)
     return Site(path, identity, tuple(names), ceilings,
                 fleet_allow=lists.get("fleet-allow", ()),
-                fleet_deny=lists.get("fleet-deny", ()))
+                fleet_deny=lists.get("fleet-deny", ()),
+                open_items_auto=open_items_auto)
 
 
-def load(path=None):
-    """The parsed site file, or None when there is none — the two cases the
-    caller answers differently (one asks the user to create it; the other names
-    the defect). Raises SiteError for a file that exists and is unusable.
+def read_text(path, kind, utf8_hint=""):
+    """The file's text with every U+FEFF removed, or None when there is no such
+    file. Raises SiteError for a path that exists and cannot be read as text.
+
+    THE GUARDS LIVE HERE rather than inside `load`, so a reader of ANOTHER file
+    inherits them instead of writing its own set. `tk-queue`'s WIP cap counts
+    the queues of projects this session never opened — files it did not write,
+    which is exactly the reading measured below. `kind` and `utf8_hint` carry
+    what each caller knows about its own file, and are the only part of a
+    diagnosis that differs between them.
 
     The reading itself is guarded, and not only the parsing: a defect does not
     have to be in the file's TEXT to exist. Measured on this module — a site
@@ -269,17 +355,21 @@ def load(path=None):
     later line. U+FEFF has no legitimate use in a file of slugs and numbers, and
     `str.strip()` does not remove it — it is not whitespace.
 
+    STRIPPING BELONGS TO A READER THAT ONLY READS. A caller that writes its file
+    back must not reach this function: removing a character the user typed is an
+    edit nobody asked for. `tk-queue.read` feeds such a rewrite and keeps its own
+    `utf-8-sig`; only its COUNTING path reads through here.
+
     The regular-file check is the third of these: `open()` on a FIFO with no
     writer does not raise, it BLOCKS — the session hangs with no output at all,
     which is worse than the traceback the guards above replace, and no timeout
     anywhere would explain it.
     """
-    path = path or site_path()
     if not os.path.exists(path):
         return None
     if not os.path.isfile(path):
         raise SiteError(f"{path} is not a plain file (it is a directory, a device or a "
-                        "pipe). The site file is hand-written text — check the path.")
+                        f"pipe). {kind} — check the path.")
     try:
         with open(path, encoding="utf-8") as f:
             text = f.read().replace("﻿", "")
@@ -289,7 +379,21 @@ def load(path=None):
                         "it is readable.")
     except UnicodeDecodeError as e:
         raise SiteError(f"{path} is not valid UTF-8 (byte {e.object[e.start]:#04x} at "
-                        f"position {e.start}). Save it as UTF-8 — a machine name is a "
-                        "plain slug, so the offending byte is almost certainly in a "
-                        "comment.")
+                        f"position {e.start}). Save it as UTF-8{utf8_hint}.")
+    return text
+
+
+def load(path=None):
+    """The parsed site file, or None when there is none — the two cases the
+    caller answers differently (one asks the user to create it; the other names
+    the defect). Raises SiteError for a file that exists and is unusable.
+
+    The READING is `read_text`'s, guards and all; what is left here is the parse.
+    """
+    path = path or site_path()
+    text = read_text(path, "The site file is hand-written text",
+                     " — a machine name is a plain slug, so the offending byte is "
+                     "almost certainly in a comment")
+    if text is None:
+        return None
     return parse(text, path)

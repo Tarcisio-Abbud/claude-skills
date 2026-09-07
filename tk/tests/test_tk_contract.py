@@ -190,6 +190,22 @@ class TestCeilings(ContractTest):
         self.site(SITE.replace("identity = alpha", "identity = charlie-2"))
         self.assertIn("dispatched from `charlie-2`", self.block("--role", "implementer"))
 
+    def test_a_byte_order_mark_at_byte_zero_of_the_site_file_changes_nothing(self):
+        """`~/.claude/tk/env` is hand-written, and an editor that writes a BOM
+        puts one at byte 0. This reader anchors on no circumflex — `tk_site.parse`
+        splits every line on `=` — so the line still parses and no error names it.
+        What the BOM changes is the KEY: it becomes `<BOM>identity`, which is not
+        `identity`, so a required key reads as ABSENT while sitting in plain view
+        on line 1. `str.strip()` does not remove U+FEFF (it is not whitespace),
+        so nothing downstream undoes it.
+
+        The assertion is byte identity of the whole block, which is what the
+        criterion asks: both renders use the same site path and the same
+        `--policy`, so any difference is the BOM's."""
+        clean = self.block("--role", "implementer", "--fleet", "3")
+        self.site("\ufeff" + SITE)
+        self.assertEqual(self.block("--role", "implementer", "--fleet", "3"), clean)
+
 
 # --- the role table is the single source ----------------------------------
 
@@ -355,6 +371,26 @@ class TestRoleTable(ContractTest):
         # table becomes unfindable while sitting in plain view
         self.table("\ufeff" + TABLE.replace("<!-- tk:roles", "\ufeff<!-- tk:roles"))
         self.assertIn("| implementer |", self.block("--role", "implementer"))
+
+    def test_a_byte_order_mark_at_byte_zero_of_the_table_changes_nothing(self):
+        """The placement the sibling case above does not isolate: one BOM, at
+        byte 0, and nowhere else.
+
+        This reader anchors on no circumflex either. `OPEN_RE.match` runs on the
+        line already `strip()`ped, and `str.strip()` leaves U+FEFF, so a BOM
+        glued to the opening marker makes `.match` miss and `start` stays None.
+        The diagnosis is then confidently WRONG: `tk:roles` is still in the text,
+        so the hint fires and calls the marker "probably misspelt" — about a
+        marker spelt exactly right.
+
+        The fixture opens ON the marker, and that is load-bearing. The repo's own
+        table carries prose above it, where a BOM at byte 0 is harmless and this
+        test would pass with the fix removed."""
+        bare = "<!-- tk:roles" + TABLE.split("<!-- tk:roles", 1)[1]
+        self.table(bare)
+        clean = self.block("--role", "implementer")
+        self.table("\ufeff" + bare)
+        self.assertEqual(self.block("--role", "implementer"), clean)
 
     def test_a_table_that_is_not_utf8_is_refused(self):
         with open(self.policy, "wb") as f:

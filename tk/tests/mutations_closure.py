@@ -11,7 +11,7 @@ test NO entry names as UNPROVED — the half a score of N/N cannot show.
 
 FIVE SOURCES, not one. The two bins are mutated, and so are the three prose
 files that dispatch or govern them: `skills/kickoff/SKILL.md`,
-`skills/kickoff/AFK.md` and `skills/wrap-up/MERGE-GATE.md`. A skill file is code
+`skills/kickoff/AFK.md` and `skills/merge-gate/SKILL.md`. A skill file is code
 an agent executes, and the defects two of this ticket's criteria name live there
 rather than in Python — the attended path dispatching without the reference, and
 a verdict row whose keyword rule the checker has already left behind. Neither
@@ -36,7 +36,7 @@ READER = os.path.join("bin", "tk-ticket-ref")
 CHECKER = os.path.join("bin", "tk-closure-check")
 KICKOFF = os.path.join("skills", "kickoff", "SKILL.md")
 AFK = os.path.join("skills", "kickoff", "AFK.md")
-GATE = os.path.join("skills", "wrap-up", "MERGE-GATE.md")
+GATE = os.path.join("skills", "merge-gate", "SKILL.md")
 
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
@@ -158,6 +158,84 @@ MUTATIONS = [
      '        if kind == "item-open":',
      ["TestTheReferenceReader."
       "test_an_id_no_open_item_carries_is_a_failed_run_not_a_refusal"], READER),
+
+    # --- T338: the id that is not open ---------------------------------------
+    ("T338 an id that LEFT the queue is reported as one that was never allocated",
+     '    code = "closed" if tk_queue.id_in_done_log(memdir, wanted) else "not-open"',
+     '    code = "not-open"',
+     ["TestTheReferenceReader."
+      "test_an_id_that_left_the_queue_is_named_as_closed_not_as_never_seen",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_a_closed_item_is_a_red_verdict_naming_the_log_it_left_for",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_the_red_row_names_the_ordering_that_produced_it"],
+     READER),
+
+    ("T338 the miss is announced flat again, not through the one reader of the four "
+     "cases, so a closed item reads as one that never existed",
+     "    raise Refusal(code, tk_queue.missing_item_message(memdir, content, wanted))",
+     '    raise Refusal(code, f"no open item carries the id T{wanted:03d}")',
+     ["TestTheReferenceReader."
+      "test_an_id_that_left_the_queue_is_named_as_closed_not_as_never_seen",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_a_closed_item_is_a_red_verdict_naming_the_log_it_left_for",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_an_id_the_queue_never_allocated_is_red_under_its_own_code"],
+     READER),
+
+    ("T338 the checker stops at the reader's refusal instead of reporting the row it "
+     "owes, so the gate's digest quotes nothing",
+     '        return refused(refusal, f"T{args.id:03d}",\n'
+     '                       CLOSED_REMEDY if refusal.code == "closed" else None)',
+     '        fail(f"{refusal.code}: {refusal.message}")',
+     ["TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_a_closed_item_is_a_red_verdict_naming_the_log_it_left_for",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_the_red_row_names_the_ordering_that_produced_it",
+      "TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_an_id_the_queue_never_allocated_is_red_under_its_own_code"],
+     CHECKER),
+
+    ("T338 the row carries the refusal and no remedy, so the reader is told the "
+     "verdict cannot be answered and not what to do instead",
+     '                       CLOSED_REMEDY if refusal.code == "closed" else None)',
+     "                       None)",
+     ["TestVerdictFiveOnAnItemThatIsNotOpen."
+      "test_the_red_row_names_the_ordering_that_produced_it"],
+     CHECKER),
+
+    # --- the ordering that makes verdict 5 answerable at all ----------------
+    ("cold review: stage 6 stops asking verdict 5, so the gate asks it first — after "
+     "stage 7 closed the item",
+     ' **Ask verdict 5 for that item HERE**,\n   against the body just written — `../../bin/tk-closure-check "<id>" --dir "<queue dir>"\n   --pr <n>` — and record its answer for the gate\'s digest. After stage 7 the item\'s\n   **Ticket:** field has left the queue with it. The check then has no subject, and answers\n   red for every item of the package.',
+     "",
+     ["TestVerdictFiveIsAskedWhileTheItemIsStillOpen.test_the_close_stage_runs_the_checker",
+      "TestVerdictFiveIsAskedWhileTheItemIsStillOpen."
+      "test_the_check_is_asked_before_the_item_closes",
+      "TestVerdictFiveIsAskedWhileTheItemIsStillOpen.test_the_step_says_why_the_order_matters"],
+     AFK),
+
+    ("cold review: the stage names the check and drops the reason, so a session reordering "
+     "the stages cannot see what it costs",
+     "After stage 7 the item's\n   **Ticket:** field has left the queue with it. The check "
+     "then has no subject, and answers\n   red for every item of the package.",
+     "It is the last moment the item is still open.",
+     ["TestVerdictFiveIsAskedWhileTheItemIsStillOpen.test_the_step_says_why_the_order_matters"],
+     AFK),
+
+    ("cold review: step 5's completeness check stops counting the verdict, so a tight "
+     "package skips the stage with the check still green",
+     ", verdict 5 was asked of each\nwhile it was still open,",
+     ",",
+     ["TestVerdictFiveIsAskedWhileTheItemIsStillOpen."
+      "test_the_completeness_check_counts_the_verdict"],
+     AFK),
+
+    ("cold review: step 5 is renamed, so every assertion above reads a section that is gone",
+     "## 5. Verify every delivery",
+     "## 5. Verification",
+     ["TestVerdictFiveIsAskedWhileTheItemIsStillOpen.test_the_step_that_verifies_is_still_there"],
+     AFK),
 
     ("T238 a claimed item is skipped, the way `pack` skips it — and the gate loses its "
      "ticket",
@@ -350,7 +428,7 @@ MUTATIONS = [
 
     # --- the prose that dispatches -----------------------------------------
     ("T238 the attended dispatch stops naming the reference command",
-     "`../../bin/tk-ticket-ref <id> --closing-line`, composed there and never here",
+     "`../../bin/tk-ticket-ref <id> --dir \"<queue dir>\" --closing-line`, composed there and never here",
      "the reference, composed elsewhere and never here",
      ["TestTheDispatchProseNamesTheCommands."
       "test_the_attended_dispatch_names_the_contract_block_and_the_reference"], KICKOFF),
@@ -362,8 +440,8 @@ MUTATIONS = [
       "test_every_bin_the_dispatch_prose_names_is_on_disk"], KICKOFF),
 
     ("T238 the unattended dispatch goes back to reading the tracker's config itself",
-     "`../../bin/tk-ticket-ref <id> --closing-line`, which reads the owner from the clone "
-     "the item's\n**Repo:** field names",
+     '`../../bin/tk-ticket-ref "<id>" --dir "<queue dir>" --closing-line`, which reads the '
+     "owner from\nthe clone the item's **Repo:** field names",
      "the owner half resolved HERE (`git config tk.tracker`) from the clone the item's\n"
      "**Repo:** field names",
      ["TestTheDispatchProseNamesTheCommands."
@@ -383,16 +461,16 @@ MUTATIONS = [
       "test_the_verdict_row_says_the_set_is_english"], GATE),
 
     ("T238 the retracted claim that any keyword the forge honours counts comes back",
-     "A verdict an agent can satisfy by asserting it is not a verdict.",
-     "A verdict an agent can satisfy by asserting it is not a verdict. Any closing\n"
-     "keyword the forge honours counts — `Fixes`, `Closes`, `Resolves` — since "
+     "A\n   Portuguese `Fecha #n` is present, cites the right ticket, and closes NOTHING.",
+     "A\n   Portuguese `Fecha #n` is present, cites the right ticket, and closes NOTHING. Any\n"
+     "   closing keyword the forge honours counts — `Fixes`, `Closes`, `Resolves` — since "
      "they are the same mechanism.",
      ["TestTheMergeGateStatesTheRuleTheCheckerEnforces."
       "test_the_file_does_not_say_a_closing_keyword_the_forge_honours_counts"], GATE),
 
     ("T238 the verdict row stops naming the command that answers it",
-     "`../../bin/tk-closure-check <id> --pr <n>` asks all five and names the ones that "
-     "failed.",
+     "`../../bin/tk-closure-check \"<id>\" --dir \"<queue dir>\" --pr \"<n>\"` asks all "
+     "five and names the ones that failed.",
      "Ask all five, and name the ones that failed.",
      ["TestTheMergeGateStatesTheRuleTheCheckerEnforces."
       "test_the_verdict_row_names_the_checker_that_asks_the_conditions"], GATE),

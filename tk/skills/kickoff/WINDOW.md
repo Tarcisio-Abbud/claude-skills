@@ -137,8 +137,8 @@ because the map stops at the last handoff its writer got to. What the map buys i
 is the only record of what the predecessor thought it had merged, and a disagreement between it
 and the tip is named there.
 
-The procedure the successor runs from this whole field is `AFK.md`'s *A resumed generation starts
-here*.
+The procedure the successor runs from this whole field is `RESUME.md`, which `AFK.md`'s
+*A resumed generation starts here* enters.
 
 ## Review is a first-class consumer of the window
 
@@ -290,7 +290,7 @@ leave an orphan claim every later package refuses. Under the threshold the seam 
 2. **Write one `tk-queue handoff` on the head item**, in the form `../verify/SKILL.md`
    prescribes, and run the `edit` it prints (same file, *The item points at the
    briefing*). Its `--state` carries the seam this session stopped at — which is what tells
-   the successor where to enter (`AFK.md`, *A resumed generation starts here*) — the cut's
+   the successor where to enter (`RESUME.md`, through `AFK.md`'s section of that name) — the cut's
    order, the context number just read, and whichever of *The wall*'s seven contents a package
    that dispatched nothing still has to say.
 3. **Leave the remote as it stands.** The lane's branch opens at `AFK.md` step 3; a branch

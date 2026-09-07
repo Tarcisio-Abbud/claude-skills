@@ -101,7 +101,7 @@
       "body_words": 170,
       "over": []
     },
-    "tk/skills/wrap-up/MERGE-GATE.md": {
+    "tk/skills/merge-gate/SKILL.md": {
       "role": "moved",
       "report": "wrap-up-report.md",
       "lines": 205,
@@ -109,7 +109,8 @@
       "over": [
         "max_sentence_words",
         "sentences_over_30"
-      ]
+      ],
+      "baseline": "wrap-up/MERGE-GATE.md"
     },
     "tk/skills/wrap-up/REPORT.md": {
       "role": "moved",

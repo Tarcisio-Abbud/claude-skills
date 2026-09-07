@@ -20,15 +20,24 @@ WHAT IT COUNTS, and where each number comes from:
   context pointer and is measured against a rule of its own. A file with no
   frontmatter has no description, and that is reported as absent rather than 0 —
   the bin measures any markdown, and a runbook legitimately has none.
-- inline evidence: ISO dates, the word "measured", and a count followed by
-  "times" or "before". Evidence belongs to the repo's history, not to a skill.
+- inline evidence: ISO dates, a count followed by "times" or "before", and the
+  word "measured" WITH a number or a date on its line. Evidence belongs to the
+  repo's history, not to a skill.
+- narrated outcomes, LISTED WITH CONTEXT and marked against nothing: prose in a
+  perfect tense, which is how a file stops instructing and starts recounting.
+  `scan_narrated` says why this is the second row rather than more of the first.
+- environment copies, LISTED and marked against nothing: sentences restating the
+  `--help` of a tool they name. The environment is the source of truth and a
+  sentence repeating it grows a second copy to keep in sync; `scan_environment`
+  carries the unit, the floor and what it refuses to decide.
 - pointers to other files.
 - negations, LISTED WITH CONTEXT. A count alone would be a verdict the regex
   cannot support: `never` steering the agent and `never` inside the name of an
   outcome look identical to it, and only the human reading the line can tell.
-- defined terms, and the ones a SIBLING markdown file in the same directory
-  defines too — a term whose meaning is written in two places is a term the
-  reader has to assemble.
+- defined terms, and the ones another markdown file DEFINES TOO — a term whose
+  meaning is written in two places is a term the reader has to assemble. The
+  universe is the whole KIT for a skill of a plugin, and the file's own
+  directory for anything else; `sibling_terms` says why, and what a kit is.
 
 HOW A LINE IS READ. `scan()` walks the body once and hands every later count the
 same list of `Line` records: one line, ONE role, its prose computed once. Roles
@@ -110,9 +119,11 @@ Exit:   0 measured (always) · 2 no such file, or a directory
 import argparse
 import bisect
 import collections
+import concurrent.futures
 import json
 import os
 import re
+import subprocess
 import sys
 
 # The targets, as DEFAULTS of the bin rather than numbers written into a skill:
@@ -143,10 +154,12 @@ METRICS = [
     ("sentences_over_30", f"sentences over {LONG_SENTENCE} words"),
     ("description_words", "description words"),
     ("inline_evidence", "inline evidence"),
+    ("narrated_outcomes", "narrated outcomes"),
     ("pointers", "pointers to other files"),
     ("negations", "negations"),
     ("defined_terms", "defined terms"),
     ("terms_defined_in_sibling", "terms defined in a sibling too"),
+    ("environment_copies", "environment copies"),
 ]
 
 # The indent is CAPTURED, not bounded. CommonMark allows a fence three spaces
@@ -186,7 +199,20 @@ FM_COMMENT = re.compile(r"^\s*#")
 # A period that ends a sentence, versus one inside `e.g.` or an initial. The
 # lookahead is whitespace-or-end; the word before it is checked in code, because
 # a lookbehind cannot be variable-width.
-SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
+#
+# THE EMPHASIS THAT CLOSES OVER THE STOP is skipped before that whitespace is
+# asked for. Written `**… stop.**`, the period is followed by an asterisk and
+# the sentence never ended: the two either side of it were measured as one, and
+# a legitimate draft rose from 20 long sentences to 22 until its author moved
+# the period outside the bold (T323). The run is optional, so a stop with a
+# plain space after it still ends where it always did.
+#
+# A BACKTICK IS NOT IN THE CLASS, and the omission is the rule rather than an
+# oversight: `*` and `_` close over prose, where a period is the author's, while
+# a backtick closes over CODE, where a trailing dot belongs to the token —
+# `git log.` names a command and not a sentence. The bin cannot read which is
+# meant, so the marker whose contents are not prose is the one it does not skip.
+SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\s|$))")
 # `no` is deliberately absent: "No. 5" is rare in a skill and the word "no."
 # ending a sentence is not, and swallowing a real sentence end costs more.
 #
@@ -201,7 +227,17 @@ ABBREV = {"e.g", "i.e", "etc", "vs", "cf", "mr", "mrs", "ms", "dr", "prof",
 NEGATIONS = re.compile(r"(?i)(?<![\w'’])(do not|don['’]t|never|not|no)(?![\w'’])")
 ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 MEASURED = re.compile(r"(?i)\bmeasured\b")
+# What turns the word into a report. `measured` alone is prose about what a
+# report must carry — "the one thing that reaches the user is what was
+# **measured**" — and counting it made `verify/SKILL.md` read `inline evidence 1`
+# on a file whose one real piece of evidence carried no such word (T284). A
+# measurement names its measurement, so a digit on the line is what promotes it.
+QUANTITY = re.compile(r"\d")
 COUNT_EVIDENCE = re.compile(r"(?i)\b\d+\s+(?:times|before)\b")
+# A perfect tense: the auxiliary, at most one adverb, the participle. Two words
+# between them admitted `has an encoding proposed`, where the participle belongs
+# to the noun and nothing is being recounted.
+NARRATED = re.compile(r"(?i)\b(?:has|have|had)\s+(?:\w+\s+)?\w+(?:ed|en)\b")
 # A web address, which is not a pointer to a file of this repo however it ends.
 # `www.` is here beside the schemes because a scheme-less host is written that
 # way in prose, and `www.example.com/index.html` was counted as a file.
@@ -236,7 +272,60 @@ POINTER_MAX = 200
 # would be load-bearing and no mutation could tell either of them was gone.
 TERM_IS = re.compile(r"(?:\b(?:an?|the)\s+)?\*\*([^*\n]+)\*\*\s+(?:is|means)\b",
                      re.IGNORECASE)
-TERM_COLON = re.compile(r"^\*\*([^*\n]+)\*\*\s*:")
+# The parenthesis is the aside the house form carries between the term and the
+# colon — `**generation** (`../kickoff/WINDOW.md`): …`, which is the very line
+# that named this metric (#219) and the one definition it could not see. ONE
+# parenthesis and nothing else: `[^:\n]*` here would read `**Read it** and then
+# start here:` as coining a term, and a skill's prose opens that way line after
+# line.
+TERM_COLON = re.compile(r"^\*\*([^*\n]+)\*\*\s*(?:\([^()\n]*\)\s*)?:")
+
+# What makes a directory the root of a KIT. The sibling scan reaches every skill
+# of the plugin the measured file belongs to, and this file is how it knows
+# where the plugin starts and stops.
+PLUGIN_MARKER = os.path.join(".claude-plugin", "plugin.json")
+
+# A tool named in a code span: `tk-queue handoff …`, `tk-context`. The closing
+# backtick is NOT asked for, and that is the load-bearing half — the span the
+# case was found on runs across a line break, and a pattern needing both ends
+# reads the two halves as neither.
+TOOL_SPAN = re.compile(r"`(tk-[a-z][a-z0-9-]*)(?:\s+([a-z][a-z0-9-]*))?")
+# Whatever a backtick opens, to the next one or to the end of the sentence.
+# Stripping these is structural rather than tidy: with the invocation left in,
+# the sentence that merely TYPES the command shares ten stems with the help and
+# every call site becomes a copy.
+CODE_SPAN = re.compile(r"`[^`]*(?:`|$)")
+FLAG_TOKEN = re.compile(r"--[a-z][\w-]*")
+# The words that turn a flag into a claim about the flag, rather than a mention.
+OBLIGATION = re.compile(r"(?i)\b(?:required|mandatory|must)\b")
+# argparse prints its subcommands as a braced list in the usage.
+SUBCOMMANDS = re.compile(r"\{([a-z][a-z0-9_,-]*)\}")
+# Shared stems that separate a COPY from a MENTION. Measured on the six clauses
+# the pruning pass over `verify` cut as environment: the sentence describing what
+# `tk-queue handoff` does shares nine, the one that only invokes it shares one,
+# and the `release` sentence shares none.
+ENV_FLOOR = 4
+HELP_TIMEOUT = 10
+# One `--help` is a python interpreter starting, and a skill naming ten
+# subcommands paid for them one after another. They are independent reads of the
+# environment, so they are fetched together. On `kickoff/AFK.md`, with three
+# suites running beside it: 4.85 s serial, 3.69 s together, against 1.25 s for
+# the same file with no tool to resolve — the helps are two thirds of the cost
+# either way, and the machine was saturated while both numbers were taken.
+HELP_WORKERS = 8
+
+# Function words, and nothing else. A content verb left in here would silence
+# the very sentences the metric exists to find.
+STOPWORDS = frozenset("""
+a an the and or but if then than that this these those of to in on at by for
+with from as is are was were be been being it its they them their he she we you
+not no nor so such own same too very can will just do does did what which who
+whom when where why how all any both each few more most other some only here
+there one two three into out up down over under again further once about above
+below between through during before after against because while until upon per
+via also still yet even ever never always may might must shall should would
+could has have had having
+""".split())
 
 # One body line, read once: the number a reader scrolls to, the ONE role it
 # plays, and its prose with that role's markers taken off.
@@ -454,7 +543,7 @@ def first_word_at(text, start):
 
 
 def sentences(body):
-    """Every sentence of the body, as (line number, word count) pairs.
+    """Every sentence of the body, as (line number, text) pairs.
 
     A CHUNK is a run of plain lines, or one hard-break line on its own; it is cut
     internally at full stops and forcibly at its end. Offsets are carried so each
@@ -472,7 +561,7 @@ def sentences(body):
             text += line.text + " "
         for offset, sentence in split_sentences(text.rstrip()):
             i = bisect.bisect_right(offsets, offset) - 1
-            found.append((starts[max(i, 0)], len(words(sentence))))
+            found.append((starts[max(i, 0)], sentence))
         chunk.clear()
 
     chunk = []
@@ -498,6 +587,304 @@ def sentences(body):
     return found
 
 
+def bin_dir():
+    """The directory the `tk-*` tools live in.
+
+    DERIVED from this file's own location, so that no hand-kept list of tools
+    sits beside a check claiming to cover them (`../reference/slice-rules.md`).
+    `TK_PRUNE_BIN` overrides it, and that override is the seam the fixture
+    enters through: a stub `tk-queue` with a help of its own, and a test that
+    does not measure the real one.
+    """
+    return os.environ.get("TK_PRUNE_BIN") or os.path.dirname(os.path.abspath(__file__))
+
+
+def kit_tools():
+    """{name: path} for the executable `tk-*` files of that directory.
+
+    The allowlist, and it is why prose cannot make this bin run anything: a name
+    reaches `subprocess` only when a file of that name is already an executable
+    of the derived directory.
+    """
+    out = {}
+    directory = bin_dir()
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return out
+    for tool in names:
+        full = os.path.join(directory, tool)
+        if tool.startswith("tk-") and os.path.isfile(full) and os.access(full, os.X_OK):
+            out[tool] = full
+    return out
+
+
+def tool_help(path, args, cache):
+    """The `--help` of one tool, read ONCE per run, or None when it will not run.
+
+    Every failure is the same answer — no help, no marks. A bin that refused a
+    file because a tool of the environment is missing would refuse to measure
+    the file, and measuring is the whole contract.
+    """
+    key = (path,) + tuple(args)
+    if key not in cache:
+        try:
+            # stdin is CLOSED, not inherited. A tool that reads it would block
+            # on the terminal this bin was run from, and a measurement that
+            # hangs on a help text is worse than one that never asks.
+            # `errors="replace"` for the same reason `measure` decodes that
+            # way: a byte the locale cannot decode is not a reason to refuse a
+            # measurement. Strict decoding raises inside `subprocess.run`, and a
+            # `UnicodeDecodeError` is a `ValueError` — it passed BOTH the except
+            # below and `main`'s, and the bin that promises to exit 0 for every
+            # measurement traced back instead.
+            out = subprocess.run([path, *args, "--help"], capture_output=True,
+                                 text=True, errors="replace",
+                                 timeout=HELP_TIMEOUT,
+                                 stdin=subprocess.DEVNULL)
+            cache[key] = out.stdout if out.returncode == 0 else None
+        except (OSError, subprocess.SubprocessError):
+            cache[key] = None
+    return cache[key]
+
+
+def usage_block(help_text):
+    """The `usage:` paragraph — its own line, plus the lines wrapped under it."""
+    out, inside = [], False
+    for line in help_text.splitlines():
+        if line.startswith("usage:"):
+            inside = True
+        elif inside and not (line[:1].isspace() and line.strip()):
+            inside = False
+        if inside:
+            out.append(line)
+    return "\n".join(out)
+
+
+def help_prose(help_text):
+    """The help with its usage block and its `--flag` tokens taken out.
+
+    What is left is the prose of the descriptions, which is the half a sentence
+    can restate. The usage is a grammar, not prose: leaving it in made every
+    sentence that types the command a copy of the command.
+    """
+    usage = usage_block(help_text)
+    body = help_text.replace(usage, " ", 1) if usage else help_text
+    return FLAG_TOKEN.sub(" ", body)
+
+
+def required_flags(help_text):
+    """The flags the usage shows OUTSIDE brackets — argparse's own mark.
+
+    A flag inside `[…]` is optional and one outside it is not, so the obligation
+    a sentence claims can be checked against the tool rather than believed.
+    """
+    usage, depth, out = usage_block(help_text), 0, set()
+    for m in re.finditer(r"[\[\]]|--[a-z][\w-]*", usage):
+        token = m.group(0)
+        if token == "[":
+            depth += 1
+        elif token == "]":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            out.add(token)
+    return out
+
+
+def stem(word):
+    """A crude stem: enough to make `refuses` and `refused` one token.
+
+    Crude on purpose. A real stemmer is a dependency, and this number is read
+    against a floor of four rather than reported as a percentage — the error a
+    rough stem carries is smaller than the gap the floor spans.
+    """
+    # the apostrophe goes rather than being trimmed at the ends: `item's` trimmed
+    # is still `item's`, and the plural rule then cut it to `item'`, a token no
+    # help ever prints and no sentence can meet
+    word = word.lower().replace("'", "").replace("\u2019", "").strip("-")
+    if word.endswith("ies") and len(word) > 4:
+        word = word[:-3] + "y"
+    elif word.endswith("s") and len(word) > 3 and not word.endswith(("ss", "us")):
+        word = word[:-1]
+    for suffix, keep in (("ing", 5), ("ed", 4), ("ly", 4)):
+        if word.endswith(suffix) and len(word) > keep:
+            return word[:-len(suffix)]
+    return word
+
+
+def content_stems(text, drop=()):
+    """The stems of `text` that carry meaning: no function words, no tool name."""
+    out = set()
+    for word in re.findall(r"[A-Za-z][A-Za-z'\u2019-]*", text):
+        # the WORD is tested against the list as well as its stem: `this` stems
+        # to `thi`, which is in no stopword list ever written, and it was
+        # reported as a stem two texts shared
+        if word.lower().strip("'\u2019-") in STOPWORDS:
+            continue
+        s = stem(word)
+        if len(s) >= 3 and s not in STOPWORDS and s not in drop:
+            out.add(s)
+    return out
+
+
+def tools_by_line(body):
+    """{line number: (tool, subcommand or None)} — the tool in force on each line.
+
+    A sentence is attributed to the tool its own line names, or to the one named
+    EARLIER IN THE SAME BLOCK: the invocation opens a numbered step and the
+    sentences describing what it does follow it, on lines that name nothing. A
+    block ends at a blank line and at every line that opens a construct of its
+    own, so the third step of a list does not inherit the tool of the first.
+    """
+    out, current = {}, None
+    for line in body:
+        if line.role == "blank" or line.role in HARD_BREAK_ROLES:
+            current = None
+        m = TOOL_SPAN.search(line.text)
+        if m:
+            current = (m.group(1), m.group(2))
+        out[line.number] = current
+    return out
+
+
+def resolve_tool(named, tools, cache):
+    """((display name, help text)) for a named tool, or None.
+
+    The subcommand is checked against the tool's OWN list — argparse prints it
+    braced in the usage — so `tk-queue handoff` resolves to that subcommand's
+    help and `tk-queue writes` resolves to the tool's.
+    """
+    name, sub = named
+    path = tools.get(name)
+    if path is None:
+        return None
+    top = tool_help(path, (), cache)
+    if top is None:
+        return None
+    if sub:
+        m = SUBCOMMANDS.search(usage_block(top))
+        if m and sub in m.group(1).split(","):
+            help_text = tool_help(path, (sub,), cache)
+            if help_text is not None:
+                return f"{name} {sub}", help_text
+    return name, top
+
+
+def fill(calls, cache):
+    """Read the helps of `calls` together, filing each under its own key.
+
+    Nothing here changes an answer — every entry it writes is one `tool_help`
+    would have written on its own, from the same arguments. It changes the WALL
+    CLOCK: the reads are independent and each one is an interpreter starting, so
+    a file naming ten subcommands waited three seconds for them one at a time.
+
+    The order is taken ONCE and reused for both halves of the `zip`: sorting the
+    same set twice made the pairing depend on two sorts agreeing.
+    """
+    order = sorted(c for c in calls if (c[0],) + tuple(c[1]) not in cache)
+    if not order:
+        return
+    if len(order) == 1:
+        tool_help(order[0][0], order[0][1], cache)
+        return
+    with concurrent.futures.ThreadPoolExecutor(HELP_WORKERS) as pool:
+        for (path, args), text in zip(
+                order, pool.map(lambda c: tool_help(c[0], c[1], {}), order)):
+            cache[(path,) + tuple(args)] = text
+
+
+def prefetch(wanted, tools, cache):
+    """Fill the help cache for every tool this file names, in TWO waves.
+
+    THE SUBCOMMAND IS PROSE, AND IT IS CHECKED BEFORE IT IS RUN. The allowlist
+    of `kit_tools` covers the executable and nothing else, so a single wave sent
+    `argv[1]` straight from the markdown: a file writing `` `tk-queue rmdash` ``
+    ran the tool with an argument no author of this kit ever wrote. It was never
+    a shell and never an injection — the run is a list, `stdin` is closed and the
+    output is discarded — but `kit_tools` claims prose cannot make this bin run
+    anything, and that claim has to hold for the whole command line.
+
+    So the top-level helps come first, and a subcommand reaches `subprocess`
+    only once the tool's OWN braced list in the usage has named it — the same
+    check `resolve_tool` makes before it reads an answer.
+    """
+    named = [n for n in wanted if n is not None and n[0] in tools]
+    fill({(tools[n[0]], ()) for n in named}, cache)
+    subs = set()
+    for name, sub in named:
+        if not sub:
+            continue
+        path = tools[name]
+        top = cache.get((path,))
+        if top is None:
+            continue
+        m = SUBCOMMANDS.search(usage_block(top))
+        if m and sub in m.group(1).split(","):
+            subs.add((path, (sub,)))
+    fill(subs, cache)
+
+
+def scan_environment(sents, body):
+    """Sentences restating the `--help` of the tool they name.
+
+    THE CLASS, and the reason it is here: the environment is the source of
+    truth, and prose that caches what a tool prints grows a second copy to keep
+    in sync. Six of the twelve clauses one pruning pass cut off `verify` were
+    this, and whole sections of `kickoff`.
+
+    A sentence marks on either of two readings. Its content stems — code spans
+    off, function words off, the tool's own name off — meet the help's PROSE in
+    at least `ENV_FLOOR` of them; OR it names a flag the usage marks required
+    and carries the obligation in words, which is the same claim made without
+    the vocabulary.
+
+    LISTED, NEVER MARKED. Whether the copy should go is the pruning table's
+    question: a sentence may restate the help because the reader needs it there
+    at that moment, and the mirror class — prose the help does NOT know — is a
+    different ticket. So this reports the line, the tool and the stems, and no
+    target is set against it.
+    """
+    tools, cache, named = kit_tools(), {}, tools_by_line(body)
+    prefetch(named.values(), tools, cache)
+    resolved, prose, found = {}, {}, []
+    for number, text in sents:
+        # THE SENTENCE IS ASKED BEFORE THE BLOCK. The brief attributes a
+        # sentence to the tool named `in the sentence OR earlier in the same
+        # block`, and `named` answers only the second half: it is keyed by line,
+        # and a sentence is filed under the line it OPENS on. A span sitting on
+        # the sentence's second physical line reached neither — the same
+        # sentence marked 1 with the invocation first and 0 with it wrapped —
+        # and a paragraph is wrapped by its author, not by its meaning.
+        m = TOOL_SPAN.search(text)
+        tool = (m.group(1), m.group(2)) if m else named.get(number)
+        if tool is None:
+            continue
+        if tool not in resolved:
+            resolved[tool] = resolve_tool(tool, tools, cache)
+        if resolved[tool] is None:
+            continue
+        display, help_text = resolved[tool]
+        if tool not in prose:
+            # the help's half of the comparison does not move from one sentence
+            # to the next, and stemming it per sentence made the scan cost
+            # sentences x help rather than help
+            drop = {stem(part) for name in display.split()
+                    for part in name.split("-")}
+            prose[tool] = (drop, content_stems(help_prose(help_text), drop))
+        drop, help_stems = prose[tool]
+        shared = content_stems(CODE_SPAN.sub(" ", text), drop) & help_stems
+        fact = None
+        if OBLIGATION.search(text):
+            required = required_flags(help_text)
+            claimed = sorted(set(FLAG_TOKEN.findall(text)) & required)
+            if claimed:
+                fact = f"{claimed[0]} required"
+        if len(shared) >= ENV_FLOOR or fact:
+            found.append({"line": number, "tool": display,
+                          "shared": sorted(shared), "fact": fact})
+    return found
+
+
 def defined_terms(body):
     """(line number, term) for every term this body defines."""
     found = []
@@ -511,12 +898,49 @@ def defined_terms(body):
     return found
 
 
-def sibling_terms(path):
-    """{normalised term: [sibling file names]} for the other markdown beside it."""
+def inside(real, root):
+    """True when a resolved path is the root or sits under it."""
+    return real == root or real.startswith(root + os.sep)
+
+
+def kit_root(path):
+    """The plugin root above this file, when the file is a SKILL of that plugin.
+
+    A KIT is recognised by the marker a plugin carries — `.claude-plugin/
+    plugin.json` — and not by a directory called `skills`: the name is the
+    convention, the marker is the fact, and any tree named the same way would
+    otherwise read as a plugin. The search walks up from the file, so the
+    NEAREST plugin wins when a marketplace holds several.
+
+    ONLY A FILE UNDER `<root>/skills/` GETS THE KIT FOR A UNIVERSE. The metric
+    asks whether another SKILL of the kit already coins the term; a fixture, a
+    reference page or a test file under the same plugin is not one of them, and
+    comparing one against the shipped skills reports a collision nobody can act
+    on. Every other file keeps the directory it always had, and no error is
+    raised for it.
+    """
+    real = os.path.realpath(path)
+    directory = os.path.dirname(real)
+    while True:
+        if os.path.isfile(os.path.join(directory, PLUGIN_MARKER)):
+            skills = os.path.join(directory, "skills")
+            return directory if inside(real, skills) else None
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return None
+        directory = parent
+
+
+def directory_candidates(path):
+    """(name to report it by, path on disk) for the markdown beside `path`.
+
+    The universe of a file that is not a skill of a kit — unchanged, and named
+    by basename, because inside one directory a basename is unambiguous.
+    """
     directory = os.path.dirname(os.path.abspath(path))
     here = os.path.basename(os.path.abspath(path))
     root = os.path.realpath(directory)
-    out = {}
+    out = []
     try:
         names = sorted(os.listdir(directory))
     except OSError:
@@ -532,6 +956,61 @@ def sibling_terms(path):
         # was pointed at and nothing else
         if os.path.dirname(os.path.realpath(full)) != root:
             continue
+        out.append((name, full))
+    return out
+
+
+def kit_candidates(path, root):
+    """(path relative to the kit root, path on disk) for the kit's skill markdown.
+
+    THE BOUNDARY MOVED FROM THE DIRECTORY TO THE KIT, and it did not go. A `.md`
+    whose real destination falls outside the kit is still refused; one that
+    points at another skill of the same kit is read ONCE, because a real file
+    counted twice reports a term as shared with itself. The measured file never
+    answers as its own sibling either, however many names lead to it.
+    """
+    target = os.path.realpath(path)
+    seen = {target: None}
+    for directory, subdirs, names in os.walk(os.path.join(root, "skills")):
+        subdirs.sort()
+        for name in sorted(names):
+            if not name.lower().endswith(".md"):
+                continue
+            full = os.path.join(directory, name)
+            if not os.path.isfile(full):
+                continue
+            real = os.path.realpath(full)
+            if not inside(real, root) or real in seen:
+                continue
+            seen[real] = full
+    # named by the REAL path, not by the link that reached it: the reader of a
+    # finding has to open the file that carries the second definition, and the
+    # alias sends them to a name they cannot edit
+    return sorted((os.path.relpath(real, root), full)
+                  for real, full in seen.items() if full is not None)
+
+
+def sibling_terms(path):
+    """{normalised term: [where else the kit defines it]} for one file.
+
+    THE UNIVERSE IS THE KIT when the file lives in one. Reading the target's own
+    directory and stopping there scored ZERO on the case that named this metric:
+    **generation**, redefined by `dispatch` against `kickoff/WINDOW.md`, sat one
+    skill away and nothing in the report said so (#219).
+
+    A file that is not a skill of a kit keeps the directory it had, named by
+    basename, and no error is raised for it — `kit_root` says which files those
+    are.
+
+    Every name is RELATIVE TO THE KIT ROOT on the kit path. A basename stops
+    telling two findings apart the moment the universe holds nine files called
+    `SKILL.md`.
+    """
+    root = kit_root(path)
+    candidates = (directory_candidates(path) if root is None
+                  else kit_candidates(path, root))
+    out = {}
+    for name, full in candidates:
         try:
             with open(full, "rb") as f:
                 lines = f.read().decode("utf-8-sig", errors="replace").splitlines()
@@ -541,7 +1020,11 @@ def sibling_terms(path):
         scanned, _ = scan(body)
         for _, term in defined_terms(scanned):
             out.setdefault(term.casefold(), []).append(name)
-    return out
+    # A sibling that defines the term TWICE is still one other place to read it.
+    # The counter never saw the difference — it counts the target's terms — but
+    # the finding named the file once per definition, and `also in b.md, b.md`
+    # is a report of two files that do not exist.
+    return {term: list(dict.fromkeys(names)) for term, names in out.items()}
 
 
 def collapse(text):
@@ -594,6 +1077,39 @@ def scan_kind(body, pattern, kind):
     """
     return [{"line": line.number, "kind": kind, "match": m.group(0)}
             for line, _, found in line_matches(body, pattern) for m in found]
+
+
+def scan_measured(body):
+    """`measured` where the line also carries a number.
+
+    The word on its own is not a measurement and the counter said it was: it is
+    how a skill writes the RULE about evidence, and the pruning pass over
+    `verify/SKILL.md` read `1` off a file that held no evidence by this rule and
+    one piece by nobody's. A report names what it measured, so the digit is the
+    promotion — a date is digits too, and reports itself besides.
+    """
+    return [{"line": line.number, "kind": "measured", "match": m.group(0)}
+            for line, text, found in line_matches(body, MEASURED)
+            if QUANTITY.search(text) for m in found]
+
+
+def scan_narrated(body):
+    """Perfect-tense clauses, carrying the line they sit on.
+
+    THE OTHER HALF OF T284, and it is a SECOND ROW rather than more of the first.
+    The evidence the counter missed in `verify/SKILL.md` had no date, no count
+    and no `measured` in it — "a criterion read as satisfied on a minimal fixture
+    HAS PASSED while the same command failed on the populated form" — and what
+    marks it is the tense: an instruction is written in the present, and a
+    perfect tense recounts.
+
+    `inline_evidence` carries a ceiling of zero, so what enters it is a VERDICT,
+    and this shape cannot support one: `a count their lane had already passed` is
+    a war story and `an item the ladder had placed third` is a rule, and only the
+    person reading the line can tell. So it is reported beside the negations,
+    with its context, and marked against nothing.
+    """
+    return scan_context(body, NARRATED)
 
 
 def scan_pointers(body):
@@ -702,16 +1218,23 @@ def measure(path):
 
     description = frontmatter_description(fm_lines)
     sents = sentences(body)
-    counts = [n for _, n in sents]
+    # measured once and read three times below: the word count is what every
+    # sentence number rides on, and counting it per reader is how two of them
+    # come to disagree
+    measured = [(number, len(words(text))) for number, text in sents]
+    counts = [n for _, n in measured]
     body_words = sum(counts)
 
     evidence = (scan_kind(body, ISO_DATE, "iso date")
-                + scan_kind(body, MEASURED, "measured")
+                + scan_measured(body)
                 + scan_kind(body, COUNT_EVIDENCE, "count"))
     evidence.sort(key=lambda e: (e["line"], e["match"]))
+    narrated = scan_narrated(body)
     pointers = scan_pointers(body)
     negations = scan_context(body, NEGATIONS)
     terms = defined_terms(body)
+
+    environment = scan_environment(sents, body)
 
     siblings = sibling_terms(path)
     shared = [{"line": number, "term": term, "also_in": siblings[term.casefold()]}
@@ -726,22 +1249,26 @@ def measure(path):
         "sentences_over_30": sum(1 for n in counts if n > LONG_SENTENCE),
         "description_words": None if description is None else len(words(description)),
         "inline_evidence": len(evidence),
+        "narrated_outcomes": len(narrated),
         "pointers": len(pointers),
         "negations": len(negations),
         "defined_terms": len(terms),
         "terms_defined_in_sibling": len(shared),
+        "environment_copies": len(environment),
     }
     return {
         "path": path,
         "metrics": metrics,
         "unclosed_fence": unclosed_fence,
         "long_sentences": [{"line": number, "words": n}
-                           for number, n in sents if n > LONG_SENTENCE],
+                           for number, n in measured if n > LONG_SENTENCE],
         "inline_evidence": evidence,
+        "narrated_outcomes": narrated,
         "pointers": pointers,
         "negations": negations,
         "defined_terms": [{"line": number, "term": term} for number, term in terms],
         "terms_defined_in_sibling": shared,
+        "environment_copies": environment,
     }
 
 
@@ -790,6 +1317,8 @@ def render(report, show_targets):
                      lambda e: f"{e['words']} words")
     lines += section("inline evidence", report["inline_evidence"],
                      lambda e: f"{e['kind']:<9} {e['match']}")
+    lines += section("narrated outcomes", report["narrated_outcomes"],
+                     lambda e: f"{e['match']:<20} {e['context']}")
     lines += section("pointers to other files", report["pointers"],
                      lambda e: e["match"])
     lines += section("negations", report["negations"],
@@ -798,6 +1327,11 @@ def render(report, show_targets):
                      lambda e: e["term"])
     lines += section("terms defined in a sibling too", report["terms_defined_in_sibling"],
                      lambda e: f"{e['term']} — also in {', '.join(e['also_in'])}")
+    lines += section("environment copies", report["environment_copies"],
+                     lambda e: f"{e['tool']:<22} "
+                               + (e["fact"] if e["fact"] else "")
+                               + (" · " if e["fact"] and e["shared"] else "")
+                               + ", ".join(e["shared"]))
     return "\n".join(lines)
 
 
@@ -814,7 +1348,9 @@ def main(argv=None):
     p = argparse.ArgumentParser(
         prog="tk-prune-measure",
         description="Measures one markdown file for a pruning pass: length, sentence "
-                    "shape, inline evidence, pointers, negations and defined terms.",
+                    "shape, description words, inline evidence, narrated outcomes, "
+                    "pointers, negations, defined terms, terms defined in a sibling "
+                    "too, and environment copies.",
         epilog="Exits 0 for every measurement — it measures, it does not judge. "
                "A path that does not exist, or a directory, exits 2.")
     p.add_argument("file", metavar="FILE.md",

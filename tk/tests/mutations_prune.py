@@ -118,15 +118,36 @@ MUTATIONS = [
 
     # -- the sentence unit --------------------------------------------------
     ("T185 a full stop no longer ends a sentence",
-     'SENTENCE_END = re.compile(r"[.!?]+(?=\\s|$)")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
      'SENTENCE_END = re.compile(r"(?!x)x")',
      ["TestTheBloatedFixture.test_the_sentence_count_is_the_one_the_sentence_unit_produces",
       "TestTheSentenceUnit.test_a_full_stop_inside_a_list_item_still_splits_it"]),
 
     ("T185 a full stop ends a sentence wherever it sits, decimals included",
-     'SENTENCE_END = re.compile(r"[.!?]+(?=\\s|$)")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
      'SENTENCE_END = re.compile(r"[.!?]+")',
      ["TestTheSentenceUnit.test_a_decimal_point_does_not_end_a_sentence"]),
+
+    # -- the stop the emphasis closes over (T323) ---------------------------
+    ("T323 a stop is only a stop with a space after it, so bold merges two",
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=\\s|$)")',
+     ["TestTheSentenceUnit.test_a_full_stop_inside_bold_ends_the_sentence_it_closes",
+      "TestTheSentenceUnit."
+      "test_a_full_stop_inside_bold_does_not_inflate_the_long_sentence_counts",
+      "TestTheSentenceUnit.test_a_full_stop_inside_italics_ends_the_sentence_too"]),
+
+    ("T323 a code span closes over prose too, so a dotted token ends a sentence",
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_`]*(?:\\s|$))")',
+     ["TestTheSentenceUnit."
+      "test_a_full_stop_inside_a_code_span_does_not_end_a_sentence"]),
+
+    ("T323 the emphasis run is required, so a plain stop no longer ends one",
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]*(?:\\s|$))")',
+     'SENTENCE_END = re.compile(r"[.!?]+(?=[*_]+(?:\\s|$))")',
+     ["TestTheSentenceUnit."
+      "test_a_stop_before_bold_that_opens_the_next_sentence_still_splits"]),
 
     ("T185 an abbreviation ends a sentence",
      "        if last in ABBREV:", "        if False:",
@@ -252,11 +273,48 @@ MUTATIONS = [
      'ISO_DATE = re.compile(r"\\b\\d{4}-\\d{2}-\\d{2}\\b")',
      'ISO_DATE = re.compile(r"(?!x)x")',
      ["TestInlineEvidence.test_an_iso_date_is_evidence",
-      "TestTheBloatedFixture.test_every_kind_of_inline_evidence_is_found"]),
+      "TestTheBloatedFixture.test_every_kind_of_inline_evidence_is_found",
+      "TestEvidenceInBothDirections."
+      "test_the_word_measured_beside_a_date_is_inline_evidence"]),
 
     ("T185 the word measured is not evidence",
      'MEASURED = re.compile(r"(?i)\\bmeasured\\b")', 'MEASURED = re.compile(r"(?!x)x")',
-     ["TestInlineEvidence.test_the_word_measured_is_evidence"]),
+     ["TestInlineEvidence.test_the_word_measured_is_evidence",
+      "TestEvidenceInBothDirections."
+      "test_the_word_measured_beside_a_number_is_inline_evidence"]),
+
+    # -- the counter that missed in both directions (T284) ------------------
+    ("T284 the bare word is a measurement again, with nothing measured on the line",
+     "            if QUANTITY.search(text) for m in found]",
+     "            if True for m in found]",
+     ["TestEvidenceInBothDirections.test_the_word_measured_alone_is_not_inline_evidence",
+      "TestEvidenceInBothDirections."
+      "test_the_two_cases_of_the_verify_file_are_green_side_by_side"]),
+
+    ("T284 no clause is ever narrated, so the evidence with no date stays invisible",
+     'NARRATED = re.compile(r"(?i)\\b(?:has|have|had)\\s+(?:\\w+\\s+)?\\w+(?:ed|en)\\b")',
+     'NARRATED = re.compile(r"(?!x)x")',
+     ["TestEvidenceInBothDirections.test_a_clause_narrating_what_happened_is_reported",
+      "TestEvidenceInBothDirections."
+      "test_the_text_report_lists_the_narrated_outcomes_with_their_lines"]),
+
+    ("T284 the auxiliary is dropped, so every participle recounts something",
+     'NARRATED = re.compile(r"(?i)\\b(?:has|have|had)\\s+(?:\\w+\\s+)?\\w+(?:ed|en)\\b")',
+     'NARRATED = re.compile(r"(?i)\\b\\w+(?:ed|en)\\b")',
+     ["TestEvidenceInBothDirections."
+      "test_a_rule_in_the_present_tense_is_not_a_narrated_outcome"]),
+
+    ("T284 two words may sit between the auxiliary and the participle again",
+     'NARRATED = re.compile(r"(?i)\\b(?:has|have|had)\\s+(?:\\w+\\s+)?\\w+(?:ed|en)\\b")',
+     'NARRATED = re.compile(r"(?i)\\b(?:has|have|had)\\s+(?:\\w+\\s+){0,2}\\w+(?:ed|en)\\b")',
+     ["TestEvidenceInBothDirections."
+      "test_a_participle_belonging_to_a_noun_is_not_a_narrated_outcome"]),
+
+    ("T284 the narrated outcomes are marked against a ceiling the regex cannot support",
+     '    "terms_defined_in_sibling": 0,\n}',
+     '    "terms_defined_in_sibling": 0,\n    "narrated_outcomes": 0,\n}',
+     ["TestEvidenceInBothDirections.test_a_narrated_outcome_is_marked_against_no_target",
+      "TestTargets.test_the_targets_the_bin_carries_are_the_ones_the_house_rule_names"]),
 
     ("T185 a count followed by times or before is not evidence",
      'COUNT_EVIDENCE = re.compile(r"(?i)\\b\\d+\\s+(?:times|before)\\b")',
@@ -360,15 +418,15 @@ MUTATIONS = [
      ["TestDefinedTerms.test_the_house_form_without_an_article_is_a_definition"]),
 
     ("T185 bold and a colon is not a definition",
-     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*:")',
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
      'TERM_COLON = re.compile(r"(?!x)x")',
      ["TestDefinedTerms.test_bold_and_a_colon_opening_a_line_is_a_definition",
       "TestDefinedTerms.test_bold_and_a_colon_inside_a_list_item_opens_that_line_too",
       "TestTheBloatedFixture.test_the_five_defined_terms_are_found"]),
 
     ("T185 bold and a colon anywhere in a line is a definition",
-     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*:")',
-     'TERM_COLON = re.compile(r"\\*\\*([^*\\n]+)\\*\\*\\s*:")',
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
+     'TERM_COLON = re.compile(r"\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
      ["TestDefinedTerms.test_bold_in_the_middle_of_a_line_is_not_a_definition"]),
 
     ("T185 a list marker is left in place, so a definition opening a bullet is missed",
@@ -411,7 +469,172 @@ MUTATIONS = [
      "    shared = [{\"line\": number, \"term\": term, \"also_in\": []}\n"
      "              for number, term in terms]",
      ["TestDefinedTerms.test_a_term_defined_once_in_its_own_file_is_not_reported_as_shared",
-      "TestDefinedTerms.test_a_term_defined_in_a_sibling_of_the_same_directory_is_reported"]),
+      "TestDefinedTerms.test_a_term_defined_in_a_sibling_of_the_same_directory_is_reported",
+      "TestTheKitIsTheUniverse.test_the_only_definition_in_the_whole_kit_is_not_reported"]),
+
+    # -- the universe is the kit, not the directory (T282, #219) ------------
+    ("T282 no file is ever in a kit, so the universe stops at the directory",
+     "            return directory if inside(real, skills) else None",
+     "            return None",
+     ["TestTheKitIsTheUniverse.test_a_term_defined_in_another_skill_of_the_kit_is_reported"]),
+
+    ("T282 every file under the plugin is a skill of it, fixtures included",
+     "            return directory if inside(real, skills) else None",
+     "            return directory",
+     ["TestTheKitIsTheUniverse.test_a_kit_file_that_is_not_a_skill_keeps_its_own_directory"]),
+
+    ("T282 a kit is any directory with a `skills` in it, marker or no marker",
+     "        if os.path.isfile(os.path.join(directory, PLUGIN_MARKER)):",
+     '        if os.path.isdir(os.path.join(directory, "skills")):',
+     ["TestTheKitIsTheUniverse."
+      "test_a_target_under_no_kit_measures_by_its_own_directory_and_no_error"]),
+
+    ("T282 the kit scan reads the whole plugin, not its skills",
+     '    for directory, subdirs, names in os.walk(os.path.join(root, "skills")):',
+     "    for directory, subdirs, names in os.walk(root):",
+     ["TestTheKitIsTheUniverse."
+      "test_a_skill_of_the_kit_never_collides_with_a_file_outside_skills"]),
+
+    ("T282 the kit boundary is gone, so a link out of the plugin is read",
+     "            if not inside(real, root) or real in seen:\n"
+     "                continue\n"
+     "            seen[real] = full",
+     "            if real in seen:\n"
+     "                continue\n"
+     "            seen[real] = full",
+     ["TestTheKitIsTheUniverse.test_a_kit_file_symlinked_out_of_the_kit_is_not_read"]),
+
+    ("T282 the kit scan keys on the name, so one real file answers under two",
+     "            if not inside(real, root) or real in seen:\n"
+     "                continue\n"
+     "            seen[real] = full",
+     "            if not inside(real, root) or full in seen:\n"
+     "                continue\n"
+     "            seen[full] = full",
+     ["TestTheKitIsTheUniverse.test_a_kit_file_symlinked_to_another_skill_is_read_once",
+      "TestTheKitIsTheUniverse."
+      "test_the_measured_file_is_not_its_own_sibling_under_a_second_name"]),
+
+    ("T282 a kit finding is named by the link that reached it, not by the file",
+     "    return sorted((os.path.relpath(real, root), full)",
+     "    return sorted((os.path.relpath(full, root), full)",
+     ["TestTheKitIsTheUniverse.test_a_kit_file_symlinked_to_another_skill_is_read_once"]),
+
+    ("T282 a kit finding is named by basename, so nine `SKILL.md` read alike",
+     "    return sorted((os.path.relpath(real, root), full)",
+     "    return sorted((os.path.basename(real), full)",
+     ["TestTheKitIsTheUniverse."
+      "test_two_skill_files_of_the_same_name_are_told_apart_by_their_path"]),
+
+    # -- the environment a file copies (T293) -------------------------------
+    ("T293 a tool span must close on the same line, so a wrapped one names none",
+     'TOOL_SPAN = re.compile(r"`(tk-[a-z][a-z0-9-]*)(?:\\s+([a-z][a-z0-9-]*))?")',
+     'TOOL_SPAN = re.compile(r"`(tk-[a-z][a-z0-9-]*)(?:\\s+([a-z][a-z0-9-]*))?[^`]*`")',
+     ["TestEnvironmentCopies.test_the_tool_is_read_off_a_code_span_broken_across_a_line"]),
+
+    ("T293 the invocation counts as prose, so every call site copies its help",
+     'CODE_SPAN = re.compile(r"`[^`]*(?:`|$)")',
+     'CODE_SPAN = re.compile(r"(?!x)x")',
+     ["TestEnvironmentCopies.test_the_sentence_that_only_invokes_the_tool_is_not_a_copy"]),
+
+    ("T293 one shared stem is a copy, so naming a tool is restating it",
+     "ENV_FLOOR = 4", "ENV_FLOOR = 1",
+     ["TestEnvironmentCopies.test_a_sentence_that_only_names_the_tool_is_not_a_copy",
+      "TestEnvironmentCopies.test_a_flag_the_usage_marks_optional_carries_no_fact"]),
+
+    ("T293 the floor is out of reach, so no sentence ever copies anything",
+     "ENV_FLOOR = 4", "ENV_FLOOR = 99",
+     ["TestEnvironmentCopies.test_a_sentence_restating_the_help_of_the_tool_it_names_is_a_copy",
+      "TestEnvironmentCopies.test_the_criterion_of_the_item_read_over_the_four_steps"]),
+
+    ("T293 the stems are the only reading, so a claimed obligation is invisible",
+     "        if len(shared) >= ENV_FLOOR or fact:",
+     "        if len(shared) >= ENV_FLOOR:",
+     ["TestEnvironmentCopies.test_a_sentence_claiming_an_obligation_the_usage_marks_is_a_copy"]),
+
+    ("T293 a bracketed flag reads as required, so the mirror class is marked",
+     "        elif depth == 0:\n            out.add(token)",
+     "        else:\n            out.add(token)",
+     ["TestEnvironmentCopies.test_a_flag_the_usage_marks_optional_carries_no_fact"]),
+
+    ("T293 naming the flag is the fact, with no claim made about it",
+     "        if OBLIGATION.search(text):", "        if True:",
+     ["TestEnvironmentCopies.test_naming_a_required_flag_without_claiming_it_is_not_a_copy"]),
+
+    ("T293 a tool reaches only the line that names it, and nothing under it",
+     "        out[line.number] = current", "        out[line.number] = current if m else None",
+     ["TestEnvironmentCopies."
+      "test_the_tool_is_inherited_by_the_lines_under_the_one_that_named_it",
+      "TestEnvironmentCopies."
+      "test_a_sentence_restating_the_help_of_the_tool_it_names_is_a_copy"]),
+
+    ("T293 the block never ends, so the third step answers for the first",
+     '        if line.role == "blank" or line.role in HARD_BREAK_ROLES:\n'
+     "            current = None",
+     "        if False:\n            current = None",
+     ["TestEnvironmentCopies.test_a_later_block_does_not_inherit_the_tool_of_an_earlier_one"]),
+
+    ("T293 the bin directory is fixed, so the fixture measures the real tool",
+     '    return os.environ.get("TK_PRUNE_BIN") or os.path.dirname(os.path.abspath(__file__))',
+     "    return os.path.dirname(os.path.abspath(__file__))",
+     ["TestEnvironmentCopies.test_editing_the_help_unmarks_the_sentence_that_copied_it"]),
+
+    ("T293 a tool that did not resolve is read as one that did",
+     "        if resolved[tool] is None:\n            continue",
+     "        if False:\n            continue",
+     ["TestEnvironmentCopies.test_a_tool_the_kit_does_not_carry_is_not_resolved"]),
+
+    ("T293 the copies are marked against a ceiling the count cannot support",
+     '    "terms_defined_in_sibling": 0,\n}',
+     '    "terms_defined_in_sibling": 0,\n    "environment_copies": 0,\n}',
+     ["TestEnvironmentCopies.test_environment_copies_are_marked_against_no_target",
+      "TestTargets.test_the_targets_the_bin_carries_are_the_ones_the_house_rule_names"]),
+
+    ("T293 the sentence is attributed by its first line alone, not by its span",
+     "        m = TOOL_SPAN.search(text)\n"
+     "        tool = (m.group(1), m.group(2)) if m else named.get(number)",
+     "        tool = named.get(number)",
+     ["TestEnvironmentCopies."
+      "test_a_sentence_is_attributed_by_a_span_of_its_own_after_its_first_line"]),
+
+    # -- the boundary the subprocess sits behind (cold review of the lane) --
+    ("T293 the help is decoded strictly, so a byte of it traces the bin back",
+     '                                 text=True, errors="replace",',
+     "                                 text=True,",
+     ["TestTheEnvironmentBoundary."
+      "test_a_help_that_is_not_utf8_is_measured_rather_than_traced_back"]),
+
+    ("T293 the prefetch takes the subcommand from the prose and runs it unchecked",
+     '        if m and sub in m.group(1).split(","):\n'
+     "            subs.add((path, (sub,)))",
+     "        if True:\n            subs.add((path, (sub,)))",
+     ["TestTheEnvironmentBoundary."
+      "test_only_a_subcommand_the_usage_names_reaches_the_subprocess"]),
+
+    ("T282 a sibling is named once per definition, not once per file",
+     "    return {term: list(dict.fromkeys(names)) for term, names in out.items()}",
+     "    return out",
+     ["TestDefinedTerms.test_a_sibling_that_defines_the_term_twice_is_named_once"]),
+
+    ("T293 the text report drops the section the JSON carries",
+     '    lines += section("environment copies", report["environment_copies"],',
+     '    lines += section("environment copies", [],',
+     ["TestEnvironmentCopies.test_the_text_report_lists_the_copies_with_their_tool"]),
+
+    ("T282 the colon form is blind to the aside between the term and the colon (#219)",
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*:")',
+     ["TestDefinedTerms.test_a_pointer_between_the_bold_and_the_colon_still_opens_a_definition"]),
+
+    ("T282 anything at all may sit between the term and the colon",
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*\\s*(?:\\([^()\\n]*\\)\\s*)?:")',
+     'TERM_COLON = re.compile(r"^\\*\\*([^*\\n]+)\\*\\*[^:\\n]*:")',
+     ["TestDefinedTerms.test_prose_between_the_bold_and_the_colon_is_not_a_definition"]),
+
+    ("T284/T293 the help promises fewer families than the report carries",
+     '                    "shape, description words, inline evidence, narrated outcomes, "',
+     '                    "shape, inline evidence, "',
+     ["TestUsage.test_the_help_names_every_family_of_measurement_the_report_carries"]),
 
     # -- targets ------------------------------------------------------------
     ("T185 a metric sitting exactly on its ceiling is marked over",
