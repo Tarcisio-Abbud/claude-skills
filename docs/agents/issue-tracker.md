@@ -1,7 +1,9 @@
 # Issue tracker: GitHub, on a repo that is not this one
 
 Code lands here. Issues and specs live on a **private** tracker, whose slug appears in no
-versioned file of this repo — this one is public. The slug lives in the clone's local git
+versioned file of this repo — this one is written as if public: private since 2026-09-01,
+but the flip back is one command and its history up to that date is already indexed. The
+slug lives in the clone's local git
 config, which git never pushes.
 
 ## Reach the tracker through `bin/tracker-gh`
@@ -26,9 +28,9 @@ that both end in the same place:
 
 What lands in the gap is not an error. `git config` answers a missing key with an empty
 string at exit 0, and **`gh` DISCARDS an empty `-R` and falls back to the cwd's remote —
-this PUBLIC repo.** Measured: `gh issue view 1 -R ""` returns this repo's issue #1 at exit 0.
+this repo.** Measured: `gh issue view 1 -R ""` returns this repo's issue #1 at exit 0.
 Since `issue create`, `comment`, `edit --add-label` and `close` are all built the same way,
-the accident WRITES to the public repo, it does not merely read it. An empty
+the accident WRITES to this repo, it does not merely read it. An empty
 `GH_CONFIG_DIR` degrades just as quietly, to whatever identity the environment carries.
 
 The wrapper closes that because there is no gap: no separate resolution step to lose.
@@ -118,12 +120,12 @@ Fixes <owner>/<repo>#<n>
 `Fixes` is the forge's native keyword and it works across repositories, so this line is what
 makes the merge close the ticket — closure as a mechanism rather than as prose somebody has to
 read and then act on. Buying that costs the private repository's **name** and the ticket's
-**number**, made public. That cost was weighed and accepted; it does not extend one word
+**number**, exposed to every reader of this repo. That cost was weighed and accepted; it does not extend one word
 further.
 
 **Where it ends up is wider than the PR body, so count on that.** A squash or merge commit
 composed from the PR body carries the line into this repo's own history, where it is permanent
-and public like any other commit — and the commit guard never saw it, because the forge wrote
+and as visible as any other commit — and the commit guard never saw it, because the forge wrote
 that commit server-side, not git on this machine. Treat the line as landing in `main`'s log,
 not merely on a page.
 
@@ -139,7 +141,7 @@ Everything else keeps the old rule, and the old rule was not softened:
 | PR body, anywhere else | avoid; describe the change on its own terms |
 | PR title | not allowed |
 | Commit messages | not allowed |
-| Branch names | not allowed — a branch name is pushed and public exactly like a path |
+| Branch names | not allowed — a branch name is pushed and as visible as a path |
 | Code, paths, fixtures | not allowed |
 
 **Company names, account names, people's names and internal content stay out of every one of
@@ -182,7 +184,7 @@ leave the guard silently inert.
 
 **What it catches, each proved by a test that fails when the check is removed.** It reads four
 surfaces — the lines a commit adds, the paths it introduces, the commit message, and the
-branch name, which is pushed and public exactly like a path — and names the one that fired. A
+branch name, which is pushed and as visible as a path — and names the one that fired. A
 value is recognised through the disguises that defeated earlier versions of it: a different
 case, `%2F` and `%252F` in place of the slash, a value wrapped across two lines, a value
 inside a staged binary, a pure rename INTO a leaky path, and a branch name spelling the
@@ -193,7 +195,7 @@ that surface every character that is not a letter or a digit is dropped before c
 
 - **`git cherry-pick` and `git rebase` run neither hook.** Measured by instrumenting the
   script: it is never invoked. A commit made with `--no-verify` on a private branch therefore
-  reaches this public repo through either of them with nothing in its way. Closing that needs
+  reaches this repo through either of them with nothing in its way. Closing that needs
   a `pre-push` hook, which does not exist here — so on a branch built by rebase or cherry-pick,
   read the diff yourself before pushing.
 - **It reads only what a commit ADDS.** A value already tracked stays; this is a gate on new

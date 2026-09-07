@@ -1912,7 +1912,7 @@ class TestBlockAddressing(QueueTest):
 # --- T120: an item may name WHERE it runs, and the roster says what exists ---
 
 # The roster used by these fixtures is deliberately made up: the plugin is
-# public and ships no machine of ours. `alpha` is the machine running the suite.
+# written as if public and ships no machine of ours. `alpha` is the machine running the suite.
 SITE = """# fixture site file
 identity = alpha
 environments = alpha, bravo, charlie-2

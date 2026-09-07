@@ -99,7 +99,8 @@ OTHER closing line and the base rather than the presence of a line —
 `../bin/tk-closure-check "<id>" --dir "<queue dir>" --pr "<n>"` asks the five.
 
 **The tracker may be private, and the line names it anyway.** That is the deliberate cost of
-the keyword — the repository's name and the ticket's number become public in the PR body.
+the keyword — the repository's name and the ticket's number become visible in the PR body,
+and public whenever this repo is.
 Nothing else follows it across: company names, account names and internal content stay out, as
 they always were.
 

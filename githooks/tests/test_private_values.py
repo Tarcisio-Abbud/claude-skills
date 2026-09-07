@@ -265,7 +265,7 @@ class GuardTest(unittest.TestCase):
         self.assertRefused(r.commit())
 
     def test_branch_name_transliterating_the_value_is_refused(self):
-        """A branch name is pushed and public. The idiom is to swap the separators, so
+        """A branch name is pushed and as visible as a path. The idiom is to swap the separators, so
         `/` and `_` are folded to `-` on both sides before comparing."""
         r = self.repo()
         r.write("seed.txt", "seed\n")

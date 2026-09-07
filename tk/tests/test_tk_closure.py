@@ -20,8 +20,8 @@ the fixture would silently be testing this account's private repository. The
 asserting that record is what proves the shadowing works, since the real `gh`
 would leave the record empty rather than fall.
 
-REPOSITORY AND OWNER NAMES ARE FICTIONAL. This repo is public and neither bin
-carries a name of its own, so the fixtures must not smuggle one back in.
+REPOSITORY AND OWNER NAMES ARE FICTIONAL. This repo is written as if public and
+neither bin carries a name of its own, so the fixtures must not smuggle one back in.
 
 VALUES ARE ASSERTED AT THE LITERAL. Every string that crosses a process
 boundary — the reference on stdout, each condition's name and state, the verdict

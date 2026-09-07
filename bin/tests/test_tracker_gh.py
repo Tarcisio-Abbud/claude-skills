@@ -140,7 +140,7 @@ class TrackerGhTest(unittest.TestCase):
 
     def test_a_command_naming_no_tracker_is_refused(self):
         """Forgetting `-R` is the same accident as an empty one: gh would silently use the
-        cwd's repo, which is public."""
+        cwd's repo, which is the wrong one."""
         c = self.case()
         result = c.run("issue", "list", "--state", "open")
         self.assertEqual(result.returncode, self.REFUSED, result.stderr)
