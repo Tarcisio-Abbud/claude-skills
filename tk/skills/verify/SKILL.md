@@ -94,11 +94,11 @@ never a substitute for it.
 
 ## The evidence block
 
-Lives in the **body of the PR**. A session with no PR puts it on the item as it closes:
-`tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>" --note "<the block>" --force`. That
-`--force` raises the field ceiling without removing it. Either way the block is written once,
-here: a wrap-up digest, a reviewer or the next session reads and displays it rather than
-re-deriving it.
+Lives in the **body of the PR**. With no PR, in a memory file or wiki page. The item carries
+the pointer, never the block:
+`tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>" --note "[[slug]] — <one line>"`.
+A block overruns the `--note` ceiling, even forced. Either way it is written once, here: a
+wrap-up digest, a reviewer or the next session displays it rather than re-deriving it.
 
 ```
 ### Verify — <item id>
@@ -121,5 +121,5 @@ wherever it documents its standards — "every delivered item carries its accept
 living in the evidence block.
 
 **Done when:** exactly one outcome above is named for the item, and its evidence block sits in
-the PR body or the item's `--note`. A 3× failure or a rotten criterion also has its DECISION in
-the queue, with its handoff.
+the PR body or behind the item's `--note`. A 3× failure or a rotten criterion also has its
+DECISION in the queue, with its handoff.
