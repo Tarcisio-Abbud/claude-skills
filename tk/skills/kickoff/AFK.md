@@ -130,6 +130,8 @@ Solo items dispatch beside it, in series within one repository; neither lane pas
 local ceiling. An item too big for one subagent's context leaves the package carrying its
 briefing (`../verify/SKILL.md` prescribes the form) and its ready-to-paste line.
 
+A lane with its own branch and pull request dispatches under `LANE-CONTRACT.md` beside this file.
+
 Each run's prompt carries, produced here and never delegated back: the **contract block** pasted
 verbatim from `../../bin/tk-contract --role <row>` — `implementer`, or `implementer-spec` on the
 lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull request — and
@@ -169,6 +171,8 @@ for it; an empty return is a failed attempt; the three attempts and four outcome
 own. An approved solo item leaves the queue here —
 `tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>"` — and an item verify turned into a
 DECISION stays, carrying its handoff.
+
+A lane holding its own pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file.
 
 A lane item is verified BEFORE it reaches the shared branch — one cycle per item, every stage the
 orchestrator's own work, in order:
