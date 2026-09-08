@@ -96,9 +96,9 @@ never a substitute for it.
 
 Lives in the **body of the PR**. With no PR, in a memory file or wiki page. The item carries
 the pointer, never the block:
-`tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>" --note "[[slug]] — <one line>"`.
-A block overruns the `--note` ceiling, even forced. Either way it is written once, here: a
-wrap-up digest, a reviewer or the next session displays it rather than re-deriving it.
+`tk-queue done "<id>" --dir "<queue dir>" --how "[[slug]] — <what resolved it>"`.
+Pass no `--note`: it carries substance only where no pointer exists. The block is written
+once, here — a wrap-up digest, a reviewer or the next session displays it, never re-derives it.
 
 ```
 ### Verify — <item id>
@@ -121,5 +121,5 @@ wherever it documents its standards — "every delivered item carries its accept
 living in the evidence block.
 
 **Done when:** exactly one outcome above is named for the item, and its evidence block sits in
-the PR body or behind the item's `--note`. A 3× failure or a rotten criterion also has its
+the PR body or behind `--how`'s pointer. A 3× failure or a rotten criterion also has its
 DECISION in the queue, with its handoff.
