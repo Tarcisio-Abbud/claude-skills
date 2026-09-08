@@ -73,9 +73,9 @@ the standard this line holds. The reviewer of the repair is never the agent that
 
 ## The collision check closes the package
 
-When every lane of the run has been reviewed, run the collision check over the run's OPEN pull
-requests. `../merge-gate/SKILL.md` §5 owns the command and its exit codes; read it there rather
-than here, so one file states the mechanics. The forge cannot answer this question: its own
+When every lane of the run has been reviewed, run **`tk-collisions`** over the run's OPEN pull
+requests. `../merge-gate/SKILL.md` §5 owns its argument form and its exit codes; read them there
+rather than here, so one file states the mechanics. The forge cannot answer this question: its own
 `mergeable` field is blind between two pull requests.
 
 A REAL collision — a pair that fails to merge, not a marker in a file a tool regenerates — goes

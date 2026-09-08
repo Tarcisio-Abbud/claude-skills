@@ -388,6 +388,11 @@ class TheCollisionCheck(DocTest):
     def body(self):
         return self.section(self.review, "The collision check closes the package")
 
+    def test_the_check_names_the_bin_it_prescribes(self):
+        self.assertIn("`tk-collisions`", self.body(),
+                      "the section prescribes a check without naming the bin that "
+                      "runs it, and a reader cannot search for what it never named")
+
     def test_the_check_points_at_the_merge_gate_and_does_not_restate_it(self):
         body = self.body()
         self.assertIn("`../merge-gate/SKILL.md` §5", body,
