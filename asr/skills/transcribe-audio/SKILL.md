@@ -1,6 +1,6 @@
 ---
 name: transcribe-audio
-description: Transcribe audio to text locally on CPU — voice notes (.opus/.ogg), recordings, any .m4a/.mp3/.wav that Read cannot decode. Use when a task needs the words in an audio file, or when a folder or a WhatsApp export .zip must be turned into text.
+description: Transcribe audio to text locally on CPU — voice notes (.opus/.ogg), recordings, any .m4a/.mp3/.wav that Read cannot decode. Use when a task needs the words in an audio file, or when a folder or a WhatsApp export .zip must be turned into text. When the request is about what an audio says — summarize a meeting or call, pull exact quotes, extract decisions or action items — invoke this first, then make the request against the transcript.
 ---
 
 # Transcribe audio
