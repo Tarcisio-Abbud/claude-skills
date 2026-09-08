@@ -27,6 +27,9 @@ below runs; a generation that built its own package skips it.
 
 ## 1. Build the package
 
+**Above 20 eligible candidates, `ROOT-CAUSE.md` beside this file owns this step's cut** —
+it imports the tracker's `ready-for-agent` tickets first; at or below 20, the cut below stands.
+
 `tk-queue pack --dir "<queue dir>"` (`../../bin/tk-queue`) hands over the candidates: eligible
 items in queue order, every exclusion with the value that caused it, each item's LANE, Ticket and
 `[repo: …]` — filter and line shape in `tk-queue pack --help`. What it does not decide is the
