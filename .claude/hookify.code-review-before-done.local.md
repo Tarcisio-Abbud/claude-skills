@@ -55,8 +55,8 @@ This rule lives in more than one place ON PURPOSE. Two reasons, both measured:
      them silently never fires under the others.
 
      The canonical copy is this file, `claude/desktop/` in the private config repo, cloned on
-     this machine at `/workspace/projects/.ambiente`. NINE copies track it byte for byte, and
-     an edit here is not landed until all nine carry it:
+     this machine at `/workspace/projects/.ambiente`. TEN copies track it byte for byte, and
+     an edit here is not landed until all ten carry it:
 
        - `...\Code\.claude\` on the Windows desktop -- the only one the server container
          cannot reach. `sync-desktop.ps1` mirrors it, naming each rule file one by one and
@@ -65,16 +65,22 @@ This rule lives in more than one place ON PURPOSE. Two reasons, both measured:
          (`Tarcisio-Abbud/claude-skills`) -- both VERSIONED, so a rename there is a commit,
          not just a file write;
        - `.claude/` in the five project repos under `/workspace/projects/`;
-       - `.claude/` in the Obsidian vault, under `20-Infraestrutura/25-M365-CasaNostra/`.
+       - `.claude/` in the Obsidian vault, under `20-Infraestrutura/25-M365-CasaNostra/`;
+       - `.claude/` at `/workspace/projects/` itself, since 2026-09-06. A session opened at
+         the workspace root -- the infra one, which edits and commits inside any subproject --
+         loaded NO rule at all until then. It covers that session and only it: a session
+         opened inside a sibling project still reads that project's own `.claude/`.
 
-     `bin/hookify-propagate.py` in the config repo rewrites the eight it can reach and reports
-     the ninth instead of pretending to have written it. It only reports by default and writes
-     under `--write`, because five of those copies are read by live project sessions.
+     `bin/hookify-propagate.py` in the config repo rewrites the nine it can reach and reports
+     the tenth instead of pretending to have written it. It only reports by default and writes
+     under `--write`, because six of those copies are read by live sessions.
 
-     Until 2026-09-05 SIX of those eight carried a shorter Portuguese variant with no NOTE,
-     describing a superseded topology, and the two versioned ones an older English text -- the
-     skills repo's still calling that repo public. The script retires both. Until someone runs
-     it, both still stand: do not diff a copy against this file and conclude the mirrors drifted.
+     Until 2026-09-05 SIX of the eight then reachable carried a shorter Portuguese variant
+     with no NOTE, describing a superseded topology, and the two versioned ones an older
+     English text -- the skills repo's still calling that repo public. The root's own copy,
+     written on 2026-09-06, carries this NOTE as it read before the root was listed. The
+     script retires all of them. Until someone runs it they still stand: do not diff a copy
+     against this file and conclude the mirrors drifted.
   2. `config_loader.py` and the transcript reader both call `open(path, 'r')` with no
      `encoding=`. On Windows that resolves to cp1252. A rule file carrying one emoji is then
      skipped silently. A transcript carrying one emoji reads as "" -- 7 of 8 real ones tested.
