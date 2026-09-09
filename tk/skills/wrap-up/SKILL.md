@@ -172,8 +172,8 @@ exception closes the package: the batched question over its parked DECISIONs
   repo → leave the tree untouched and report it.
 - Steps 1–4 and 6 run as written, every menu turning into a queue entry: each unanswered
   choice becomes a DECISION carrying `--deferred afk` — the flag for a decision nobody
-  could ask, against one nobody bothered to ask. A session finding takes the three rungs
-  of `../../reference/session-finding.md` instead.
+  could ask, against one nobody bothered to ask. A session finding takes the destinations
+  of `../kickoff/FINDINGS.md` instead.
 - Step 5 runs on `../merge-gate/SKILL.md`, *The strict form*: commit and push before any review —
   `afk` IS that authorization — the digest in the PR body, merge only under the hardened
   verdicts; whatever is not merged enters the queue as a DECISION with its digest

@@ -193,14 +193,13 @@ too.
 - **The digest goes into the PR body**, because an unattended session has nobody at the
   gate to read the terminal. A PR the strict verdicts keep from merging carries it there
   too, and its DECISION item points at it as the digest reference.
-- **Verdict 2 hardened: every finding FIXED under the fixer cap, QUEUED or PARKED,
-  zero accepted** — the cap is `../kickoff/AFK.md`'s *The fixer cap*, counted per FIRING of
-  the review and never per life of this pull request. Accepting a finding is human judgment,
-  and those three rungs
-  (`../../reference/session-finding.md`) are where one goes instead. A parked finding
-  reaches the user in the close's single question. It defers this pull request only
-  where it is also a finding no fixer could close. Three cases bind what an
-  unattended session may merge, each checked by itself:
+- **Verdict 2 hardened: every finding FIXED under the fixer cap, counted as N under
+  "Achados não tratados" in the digest before the menu, or PARKED, zero accepted** — the cap is
+  `../kickoff/AFK.md`'s *The fixer cap*, counted per FIRING of the review and never per life
+  of this pull request. Accepting a finding is human judgment; `../kickoff/FINDINGS.md` names
+  the destinations. A parked finding reaches the user in the close's question. It defers this
+  pull request only where no fixer could close it. Three cases bind what an unattended session
+  may merge, each checked alone:
   - **A type-B criterion** — verdict 3 cannot turn green without the user, so the item
     ends at an open PR carrying its proof and waits.
   - **A repo whose default branch is consumed as it lands** — a marketplace serving it

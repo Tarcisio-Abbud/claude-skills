@@ -74,6 +74,7 @@ the spot and list them.
 
 A finding that reproduces at the **branch point** is the repo's backlog, not this slice's. It
 takes the slice's ticket, failing that ONE item per firing (`../../reference/session-finding.md`).
+In an afk package `../kickoff/FINDINGS.md` decides instead: no new item is born while one runs.
 `tk-queue edit --text` REPLACES the item's text, so a later finding reads it and writes the union.
 
 A mismatch between run and words is graded by the **wrong side**. A wrong run is a code defect;
@@ -87,7 +88,8 @@ criterion a run can check.
 
 **One `fixer` cycle per firing**, never resumed: `../kickoff/AFK.md`'s *The fixer cap* counts
 it. One dispatch carries every eligible defect, and what it leaves unclosed goes to ONE item
-carrying its inventory.
+carrying its inventory. In an afk package that inventory takes a destination of
+`../kickoff/FINDINGS.md`.
 
 **The correction batch goes to the repo's mandatory two-axis review, never to another lens**. Its
 brief carries the invariant each finding violated: the spec of a repair is the finding. A batch
