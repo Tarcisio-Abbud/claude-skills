@@ -298,3 +298,175 @@ leave an orphan claim every later package refuses. Under the threshold the seam 
    pushed early takes its spec out of the next package's election (`AFK.md` step 1).
 4. **Hand back the line that resumes the package**, and stop. The successor opens on that
    handoff and reads no queue (`SKILL.md`, *A session opening on a package handoff*).
+
+## The tick, and what one fire may dispatch
+
+*The wall* above is an arrival to be ready for. This section is what keeps it from arriving.
+The mechanism is a **tick**: a scheduled fire, every ~47 minutes on the package it was
+measured on, that reads the quota, asks who is still alive, dispatches whatever the budget
+below allows, checks the claims, and writes one line of the package ledger. It is what made that
+package run three hours with nobody watching — it queued while the window was spent and
+dispatched at the reset.
+
+**The tick is periodic and never aimed at the reset.** The resets observed across that
+package were 15:20, 20:30, 01:40 and 06:50 — five hours from the window's own first request,
+not a fixed grid — and a cron written at 22:20 for a fixed hour missed every one of them.
+
+Four numbers bound what a fire may dispatch. Each is calibrable, and each carries what
+measured it.
+
+- **How many Opus agents run at once is the site's number, not this file's.** It is the key
+  `max-local-subagents` in `~/.claude/tk/env`, which `../../bin/tk-contract` already reads
+  into the block of every dispatched run; a ceiling written into prose here is a fork of the
+  policy (`../fleet/SKILL.md` §3). What the weekend measured is why the key is small: with
+  five live Opus agents the 5-hour window went 20→41% in 25 minutes (~50 pp/h) and 56→70% in
+  14 minutes (~60 pp/h), which spends a whole window in a little over two hours. **T270 is
+  the sibling measurement** that recalibrates that key against the same ledger; this file
+  names it and does not duplicate it.
+- **Nothing at all is dispatched below 15% of the window remaining.** A run the wall kills
+  before its first commit delivered nothing and refuted nothing, and the item pays for it
+  anyway (*The wall*).
+- **No review is dispatched below 35%.** Measured twice in one package: a wall killed a
+  review with BOTH axes already answered, and the triage — the expensive half — does not
+  survive, ~150k tokens thrown away each time. Where a package refuses that floor, the
+  alternative is a review that commits its raw findings to a file before it triages.
+- **A review is 25 to 45 minutes**, measured over that same package, which is what makes it
+  the thing that fits a short slot where a lane does not fit. The hour before a reset is a
+  review's hour and not an idle one.
+
+**The claims are checked by script at every fire, and never from memory.** The tick crosses
+`tk-queue list --dir "<queue dir>"` with the five lists of `ROOT-CAUSE.md` for that run, and
+names two divergences: an item dispatched with no claim, and a claim with nothing dispatched
+against it. It writes the missing claim before its next dispatch, and it releases the idle
+claim or re-dispatches its item — and either way the divergence is a ledger line before
+it is repaired. The second half of one lane in that package ran with no claim at all, and
+only the crossing found it.
+
+**The quota is read through `../../bin/tk-quota`, in three modes that are not
+interchangeable.** A READING is a measurement. A FLOOR — `tk-quota --estimate --opus <n>` —
+is a lower bound on what has been spent, so it may only ever FORBID a dispatch and never
+authorise one: "at least 41% used" is as true at 95% as at 41%. The third mode is the reset.
+The bin refuses a window whose reset has passed with nobody rendering since, and returns no
+number at all; the tick does not stop there, because the window boundaries are fixed and
+known. It anchors a floor of 0% at the reset it has just crossed and counts its own
+dispatches forward from there at the same rate. That is a floor too: it is written as one,
+anchored on the reset rather than on a reading, and never pasted as a reading.
+
+None of the four floors displaces *The wall*. They decide what is dispatched while the
+window still has room; the wall's five steps are what happens when it has none, and a tick
+that meets the wall runs them unchanged.
+
+## The scheduled context refresh
+
+The same tick keeps the orchestrator's own window fresh. The harness compacts on its own at
+a ceiling this file does not set; what the tick owes is to have written the handoff BEFORE
+that happens, so that the compacted session wakes holding a briefing rather than a summary.
+
+**The trigger is the tick, and not a schedule of its own.** A `/compact` armed for the night
+of 2026-09-06 never ran and nothing said so — a scheduled fire is exactly the mechanism that
+failed, and Remote Control shows no statusline, so it could not be confirmed from outside
+either.
+
+**The ceiling is absolute, in the tokens `../../bin/tk-context` prints, and never a fraction
+of the window.** That is the rule *Generations, and `--budget N`* already states for the
+generation threshold, borrowed here rather than restated: on a 1M window a measured 293k
+renders as 29%, the same ceiling wearing the look of room.
+
+**Handoff or compact is decided by the site, and not by how long the package is.** Where
+`~/.claude/tk/kickoff.md` names a vehicle, *The vehicle that opens the next generation*
+holds and the answer is the one this file already gives: write the handoff and open the next
+generation. Where it names none, the compact is what keeps ONE generation alive, and the
+tick lets the harness compact rather than ending the package — measured, the orchestrator of
+05-07/09 crossed two days at ~10% of context on three compacts. A cold reader has both
+halves of the condition here and asks nobody.
+
+**The compact belongs to the harness, through the key `autoCompactWindow`** — settings user,
+project or local; a number of tokens, or `auto` — with the environment variable
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` winning over the key. Measured on the shipped binary,
+2.1.263 on 08/09 and 2.1.266 on 09/09: written by hand the key takes effect in the NEXT
+session, because it is an option read when a session opens, and only the user's own
+`/autocompact` applies it live; `auto` resolves to the model's own context, 1M on Fable,
+which is nowhere near the smart zone. So this file prescribes the KEY and never a number in
+prose, and an orchestrator, whose session is always new, needs only the key in its project's
+own settings.
+
+Three pieces, and the tick is the first:
+
+1. **Before, with margin.** The tick runs `../../bin/tk-context --window`, which prints this
+   session's tokens on stdout and, on a channel of its own, the window and the threshold the
+   harness compacts at. Above (threshold − ~40k of margin) it runs `/tk:wrap-up afk` and
+   writes the handoff, and the harness compacts afterwards by itself. The channel is
+   separate so that the bare reading every other seam here does is unchanged; and an
+   unconfigured key is not an unreadable session — the flag prints the harness's own
+   fallback MARKED as a default and exits 0. Exit 2 still means one thing, no token number
+   in the transcript, which is what *Generations* spends as its licence to judge.
+2. **At the compact**: the `PreCompact` hook, matcher `auto`, running
+   `../../bin/tk-compact-mark`. It blocks nothing, decides nothing and runs no skill: it
+   appends one ledger line, with the hour read and the quota field the bin printed. A
+   trace.
+3. **After**: the `SessionStart` hook, matcher `compact`, running
+   `../../bin/tk-compact-pointer`. Its stdout is INJECTED into the new context, which is the
+   only channel that reaches a compacted orchestrator, and what it says is: read the handoff
+   at this path, then resume by `RESUME.md`. That is the piece that was missing on 06/09.
+
+Both hooks read the package's addresses from `~/.claude/state/tk-package.json`, which the
+orchestrator writes when the package opens:
+
+```sh
+mkdir -p ~/.claude/state && printf '%s\n' \
+  '{"package": "<package>", "ledger": "<ledger file>", "handoff": "<handoff file>"}' \
+  > ~/.claude/state/tk-package.json
+```
+
+With no such file both hooks do nothing at all, which is what lets the wiring sit in the
+settings permanently: most sessions on this machine are not packages. The wiring itself is
+the site's and the human's — `~/.claude/settings.json` is written by Claude Code and
+versioned by snapshot — so a package that finds the hooks unwired says so in the ledger and
+goes on. The refresh depends on the tick's own reading; the hooks are the trace and the
+pointer around it.
+
+**The ceiling is high enough that the wrap-up does not retrigger the compact.** The margin
+above exists for that: a threshold set just under the window makes the summary itself cross
+it, which is the warning the cookbook page below gives. **Runs that sample server-side — web
+search, server-side extended thinking — are left OUT of the budget** rather than estimated
+into it: their cache tokens accumulate across the sampling loop, so what they add is not
+this session's conversation growing, and they are measured after the fact instead.
+
+**What does not exist here.** `compaction_control` and `context_token_threshold` are
+parameters of the Messages API's tool runner, not of this harness; nothing in Claude Code
+reads either, and no rule above may be implemented with them. What crosses over from
+https://platform.claude.com/cookbook/tool-use-automatic-context-compaction is the pattern —
+threshold, summarise, discard the history — and those two warnings.
+
+## `ESPERANDO-HUMANO`: the state in which the tick turns itself off
+
+When everything left in the package depends on the human, the tick has nothing to dispatch
+and every fire still costs a turn. The state is declared in the package ledger by that name, with
+the list of what only the human does:
+
+- the OK to merge a pull request;
+- a command that has to run on the host, outside this container;
+- an edit to live configuration — `~/.claude/settings.json`, the site file, a cron.
+
+**Entering the state, the orchestrator cancels its own crons** (`CronDelete`) and writes the
+line with the hour read from `date`, as every ledger line is. The same line carries the
+command that turns the tick back on, ready to paste: the human runs it when they return, or
+the session revives on their message and re-arms the crons itself.
+
+**A goal-check hook does not live with a goal that reserves the merge to the human.** On the
+night of 06-07/09 the hook rejected the end of every turn — "the goal says kill them all; 6
+pull requests are still open" — while the user's own rule was to leave them unmerged. The
+goal was unsatisfiable by construction, and the hook only burned. Two exits, and a package
+takes one of them before arming such a hook: the goal declared to it EXCLUDES what is the
+human's ("until the pull requests are reviewed and open"), or the hook is switched off when
+the ledger enters this state. **The same rejection three times running is the signal to
+stop, not to insist.**
+
+**An idle tick costs ONE turn.** Anything above that in a session with nothing to do is a
+defect of the harness and not a budget, and `../../bin/tk-context` and `../../bin/tk-quota`
+are what make it visible — turns per hour with no change of state.
+
+What it costs where nobody writes this down was measured on that night: **247 model turns
+and 95.1M tokens of cache read in eight hours, with no useful work**, the 5-hour window
+going 0→10% and the weekly 86→87%. One idle turn re-reads the whole window as cache — ~385k
+there — so at that size doing nothing costs more than a whole Sonnet lane every three turns.
