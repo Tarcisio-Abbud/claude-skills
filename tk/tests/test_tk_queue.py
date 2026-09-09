@@ -9160,7 +9160,7 @@ class TestTheFoldKeepsTheAuthorsLineBreaks(QueueTest):
 # ended the run: the item is in the shape every gate reads. True of the CLASS,
 # and of nothing else — a second field left on a continuation line sits outside
 # the chain, so no gate reads it, no repair is printed for it, and the run says
-# nothing. Measured on `estudo-remuneracao-CN` T004, whose **Born:** has been
+# nothing. Measured on a sibling queue's T004, whose **Born:** has been
 # below the chain since it was written: `list` shows its age as `?`, every
 # `migrate` passes it over, and no command anywhere says why.
 

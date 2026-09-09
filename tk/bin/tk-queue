@@ -5551,7 +5551,7 @@ def fold_chain_onto_first_line(block):
         # was already in the shape every gate reads. True of the class, and of
         # nothing else — a SECOND field left on a continuation line sits outside
         # the chain, where no gate reads it either, and that item was passed over
-        # in silence. Measured on `estudo-remuneracao-CN` T004, whose **Born:**
+        # in silence. Measured on a sibling queue's T004, whose **Born:**
         # has been below the chain since it was written: `list` shows its age as
         # `?`, every `migrate` skips it, and no command anywhere says why. Once
         # the orphan is what decides, the class question answers nothing this one
