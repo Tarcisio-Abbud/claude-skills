@@ -49,6 +49,35 @@ TWO QUESTIONS REFUSE A READING, and a third is disclosed rather than refused:
 
 A window failing either refusal is not reported. The other window still is.
 
+WHEN NOTHING RENDERS AT ALL, `--estimate` answers a different question. Measured
+2026-09-09 on this host: `claude -p "ok" --model haiku` ran a whole turn and the
+sidecar's `written_at` did not move — 1788923709.5128539 before and after — while
+the same statusline script, fed a payload under a throwaway HOME, wrote one at
+once. A cheap agent does NOT refresh the sidecar. So an unattended package has no
+second sensor to fall back on, and the estimate is what there is.
+
+`--estimate --opus N` takes the last VOUCHABLE reading, its age, and the number of
+live Opus agents the caller counted over that interval, and prints a FLOOR on what
+has been spent since. The rate is the LOWER of the two weekend measurements —
+20→41% in 25 min is about 50 pp/h, 56→70% in 14 min about 60 pp/h, both with five
+Opus — so `RATE_PER_OPUS` is 10 pp/h per agent and the product understates on
+purpose. `--rate` recalibrates it from a run's own ledger.
+
+BOTH OF THOSE MEASUREMENTS ARE OF THE 5-HOUR WINDOW, so the rate lives on the
+window and not on the flag. The weekly has no measured rate and therefore gets no
+floor: the same pp/h against a budget seven days wide would print a number nobody
+measured, in the alarming direction, and a floor that overstates is not a floor.
+It is refused the way any unvouchable window is — named on stderr, with the
+5-hour line still on stdout.
+
+THE INVARIANT THE MODE TURNS ON: an estimate never presents itself as a reading.
+Taking one for the other is what put wrong lines in the 05-07/09 ledger — a
+reading 1h25m old said 8% while the account stood near 70%. So the estimate line
+carries the word `estimate`, the qualifier `at least`, the anchor's own percentage
+and age, and the rate applied; and in estimate mode NO reading line is printed, for
+either window. The refusals are unchanged: a window nobody can vouch for gets no
+estimate either, and no vouchable window at all is still exit 2.
+
 WHAT IT DOES NOT SEE: the account before the first API response of the first
 session to render (Claude Code sends no `rate_limits` until then), any window in
 which no statusline rendered at all, and `spend_limit` — a third limit the payload
@@ -64,6 +93,8 @@ remaining, both reproduced from the schedule alone).
 
 Usage:  tk-quota [--file PATH]           read the sidecar and print the windows
         tk-quota --write [--file PATH]   record the statusline payload on stdin
+        tk-quota --estimate --opus N [--rate PP_PER_HOUR] [--file PATH]
+                                         a floor from the last reading and its age
 Exit:   0 done · 1 nothing was recorded (--write) · 2 no number · 64 bad usage
 """
 
@@ -85,27 +116,37 @@ SIDECAR = "~/.claude/state/quota.json"
 
 ORPHAN_AGE = 600                      # a temp file this old lost its writer
 STALE_AFTER = 600                     # past this, the output says how old it is
+RATE_PER_OPUS = 10.0                  # pp/h per live Opus agent; see the banner
 TMP_PREFIX = ".quota."                # both the writer's name and the sweep's
 
 
 class Window(NamedTuple):
-    """What one rolling window is called, and how long it runs.
+    """What one rolling window is called, how long it runs, and how fast it burns.
 
-    ONE map holds both, deliberately. The length is what turns `written_at`
+    ONE map holds all three, deliberately. The length is what turns `written_at`
     into a freshness test: a reading taken before its own window opened is a
     previous window's. The label names the window in the output and fixes the
-    order the two are printed in. Kept as two maps keyed by the same names,
-    either could gain a window the other did not — a window recorded and never
+    order the two are printed in. Kept as separate maps keyed by the same names,
+    any one could gain a window the others did not — a window recorded and never
     read in one direction, a `KeyError` on a live reading in the other.
+
+    `rate` is pp/h PER LIVE OPUS AGENT, and it is `None` for a window nobody has
+    measured. It belongs here rather than beside the flag because it is a
+    property of the window, not of the run: the weekend measured the 5-hour
+    window and only that one, and the same pp/h against the weekly would climb
+    a percentage of a budget seven days wide. A rate carried globally is a rate
+    that reaches every window, which is how a floor becomes an overstatement —
+    and an overstating floor is not a floor.
     """
 
     label: str
     length: int
+    rate: float = None
 
 
 WINDOWS = {
-    "five_hour": Window("5h", 5 * 3600),
-    "seven_day": Window("7d", 7 * 86400),
+    "five_hour": Window("5h", 5 * 3600, RATE_PER_OPUS),
+    "seven_day": Window("7d", 7 * 86400),   # never measured; see Window.rate
 }
 
 
@@ -169,6 +210,23 @@ class Vouched(NamedTuple):
     used: float
     left: int
     age: int
+
+
+class Estimate(NamedTuple):
+    """What a floor needs that the sidecar cannot know.
+
+    The file carries the anchor and its age. It does not carry how many Opus
+    agents ran in between, and nothing on this machine records that — so the
+    caller counts them and owns the number.
+
+    `rate` is per agent, not the product, because that is the half a run
+    recalibrates from its own ledger. `None` means each window keeps the rate it
+    was measured at; a number replaces it, and only where one was measured — a
+    window with no rate has nothing to recalibrate and stays unestimable.
+    """
+
+    opus: int
+    rate: float = None
 
 
 # ---------------------------------------------------------------- writing
@@ -314,20 +372,62 @@ def spell(seconds):
     return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
 
 
-def report(payload, now):
+def reading_line(spec, value):
+    """One vouched window, said as what it is: a measurement."""
+    # Truncated, as the statusline truncates: rounding printed `100%`
+    # where the bar the user reads showed 99%.
+    said = f"{spec.label} {int(value.used)}% used, {spell(value.left)} left"
+    if value.age > STALE_AFTER:
+        said += f" (read {spell(value.age)} ago)"
+    return said
+
+
+def estimate_line(spec, value, opus, rate):
+    """One vouched window, said as a FLOOR and never as a reading.
+
+    Every mark separating this line from `reading_line` is load-bearing: the
+    word `estimate`, the qualifier `at least`, the anchor's own percentage and
+    age, and the rate applied. A caller that reads this line as a measurement
+    is the defect the mode exists to prevent, so none of the four is decoration.
+
+    Truncated like the reading, and here the truncation also keeps the promise:
+    dropping the fraction only ever lowers the number, and a number that drifts
+    downward is still a floor.
+    """
+    applied = rate * opus
+    climbed = applied * (value.age / 3600)
+    # Clamped. A floor above 100 describes a window that is spent either way,
+    # and the excess is arithmetic nobody can act on. Reachable, not decorative:
+    # a 90% anchor with two Opus agents clears it inside an hour.
+    floor = min(100.0, value.used + climbed)
+    return (f"{spec.label} estimate: at least {int(floor)}% used, "
+            f"{spell(value.left)} left (floor from {int(value.used)}% read "
+            f"{spell(value.age)} ago, {applied:g} pp/h = {opus} Opus x {rate:g})")
+
+
+def report(payload, now, estimate=None):
+    """The windows this command may speak for, and the ones it may not.
+
+    `estimate` is None for a reading and an `Estimate` for a floor. The two
+    never mix inside one run: a line that is part measurement and part
+    arithmetic is exactly the confusion this mode was built to end.
+    """
     parts, refused = [], []
     for key, spec in WINDOWS.items():
         value, reason = window(payload, key, now)
         if value is None:
             refused.append(f"{spec.label}: {reason}")
+        elif estimate is None:
+            parts.append(reading_line(spec, value))
+        elif spec.rate is None:
+            # Said aloud, through the same channel a refused window uses. A
+            # window that simply vanished here would read as one nobody asked
+            # about, and the 5-hour line beside it as the whole answer.
+            refused.append(f"{spec.label}: no pp/h rate has been measured for "
+                           "it, so no floor can be computed")
         else:
-            # Truncated, as the statusline truncates: rounding printed `100%`
-            # where the bar the user reads showed 99%.
-            said = (f"{spec.label} {int(value.used)}% used, "
-                    f"{spell(value.left)} left")
-            if value.age > STALE_AFTER:
-                said += f" (read {spell(value.age)} ago)"
-            parts.append(said)
+            rate = spec.rate if estimate.rate is None else estimate.rate
+            parts.append(estimate_line(spec, value, estimate.opus, rate))
     return parts, refused
 
 
@@ -337,7 +437,26 @@ def main(argv=None):
                         help="read the statusline's payload on stdin and record it")
     parser.add_argument("--file", default=None,
                         help=f"use this sidecar instead of {SIDECAR}")
+    parser.add_argument("--estimate", action="store_true",
+                        help="print a floor computed from the last reading, not the reading")
+    parser.add_argument("--opus", type=int, default=None,
+                        help="live Opus agents over the interval, counted by the caller")
+    parser.add_argument("--rate", type=float, default=None,
+                        help=f"pp/h per live Opus agent (default {RATE_PER_OPUS:g})")
     args = parser.parse_args(argv)
+
+    # A flag that quietly does nothing is a caller believing something ran.
+    estimate = None
+    if args.estimate:
+        if args.write:
+            parser.error("--write records a reading and --estimate reads one back")
+        if args.opus is None:
+            parser.error("--estimate needs --opus N: nothing here can count the agents")
+        if args.opus < 0 or (args.rate is not None and args.rate < 0):
+            parser.error("--opus and --rate are never negative")
+        estimate = Estimate(args.opus, args.rate)
+    elif args.opus is not None or args.rate is not None:
+        parser.error("--opus and --rate only mean something with --estimate")
 
     path = args.file or os.path.expanduser(SIDECAR)
     now = time.time()
@@ -353,7 +472,7 @@ def main(argv=None):
             return EXIT_NOT_RECORDED
         return write_sidecar(path, payload, now)
 
-    parts, refused = report(read_sidecar(path), now)
+    parts, refused = report(read_sidecar(path), now, estimate)
     if not parts:
         no_number("no window in " + plain(path) + " can be vouched for — "
                   + "; ".join(refused))
