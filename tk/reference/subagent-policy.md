@@ -59,11 +59,14 @@ A consumer that copies the values into itself has forked the policy — read the
 | verifier-1 | sonnet | session | local | none | none | Refutes a finding. A finding that would edit a spec or a ticket goes on to verifier-2. |
 | verifier-2 | opus | high | local | none | none | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
 | tiebreak | opus | high | local | none | none | Settles a split verdict. Effort is pinned. |
+| root-cause-auditor | opus | high | local | none | none | Audits the CUT before the package is claimed — the dedup, merge and split candidates of `../skills/kickoff/ROOT-CAUSE.md`. It writes no repository: what it returns is the package the orchestrator then claims, so the checkpoint invariant has nothing to hold. |
 | implementer | opus | high | local | opens | required | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
 | implementer-spec | opus | high | local | none | required | A package item on a spec's accumulated lane. The orchestrator owns that branch's pull request and writes its body, so this role opens none and hands back its pushed branch. Same downgrade as implementer. |
+| lane-implementer | opus | high | local | opens | required | One lane of a package, branch and pull request both. What separates it from `implementer-spec` is exactly the `pr` cell: there the orchestrator owns the accumulated lane's pull request, here the lane IS the unit of pull request and the role opens its own. Same downgrade as implementer. |
 | fixer | opus | session | local | none | required | Applies a correction cycle's confirmed findings, and resolves a conflict marker the tail's merge of `origin/main` left, with both sides as context. Commits into a branch someone else opened the pull request on; where the correction belongs to one item, `T<id>:` leads the commit title, so the user's revert of that item carries it. No mechanical downgrade: a marker is the one thing here that is never fully specified. |
 | research | sonnet | session | cloud | none | none | Rises to opus when the question turns on fine judgement. Log the rise. |
 | review | sonnet | session | cloud | none | none | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
+| cold-reviewer | opus | high | local | none | required | The cold review of a lane's pull request, judging and fixing in one agent, as the attended cold session does. It commits its corrections on the branch the lane opened the pull request on, which is why `checkpoint` is required and `pr` is none. Local, and it therefore spends a slot in the local Opus ceiling — see *Venue* below. The separation this table protects, who FINDS against who JUDGES, survives the fusion: the two axes of `mattpocock-skills:code-review` are what find. |
 | explore | haiku | session | local | none | none | Pure search and file location, no verdict. |
 | fleet-orchestrator | opus | session | local | opens | required | One project's whole package, dispatched by the fleet at `--budget 1`. Its wrap-up versioning gate opens that package's pull requests, so the closing line rides with it wherever the item names a tracker ticket. Local by construction: its queue is auto-memory, which no pushed repo carries. |
 <!-- /tk:roles -->
@@ -149,6 +152,8 @@ repo** — no gitignored data, no local state, no interactively authenticated in
 rows marked `cloud` above are the ones measured to pass it; every other role stays local until a
 measurement moves it, and moving one is a change to this file, not a judgement call at dispatch
 time.
+
+**A role that judges from inside the tree stays local, and spends a local slot.** `cold-reviewer` posts its verdict on the pull request and pushes the commit that repairs what it found; the `review` row above is the cloud one, and its own note says why — a cloud agent reaches no tracker of its own, so its return is text the orchestrator relays. So the two are not interchangeable: `cold-reviewer` occupies one of the machine's concurrent local subagent slots, the same ceiling `implementer`, `lane-implementer` and `fixer` draw on, and a review wave planned against the cloud ceiling overcommits the local one by its own size.
 
 **Cloud buys RAM, not quota.** A cloud run relieves the local memory ceiling and burns the same
 rolling usage window as a local one. Treat the two ceilings as separate numbers — concurrent
