@@ -1,9 +1,9 @@
 # Issue tracker: GitHub, on a repo that is not this one
 
 Code lands here. Issues and specs live on a **private** tracker, whose slug appears in no
-versioned file of this repo — this one is written as if public: private since 2026-09-01,
-but the flip back is one command and its history up to that date is already indexed. The
-slug lives in the clone's local git
+versioned file of this repo — and this repo IS public, measured on 2026-09-09. It was made
+private on 2026-09-01 and public again before that date, which is why "written as if public"
+was never a hypothetical here. The slug lives in the clone's local git
 config, which git never pushes.
 
 ## Reach the tracker through `bin/tracker-gh`
