@@ -132,6 +132,8 @@ briefing (`../verify/SKILL.md` prescribes the form) and its ready-to-paste line.
 
 A lane with its own branch and pull request dispatches under `LANE-CONTRACT.md` beside this file.
 
+Every run dispatched here is handled under `HYGIENE.md` beside this file.
+
 Each run's prompt carries, produced here and never delegated back: the **contract block** pasted
 verbatim from `../../bin/tk-contract --role <row>` — `implementer`, or `implementer-spec` on the
 lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull request — and
