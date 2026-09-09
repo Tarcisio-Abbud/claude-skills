@@ -153,7 +153,13 @@ rows marked `cloud` above are the ones measured to pass it; every other role sta
 measurement moves it, and moving one is a change to this file, not a judgement call at dispatch
 time.
 
-**A role that judges from inside the tree stays local, and spends a local slot.** `cold-reviewer` posts its verdict on the pull request and pushes the commit that repairs what it found; the `review` row above is the cloud one, and its own note says why — a cloud agent reaches no tracker of its own, so its return is text the orchestrator relays. So the two are not interchangeable: `cold-reviewer` occupies one of the machine's concurrent local subagent slots, the same ceiling `implementer`, `lane-implementer` and `fixer` draw on, and a review wave planned against the cloud ceiling overcommits the local one by its own size.
+**A role that judges from inside the tree stays local, and spends a local slot.** `cold-reviewer`
+posts its verdict on the pull request and pushes the commit that repairs what it found; the
+`review` row above is the cloud one, and its own note says why — a cloud agent reaches no tracker
+of its own, so its return is text the orchestrator relays. So the two are not interchangeable.
+`cold-reviewer` occupies one of the machine's concurrent local subagent slots, the same ceiling
+`implementer`, `lane-implementer` and `fixer` draw on. A review wave planned against the cloud
+ceiling overcommits the local one by its own size.
 
 **Cloud buys RAM, not quota.** A cloud run relieves the local memory ceiling and burns the same
 rolling usage window as a local one. Treat the two ceilings as separate numbers — concurrent
