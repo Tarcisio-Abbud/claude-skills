@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""tk-compact-mark — the `PreCompact` hook: one ledger line, and no decision.
+
+WHY IT EXISTS: on the night of 2026-09-06 an orchestrator's context filled, the
+`/compact` armed for it never ran, and nothing in the package's ledger said so.
+A generation later, reading the ledger, there was no way to tell a compaction
+that happened from one that did not. This hook is the trace. It decides nothing,
+blocks nothing and asks nothing: it appends one line to the package's ledger in
+the format `../skills/kickoff/LEDGER.md` fixes, and exits 0.
+
+WHERE THE LEDGER IS. Not here, and not in the wiring. The ledger is one file per
+package, in that package's own outbox, so the address is volatile and the
+wiring in `~/.claude/settings.json` is not: the orchestrator writes the package
+pointer at `~/.claude/state/tk-package.json` when the package opens, and both
+compaction hooks read it. **No pointer file, no line and no noise** — that is
+what lets the wiring sit in the settings permanently while most sessions are not
+packages at all.
+
+WHY IT NEVER FAILS LOUDLY: a hook that errors is a hook that interrupts every
+session on this machine, and what is at stake here is one line of a log. Every
+failure path exits 0 with a word on stderr, which Claude Code discards for a
+hook that exits 0 — that is the correct volume for this.
+
+THE HOUR IS READ, never counted: `LEDGER.md` requires it, because four lines of
+the package this format comes from were written from a model's sense of elapsed
+time and were an hour wrong. A clock read by a script is the same read `date`
+gives, and it is the only kind of hour this file writes.
+
+THE QUOTA FIELD IS THE BIN'S OWN LINE. `LEDGER.md` refuses a bare percentage in
+that field, so the line pasted here is whatever `tk-quota` printed, and where it
+can vouch for nothing the field says that instead of a number.
+
+Stdin:  the hook's JSON payload (`trigger`, `session_id`, …). A payload that is
+        not readable costs the line its trigger, never the line.
+Usage:  tk-compact-mark [--file PATH]
+Exit:   0, always.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+POINTER = "~/.claude/state/tk-package.json"
+QUOTA = os.path.join(HERE, "tk-quota")
+QUOTA_TIMEOUT = 10                    # a hook waits for nothing longer than this
+
+# The ledger's own field separator, and the two literals `LEDGER.md` defines for
+# an event no lane owns.
+SEPARATOR = " | "
+SYSTEM_LANE = "(sistema)"
+EMPTY = "-"
+
+
+def plain(value):
+    """A value from outside this process, safe in a pipe-separated line.
+
+    Two things arrive from elsewhere: the trigger, from the harness, and the
+    package name, from a file. A pipe in either would add a field to a line
+    whose readers count fields, and a control character would reprogram the
+    terminal of whoever reads the ledger.
+    """
+    return re.sub(r"[\x00-\x1f\x7f|]", "?", str(value)).strip()
+
+
+def pointer(path):
+    """The package pointer, or None when no package is running.
+
+    None is the ordinary case: most sessions on this machine are not packages,
+    and the wiring is the same for all of them.
+    """
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8-sig") as handle:
+            found = json.load(handle)
+    except (OSError, ValueError, UnicodeDecodeError) as exc:
+        print(f"tk-compact-mark: cannot read {path}: {exc}", file=sys.stderr)
+        return None
+    return found if isinstance(found, dict) else None
+
+
+def quota_field():
+    """What `tk-quota` printed, or why it could not print anything.
+
+    Never a number this script composed: `LEDGER.md` refuses a bare percentage
+    in this field precisely because nothing downstream can then tell a reading
+    from an estimate.
+    """
+    try:
+        run = subprocess.run([sys.executable, QUOTA], capture_output=True,
+                             text=True, timeout=QUOTA_TIMEOUT)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"no reading ({plain(exc)})"
+    line = run.stdout.strip().splitlines()
+    if run.returncode != 0 or not line:
+        return f"no reading (tk-quota exit {run.returncode})"
+    return plain(line[0])
+
+
+def event_line(payload):
+    """The seven fields of `LEDGER.md`'s event line, in its order."""
+    trigger = plain(payload.get("trigger") or "unknown")
+    return SEPARATOR.join([
+        time.strftime("%H:%M"),
+        SYSTEM_LANE,
+        EMPTY,
+        EMPTY,
+        f"harness auto-compact ({trigger})",
+        "context emptied; the SessionStart hook points the successor at the handoff",
+        quota_field(),
+    ])
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    path = os.path.expanduser(POINTER)
+    if argv[:1] == ["--file"] and len(argv) > 1:
+        path = argv[1]
+
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, OSError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    package = pointer(path)
+    ledger = (package or {}).get("ledger")
+    if not ledger:
+        # No package is running, or the pointer names no ledger. Silence is the
+        # answer: this hook is wired for every session on the machine.
+        return 0
+
+    try:
+        with open(os.path.expanduser(str(ledger)), "a", encoding="utf-8") as handle:
+            handle.write(event_line(payload) + "\n")
+    except OSError as exc:
+        print(f"tk-compact-mark: cannot append to {ledger}: {exc}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
