@@ -65,6 +65,7 @@ On the first quota failure, in this order:
    moment nobody is watching that stream. The id is the item in flight; with nothing in
    flight, it is the head of what the package has left. One handoff, not one per item: the
    package's remaining state has a single home, and a copy per item is a copy to go stale.
+   The PACKAGE's own state is `LEDGER.md` beside this file, which owns it and the lane restart.
 3. **Say what is left, in `--state`.** Seven contents, because each one is something the next
    generation otherwise rediscovers by doing the work twice:
    - the items still to dispatch, in order;
