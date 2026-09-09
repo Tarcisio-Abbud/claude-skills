@@ -277,27 +277,16 @@ the step that stopped the package and the state the tree was left in.
 **A tooling repo — one whose code handles no business data — gets ONE correction cycle per pull
 request.** The cap counts per firing of the review, never for the life of the pull request. A review
 re-fired whole by *A resumed generation starts here* carries its own cycle. That cycle is a single
-`fixer` dispatch, never resumed: findings it leaves unclosed go to ONE item carrying its inventory. A
-`fixer` whose batch touches a file outside the slice's diff stops and reports. Whatever a re-review
-finds after that cycle enters the queue by `tk-queue add --dir "<queue dir>"`, class per the finding's
-nature, as *A session finding, unattended* prescribes. The close's verdict 2 counts a finding queued
-this way as handled, never as one no fixer could close, so the pull request does not wait on it.
+`fixer` dispatch, never resumed. A `fixer` whose batch touches a file outside the slice's diff stops
+and reports. What that cycle leaves unclosed, and whatever a re-review finds after it, take
+`FINDINGS.md` beside this file, inventory and all. The pull request exists by then, so the
+destination that fits is its second — a line in that body, under "Achados não tratados". The
+close's verdict 2 counts the finding by the destination that took it, never as one no fixer could
+close, so the pull request does not wait on it.
 
 ## A session finding, unattended
 
-Unattended, `../../reference/session-finding.md`'s ladder keeps three rungs. **Fix on the spot** —
-a `fixer` under *The fixer cap*. **Queue with a gate** — `tk-queue add --dir "<queue dir>"` at the
-moment of discovery. **Park** — a DECISION with `--deferred afk`, its branch pushed and its
-handoff written. Either `add` is REFUSED at `max-open-items` past every flag: fold with
-`edit --text` or `handoff`, never by closing one. Nothing is discarded, and the package never waits
-on a parked finding.
-
-At the close, never mid-package, ONE `AskUserQuestion` batches every parked DECISION; that
-question and the close report are the same text. Portuguese, these labels verbatim:
-
-- `O que é:` the item or pull request in plain words, never a bare `T123` or `#n`;
-- `O que muda para você:` what each option means for the user;
-- `Se você não responder:` the default the agent takes, and when.
-
-**Done when:** every session finding carries its ladder rung in the close, the parked ones in one
-question, with the veto `tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"`.
+`FINDINGS.md` beside this file owns where the finding goes — the three destinations in order of
+preference, the one exit that leaves the package without code, and the close's single question.
+Read it there, whole, at the moment of discovery. No new queue item is born while the package
+runs, and that rule is what retired this ladder's second rung.
