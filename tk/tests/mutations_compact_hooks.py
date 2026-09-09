@@ -16,6 +16,12 @@ speak when there is nothing to say — a hook that errors interrupts a session, 
 a hook that injects a package's instruction into an unrelated compacted session
 sends it to read a file that is not its own. Four entries below restore exactly
 that shape.
+
+THE LAST ENTRY IS THE DEFECT THAT SHIPPED. The pointer hook printed its paragraph
+as plain text, ran for a live session on 2026-09-09, and delivered nothing: the
+harness attaches `hookSpecificOutput.additionalContext` and logs a payload-less
+hook as "produced no response payload". Every test here read raw stdout, and
+every one of them was green.
 """
 
 import os
@@ -41,6 +47,8 @@ NOT_COMPACT = "ThePointerHook.test_a_source_other_than_compact_prints_nothing"
 NO_PACKAGE = "ThePointerHook.test_no_package_pointer_injects_nothing"
 ADDRESSES = "ThePointerHook.test_the_injected_paragraph_names_the_handoff_and_the_resume_procedure"
 NO_HANDOFF = "ThePointerHook.test_a_handoff_that_is_not_there_is_said_and_never_pointed_at"
+ENVELOPE = ("ThePointerHook."
+            "test_the_paragraph_travels_in_the_envelope_and_never_as_plain_stdout")
 
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
@@ -129,6 +137,12 @@ MUTATIONS = [
      """        said.append(f"Read the handoff at {handoff} before anything else, then resume "
                     f"by {RESUME}.")""",
      [NO_HANDOFF], POINTER),
+
+    ("the paragraph is printed bare, and the harness attaches none of it",
+     """        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": EVENT, "additionalContext": " ".join(said)}}))""",
+     '        print(" ".join(said))',
+     [ENVELOPE], POINTER),
 ]
 
 if __name__ == "__main__":

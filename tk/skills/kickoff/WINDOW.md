@@ -405,9 +405,12 @@ Three pieces, and the tick is the first:
    appends one ledger line, with the hour read and the quota field the bin printed. A
    trace.
 3. **After**: the `SessionStart` hook, matcher `compact`, running
-   `../../bin/tk-compact-pointer`. Its stdout is INJECTED into the new context, which is the
-   only channel that reaches a compacted orchestrator, and what it says is: read the handoff
-   at this path, then resume by `RESUME.md`. That is the piece that was missing on 06/09.
+   `../../bin/tk-compact-pointer`. It prints one JSON envelope, and the
+   `hookSpecificOutput.additionalContext` in it is INJECTED into the new context — the only
+   channel that reaches a compacted orchestrator. A paragraph printed bare outside that
+   envelope reaches nobody: the harness logs the hook as having produced no payload, and the
+   session starts as empty as before. What the paragraph says is: read the handoff at this
+   path, then resume by `RESUME.md`. That is the piece that was missing on 06/09.
 
 Both hooks read the package's addresses from `~/.claude/state/tk-package.json`, which the
 orchestrator writes when the package opens:

@@ -236,7 +236,7 @@ class TheScheduledRefresh(DocTest):
             "../../bin/tk-context --window",
             "`PreCompact` hook, matcher `auto`", "../../bin/tk-compact-mark",
             "`SessionStart` hook, matcher `compact`", "../../bin/tk-compact-pointer",
-            "INJECTED",
+            "INJECTED", "hookSpecificOutput.additionalContext",
         ), "a piece of the refresh is unnamed, or its matcher is — and a hook "
            "wired on the wrong matcher fires on sessions it has nothing to say to")
 

@@ -4,10 +4,18 @@
 WHY IT EXISTS: this is the piece that was missing on 2026-09-06. An
 auto-compacted orchestrator wakes holding a machine summary of its own context
 and no instruction — it does not know that a handoff was written for it, and the
-summary is the one document that never says so. A `SessionStart` hook's stdout is
-INJECTED into the session's context, which makes it the one channel that reaches
-a model nobody is talking to. So what it prints is an instruction: read the
+summary is the one document that never says so. A `SessionStart` hook can INJECT
+text into the session's context, which makes it the one channel that reaches a
+model nobody is talking to. So what it prints is an instruction: read the
 handoff, resume by `RESUME.md`, and the ledger is here.
+
+THE INJECTION IS THE JSON ENVELOPE, NOT PLAIN STDOUT. Measured 2026-09-09 on
+2.1.266, first the wrong way: a hook printing a plain paragraph ran, and the
+session it ran for could not find a word of it. The binary's own reader says why
+— a hook that exits 0 with no JSON payload and nothing on stderr is logged as
+"produced no response payload" and its attachment is skipped. What reaches the
+context is `hookSpecificOutput.additionalContext`, under the matching
+`hookEventName`, so that is what this prints.
 
 IT DECIDES NOTHING ELSE. It does not resume anything, does not read the queue and
 does not run a skill; `../skills/kickoff/RESUME.md` owns the procedure and this
@@ -40,6 +48,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 POINTER = "~/.claude/state/tk-package.json"
 RESUME = os.path.normpath(os.path.join(HERE, os.pardir, "skills", "kickoff", "RESUME.md"))
 SOURCE = "compact"
+EVENT = "SessionStart"
 
 
 def plain(value):
@@ -108,7 +117,8 @@ def main(argv=None):
         return 0
     said = lines(package)
     if said:
-        print(" ".join(said))
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": EVENT, "additionalContext": " ".join(said)}}))
     return 0
 
 

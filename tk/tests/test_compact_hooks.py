@@ -15,6 +15,13 @@ THE FORMAT IS READ, NOT RETYPED. The event line's seven fields come from
 `../skills/kickoff/LEDGER.md`'s own fenced format block. Retyped here, the two
 would fork the day either changed and nothing would go red.
 
+THE INJECTION IS AN ENVELOPE. What reaches a session's context is the
+`hookSpecificOutput.additionalContext` of a JSON object on stdout; a hook that
+exits 0 printing a plain paragraph is logged "produced no response payload" and
+attached to nothing. That defect was live here and a test reading raw stdout
+passed over it, so the pointer's tests parse the envelope before they read a
+word of the paragraph.
+
 WHAT THESE TESTS CANNOT SEE. Whether Claude Code ever calls either script — that
 is the wiring, which lives in a settings file this repository does not own, and
 it is measured by running a session, not by a suite. Nor whether the injected
@@ -173,6 +180,14 @@ class TheMarkHook(HookFixture):
 
 class ThePointerHook(HookFixture):
 
+    def injected(self, run):
+        """What the harness would attach, read out of the hook's own envelope."""
+        envelope = json.loads(run.stdout)
+        specific = envelope["hookSpecificOutput"]
+        self.assertEqual(specific["hookEventName"], "SessionStart",
+                         "the envelope names an event the harness will not match")
+        return specific["additionalContext"]
+
     def test_a_source_other_than_compact_prints_nothing(self):
         # The matcher in the wiring selects, and this is the second guard: a
         # wiring widened by hand would otherwise inject into every session start.
@@ -196,9 +211,10 @@ class ThePointerHook(HookFixture):
         open(self.handoff, "w").close()
         run = self.run_hook(POINTER, {"source": "compact"})
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertIn(self.handoff, run.stdout)
-        self.assertIn(os.path.basename(RESUME_DOC), run.stdout)
-        self.assertIn(self.ledger, run.stdout)
+        said = self.injected(run)
+        self.assertIn(self.handoff, said)
+        self.assertIn(os.path.basename(RESUME_DOC), said)
+        self.assertIn(self.ledger, said)
 
     def test_a_handoff_that_is_not_there_is_said_and_never_pointed_at(self):
         # A pointer at a briefing nobody wrote sends the session looking, and
@@ -206,8 +222,27 @@ class ThePointerHook(HookFixture):
         self.write_pointer()
         run = self.run_hook(POINTER, {"source": "compact"})
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertIn("no file there", run.stdout)
-        self.assertIn(os.path.basename(RESUME_DOC), run.stdout)
+        said = self.injected(run)
+        self.assertIn("no file there", said)
+        self.assertIn(os.path.basename(RESUME_DOC), said)
+
+    def test_the_paragraph_travels_in_the_envelope_and_never_as_plain_stdout(self):
+        # Measured 2026-09-09 on 2.1.266: the plain-paragraph version of this
+        # hook ran for a live session that then could not find one word of it.
+        # A paragraph outside the envelope is a hook that costs a session and
+        # delivers nothing, and it looks identical from the terminal.
+        self.write_pointer()
+        open(self.handoff, "w").close()
+        run = self.run_hook(POINTER, {"source": "compact"})
+        try:
+            envelope = json.loads(run.stdout)
+        except ValueError:
+            self.fail(f"stdout is not the hook envelope the harness reads: "
+                      f"{run.stdout!r}")
+        self.assertEqual(list(envelope), ["hookSpecificOutput"],
+                         "a key outside hookSpecificOutput does not reach a context")
+        self.assertEqual(sorted(envelope["hookSpecificOutput"]),
+                         ["additionalContext", "hookEventName"])
 
 
 if __name__ == "__main__":
