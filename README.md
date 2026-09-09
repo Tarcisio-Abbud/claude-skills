@@ -255,8 +255,26 @@ tk/
                                   occupancy — an API response and a compaction boundary — and
                                   the last recorded wins. `--curve` prints the occupancy
                                   across the session, since the slope is what says whether
-                                  another review fits. Exit 2 no number, 64 bad usage: a
-                                  mistyped flag may not read as the licence to use judgement
+                                  another review fits. `--window` prints, on the same
+                                  channel, the window the harness will compact at — the env
+                                  var `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then
+                                  `autoCompactWindow` from the merged settings, then the
+                                  harness default marked as one — and the threshold under
+                                  it. Exit 2 no number, 64 bad usage: a mistyped flag may
+                                  not read as the licence to use judgement, and neither may
+                                  an unconfigured window
+  bin/tk-compact-mark             the `PreCompact` hook: appends ONE event line, in
+                                  LEDGER.md's format, to the ledger of the package named by
+                                  `~/.claude/state/tk-package.json`. A trace, never a
+                                  decision — it blocks nothing and exits 0 always, and with
+                                  no package pointer it writes nothing and says nothing
+  bin/tk-compact-pointer          the `SessionStart` hook, matcher `compact`: prints to
+                                  stdout — which Claude Code INJECTS into the compacted
+                                  session's context — where the handoff is and that
+                                  RESUME.md is the procedure. The piece missing on
+                                  2026-09-06, when an orchestrator woke from a compaction
+                                  holding a summary that named no handoff. Silent where no
+                                  package pointer names one
   bin/tk-quota                    what is left of the rolling usage windows — the 5h and
                                   weekly figures reach the STATUSLINE SCRIPT at render time
                                   and are in no transcript, so this is the only way an agent
@@ -404,8 +422,9 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 tk/tests/mutations_manifests.py`, the wall's step 2 through
 `python3 tk/tests/mutations_window_wall.py`, and the two closure bins through
 `python3 tk/tests/mutations_closure.py`, `tk-context` through
-`python3 tk/tests/mutations_tk_context.py`, and `tk-quota` through
-`python3 tk/tests/mutations_tk_quota.py`. The harnesses are separate files sharing
+`python3 tk/tests/mutations_tk_context.py`, `tk-quota` through
+`python3 tk/tests/mutations_tk_quota.py`, and the two compaction hooks through
+`python3 tk/tests/mutations_compact_hooks.py`. The harnesses are separate files sharing
 one shape; the oldest differs only in naming its test module inline. FOUR of them mutate
 more than a bin: the manifests one mutates DATA only — its subject is the repository's
 own state, and `marketplace.json` sits at the repo root, outside the `tk/` the runner

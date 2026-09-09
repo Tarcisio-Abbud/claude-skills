@@ -76,6 +76,18 @@ FLAT_STAMP = ("WhatComesFromOutsideThisProcess."
 FLAT_UUID = "WhatComesFromOutsideThisProcess.test_a_record_uuid_from_the_file_is_printed_flat"
 ARGV = "TheSiblingSeam.test_main_takes_its_argv_like_every_sibling_bin"
 
+W_CHANNEL = "TheWindowChannel.test_the_window_and_the_threshold_go_to_stderr_and_stdout_stays_bare"
+W_OFF = "TheWindowChannel.test_without_the_flag_a_configured_key_changes_nothing"
+W_NO_KEY = ("TheWindowChannel."
+            "test_no_key_and_no_env_var_is_exit_0_and_the_default_marked_as_one")
+W_NO_TOKEN = ("TheWindowChannel."
+              "test_no_token_in_the_transcript_is_still_exit_2_with_the_flag_on")
+W_KEY = "TheWindowChannel.test_the_settings_key_is_read_and_the_threshold_follows_it"
+W_ENV = "TheWindowChannel.test_the_environment_variable_beats_the_key"
+W_BOUNDS = "TheWindowChannel.test_a_value_the_harness_would_refuse_falls_through_to_the_default"
+W_DIR = "TheWindowChannel.test_a_settings_path_that_is_a_directory_costs_the_caller_nothing"
+W_HALF = "TheWindowChannel.test_a_half_written_settings_file_costs_the_caller_nothing"
+
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
     # -- the number itself ---------------------------------------------------
@@ -266,6 +278,62 @@ from the statusline at that seam""",
      "def main(argv=None):",
      "def main():",
      [ARGV], CONTEXT),
+
+    # -- the window channel --------------------------------------------------
+    #
+    # The first entry is the audit's defect (ticket 257, comment of 08/09): exit 2
+    # is spent as a licence to decide by judgement, and reusing it for a window
+    # nobody configured throws away a token reading that was there all along.
+    ("no configured window takes the code that means no token number",
+     '    return WINDOW_DEFAULT, "the harness DEFAULT", False',
+     '    no_number(f"no {WINDOW_KEY} is configured")',
+     [W_NO_KEY], CONTEXT),
+
+    ("the window lines go to stdout, and every seam comparing it reads two more",
+     '    print(f"tk-context: {said}", file=sys.stderr)',
+     '    print(f"tk-context: {said}")',
+     [W_CHANNEL], CONTEXT),
+
+    ("the window prints whether or not it was asked for",
+     """    if args.window:
+        print_window()""",
+     """    if True:
+        print_window()""",
+     [W_OFF], CONTEXT),
+
+    ("--window rescues a run that has no number, and the licence is lost",
+     """    points = occupancies(path)
+    if not points:""",
+     """    points = occupancies(path)
+    if not points and not args.window:""",
+     [W_NO_TOKEN], CONTEXT),
+
+    ("the settings key is never read, so the harness's own window is invisible",
+     "    value, path = settings_value()",
+     "    value, path = None, None",
+     [W_KEY], CONTEXT),
+
+    ("the environment variable stops winning over the key it must beat",
+     "    raw = os.environ.get(WINDOW_ENV)",
+     "    raw = None",
+     [W_ENV], CONTEXT),
+
+    ("a value the harness refuses is obeyed, and the threshold is one nothing uses",
+     "    if isinstance(value, int) and WINDOW_FLOOR <= value <= WINDOW_CEILING:",
+     "    if isinstance(value, int):",
+     [W_BOUNDS], CONTEXT),
+
+    ("the settings reader is unguarded, so a path nobody can read kills the reading",
+     """        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8-sig") as handle:
+                payload = json.load(handle)
+        except (OSError, ValueError, UnicodeDecodeError):
+            continue""",
+     """        with open(path, encoding="utf-8-sig") as handle:
+            payload = json.load(handle)""",
+     [W_DIR, W_HALF], CONTEXT),
 ]
 
 if __name__ == "__main__":
