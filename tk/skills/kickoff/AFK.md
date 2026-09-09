@@ -148,10 +148,38 @@ could not be made at all. None of the three is a run dispatched without a refere
 each run by the venue signature it returns, never by the flag you passed. On a wave, step 4 —
 `AUDIT.md` beside this file — stands between the claim and the first run.
 
+### The vehicle: one workflow per package
+
+Fire the site's dynamic workflow from this session (`~/.claude/tk/dispatch.md` names the
+mechanism; the Agent-tool fallback runs the same graph in series). One script per package and
+one `agent()` per run: the lane is a serial loop — the item's implementer, then the
+`lane-merger` of step 5 — the solo items run beside it, and the tail closes the graph. A fleet
+project run (`../fleet/SKILL.md` §4) takes the fallback until a package here measures the
+workflow on that path.
+
+**Every `agent()` takes its `model` and `effort` from `args`, never from a literal in the
+script** — a literal is the fork `../../bin/tk-contract` exists to prevent. The orchestrator
+fills both from the role table: `model` always, `effort` by OMITTING the key where the row
+reads `session`. No contract is copied into the script either — the block above reaches it
+verbatim through `args`, and the lane contract above reaches it as a path. Pass `args` as the object
+itself: a run asked to compose it returned the JSON inside a string field, and every key parsed
+as absent.
+
+Concurrent runs count against `max-local-subagents`, the site key the generated block already
+carries. Where the harness's own cap — `min(16, nproc - 2)` — is the smaller of the two, the
+difference stays UNUSED: a second workflow beside the first is the option to weigh, never Agent
+runs whose return lands in this session's context, which is what the vehicle exists to keep out.
+
+**The script stops dispatching at the first `null` and hands back what it holds.** A `null` is
+the wall or a skip, never one of the three attempts `../verify/SKILL.md` counts, and a graph
+running on past one dispatches into a spent window. The launch is a seam of its own: `WINDOW.md`
+refreshes the handoff right after it, and reads the quota between the launch and the return.
+
 **Done when:** every item is claimed or reported held elsewhere, the lane branch exists and is
 pushed before its first ticket goes out, the base was explored once with its notes outside the
 repository, and every run carries a generated contract block, that path, and a prompt
-self-sufficient without the tracker.
+self-sufficient without the tracker. The vehicle's script names no model, effort or
+contract of its own.
 
 ## 4. Audit the spec and the tickets
 
@@ -176,8 +204,9 @@ DECISION stays, carrying its handoff.
 
 A lane holding its own pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file.
 
-A lane item is verified BEFORE it reaches the shared branch — one cycle per item, every stage the
-orchestrator's own work, in order:
+A lane item is verified BEFORE it reaches the shared branch — one cycle per item, in order.
+Stages 1–5 may run inside the workflow as one `lane-merger` run, never the run that implemented
+the item; stages 6 and 7 are the orchestrator's own, on the workflow's return:
 
 1. **Confirm the invariant** in the item's worktree: `git status --porcelain` empty, HEAD equal
    to `@{u}`. A breach is repaired here — commit and push — and reported.
@@ -191,7 +220,8 @@ orchestrator's own work, in order:
    a DECISION (`--deferred afk`) naming its pushed branch and the two tips; the lane continues
    from its unchanged tip.
 5. **Push the lane's branch** — the checkpoint of `WINDOW.md`'s invariant for the lane.
-6. **On the FIRST green merge of the package, open the draft pull request**
+6. **On the first green merge the orchestrator SEES — on the workflow's return, or in the first
+   cycle where it dispatches by Agent — open the draft pull request**
    (`gh pr create --draft --base main`). The body is the orchestrator's and nobody else writes
    it: per closed item it gains `Fixes <owner>/<repo>#<n>`, one line per ticket; the spec is
    named WITHOUT a keyword, so only the user closes it. **Ask verdict 5 for that item HERE**,
@@ -202,6 +232,13 @@ orchestrator's own work, in order:
 7. **Close the item last** — `tk-queue done "<id>" --dir "<queue dir>" --how "PR #<n>"`, after
    the push and after the pull request exists: the push before the `done` is what lets a resumed
    generation recover either death shape without losing work or merging an item twice.
+
+**Before the first `done` the remote is what is true, and a merger's report is not.** Read
+`git log --merges origin/spec/<m>-<slug>` on the fetched tip, then run ONCE, by script with the
+exit codes read and a timeout well above 120 s, the whole suite and the criterion of every item
+that tip carries. Red there is a false green a merger returned: that item becomes a DECISION
+naming the sha of its merge, and it is never closed. The tail's suite does not answer this — it
+runs after the `done`s.
 
 A red item never reaches the lane's branch and the lane does not halt for it: its DECISION names
 its pushed branch, later tickets cut from the unchanged tip, and the report names it beside them.
@@ -241,8 +278,8 @@ fails on a branch still checked out.
 
 **Done when:** every item carries one verify outcome with its evidence block, every lane item
 reached the branch by a pushed `T<id>` merge before its `done`, verdict 5 was asked of each
-while it was still open, and every red one is absent from
-it, the tail ran its three steps on the final tree and left the pull request out of draft with
+while it was still open, the tip carried the whole suite and every merged item's criterion before
+the first `done`, and every red one is absent from it, the tail ran its three steps on the final tree and left the pull request out of draft with
 the worktree removed, and every claim left with its item or was released.
 
 ## 6. Measure, and hand the package to the close
