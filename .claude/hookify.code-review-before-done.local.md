@@ -65,7 +65,7 @@ This rule lives in more than one place ON PURPOSE. Two reasons, both measured:
          (`Tarcisio-Abbud/claude-skills`) -- both VERSIONED, so a rename there is a commit,
          not just a file write;
        - `.claude/` in the five project repos under `/workspace/projects/`;
-       - `.claude/` in the Obsidian vault, under `20-Infraestrutura/25-M365-CasaNostra/`;
+       - `.claude/` in the Obsidian vault, at the path `hookify-propagate.py` names;
        - `.claude/` at `/workspace/projects/` itself, since 2026-09-06. A session opened at
          the workspace root -- the infra one, which edits and commits inside any subproject --
          loaded NO rule at all until then. It covers that session and only it: a session

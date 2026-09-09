@@ -37,6 +37,14 @@ same refusal costs a write and fixes nothing. Quote values for the shell and pri
 a printed remedy built from a truncated title silently shortens what it repairs. The test is
 always the same: run the printed remedy, then re-run the command.
 
+**A remedy is chosen by its cost as well as by its correctness.** Before prescribing one that
+deletes and recreates — in a refusal a command prints, or in prose a reader will run — search the
+script for its table of field variants and for the command that edits in place. One correction
+prescribed `cancel` plus `add` over queue items whose only fault was a field name in Portuguese;
+the script already mapped that synonym, and `edit <id> --class` repaired each in one command,
+keeping the id, the position and the other fields. The destructive remedy destroys what the
+original merely hid.
+
 **A new gate field closes the gate everywhere the package is built, in the same PR.** A field
 that decides eligibility is a hole until the prose that assembles the work carries it too;
 leaving that to the slice that owns the assembler leaves the window open between two merges.
@@ -100,6 +108,12 @@ doubt the remote.
 
 **Re-read the ticket's comments before opening the PR.** A sibling slice comments on your ticket
 while you work, and a review that reads the ticket cold is the wrong way to learn it.
+
+**A slice that makes a sibling's rule redundant asks for the verdict in a ticket comment, without
+stopping.** Reading the parent and the neighbours first catches the risk of deleting work another
+slice still needs; it misses this one, which surfaces only while implementing. Comment on the
+ticket that owns the redundant rule, say what displaced it, and carry your own slice to its PR
+while the verdict is pending.
 
 **Name the ticket's body and its comments, with the command ready, in the prompt that dispatches
 a verification subagent.** That subagent reads the spec its prompt names and nothing else, so a
