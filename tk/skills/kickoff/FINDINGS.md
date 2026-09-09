@@ -1,9 +1,9 @@
 # Where an unattended finding goes
 
 Read from `AFK.md` beside this file, at any step, by the ORCHESTRATOR.
-`../../reference/session-finding.md` defines the term and owns the ladder for a session with the
-user present. This file is the unattended half: it decides which VEHICLE a finding takes, never
-whether the finding survives.
+`../../reference/session-finding.md` defines the term and carries both ladders, attended and
+unattended; the unattended one's second rung points here. This file decides which VEHICLE a
+finding takes, never whether the finding survives.
 
 **No new queue item is born while a package runs.** The hydra is measured, on the queue this rule
 was written against. Of the 110 open items, 74 — 67% — were born in seven days, every one of them
@@ -44,8 +44,9 @@ branch pushed, and the handoff of `WINDOW.md` written. That `add` is REFUSED at 
 past every flag — fold with `edit --text` or `handoff`, never by closing an item to make room.
 The package never waits on a parked finding.
 
-At the close, never mid-package, ONE `AskUserQuestion` batches every parked DECISION; that
-question and the close report are the same text. Portuguese, these labels verbatim:
+At the close, never mid-package, ONE `AskUserQuestion` batches every parked DECISION. The
+report comes out FIRST, and the question then quotes its **What changed** lines
+(`../wrap-up/REPORT.md`). Portuguese, these labels verbatim:
 
 - `O que é:` the item or pull request in plain words, never a bare `T123` or `#n`;
 - `O que muda para você:` what each option means for the user;
