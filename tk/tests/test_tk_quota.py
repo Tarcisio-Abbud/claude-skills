@@ -356,6 +356,209 @@ class TheEdgesOfTheContract(QuotaFixture):
         self.assertEqual(self.run_it("--no-such-flag").returncode, 64)
 
 
+
+class TheEstimate(QuotaFixture):
+    """The floor, and every mark that keeps it from passing as a reading.
+
+    Confusing an estimate with a measurement is the defect this mode exists to
+    prevent — it is what put wrong lines in the 05-07/09 ledger — so the marks
+    are asserted one by one, and each is asserted ABSENT from the reading line
+    built over the same sidecar. A mark that both lines carry separates nothing.
+    """
+
+    def anchor(self, used=32, age=HOUR, key="five_hour", length=5 * HOUR,
+               resets_in=None):
+        """A sidecar with an anchor of a chosen age, INSIDE its own window.
+
+        Hand-built, as this file's doctrine allows for a state the writer
+        cannot produce: `--write` always stamps `written_at` with now, and an
+        estimate over a zero-age anchor tests no arithmetic at all.
+
+        `resets_in` is derived from the age by default rather than fixed, because
+        the two are not independent: a reading taken before its window opened is
+        refused before any floor is computed, so an age raised past a fixed reset
+        turns an arithmetic test into a refusal test and still looks green.
+        """
+        now = time.time()
+        if resets_in is None:
+            resets_in = length - age - 60
+        self.write_raw({key: {"used_percentage": used, "resets_at": now + resets_in},
+                        "written_at": now - age})
+
+    def estimate(self, *args):
+        run = self.run_it("--estimate", *args)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        return run.stdout
+
+    def test_the_line_carries_the_mark_that_says_it_is_not_a_reading(self):
+        # The nature mark. Without it the line is a percentage on a screen, and
+        # nothing on the screen says an agent computed it.
+        self.anchor()
+        self.assertIn("estimate", self.estimate("--opus", "2"))
+
+    def test_the_reading_line_carries_no_such_mark(self):
+        # Half of what makes a mark a mark: the OTHER line must not have it.
+        self.anchor()
+        self.assertNotIn("estimate", self.run_it().stdout)
+
+    def test_the_estimate_is_qualified_as_a_floor(self):
+        self.anchor()
+        said = self.estimate("--opus", "2")
+        self.assertIn("at least", said)
+        self.assertIn("floor", said)
+
+    def test_the_reading_line_is_qualified_as_neither(self):
+        # A reading is not a floor, and a suite that only checked the estimate
+        # would stay green with the qualifier pasted onto both.
+        self.anchor()
+        said = self.run_it().stdout
+        self.assertNotIn("at least", said)
+        self.assertNotIn("floor", said)
+
+    def test_the_two_lines_are_not_the_same_line(self):
+        # Asserted whole, against the same sidecar. The marks above are each
+        # one string; this is the claim they add up to.
+        self.anchor()
+        self.assertNotEqual(self.estimate("--opus", "2").strip(),
+                            self.run_it().stdout.strip())
+
+    def test_the_line_carries_the_age_of_the_anchor(self):
+        # The age is what makes the floor auditable: the same percentage over a
+        # four-minute anchor and a four-hour one are different claims.
+        self.anchor(age=4 * HOUR + 12 * 60)
+        self.assertIn("read 4h12m ago", self.estimate("--opus", "1"))
+
+    def test_the_line_carries_the_rate_that_was_applied(self):
+        # The applied product AND its two factors: a line naming only "20 pp/h"
+        # cannot be re-derived by a reader who did not count the agents.
+        self.anchor()
+        said = self.estimate("--opus", "3")
+        self.assertIn("30 pp/h", said)
+        self.assertIn("3 Opus x 10", said)
+
+    def test_the_line_carries_the_percentage_the_anchor_actually_read(self):
+        self.anchor(used=32)
+        self.assertIn("from 32% read", self.estimate("--opus", "2"))
+
+    def test_the_floor_climbs_with_the_age_and_the_agent_count(self):
+        # 32% anchored an hour ago, two Opus agents at 10 pp/h each: 32 + 20.
+        self.anchor(used=32, age=HOUR)
+        self.assertIn("at least 52% used", self.estimate("--opus", "2"))
+
+    def test_no_agents_at_all_leaves_the_floor_at_the_anchor(self):
+        self.anchor(used=32, age=4 * HOUR)
+        self.assertIn("at least 32% used", self.estimate("--opus", "0"))
+
+    def test_the_rate_can_be_recalibrated_from_a_runs_own_ledger(self):
+        # 32 + 1 agent x 13 pp/h x 2h = 58.
+        self.anchor(used=32, age=2 * HOUR)
+        said = self.estimate("--opus", "1", "--rate", "13")
+        self.assertIn("at least 58% used", said)
+        self.assertIn("13 pp/h", said)
+
+    def test_the_floor_never_climbs_past_a_hundred(self):
+        # A floor of 130% is arithmetic nobody can act on, and the window it
+        # describes is spent either way.
+        self.anchor(used=90, age=4 * HOUR)
+        said = self.estimate("--opus", "2")
+        self.assertIn("at least 100% used", said)
+        self.assertNotIn("170", said)
+
+    def test_the_weekly_window_gets_no_floor_and_the_refusal_is_said_aloud(self):
+        # Both weekend measurements are of the 5-hour window. The same pp/h
+        # against a budget seven days wide prints a number nobody measured, in
+        # the alarming direction — so it is refused, and refused OUT LOUD: a
+        # window that vanished would leave the 5-hour line reading as the whole
+        # answer.
+        now = time.time()
+        self.write_raw({"five_hour": {"used_percentage": 32, "resets_at": now + HOUR},
+                        "seven_day": {"used_percentage": 26, "resets_at": now + 4 * 86400},
+                        "written_at": now - HOUR})
+        run = self.run_it("--estimate", "--opus", "2")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("5h estimate", run.stdout)
+        self.assertNotIn("7d", run.stdout)
+        self.assertIn("7d: no pp/h rate", run.stderr)
+
+    def test_a_recalibrated_rate_does_not_unlock_the_weekly_either(self):
+        # `--rate` recalibrates a measured rate. A window with none has nothing
+        # to recalibrate, and a flag that silently promoted it would be the
+        # overstatement arriving by another door.
+        self.anchor(key="seven_day", length=7 * 86400)
+        run = self.run_it("--estimate", "--opus", "2", "--rate", "40")
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertIn("no pp/h rate", run.stderr)
+
+
+class TheEstimateWhenItCannotAnswer(QuotaFixture):
+    """Exit 2 still means exit 2. The floor is not a way around a refusal."""
+
+    def test_a_window_that_has_reset_gets_no_floor_either(self):
+        # The anchor describes a window that ENDED, so there is nothing to
+        # climb from. An estimate mode that reached past this refusal would be
+        # a mode that invents its own anchor.
+        self.render(five=4, five_in=-60, seven=None)
+        run = self.run_it("--estimate", "--opus", "2")
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertEqual(run.stdout.strip(), "")
+        self.assertIn("already reset", run.stderr)
+
+    def test_a_reading_older_than_its_own_window_gets_no_floor_either(self):
+        now = time.time()
+        self.write_raw({"five_hour": {"used_percentage": 61, "resets_at": now + HOUR},
+                        "written_at": now - 8 * 86400})
+        run = self.run_it("--estimate", "--opus", "2")
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertIn("older than the window", run.stderr)
+
+    def test_no_sidecar_at_all_is_still_exit_2(self):
+        run = self.run_it("--estimate", "--opus", "2",
+                          path=os.path.join(self.tmp.name, "nope.json"))
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertEqual(run.stdout.strip(), "")
+        self.assertIn("judgement", run.stderr)
+
+    def test_a_corrupt_sidecar_is_still_exit_2(self):
+        self.write_raw("{half written")
+        run = self.run_it("--estimate", "--opus", "2")
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertIn("judgement", run.stderr)
+
+
+class TheFlagsOfTheEstimate(QuotaFixture):
+    """A flag that quietly does nothing is a caller believing something ran."""
+
+    def test_the_estimate_without_a_count_is_a_usage_error_not_a_zero(self):
+        # Defaulting to zero agents would print the anchor back, marked as a
+        # floor, and it would be a floor of nothing.
+        self.render()
+        run = self.run_it("--estimate")
+        self.assertEqual(run.returncode, 64, run.stdout)
+        self.assertIn("--opus", run.stderr)
+
+    def test_a_count_without_the_estimate_is_a_usage_error(self):
+        self.render()
+        self.assertEqual(self.run_it("--opus", "2").returncode, 64)
+
+    def test_a_rate_without_the_estimate_is_a_usage_error(self):
+        self.render()
+        self.assertEqual(self.run_it("--rate", "13").returncode, 64)
+
+    def test_writing_and_estimating_are_not_asked_together(self):
+        run = self.run_it("--write", "--estimate", "--opus", "2", stdin=payload())
+        self.assertEqual(run.returncode, 64, run.stdout)
+
+    def test_a_negative_count_is_a_usage_error(self):
+        self.render()
+        self.assertEqual(self.run_it("--estimate", "--opus", "-2").returncode, 64)
+
+    def test_a_count_that_is_not_a_number_is_a_usage_error_not_no_number(self):
+        # argparse's own exit code here is 2, which this command spends on
+        # "no number to vouch for" — the collision the Parser subclass exists for.
+        self.render()
+        self.assertEqual(self.run_it("--estimate", "--opus", "two").returncode, 64)
+
+
 class TheProseThatCallsIt(unittest.TestCase):
     """A command no instruction names is a command nobody runs."""
 
