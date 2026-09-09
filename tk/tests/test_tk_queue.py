@@ -6339,7 +6339,7 @@ class TestFoldFailsSafeOnShapesNobodyEnumerated(QueueTest):
         its own lines and the absorbed prose sits between the two. This item has
         no such line — its chain shares a line with the prose it wrapped out of,
         so the line the audit refuses IS the one carrying the chain — and the
-        reader of `casa-nostra-m365` T010 went looking in their item for a line
+        reader of a sibling queue's T010 went looking in their item for a line
         that does not exist in it. The reason was right; the address was written
         for the older path.
 

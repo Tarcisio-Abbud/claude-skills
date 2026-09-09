@@ -5098,7 +5098,7 @@ FOLD_SPLIT_REFUSAL = ("a **Field:** marker would stay off the first line, and a 
 # is the WALK's alone. The wrapped path joins a chain that shares its line with
 # the prose it wrapped out of, so there is nothing between the head and the
 # chain there — the refused line often IS the one carrying the chain. Measured
-# on `casa-nostra-m365` T010, which read the sentence, looked for a line that
+# on a sibling queue's T010, which read the sentence, looked for a line that
 # does not exist in its item, and could not tell which line to repair. The
 # reason was right and only the address was written for the older path.
 FOLD_PROSE_REFUSAL = ("a line the join would absorb is not the hard-wrapped prose the fold "

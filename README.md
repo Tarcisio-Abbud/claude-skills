@@ -436,12 +436,19 @@ that config reached the primary tree and nowhere else, so every dispatched agent
 `/mattpocock-skills:code-review` ran with no tracker config at all, and every worktree ran with
 no stop rule holding it to that review.
 
-This repo is written AS IF PUBLIC — private since 2026-09-01, but the flip back is one
-command and everything it published before that date is already indexed. The private half
+This repo is PUBLIC and is written as such. It was made private on 2026-09-01 and is public
+again — checked against the forge on 2026-09-09, not remembered, after this very line had
+been asserting a privacy the repo did not have for over a week. Whatever the flag says on any
+given day, the writing does not change: the flip is one command, and everything published
+while it was public is already indexed. The private half
 stays out of it — out of the FILES, that is. One
 line of one surface names the tracker deliberately: the `Fixes <owner>/<repo>#<n>` closing
 line in a PR body, which is what makes a merge close its ticket. PR bodies are not committed,
-so nothing about the rule below moves; `docs/agents/issue-tracker.md` sets out which surface
+so nothing about the rule below moves — and that same gap is where the 2026-09-09 sweep found
+every leak it found: four PR bodies naming private projects, none of them ever a commit, none
+of them reachable by any git hook. The guard that closes it is a `PreToolUse` hook in the
+private config repo (`bin/gh-publish-guard.py`), which reads the publishing command before
+GitHub does; `docs/agents/issue-tracker.md` sets out which surface
 may carry what. The tracker's slug and the `gh`
 config directory live in the clone's local git config, under `tk.tracker` and
 `tk.ghConfigDir`, which git never pushes. Tracker commands run through `bin/tracker-gh`,
