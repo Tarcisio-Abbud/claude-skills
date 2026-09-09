@@ -18,6 +18,13 @@ cap, and that the two commands work against a queue whose machine is at its cap.
 WHAT IS NOT: that an unattended session reaches the paragraph. Nothing here can
 see a session, and the close's own block is what carries that.
 
+WHY THE SECOND DOCUMENT MOVED (ambiente#260). The prescription this file holds
+is the one that survives an unattended package, and it left AFK.md: that file now
+points at `skills/kickoff/FINDINGS.md`, which carries the park rung and is the only
+document of the package still prescribing an `add`. The assertion is unchanged and
+follows its subject; that AFK.md prescribes no unattended `add` of its own any more
+is held from the other side, by `test_findings_destinations.py`.
+
 VACUITY GUARD. The sentence is found by the cap's key, so deleting it from either
 document empties the search and the first test fails loudly — which is how this
 file was proved: each sentence was removed in turn, and the run went red, before
@@ -36,7 +43,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DOCS = {
     "reference/session-finding.md": os.path.join(HERE, os.pardir, "reference",
                                                  "session-finding.md"),
-    "skills/kickoff/AFK.md": os.path.join(HERE, os.pardir, "skills", "kickoff", "AFK.md"),
+    "skills/kickoff/FINDINGS.md": os.path.join(HERE, os.pardir, "skills", "kickoff",
+                                               "FINDINGS.md"),
 }
 WIP_KEY = "max-open-items"
 

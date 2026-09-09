@@ -26,10 +26,11 @@ the fixture its criterion runs against?
 
 Exactly one outcome per surviving finding: **resolve here** — the correction fits the spec or the
 tickets, the orchestrator edits them recording what the text said before (correcting the audited
-documents, not the resolving the session-finding ladder forbids); **backlog** —
-`tk-queue add --dir "<queue dir>"` with the gate named, as `AFK.md`'s
-*A session finding, unattended* prescribes; **refuted** — one line naming the verifier and how; **REGRILL** — the spec's own
-premise is hit, and the package halts with no run fired. A **rotten criterion** (term:
+documents, not the resolving the session-finding ladder forbids); **backlog** — the destination
+`FINDINGS.md` beside this file gives a finding at THIS moment, before the first run: the wave's
+plan, or the audited ticket's own body, never the queue; **refuted** — one line naming the
+verifier and how; **REGRILL** — the spec's own premise is hit, and the package halts with no run
+fired. A **rotten criterion** (term:
 `../verify/SKILL.md`) routes by which document is wrong: the criterion alone misses the promise →
 resolve here, through `verifier-2` before it is applied; criterion and spec agree and together
 miss → REGRILL.
