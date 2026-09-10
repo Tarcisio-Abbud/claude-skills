@@ -102,7 +102,9 @@ no release.
 
 The **fleet size** `W` is how many project runs are in flight at once. It is the number
 `--fleet` takes — what `tk-contract` calls "how many runs share this machine". What it divides
-is this machine's LOCAL ceiling, read from the site file by the bin.
+is this machine's LOCAL ceiling, read from the site file by the bin — the RAM axis
+(`max-local-subagents`), never the quota axis (`max-local-opus`), which `WINDOW.md`'s "The
+tick" describes and which `--fleet` does not touch.
 
 **Read the ceilings first, with no divisor.** `--fleet` takes `W` as input, so `W` cannot be
 chosen from a block generated at it. Omit the flag and the block states the whole ceiling, which
