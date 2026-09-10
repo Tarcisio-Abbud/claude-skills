@@ -4389,6 +4389,181 @@ class TestRepoField(QueueTest):
         self.assertNotIn("**Spec:**", body)
 
 
+# The tracker the fixture clone declares — FICTIONAL, the convention
+# `test_tk_closure.py` follows for the same value: this repository is public, and a
+# real slug in a test is the account name published by a file nobody reads as
+# publication.
+SLUG = "Fictional-Owner/tracker-repo"
+
+
+class TestTicketAgainstTheClonesTracker(QueueTest):
+    """`--ticket` and `--spec` carry a REPOSITORY half, and until T392 nothing
+    compared it with anything. The item that measured the cost was born
+    against a repository its clone does not track, ran its whole package, and was
+    named only by `tk-closure-check` at the end —
+    provenance is add-only, so the repair by then is cancel-and-re-add.
+
+    The clone is a FIXTURE with its own config, never the machine's own: a suite
+    that writes `tk.tracker` where a live session reads it left this tree
+    refusing every tracker call with exit 78 for a day (27/08). Git's global and
+    system config are redirected too, so the fixture is the only source of the
+    value under test."""
+
+    def setUp(self):
+        super().setUp()
+        self.clone = os.path.join(self.dir, "clone")
+        os.makedirs(self.clone)
+        self.git("init", "-q", ".")
+        self.set_tracker(SLUG)
+
+    # --- fixture ---------------------------------------------------------
+    def gitenv(self):
+        absent = os.path.join(self.dir, "no-such-git-config")
+        return dict(os.environ, HOME=self.home,
+                    GIT_CONFIG_GLOBAL=absent, GIT_CONFIG_SYSTEM=absent)
+
+    def git(self, *argv, clone=None):
+        return subprocess.run(["git", "-C", clone or self.clone, *argv], check=True,
+                              capture_output=True, text=True, env=self.gitenv())
+
+    def set_tracker(self, value):
+        self.git("config", "tk.tracker", value)
+
+    def run_tk(self, *argv, cwd=None, timeout=None):
+        """`QueueTest.run_tk`, with git's own config redirected as well — the
+        fixture clone must be the ONLY thing on the machine that says which
+        repository is tracked, or a user config declaring one answers the
+        `no tracker here` case for it and that subtest proves nothing."""
+        return subprocess.run([sys.executable, TK, *argv, "--dir", self.mem],
+                              capture_output=True, text=True, cwd=cwd or self.dir,
+                              env=self.gitenv(), timeout=timeout)
+
+    def add(self, *extra, text="importado"):
+        return self.run_tk("add", text, "--class", "AUTONOMOUS", "--effort", "S",
+                           "--criterion", "A: x", *extra)
+
+    # --- the check itself ------------------------------------------------
+    def test_a_ticket_filed_against_another_repository_is_refused(self):
+        """And the refusal names the value that would have been right: a message
+        saying only "wrong" leaves the caller to guess the spelling of the very
+        half that was mis-typed."""
+        self.seed()
+        r = self.add("--ticket", "other-repo#257", "--repo", self.clone)
+        self.assertNotEqual(r.returncode, 0, "the wrong repo half was accepted")
+        self.assertIn("tracker-repo#257", r.stderr)
+        self.assertNotIn("- [ ] ", self.body())
+
+    def test_the_tracked_repository_is_accepted_whatever_its_casing(self):
+        """A forge repo name is case-insensitive to look up and the queue stores
+        it lower-cased (`canonical_ref`), so both spellings are ONE reference and
+        must earn one verdict — a comparison on the raw halves refuses the item
+        the tracker itself would resolve."""
+        for tracker, spelling in (
+                (SLUG, "tracker-repo#257"),
+                (SLUG, "Tracker-Repo#257"),
+                # the OTHER side of the comparison: a tracker is spelled the way its
+                # owner spells it, and the queue's own half is already lower-cased
+                ("Fictional-Owner/Tracker-Repo", "tracker-repo#257"),
+                ("Fictional-Owner/TRACKER-REPO", "Tracker-Repo#257")):
+            with self.subTest(tracker=tracker, spelling=spelling):
+                self.set_tracker(tracker)
+                self.seed()
+                r = self.add("--ticket", spelling, "--repo", self.clone)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("**Ticket:** tracker-repo#257.", self.body())
+
+    def test_the_spec_is_checked_by_the_same_gate(self):
+        """`--spec` decides the LANE. A repository half nothing tracks puts the
+        item in a lane of its own — a second branch and a second campaign for a
+        spec that already has both."""
+        self.seed()
+        r = self.add("--spec", "other-repo#171", "--repo", self.clone)
+        self.assertNotEqual(r.returncode, 0, "the wrong repo half was accepted on --spec")
+        self.assertIn("tracker-repo#171", r.stderr)
+        self.assertNotIn("- [ ] ", self.body())
+        self.seed()
+        self.assertEqual(self.add("--spec", "tracker-repo#171",
+                                  "--repo", self.clone).returncode, 0)
+
+    def test_an_add_with_no_repo_flag_is_the_add_of_before(self):
+        """The flag is what names a clone to ask. Without it the machine has
+        nothing to compare against, and inventing one — the cwd, the queue's own
+        directory — is the guess every other reader in this tree refuses."""
+        self.seed()
+        r = self.add("--ticket", "other-repo#257")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Ticket:** other-repo#257.", self.body())
+
+    def test_an_address_this_machine_cannot_ask_is_not_checked(self):
+        """Four ways of having no tracker, and each leaves the add exactly as it
+        was: the value is a URL, the path is not here, the directory is no clone,
+        the clone declares nothing. None of them says what the right repository
+        would have been, and an add refused without a remedy is one the caller
+        works around by dropping the flag that carries real information."""
+        plain = os.path.join(self.dir, "not-a-clone")
+        os.makedirs(plain)
+        bare = os.path.join(self.dir, "no-tracker")
+        os.makedirs(bare)
+        self.git("init", "-q", ".", clone=bare)
+        for repo in ("https://github.com/Fictional-Owner/tracker-repo.git",
+                     os.path.join(self.dir, "absent"), plain, bare):
+            with self.subTest(repo=repo):
+                self.seed()
+                r = self.add("--ticket", "other-repo#257", "--repo", repo)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("**Ticket:** other-repo#257.", self.body())
+
+    def test_a_malformed_tracker_is_not_read_as_a_repository(self):
+        """`tk.tracker = owner|repo` is the malformed value `bin/tracker-gh`'s
+        shape gate exists for, and it was found in the LIVE clone once. Read
+        loosely here it would name a repository nobody configured and refuse
+        every reference against it."""
+        self.set_tracker("owner|repo")
+        self.seed()
+        r = self.add("--ticket", "other-repo#257", "--repo", self.clone)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Ticket:** other-repo#257.", self.body())
+
+    def test_the_reader_of_the_tracker_cannot_go_missing_in_silence(self):
+        """`tk-ticket-ref` is where the tracker is read, and it is the only thing
+        standing between this gate and no gate at all. Absent, the add REFUSES
+        naming the file: a guard that quietly stops firing is the failure it was
+        written to prevent, and an installation missing a bin is one to repair."""
+        bindir = os.path.join(self.dir, "bin")
+        shutil.copytree(os.path.dirname(os.path.abspath(TK)), bindir)
+        os.remove(os.path.join(bindir, "tk-ticket-ref"))
+        self.seed()
+        r = subprocess.run([sys.executable, os.path.join(bindir, "tk-queue"), "add",
+                            "importado", "--class", "AUTONOMOUS", "--effort", "S",
+                            "--criterion", "A: x", "--ticket", "other-repo#257",
+                            "--repo", self.clone, "--dir", self.mem],
+                           capture_output=True, text=True, cwd=self.dir,
+                           env=self.gitenv())
+        self.assertNotEqual(r.returncode, 0, "the reader was gone and the add wrote anyway")
+        self.assertIn("tk-ticket-ref", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertNotIn("- [ ] ", self.body())
+
+    def test_a_machine_that_cannot_run_git_still_writes_the_item(self):
+        """`tracker_slug` answers a git it cannot RUN with its own `fail()`, and
+        that call EXITS the process — a reader written for a dispatch, where a
+        tracker nobody can read stops the run. Here it must not: nothing else in
+        an `add` needs git, so a machine without one keeps writing its queue, and
+        an exit crossing this gate would take the whole command down over a
+        comparison the machine simply cannot make."""
+        self.seed()
+        nowhere = os.path.join(self.dir, "no-bin")
+        os.makedirs(nowhere, exist_ok=True)
+        r = subprocess.run([sys.executable, TK, "add", "importado",
+                            "--class", "AUTONOMOUS", "--effort", "S",
+                            "--criterion", "A: x", "--ticket", "other-repo#257",
+                            "--repo", self.clone, "--dir", self.mem],
+                           capture_output=True, text=True, cwd=self.dir,
+                           env=dict(self.gitenv(), PATH=nowhere))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Ticket:** other-repo#257.", self.body())
+
+
 class TestPackRepo(PackOutput):
     """The package is dispatched from this output, so the address is returned by
     it: a field nothing prints is the prose it was added to replace. It is
