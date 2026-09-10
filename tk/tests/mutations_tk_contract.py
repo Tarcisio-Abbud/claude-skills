@@ -85,6 +85,45 @@ MUTATIONS = [
      "    cloud = site.ceilings.get(CLOUD_KEY)", "    cloud = site.ceilings.get(CLOUD_KEY, 4)",
      ["TestCeilings.test_an_absent_ceiling_is_stated_absent_never_invented"]),
 
+    # --- the QUOTA ceiling: its own key, its own axis ----------------------
+    # RAM and quota are measured against different things, and the block that
+    # states only the first authorises the run that spends the window.
+    ("an absent Opus ceiling gets a default the bin invented",
+     "    opus = site.ceilings.get(OPUS_KEY)", "    opus = site.ceilings.get(OPUS_KEY, 4)",
+     ["TestCeilings.test_an_absent_opus_ceiling_is_stated_absent_never_invented"]),
+
+    ("the Opus ceiling is the RAM ceiling under another name",
+     'OPUS_KEY = "max-local-opus"', 'OPUS_KEY = "max-local-subagents"',
+     ["TestCeilings.test_the_opus_ceiling_is_read_from_the_file_and_named",
+      "TestCeilings.test_the_opus_ceiling_is_not_the_local_one_under_another_name",
+      "TestCeilings.test_the_fleet_divides_the_opus_ceiling"]),
+
+    ("the fleet does not divide the Opus ceiling, so each member reads the whole one",
+     "    if fleet is None:", "    if True:",
+     ["TestCeilings.test_the_fleet_divides_the_opus_ceiling",
+      "TestCeilings.test_a_fleet_wider_than_the_opus_ceiling_dispatches_none"]),
+
+    ("an empty Opus share is stated as a share instead of as none",
+     "    elif opus // fleet == 0:", "    elif False:",
+     ["TestCeilings.test_a_fleet_wider_than_the_opus_ceiling_dispatches_none"]),
+
+    ("the Opus ceiling is said to bound this machine only, so the cloud reads as free",
+     'return [f"- Opus subagents, in EITHER venue: {share} This is the QUOTA axis and not the "',
+     'return [f"- Opus subagents: {share} This is the QUOTA axis and not the "',
+     ["TestCeilings.test_the_opus_ceiling_spans_both_venues"]),
+
+    # the site file's own half: an unknown key is IGNORED by design, so a key
+    # dropped from the tuple does not fail the file — it unsets the ceiling in
+    # silence and a malformed value stops being refused at all
+    ("the Opus key leaves the site file's tuple, so its value reads as an unknown key",
+     'CEILINGS = ("max-local-subagents", "max-local-opus", "max-cloud-subagents",\n'
+     '            "max-open-items", "max-open-items-per-queue")',
+     'CEILINGS = ("max-local-subagents", "max-cloud-subagents",\n'
+     '            "max-open-items", "max-open-items-per-queue")',
+     ["TestCeilings.test_the_opus_ceiling_is_read_from_the_file_and_named",
+      "TestCeilings.test_a_malformed_opus_ceiling_is_refused_and_never_ignored"],
+     "bin/tk_site.py"),
+
     ("the local ceiling is a literal in the bin instead of the file's value",
      'lines.append(f"- Local subagents: at most {local} at a time. No fleet divisor was "',
      'lines.append(f"- Local subagents: at most 6 at a time. No fleet divisor was "',

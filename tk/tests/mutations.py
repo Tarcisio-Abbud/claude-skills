@@ -3215,9 +3215,9 @@ MUTATIONS = [
     # the site file's own half: an unknown key is IGNORED by design, so dropping
     # the key from the tuple does not fail the file — it silently unsets the cap
     ("T297 site the cap's key leaves the tuple, so the value reads as an unknown key",
-     'CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items",\n'
-     '            "max-open-items-per-queue")',
-     'CEILINGS = ("max-local-subagents", "max-cloud-subagents")',
+     'CEILINGS = ("max-local-subagents", "max-local-opus", "max-cloud-subagents",\n'
+     '            "max-open-items", "max-open-items-per-queue")',
+     'CEILINGS = ("max-local-subagents", "max-local-opus", "max-cloud-subagents")',
      ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap",
       "TestWipCap.test_a_cap_of_zero_is_refused_by_the_site_file"],
      "bin/tk_site.py"),

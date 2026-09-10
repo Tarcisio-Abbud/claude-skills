@@ -18,6 +18,7 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
     environments = <name>, <name>, <name>
     # ceilings, per machine
     max-local-subagents = 3
+    max-local-opus = 4
     max-cloud-subagents = 4
     max-open-items = 40
 
@@ -29,6 +30,15 @@ FORMAT — one `key = value` per line; `#` starts a comment; blank lines ignored
                         the phantom environment the roster exists to prevent.
   max-local-subagents   optional. Concurrent LOCAL subagents this machine can
                         hold — a RAM ceiling, measured per machine.
+  max-local-opus        optional. Concurrent OPUS subagents, in either venue —
+                        a QUOTA ceiling, and a different axis from the one
+                        above. RAM is this machine's and quota is the account's,
+                        so neither substitutes for the other: five parallel
+                        Sonnet runs sized `max-local-subagents`, while five live
+                        Opus agents spent a whole 5-hour window in a little over
+                        two hours. Kept as its own key for that reason — a
+                        machine that can hold six subagents cannot afford six
+                        Opus ones, and one number cannot say both.
   max-cloud-subagents   optional. Concurrent CLOUD subagents — a concurrency
                         ceiling only; it says nothing about quota, which is one
                         window shared by both venues.
@@ -107,8 +117,8 @@ REQUIRED = ("identity", "environments")
 # `max-open-items` by `tk-queue add`. They share this tuple because they share
 # the validation — a ceiling that is not a number, or is zero, is refused here
 # once rather than in each reader.
-CEILINGS = ("max-local-subagents", "max-cloud-subagents", "max-open-items",
-            "max-open-items-per-queue")
+CEILINGS = ("max-local-subagents", "max-local-opus", "max-cloud-subagents",
+            "max-open-items", "max-open-items-per-queue")
 # The WIP keys, spelled once. `max-open-items` is the only ceiling that also
 # takes a WORD, and the other two are read by nothing but the gate it feeds.
 WIP_TOTAL = "max-open-items"
@@ -135,6 +145,7 @@ PROJECT_NAME_RE = re.compile(f"[{PROJECT_ALPHABET}]+\\Z")
 TEMPLATE = """  identity = <this machine's environment name>
   environments = <name>, <name>
   max-local-subagents = <concurrent local subagents>
+  max-local-opus = <concurrent Opus subagents, by quota>
   max-cloud-subagents = <concurrent cloud subagents>
   max-open-items = <open items this machine may hold at once>"""
 

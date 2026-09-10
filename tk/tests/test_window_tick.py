@@ -113,9 +113,27 @@ class TheDispatchBudget(DocTest):
         # The key already reaches every dispatched run through tk-contract, so
         # what this file owes is the key's NAME and the measurement beside it.
         self.assertCarries(self.body(), (
-            "max-local-subagents", "~/.claude/tk/env", "../../bin/tk-contract",
+            "max-local-opus", "~/.claude/tk/env", "../../bin/tk-contract",
             "is a fork of the policy",
         ), "the Opus ceiling is not written as the site key the contract reads")
+
+    def test_the_quota_key_is_not_the_ram_key(self):
+        # Read as one number, `max-local-subagents` — sized on parallel Sonnet
+        # runs — authorises exactly the five live Opus agents this budget
+        # forbids. The file has to say which key is which axis.
+        body = self.body()
+        self.assertCarries(body, (
+            "`max-local-subagents` is the RAM one", "`max-local-opus` is the QUOTA one",
+            "authorised by `max-local-opus`",
+        ), "the two ceilings read as one number again")
+        self.assertNotIn("not in the site file yet", body,
+                         "the file still says the key does not exist, so a reader "
+                         "falls back on the RAM ceiling the sentence forbids")
+
+    def test_the_quota_ceiling_is_not_relieved_by_the_cloud(self):
+        self.assertIn("EITHER venue", self.body(),
+                      "the ceiling reads as this machine's, and a run moved to the "
+                      "cloud reads as free of it — quota is the account's")
 
     def test_the_sibling_measurement_is_named_and_not_duplicated(self):
         self.assertIn("T270", self.body(),
