@@ -2223,8 +2223,9 @@ def validate_repo(value):
 
 
 # --- the ticket's repository, against the tracker of the clone it names ---------
-# `--ticket ambiente#257` was written for a tracker whose repository is
-# `homeserver-ambiente`, and nothing refused it: the two halves of a reference
+# An item was born with a `--ticket` naming a repository its own clone does not
+# track — a shortening of the tracker's own name — and nothing refused it: the
+# two halves of a reference
 # meet at DISPATCH, in `tk-ticket-ref`, and provenance is add-only — by then the
 # only repair is cancel-and-re-add. Measured 2026-09-10: the item ran its whole
 # package carrying a reference that closes nothing, and `tk-closure-check` named
@@ -5997,12 +5998,17 @@ def main():
                                     "zeros (`Ambiente#0171` is written `ambiente#171`), "
                                     "`owner/repo#n` refused. The shape is exact on the "
                                     "way in and asked again on the way out — `pack` marks "
-                                    "a hand-edited one `[?]`")
+                                    "a hand-edited one `[?]`. Where `--repo` names a clone "
+                                    "on this machine, the REPO half is checked against "
+                                    "that clone's `tk.tracker` and a mismatch is refused, "
+                                    "naming the reference that fits: provenance is "
+                                    "add-only, so a wrong half here is permanent")
     a.add_argument("--spec", help="the spec the ticket belongs to, `<repo>#<n>` — decides "
                                   "the item's LANE in the afk package (see `pack --help`). "
                                   "Same one spelling as `--ticket`: two casings of one "
                                   "repo would be two specs of one ticket each, and two "
-                                  "branches for one spec")
+                                  "branches for one spec — and the same tracker check as "
+                                  "`--ticket`")
     a.add_argument("--repo", help="the repository this item's CODE lands in. A WHITELIST "
                                   "of five shapes: https://<host>/<path>, "
                                   "ssh://git@<host>/<path>, git@<host>:<path>, "

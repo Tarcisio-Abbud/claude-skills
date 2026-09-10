@@ -3248,9 +3248,14 @@ MUTATIONS = [
      ["TestWipCap.test_a_broken_roster_does_not_reach_the_commands_that_never_read_it",
       "TestWipCap.test_an_add_with_no_cap_never_loads_the_roster_either"]),
 
+    # the anchor names the roster's OWN message: since T392 a second lazy loader
+    # (`ticket_ref`) stands beside this one, letter for letter down to the `fail(`,
+    # and an anchor matching both mutates whichever comes first
     ("T345 a `tk-roster` that cannot be loaded comes back as a raw traceback",
-     "        except Exception as e:\n            fail(",
-     "        except ZeroDivisionError as e:\n            fail(",
+     "        except Exception as e:\n"
+     "            fail(f\"`tk-roster` beside this script could not be loaded \"",
+     "        except ZeroDivisionError as e:\n"
+     "            fail(f\"`tk-roster` beside this script could not be loaded \"",
      ["TestWipCap.test_a_broken_roster_under_a_cap_is_reported_not_crashed"]),
 
     # --- T346: the lens's findings on the slice above ---------------------
@@ -4171,6 +4176,50 @@ MUTATIONS = [
      "            and not opens_a_block(lines[: j + 1], j))",
      "            and not opens_a_block(lines, j))",
      ["TestTheFoldKeepsTheAuthorsLineBreaks.test_a_paragraph_an_underline_promotes_is_not_split_by_the_fold"]),
+
+    # --- T392: the ticket's repository, against the tracker of the clone ------
+    ("T392 the repo half of a provenance reference is written unchecked",
+     "        if named != tracked.lower():",
+     "        if False:",
+     ["TestTicketAgainstTheClonesTracker."
+      "test_a_ticket_filed_against_another_repository_is_refused",
+      "TestTicketAgainstTheClonesTracker.test_the_spec_is_checked_by_the_same_gate"]),
+
+    # a forge repo name is case-insensitive to look up, and only ONE side of this
+    # comparison is canonical: the queue lower-cases what it stores, the tracker is
+    # spelled the way its owner spells it
+    ("T392 the tracker's own casing decides whether the reference matches",
+     "        if named != tracked.lower():",
+     "        if named != tracked:",
+     ["TestTicketAgainstTheClonesTracker."
+      "test_the_tracked_repository_is_accepted_whatever_its_casing"]),
+
+    # every way of HAVING NO TRACKER is `tk-ticket-ref`'s own refusal, and at
+    # dispatch it is right to refuse: the closing line cannot be written without
+    # one. At `add` the same absence blocks nothing, so it must not reach the caller
+    ("T392 a clone with no readable tracker refuses the add instead of skipping it",
+     "    except ref.Refusal:\n        return None",
+     "    except ref.Refusal:\n        raise",
+     ["TestTicketAgainstTheClonesTracker."
+      "test_an_address_this_machine_cannot_ask_is_not_checked",
+      "TestTicketAgainstTheClonesTracker."
+      "test_a_malformed_tracker_is_not_read_as_a_repository"]),
+
+    ("T392 an add carrying no --repo is handed to the tracker reader anyway",
+     "    if not repo or not os.path.isdir(repo):",
+     "    if not os.path.isdir(repo):",
+     ["TestTicketAgainstTheClonesTracker."
+      "test_an_add_with_no_repo_flag_is_the_add_of_before"]),
+
+    # the guard's whole existence depends on that file being there, so its absence
+    # is REPORTED. Caught by the raw traceback the unhandled load raises
+    ("T392 a missing tk-ticket-ref is not the failure the loader reports",
+     "        try:\n            loader.exec_module(mod)\n        except Exception as e:\n"
+     "            fail(f\"`tk-ticket-ref` beside this script could not be loaded \"",
+     "        try:\n            loader.exec_module(mod)\n        except ImportError as e:\n"
+     "            fail(f\"`tk-ticket-ref` beside this script could not be loaded \"",
+     ["TestTicketAgainstTheClonesTracker."
+      "test_the_reader_of_the_tracker_cannot_go_missing_in_silence"]),
 
 ]
 

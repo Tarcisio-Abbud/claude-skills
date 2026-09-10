@@ -34,6 +34,9 @@ Written in the lane's dependency ORDER, and with **no `--blocked-by` between sib
 lane is serial and runs in that order anyway, while `--blocked-by` would make `pack` leave
 every blocked sibling out of the package (`tk-queue add --help`; the ledger
 `blocked-by-na-fila`). `--spec` and `--ticket` take `<repo>#<n>` and refuse `owner/repo#n`.
+The repo half is the TRACKER's, not the code's. Where `--repo` names a clone on this machine,
+`add` checks that half against the clone's `tk.tracker`. A mismatch is refused, and the refusal
+names the reference that fits — provenance is add-only, so this is the only moment it is fixable.
 
 The `add` belongs to the ORCHESTRATOR and to no subagent: the site's hook refuses an `add` from
 inside a subagent, and while a package runs the orchestrator alone writes the queue (`AFK.md`).
