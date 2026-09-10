@@ -2224,13 +2224,12 @@ def validate_repo(value):
 
 # --- the ticket's repository, against the tracker of the clone it names ---------
 # An item was born with a `--ticket` naming a repository its own clone does not
-# track — a shortening of the tracker's own name — and nothing refused it: the
-# two halves of a reference
-# meet at DISPATCH, in `tk-ticket-ref`, and provenance is add-only — by then the
-# only repair is cancel-and-re-add. Measured 2026-09-10: the item ran its whole
-# package carrying a reference that closes nothing, and `tk-closure-check` named
-# it at the very end. The pair is checked HERE because this is the last moment the
-# value is still editable.
+# track — a shortening of the tracker's own name — and nothing refused it: the two
+# halves of a reference meet at DISPATCH, in `tk-ticket-ref`, and provenance is
+# add-only, so by then the only repair is cancel-and-re-add. Measured 2026-09-10:
+# the item ran its whole package carrying a reference that closes nothing, and
+# `tk-closure-check` named it at the very end. The pair is checked HERE because
+# this is the last moment the value is still editable.
 #
 # The check fires only where this machine can ANSWER: `--repo` naming a directory
 # that is here, that is a clone, and that declares a readable `tk.tracker`. A URL,
@@ -2324,14 +2323,20 @@ def check_ticket_tracker(repo, refs):
             continue
         named, _, number = value.rpartition("#")
         if named != tracked.lower():
+            # what a wrong half COSTS is not one cost: a ticket is add-only and
+            # feeds a closing line, a spec is the lane the package is cut into
+            why = ("Provenance is add-only: there is no `edit --ticket`, so a repository "
+                   "half wrong at birth stays wrong for the life of the item, and the "
+                   "closing line it feeds closes nothing."
+                   if flag == "ticket" else
+                   "A spec's repository half decides the LANE: filed where nothing "
+                   "tracks it, the item takes a lane of its own — a second branch and a "
+                   "second campaign for a spec that already has both.")
             fail(f"--{flag} {value} is filed against {named!r}, and the clone at {repo} "
                  f"tracks {slug} — a different repository. Write it as "
-                 f"{tracked}#{number}.\n"
-                 "Provenance is add-only: there is no `edit --ticket`, so a repository "
-                 "half wrong at birth stays wrong for the life of the item, and the "
-                 "closing line it feeds closes nothing. If the reference really is filed "
-                 f"in {named!r}, name the clone that tracks THAT repository as `--repo`, "
-                 "or leave `--repo` off — with no clone to ask, nothing here can say who "
+                 f"{tracked}#{number}.\n{why} If the reference really is filed in "
+                 f"{named!r}, name the clone that tracks THAT repository as `--repo`, or "
+                 "leave `--repo` off — with no clone to ask, nothing here can say who "
                  "owns it.")
 
 
