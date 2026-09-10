@@ -367,12 +367,14 @@ only the crossing found it.
 interchangeable.** A READING is a measurement. A FLOOR — `tk-quota --estimate --opus <n>` —
 is a lower bound on what has been spent, so it may only ever FORBID a dispatch and never
 authorise one: "at least 41% used" is as true at 95% as at 41%. The third mode is the reset.
-The bin refuses a window whose reset has passed with nobody rendering since, and returns no
-number at all; the tick does not stop there, because the window boundaries are fixed and
-known. It anchors a floor of 0% at the reset it has just crossed and counts its own
-dispatches forward from there at the same rate. That is a floor too, and it is the one line in
-the ledger no bin printed: it is written as a **RESET-ANCHORED FLOOR**, the shape the package
-ledger admits under that name, marked as computed by the tick and never pasted as a reading.
+The bin refuses a window whose reset has passed with nobody rendering since as a READING, and
+`--estimate` does not stop there, because the window boundaries are fixed and known — the
+crossed one is in the sidecar. It anchors a floor of 0% at the reset it has just crossed and
+counts the dispatches forward from there at the same rate. That is a floor too, and the bin
+prints it as a **RESET-ANCHORED FLOOR**, the shape the package ledger admits under that name,
+in words of its own and never as a reading. Past one whole window the anchor is dropped
+rather than stretched: the window that opened there may itself have reset, no floor spans
+both, and the tick is back to judgement and says so.
 
 None of the four floors displaces *The wall*. They decide what is dispatched while the
 window still has room; the wall's five steps are what happens when it has none, and a tick

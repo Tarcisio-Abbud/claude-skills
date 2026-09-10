@@ -200,6 +200,19 @@ class TheDispatchBudget(DocTest):
         self.assertIn("window boundaries are fixed and known", body,
                       "the reason the floor is computable at all is gone")
 
+    def test_the_reset_anchored_floor_is_printed_and_not_computed_by_hand(self):
+        # It was the one shape no bin printed, which left a package that crossed
+        # a reset with nobody rendering at exit 2 until a human typed.
+        body = self.body()
+        self.assertIn("the bin prints it as a **RESET-ANCHORED FLOOR**", body)
+        self.assertNotIn("no bin printed", body)
+
+    def test_an_anchor_older_than_a_whole_window_is_dropped(self):
+        # Stretched instead, the floor spans two windows and describes neither.
+        self.assertIn("Past one whole window the anchor is dropped", self.body(),
+                      "the anchor has no expiry, so a reset crossed days ago still "
+                      "computes a floor for a window that has since reset again")
+
     def test_the_floors_do_not_contradict_the_wall(self):
         body = self.body()
         self.assertIn("The wall", body)

@@ -490,18 +490,113 @@ class TheEstimate(QuotaFixture):
         self.assertIn("no pp/h rate", run.stderr)
 
 
-class TheEstimateWhenItCannotAnswer(QuotaFixture):
-    """Exit 2 still means exit 2. The floor is not a way around a refusal."""
+class TheResetAnchoredFloor(QuotaFixture):
+    """The third shape: a floor anchored on a boundary instead of on a reading.
 
-    def test_a_window_that_has_reset_gets_no_floor_either(self):
-        # The anchor describes a window that ENDED, so there is nothing to
-        # climb from. An estimate mode that reached past this refusal would be
-        # a mode that invents its own anchor.
-        self.render(five=4, five_in=-60, seven=None)
-        run = self.run_it("--estimate", "--opus", "2")
+    A window whose reset has passed with nobody rendering is refused as a
+    READING, and an unattended package that crosses a reset would sit at exit 2
+    until a human typed. The boundary is not unknown, though — it is in the
+    sidecar — and the window that opened there started at 0%. The floor is
+    anchored on that, and every mark that keeps it out of the other two channels
+    is asserted one by one, exactly as the ordinary floor's are.
+    """
+
+    def crossed(self, ago=HOUR, used=4, seven=None):
+        """A sidecar whose 5-hour reading describes a window that ENDED `ago`."""
+        self.render(five=used, five_in=-ago, seven=seven)
+
+    def floor(self, *args):
+        run = self.run_it("--estimate", *args)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        return run.stdout
+
+    def test_a_crossed_reset_is_a_floor_and_not_no_number(self):
+        # The whole point: exit 2 here is a package stopped until somebody types.
+        self.crossed()
+        self.assertIn("reset-anchored floor", self.floor("--opus", "2"))
+
+    def test_the_anchor_is_zero_at_the_reset_and_says_which_reset(self):
+        self.crossed(ago=HOUR)
+        line = self.floor("--opus", "2")
+        self.assertIn("0% at the ", line)
+        at = time.strftime("%H:%M", time.localtime(time.time() - HOUR))
+        self.assertIn(at, line, "the reset is not named, so the line cannot be "
+                                "checked against the ledger's own hours")
+
+    def test_the_line_is_qualified_as_a_floor(self):
+        self.crossed()
+        self.assertIn("at least", self.floor("--opus", "2"))
+
+    def test_the_line_carries_the_rate_that_was_applied(self):
+        self.crossed()
+        self.assertIn("20 pp/h = 2 Opus x 10", self.floor("--opus", "2"))
+
+    def test_the_floor_climbs_with_the_elapsed_time_and_the_agent_count(self):
+        self.crossed(ago=HOUR)
+        self.assertIn("at least 20% used", self.floor("--opus", "2"))
+        self.crossed(ago=2 * HOUR)
+        self.assertIn("at least 40% used", self.floor("--opus", "2"))
+        self.crossed(ago=HOUR)
+        self.assertIn("at least 40% used", self.floor("--opus", "4"))
+
+    def test_the_recorded_percentage_is_not_the_anchor(self):
+        # It belongs to the window that ENDED. Climbing from it would carry a
+        # spent window's spend into the fresh one and forbid every dispatch.
+        self.crossed(ago=HOUR, used=71)
+        self.assertIn("at least 20% used", self.floor("--opus", "2"))
+
+    def test_no_agents_at_all_leaves_the_floor_at_the_reset(self):
+        self.crossed(ago=3 * HOUR)
+        self.assertIn("at least 0% used", self.floor("--opus", "0"))
+
+    def test_the_rate_can_be_recalibrated_from_a_runs_own_ledger(self):
+        self.crossed(ago=HOUR)
+        self.assertIn("at least 60% used", self.floor("--opus", "2", "--rate", "30"))
+
+    def test_the_floor_never_climbs_past_a_hundred(self):
+        self.crossed(ago=4 * HOUR)
+        self.assertIn("at least 100% used", self.floor("--opus", "5"))
+
+    def test_it_is_not_said_as_the_other_two_lines(self):
+        # `LEDGER.md` refuses a bare number in the quota field because nothing
+        # downstream can tell a reading, a floor and this apart once the words
+        # are gone. So this line must not wear either of the other two shapes.
+        self.crossed()
+        line = self.floor("--opus", "2")
+        self.assertNotIn("estimate: at least", line)
+        self.assertNotIn("% used, ", line)
+
+    def test_the_bare_reading_mode_still_refuses_the_same_sidecar(self):
+        # The floor is a mode, not a loosening: `tk-context`'s and this bin's
+        # exit 2 are consumed as a licence for judgement at the seam.
+        self.crossed()
+        run = self.run_it()
         self.assertEqual(run.returncode, 2, run.stdout)
         self.assertEqual(run.stdout.strip(), "")
         self.assertIn("already reset", run.stderr)
+
+    def test_a_reset_older_than_a_whole_window_is_refused_instead(self):
+        # By then the window that opened at the anchor may itself have reset,
+        # and a floor spanning two windows describes neither.
+        self.crossed(ago=5 * HOUR + 60)
+        run = self.run_it("--estimate", "--opus", "2")
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertEqual(run.stdout.strip(), "")
+        self.assertIn("longer than the window itself", run.stderr)
+
+    def test_the_weekly_window_gets_no_reset_anchored_floor_either(self):
+        # No pp/h was ever measured for it, and the 5-hour rate against a budget
+        # seven days wide is an overstatement — the one thing a floor may not be.
+        now = time.time()
+        self.write_raw({"seven_day": {"used_percentage": 60, "resets_at": now - HOUR},
+                        "written_at": now - 2 * HOUR})
+        run = self.run_it("--estimate", "--opus", "2")
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertNotIn("reset-anchored", run.stdout)
+
+
+class TheEstimateWhenItCannotAnswer(QuotaFixture):
+    """Exit 2 still means exit 2. The floor is not a way around a refusal."""
 
     def test_a_reading_older_than_its_own_window_gets_no_floor_either(self):
         now = time.time()
@@ -567,7 +662,11 @@ class TheProseThatCallsIt(unittest.TestCase):
             self.window = re.sub(r"\s+", " ", fh.read())
 
     def test_the_wall_sends_the_reader_to_the_command(self):
-        self.assertIn("tk-quota", self.window)
+        # Anchored to the wall's own sentence. Searched across the whole file,
+        # this passed on the four other mentions of the command elsewhere in it
+        # while the wall itself said "the statusline prints" — the mutant that
+        # restores exactly that survived.
+        self.assertRegex(self.window, r"Read the quota before dispatching.{0,120}?tk-quota")
 
     def test_the_wall_says_the_reading_can_be_a_previous_windows(self):
         # BOTH halves, anchored to this command's paragraph: that the reading can

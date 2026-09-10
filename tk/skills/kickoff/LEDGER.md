@@ -62,12 +62,15 @@ says which it is:
   window alone: no rate was ever measured for the weekly one, and the bin says so on stderr.
   A floor may only ever FORBID a dispatch and never authorise one — `../kickoff/WINDOW.md`
   owns that rule, and this file does not restate it;
-- a RESET-ANCHORED FLOOR — the one shape no bin prints. `tk-quota` refuses a window whose
-  reset has passed with nobody rendering since, so the tick anchors 0% at that reset and
-  counts its own dispatches forward. It is written as
-  `5h reset-anchored floor: at least 20% used (computed by the tick, 0% at the 20:30 reset,
-  50 pp/h = 2 Opus x 12m)`, and the words `reset-anchored floor` and `computed by the tick`
-  are what keep it from reading as a line the bin vouched for.
+- a RESET-ANCHORED FLOOR — the same `--estimate` invocation, where the window's reset has
+  already passed with nobody rendering since. The READING stays refused; the boundary the
+  sidecar carries does not, so the bin anchors 0% at that reset and climbs from there:
+  `5h reset-anchored floor: at least 20% used (0% at the 20:30 reset, 1h00m ago,
+  20 pp/h = 2 Opus x 10)`. The words `reset-anchored floor` and the anchor `0% at the <hh:mm>
+  reset` are what keep it from reading as either line above. Past one whole window the bin
+  refuses instead — the window that opened at the anchor may itself have reset, and no floor
+  spans both. With no sidecar at all it prints nothing, and a floor the tick then computes by
+  hand carries `computed by the tick` beside those words, because that one no bin vouched for.
 
 **A bare number in this field is refused**, because nothing downstream can tell the three apart
 once the words are gone. What that costs is measured: one reading 1h25m old said 8% while the
