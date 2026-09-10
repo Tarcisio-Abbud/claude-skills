@@ -43,7 +43,10 @@ BAD_POINTER = "TheMarkHook.test_a_pointer_file_nobody_can_read_costs_the_session
 BAD_PAYLOAD = ("TheMarkHook."
                "test_an_unreadable_payload_costs_the_line_its_trigger_and_not_the_line")
 
+FIFO = "TheMarkHook.test_a_ledger_address_that_is_a_fifo_does_not_hang_the_session"
+ABSENT_LEDGER = "TheMarkHook.test_a_ledger_nobody_has_created_yet_is_still_written"
 NOT_COMPACT = "ThePointerHook.test_a_source_other_than_compact_prints_nothing"
+NO_SOURCE = "ThePointerHook.test_a_payload_with_no_source_at_all_prints_nothing"
 NO_PACKAGE = "ThePointerHook.test_no_package_pointer_injects_nothing"
 ADDRESSES = "ThePointerHook.test_the_injected_paragraph_names_the_handoff_and_the_resume_procedure"
 NO_HANDOFF = "ThePointerHook.test_a_handoff_that_is_not_there_is_said_and_never_pointed_at"
@@ -82,6 +85,16 @@ MUTATIONS = [
      """    payload = json.load(sys.stdin)""",
      [BAD_PAYLOAD], MARK),
 
+    ("the ledger address is opened unguarded, and a FIFO there blocks the session",
+     """    if os.path.exists(address) and not os.path.isfile(address):""",
+     """    if False:""",
+     [FIFO], MARK),
+
+    ("the guard refuses absence too, and the first compact of a package leaves no line",
+     """    if os.path.exists(address) and not os.path.isfile(address):""",
+     """    if not os.path.isfile(address):""",
+     [ABSENT_LEDGER], MARK),
+
     # -- the mark hook's line -------------------------------------------------
     ("the model field is dropped, and every field after it shifts left",
      """        SYSTEM_LANE,
@@ -113,9 +126,14 @@ MUTATIONS = [
 
     # -- the pointer hook -----------------------------------------------------
     ("every session start is injected into, not only a compacted one",
-     '    if payload.get("source") not in (None, SOURCE):',
+     '    if payload.get("source") != SOURCE:',
      "    if False:",
-     [NOT_COMPACT], POINTER),
+     [NOT_COMPACT, NO_SOURCE], POINTER),
+
+    ("an unidentified payload passes the guard, as it did before the banner was believed",
+     '    if payload.get("source") != SOURCE:',
+     '    if payload.get("source") not in (None, SOURCE):',
+     [NO_SOURCE], POINTER),
 
     ("a compacted session with no package is sent to read one anyway",
      """    package = pointer(path)

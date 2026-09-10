@@ -27,8 +27,8 @@ below runs; a generation that built its own package skips it.
 
 ## 1. Build the package
 
-**Above 20 eligible candidates, `ROOT-CAUSE.md` beside this file owns this step's cut** —
-it imports the tracker's `ready-for-agent` tickets first; at or below 20, the cut below stands.
+**The tracker import of `ROOT-CAUSE.md` beside this file runs first, whatever the count**; above
+20 eligible candidates that file then owns this step's cut, at or below 20 the cut below stands.
 
 `tk-queue pack --dir "<queue dir>"` (`../../bin/tk-queue`) hands over the candidates: eligible
 items in queue order, every exclusion with the value that caused it, each item's LANE, Ticket and
@@ -135,8 +135,9 @@ A lane with its own branch and pull request dispatches under `LANE-CONTRACT.md` 
 Every run dispatched here is handled under `HYGIENE.md` beside this file.
 
 Each run's prompt carries, produced here and never delegated back: the **contract block** pasted
-verbatim from `../../bin/tk-contract --role <row>` — `implementer`, or `implementer-spec` on the
-lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull request — and
+verbatim from `../../bin/tk-contract --role <row>` — `implementer`, `implementer-spec` on the
+accumulated lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull
+request, or `lane-implementer` for a lane that opens its own pull request — and
 the **item's distilled contract**: the item, the memory file behind its `[[slug]]` at one hop,
 its handoff; context in none of the three is a missing handoff, named in its own line. A lane
 run also gets the path `<notes dir>` of the exploration above, read and never re-run. A solo run
@@ -204,9 +205,12 @@ DECISION stays, carrying its handoff.
 
 A lane holding its own pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file.
 
-A lane item is verified BEFORE it reaches the shared branch — one cycle per item, in order.
-Stages 1–5 may run inside the workflow as one `lane-merger` run, never the run that implemented
-the item; stages 6 and 7 are the orchestrator's own, on the workflow's return:
+A lane item is verified BEFORE it reaches the shared branch — one cycle per item, in order —
+while the orchestrator runs stages 1–5 itself. Stages 1–5 may run inside the workflow as one
+`lane-merger` run, never the run that implemented the item; stages 6 and 7 are the
+orchestrator's own, on the workflow's return. Delegated that way the guarantee holds only as far
+as the merger's own green, and *Before the first `done`* below is what catches a red item
+already merged:
 
 1. **Confirm the invariant** in the item's worktree: `git status --porcelain` empty, HEAD equal
    to `@{u}`. A breach is repaired here — commit and push — and reported.
@@ -240,8 +244,10 @@ that tip carries. Red there is a false green a merger returned: that item become
 naming the sha of its merge, and it is never closed. The tail's suite does not answer this — it
 runs after the `done`s.
 
-A red item never reaches the lane's branch and the lane does not halt for it: its DECISION names
-its pushed branch, later tickets cut from the unchanged tip, and the report names it beside them.
+A red item never reaches the lane's branch while the orchestrator runs those stages, and the lane
+does not halt for it either way: its DECISION names its pushed branch — the sha of its merge
+where a delegated merger already merged it red — later tickets cut from the unchanged tip, and
+the report names it beside them.
 The item's worktree is removed when it leaves the cycle (`git worktree remove`, never `--force`);
 its branch stays until the lane's pull request merges.
 

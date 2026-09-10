@@ -39,8 +39,8 @@ Three rungs are left, read in order:
    takes it, and no new queue item is born while a package runs. Never a `fixer`: dispatching
    backlog is scope creep.
 3. **Park it** — only the user can judge it: a DECISION carrying `--deferred afk`, the branch pushed,
-   the handoff of `../skills/kickoff/WINDOW.md` written, and the package goes on. Either `add`
-   refuses at `max-open-items`, past every flag; `edit --text` folds the finding into an item
+   the handoff of `../skills/kickoff/WINDOW.md` written, and the package goes on. That `add`
+   is refused at `max-open-items`, past every flag; `edit --text` folds the finding into an item
    that exists, `tk-queue handoff` into its briefing.
 
 Every finding is listed in the close under the rung that took it, for the user's **veto** on

@@ -210,6 +210,20 @@ class TheGraphVocabulary(DocTest):
         self.assertIn("field chain", body)
         self.assertIn("queue.md", body)
 
+    def test_the_cheap_gate_before_the_fan_out_is_carried(self):
+        """Spec #252 story 62: the cookbook names N+1 calls as the pattern's own
+        limitation, and the gate that asks whether a lane is worth them is one of
+        the crossings this section settles. Without it the cut returns every
+        disjoint file set as a lane, however small."""
+        body = self.section("chain, parallelize, route")
+        self.assertIn("cheap gate before the fan-out", body)
+        self.assertIn("N+1 calls", body,
+                      "the gate is named without the cost it weighs, which is what "
+                      "makes it a gate rather than a preference")
+        self.assertIn("FILE set", body,
+                      "the gate is answered from the lane's theme, which is the "
+                      "grouping the rest of this file refuses")
+
     def test_n_workers_3_is_refused_and_the_real_ceiling_named(self):
         body = self.section("chain, parallelize, route")
         self.assertIn("`n_workers=3` is not adopted", body)

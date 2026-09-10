@@ -7,7 +7,9 @@ a different question — it audits the spec and the ticket TEXT after step 3's c
 one audits the QUEUE against the code, with nothing claimed yet and no run fired.
 
 **The threshold.** The audit runs when the queue offers **more than 20 eligible candidates** to
-`pack`; at or below 20, step 1's own cut stands. The number is DERIVED, not measured: the one
+`pack`, counted AFTER the import below — that import is not gated by this number, so the tickets
+it exists to surface are inside the count that fires the audit; at or below 20, step 1's own cut
+stands. The number is DERIVED, not measured: the one
 run there is (05–07/09/2026) read 110 items in ~40 min and returned 12 disjoint lanes, where
 the package that skipped it would have opened ~78 pull requests into the same files. A package
 fits 3–6 items, so 20 is about four packages deep — where 40 minutes starts buying more than
@@ -18,7 +20,8 @@ it costs. The next run that measures the audit replaces this derivation with its
 `tk-queue pack` reads the QUEUE and nothing else, and the wave audit of `AUDIT.md` only fires
 over a package. On 2026-09-08 the eight tickets of one spec sat outside the root queue: no
 package ever saw them, and the audit never fired. So the import runs before the audit reads
-anything. Every ticket of the tracker that is `ready-for-agent`, names a spec as its **Parent**
+anything and before the threshold above is counted, whatever that count would have been.
+Every ticket of the tracker that is `ready-for-agent`, names a spec as its **Parent**
 and has no item in the queue becomes an item:
 
 ```sh
@@ -95,6 +98,14 @@ path a reader takes.
 - **parallelize** — lanes disjoint by file, dispatched at once.
 - **route** — each item to the lane its file set puts it in, and each lane to the role that
   runs it (`../../reference/subagent-policy.md` owns the role table).
+
+**The cheap gate before the fan-out.** Before returning a set of parallel lanes, the auditor asks
+of each one whether it is worth N+1 calls — the orchestrator's own, plus the run it dispatches —
+and answers from the lane's FILE set, never from its theme. The cookbook names that cost as the
+pattern's own limitation. An item whose files already sit inside a sibling lane is fused there
+under *Fusing two items* above rather than given a run of its own, and a lane of one small item
+that shares no file with any other is said in the cut to be worth its call, or dropped into the
+lane it is nearest.
 
 The decomposition is decided at DISPATCH time, out of the body of work in front of the auditor;
 a cut fixed in advance is what this step exists to replace. What does NOT cross from the

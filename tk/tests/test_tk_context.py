@@ -438,19 +438,38 @@ class TheWindowChannel(TranscriptFixture):
         self.assertIn("100000", run.stderr)
         self.assertNotIn("300000", run.stderr)
 
+    def test_the_word_auto_is_read_as_a_configured_key_and_not_as_absence(self):
+        # `auto` is a legitimate value of the key — WINDOW.md prescribes the key
+        # and says `auto` resolves to the model's own context, 1M on Fable. Read
+        # as a refusal it printed "no readable `autoCompactWindow`" over a key
+        # that was present, readable and valid, and the tick was told to go and
+        # configure what the session already had.
+        self.write_settings("auto")
+        run = self.run_window()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("autoCompactWindow` = auto", run.stderr,
+                      "`auto` is not reported as the key it is, so the source line "
+                      "names no key at all")
+        self.assertNotIn("DEFAULT", run.stderr,
+                         "a key that is present and valid is reported as absent")
+        self.assertIn(str(self.bin.WINDOW_DEFAULT - self.bin.SUMMARY_BUFFER),
+                      run.stderr,
+                      "`auto` resolves to the model's own context, measured 1M on "
+                      "Fable, and the threshold subtracts the summary buffer from it")
+
     def test_a_value_the_harness_would_refuse_falls_through_to_the_default(self):
-        # `auto`, a word, a number outside the bounds: the harness obeys none of
-        # them, and a reader obeying one would print a threshold no compaction
-        # will ever use.
+        # A word that is not `auto`, a number outside the bounds: the harness
+        # obeys none of them, and a reader obeying one would print a threshold no
+        # compaction will ever use. `auto` is the exception and has its own test.
         default = self.bin.WINDOW_DEFAULT - self.bin.SUMMARY_BUFFER
-        for value in ("auto", "three hundred thousand", 42, 5_000_000, True):
+        for value in ("three hundred thousand", 42, 5_000_000, True):
             with self.subTest(value=value):
                 self.write_settings(value)
                 run = self.run_window()
                 self.assertEqual(run.returncode, 0, run.stderr)
                 self.assertIn("DEFAULT", run.stderr)
-                # the threshold is the assertion, not the word: `auto` is named
-                # in the default line itself, so its absence proves nothing.
+                # the threshold is the assertion, not the word: the default line
+                # names `auto` itself, so a word's absence proves nothing.
                 self.assertIn(str(default), run.stderr)
                 if isinstance(value, int) and not isinstance(value, bool):
                     self.assertNotIn(str(value - self.bin.SUMMARY_BUFFER),
@@ -525,9 +544,15 @@ class TheProseThatCallsIt(unittest.TestCase):
 
     def test_window_states_that_the_threshold_is_absolute(self):
         # Without this the next generation reads 29% of a 1M window as room.
-        window = self.read("WINDOW.md")
-        self.assertIn("smart zone", window)
-        self.assertRegex(window, r"never a fraction")
+        # The assertion is the BULLET, not the words: a second "never a fraction"
+        # arrived elsewhere in the file and the loose search went vacuous — the
+        # mutation that rewrites this bullet survived while the suite stayed
+        # green, which is what a search unit too wide always buys.
+        window = re.sub(r"\s+", " ", self.read("WINDOW.md"))
+        self.assertRegex(
+            window,
+            r"\*\*Compare absolutes, never a fraction\.\*\* "
+            r"The threshold is the smart zone's edge")
 
     def test_window_licenses_judgement_only_when_it_is_declared(self):
         # Tied to the no-number rule on purpose. An earlier draft asserted the

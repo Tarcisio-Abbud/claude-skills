@@ -167,6 +167,37 @@ class TheMarkHook(HookFixture):
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(self.rows(), [])
 
+    def test_a_ledger_address_that_is_a_fifo_does_not_hang_the_session(self):
+        # The other half of the same guard, and the worse half: a directory
+        # raises OSError and the `except` catches it, a FIFO raises nothing at
+        # all — `open(..., "a")` BLOCKS until somebody reads the other end, and a
+        # PreCompact hook that blocks stops the session with nothing on screen.
+        # The timeout is the assertion: without the regular-file check this call
+        # never returns.
+        fifo = os.path.join(self.home.name, "ledger.fifo")
+        os.mkfifo(fifo)
+        self.write_pointer(ledger=fifo)
+        env = dict(os.environ, HOME=self.home.name)
+        run = subprocess.run([sys.executable, MARK, "--file", self.pointer],
+                             input=json.dumps({"trigger": "auto"}),
+                             capture_output=True, text=True, env=env,
+                             cwd=self.home.name, timeout=20)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("not a regular file", run.stderr,
+                      "the hook is silent about an address it refused, so nobody "
+                      "learns why the package's ledger has no compact line")
+
+    def test_a_ledger_nobody_has_created_yet_is_still_written(self):
+        # The guard admits absence: the first compact of a package whose ledger
+        # is named but not yet on disk must still leave its line.
+        absent = os.path.join(self.home.name, "not-yet.md")
+        self.write_pointer(ledger=absent)
+        run = self.run_hook(MARK, {"trigger": "auto"})
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertTrue(os.path.isfile(absent),
+                        "a ledger that did not exist yet was refused as though it "
+                        "were a directory, and the compact left no trace")
+
     def test_an_unreadable_payload_costs_the_line_its_trigger_and_not_the_line(self):
         # Claude Code's payload is not this repository's contract; the trace is.
         self.write_pointer()
@@ -196,6 +227,19 @@ class ThePointerHook(HookFixture):
         run = self.run_hook(POINTER, {"source": "startup"})
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(run.stdout.strip(), "")
+
+    def test_a_payload_with_no_source_at_all_prints_nothing(self):
+        # The `{}` the bin substitutes for an unreadable payload lands here too.
+        # The banner promises that anything but `compact` prints nothing, and an
+        # unidentified session is not a compacted one.
+        self.write_pointer()
+        open(self.handoff, "w").close()
+        run = self.run_hook(POINTER, {})
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.stdout.strip(), "",
+                         "a payload naming no source was injected into, so a "
+                         "wiring or a harness that stops sending the key turns "
+                         "every session start into a package's instruction")
 
     def test_no_package_pointer_injects_nothing(self):
         run = self.run_hook(POINTER, {"source": "compact"},

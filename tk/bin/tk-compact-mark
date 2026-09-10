@@ -135,8 +135,17 @@ def main(argv=None):
         # answer: this hook is wired for every session on the machine.
         return 0
 
+    address = os.path.expanduser(str(ledger))
+    if os.path.exists(address) and not os.path.isfile(address):
+        # Guarding the parse is not guarding the OPEN. A directory raises; a FIFO
+        # does not — it BLOCKS, and a PreCompact hook that blocks stops the
+        # session with nothing on screen. The address comes from a file outside
+        # this bin's control, so it is confirmed to be a regular file first. A
+        # ledger nobody has created yet is legitimate and opens normally.
+        print(f"tk-compact-mark: {ledger} is not a regular file", file=sys.stderr)
+        return 0
     try:
-        with open(os.path.expanduser(str(ledger)), "a", encoding="utf-8") as handle:
+        with open(address, "a", encoding="utf-8") as handle:
             handle.write(event_line(payload) + "\n")
     except OSError as exc:
         print(f"tk-compact-mark: cannot append to {ledger}: {exc}", file=sys.stderr)

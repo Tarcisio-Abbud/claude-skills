@@ -328,14 +328,19 @@ not a fixed grid — and a cron written at 22:20 for a fixed hour missed every o
 Four numbers bound what a fire may dispatch. Each is calibrable, and each carries what
 measured it.
 
-- **How many Opus agents run at once is the site's number, not this file's.** It is the key
-  `max-local-subagents` in `~/.claude/tk/env`, which `../../bin/tk-contract` already reads
-  into the block of every dispatched run; a ceiling written into prose here is a fork of the
-  policy (`../fleet/SKILL.md` §3). What the weekend measured is why the key is small: with
+- **How many Opus agents run at once is the site's number, not this file's.** It is a key of
+  `~/.claude/tk/env`, which `../../bin/tk-contract` already reads into the block of every
+  dispatched run; a ceiling written into prose here is a fork of the policy
+  (`../fleet/SKILL.md` §3). **The two ceilings are different axes and are not one number.**
+  `max-local-subagents` is the RAM one — its site value was measured on five parallel Sonnet
+  runs, and `tk-contract` emits it as *Local subagents* — while what this list bounds is
+  QUOTA, and the key for it is not in the site file yet. Until a site key exists, this budget
+  is not authorised by `max-local-subagents`: a fire that would put a fifth Opus agent in
+  flight waits, whatever that key says. What the weekend measured is why: with
   five live Opus agents the 5-hour window went 20→41% in 25 minutes (~50 pp/h) and 56→70% in
   14 minutes (~60 pp/h), which spends a whole window in a little over two hours. **T270 is
-  the sibling measurement** that recalibrates that key against the same ledger; this file
-  names it and does not duplicate it.
+  the sibling measurement** that recalibrates `max-local-subagents` against the same ledger;
+  this file names it and does not duplicate it.
 - **Nothing at all is dispatched below 15% of the window remaining.** A run the wall kills
   before its first commit delivered nothing and refuted nothing, and the item pays for it
   anyway (*The wall*).
@@ -362,8 +367,9 @@ authorise one: "at least 41% used" is as true at 95% as at 41%. The third mode i
 The bin refuses a window whose reset has passed with nobody rendering since, and returns no
 number at all; the tick does not stop there, because the window boundaries are fixed and
 known. It anchors a floor of 0% at the reset it has just crossed and counts its own
-dispatches forward from there at the same rate. That is a floor too: it is written as one,
-anchored on the reset rather than on a reading, and never pasted as a reading.
+dispatches forward from there at the same rate. That is a floor too, and it is the one line in
+the ledger no bin printed: it is written as a **RESET-ANCHORED FLOOR**, the shape the package
+ledger admits under that name, marked as computed by the tick and never pasted as a reading.
 
 None of the four floors displaces *The wall*. They decide what is dispatched while the
 window still has room; the wall's five steps are what happens when it has none, and a tick

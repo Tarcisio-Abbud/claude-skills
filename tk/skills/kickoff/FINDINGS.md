@@ -5,8 +5,10 @@ Read from `AFK.md` beside this file, at any step, by the ORCHESTRATOR.
 unattended; the unattended one's second rung points here. This file decides which VEHICLE a
 finding takes, never whether the finding survives.
 
-**No new queue item is born while a package runs.** The hydra is measured, on the queue this rule
-was written against. Of the 110 open items, 74 — 67% — were born in seven days, every one of them
+**No new queue item is born while a package runs**, except the parked DECISION of *The one exit
+that leaves the package without code* below, which a named human decision authorises. The
+hydra is measured, on the queue this rule was written against. Of the 110 open items, 74 —
+67% — were born in seven days, every one of them
 out of a review campaign or an afk package. 43 of them name a review mechanism in their own
 `Source:` line, and one package left 11 items behind 5 slices. The mechanical refusal already exists — the WIP
 cap, and the hook that asks before an `add` — and what this file retires is the rung that kept
@@ -63,7 +65,8 @@ into that **ticket's own body**, edited as the **resolve here** outcome edits it
 the text said before.
 
 REGRILL is not this exit. It halts the package with no run fired, so the `add` its recipe prints
-is the one item the rule above does not forbid. No package is left to give the finding a vehicle.
+is another item the rule above does not forbid — the park's is authorised by a human decision,
+REGRILL's because no package is left to give the finding a vehicle.
 
 **Done when:** every finding of the package names, in the close, the destination that took it;
 the parked ones are in one question, with the veto

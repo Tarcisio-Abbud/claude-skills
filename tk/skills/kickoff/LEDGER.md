@@ -38,7 +38,8 @@ One line per event, appended, never edited once written. Seven fields, pipe-sepa
 - **`<result>`** — what came back: the pull request number, the branch and the commits
   pushed, the reason it died, or `-` while it is still running. A line written at dispatch
   and a line written at return are two lines, each with its own hour.
-- **`<quota>`** — the line `../../bin/tk-quota` printed, pasted whole. Its own section below.
+- **`<quota>`** — the line `../../bin/tk-quota` printed, pasted whole, or the tick's own
+  reset-anchored floor said as one. Its own section below, with the invocation each shape needs.
 
 **Every hour is read from `date`, never counted in the head.** Run `date '+%H:%M'` and paste
 what it printed. Four lines of that package's ledger were written from the orchestrator's own
@@ -49,16 +50,26 @@ merely misdate a row: it corrupts the only sensor the package has.
 
 ## The quota field: a reading and a floor are not the same claim
 
-Paste the line `../../bin/tk-quota` printed and never a percentage retyped from it. The two
-lines say different things, and both say which they are:
+Paste the line the bin printed and never a percentage retyped from it. Which invocation depends
+on what the field is claiming: bare `../../bin/tk-quota` for a reading,
+`../../bin/tk-quota --estimate --opus <n>` for a floor. The lines say different things, and each
+says which it is:
 
 - a READING — `5h 63% used, 1h21m left`, and past ten minutes `(read 1h00m ago)` beside it;
 - a FLOOR — `5h estimate: at least 91% used, 2h09m left (floor from 41% read 1h00m ago,
   50 pp/h = 5 Opus x 10)`, which carries the word `estimate`, the qualifier `at least`, the
   anchor's own percentage, the anchor's AGE, and the rate applied. It speaks for the 5h
   window alone: no rate was ever measured for the weekly one, and the bin says so on stderr.
+  A floor may only ever FORBID a dispatch and never authorise one — `../kickoff/WINDOW.md`
+  owns that rule, and this file does not restate it;
+- a RESET-ANCHORED FLOOR — the one shape no bin prints. `tk-quota` refuses a window whose
+  reset has passed with nobody rendering since, so the tick anchors 0% at that reset and
+  counts its own dispatches forward. It is written as
+  `5h reset-anchored floor: at least 20% used (computed by the tick, 0% at the 20:30 reset,
+  50 pp/h = 2 Opus x 12m)`, and the words `reset-anchored floor` and `computed by the tick`
+  are what keep it from reading as a line the bin vouched for.
 
-**A bare number in this field is refused**, because nothing downstream can tell the two apart
+**A bare number in this field is refused**, because nothing downstream can tell the three apart
 once the words are gone. What that costs is measured: one reading 1h25m old said 8% while the
 account stood near 70%, and the ledger lines written from it read as current.
 
@@ -109,6 +120,7 @@ Report back: the pull request URL, per item DONE / PARTIAL / NOT DONE, and the s
 ```
 
 **Done when:** every dispatch and every return is a line with an hour read from `date`, and
-every quota field is a line the bin printed, with its nature and — being a floor — its
+every quota field is a line the bin printed — or, for the reset-anchored floor alone, one the
+tick computed and marked as computed — with its nature and, being a floor, its
 anchor's age. The state table has one row per lane. A successor restarting a lane needs this
 file and the remote, and nothing that was in the session.

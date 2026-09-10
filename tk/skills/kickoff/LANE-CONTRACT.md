@@ -122,7 +122,7 @@ Base notes: <notes dir>, written once for this package. Read them; do not re-rea
 Worktree: <path>/<lane>, branch lane/<lane>, cut from origin/main and already pushed.
 Suite: <the suite command>, FOREGROUND, timeout 900; mutation only on a touched anchor, 1200.
 Scratchpad: <scratch dir>, yours alone.
-Contract block, pasted verbatim from tk-contract --role implementer: <the block>
+Contract block, pasted verbatim from tk-contract --role lane-implementer: <the block>
 One slice = one commit, pushed. Scope does not grow: an adjacent defect is a line of your report.
 At the end: ONE pull request, body in Portuguese with "Achados não tratados". Never merge.
 Report back: the pull request URL, per item DONE / PARTIAL / NOT DONE, the suite numbers, the

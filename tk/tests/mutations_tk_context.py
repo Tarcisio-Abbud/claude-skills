@@ -85,6 +85,8 @@ W_NO_TOKEN = ("TheWindowChannel."
 W_KEY = "TheWindowChannel.test_the_settings_key_is_read_and_the_threshold_follows_it"
 W_ENV = "TheWindowChannel.test_the_environment_variable_beats_the_key"
 W_BOUNDS = "TheWindowChannel.test_a_value_the_harness_would_refuse_falls_through_to_the_default"
+W_AUTO = ("TheWindowChannel."
+          "test_the_word_auto_is_read_as_a_configured_key_and_not_as_absence")
 W_DIR = "TheWindowChannel.test_a_settings_path_that_is_a_directory_costs_the_caller_nothing"
 W_HALF = "TheWindowChannel.test_a_half_written_settings_file_costs_the_caller_nothing"
 
@@ -317,6 +319,16 @@ from the statusline at that seam""",
      "    raw = os.environ.get(WINDOW_ENV)",
      "    raw = None",
      [W_ENV], CONTEXT),
+
+    # `auto` is a value of the key, not a refusal of it. Read as one, `--window`
+    # printed "no readable `autoCompactWindow`" over a key that was there.
+    ("the word `auto` reads as no key at all, and a configured session is told it has none",
+     """    if isinstance(value, str) and value.strip() == WINDOW_AUTO:
+        return (WINDOW_DEFAULT,
+                f"`{WINDOW_KEY}` = {WINDOW_AUTO} in {plain(path)}", True)
+""",
+     "",
+     [W_AUTO], CONTEXT),
 
     ("a value the harness refuses is obeyed, and the threshold is one nothing uses",
      "    if isinstance(value, int) and WINDOW_FLOOR <= value <= WINDOW_CEILING:",

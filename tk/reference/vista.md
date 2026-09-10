@@ -109,8 +109,8 @@ number the session had on screen reaches that reader only if this page carries i
 
 This is a SHAPE, not a sixth occasion. When one of the occasions above writes a page for a run
 its reader did not watch — a fleet run, or a long unattended package the user asked a page for
-— that page carries the four sections below and honours the prohibition that closes them. The
-five blocks do not change: the variant adds to them.
+— that page carries the five sections below, the last of them the prohibition that closes
+them. The five blocks do not change: the variant adds to them.
 
 **1. Quota and context, in text, every number carrying its NATURE.** Paste the line
 `../bin/tk-quota` printed and the count `../bin/tk-context` printed, never a percentage retyped
@@ -147,7 +147,7 @@ says so in a line rather than dropping the section.
 travels: no company name, no account name, no internal content. The reader opens it on a phone,
 over a link, off the machine that wrote it.
 
-None of the four sections is a new marker. `tk-vista-check` reads the five blocks and this
+None of the five sections is a new marker. `tk-vista-check` reads the five blocks and this
 variant hands it nothing more to read, so the sections are prose under free headings, in the
 reader's language, and a variant page is green or red for the same reasons as any other.
 

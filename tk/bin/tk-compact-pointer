@@ -31,9 +31,9 @@ is worse than saying nothing.
 with the bin, so the path is known here and a pointer that named it could go
 stale against a plugin that moved.
 
-Stdin:  the hook's JSON payload. `source` other than `compact` prints nothing —
-        the matcher in the wiring already selects, and this is the second guard
-        for a wiring that gets widened by hand.
+Stdin:  the hook's JSON payload. `source` other than `compact` prints nothing, an
+        absent or unreadable one included — the matcher in the wiring already
+        selects, and this is the second guard for a wiring widened by hand.
 Usage:  tk-compact-pointer [--file PATH]
 Exit:   0, always. A hook that fails interrupts a session; what is at stake here
         is one paragraph.
@@ -109,7 +109,10 @@ def main(argv=None):
         payload = {}
     if not isinstance(payload, dict):
         payload = {}
-    if payload.get("source") not in (None, SOURCE):
+    if payload.get("source") != SOURCE:
+        # An absent key is not a compact either: the `{}` above stands in for a
+        # payload nobody could read, and injecting a package's instruction into
+        # an unidentified session is worse than saying nothing.
         return 0
 
     package = pointer(path)
