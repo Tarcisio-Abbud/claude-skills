@@ -114,8 +114,8 @@ cookbook the shapes are named after: **`n_workers=3` is not adopted** — it is 
 measurement behind it here. How many lanes run at once is the site's `max-local-subagents`
 (`~/.claude/tk/env`, read by `tk-contract`), and above that the quota window `WINDOW.md`
 measures — a second axis, `max-local-opus`, gates Opus agents in either venue; `WINDOW.md`'s
-"The tick" says why the two are not one number. `FlexibleOrchestrator`, `llm_call` and `extract_xml` do not cross either, and for the
-same reason.
+"The tick" says why the two are not one number. `FlexibleOrchestrator`, `llm_call` and
+`extract_xml` do not cross either ceiling, and for the same reason.
 
 ## Who runs it
 
