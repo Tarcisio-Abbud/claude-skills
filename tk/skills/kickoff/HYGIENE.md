@@ -38,7 +38,8 @@ question asked of it was about lanes. Count the rows whose role is the one the l
 pinned (`../../reference/subagent-policy.md` owns the role names), one row per lane. The
 reviewers are still agents and still count against the site's `max-local-subagents`, which
 bounds agents and not lanes: the two numbers are read off the same list and answer different
-questions.
+questions. An Opus reviewer counts against `max-local-opus` too, the separate quota axis
+`WINDOW.md`'s "The tick" describes.
 
 ## Never ask a live agent for its output
 

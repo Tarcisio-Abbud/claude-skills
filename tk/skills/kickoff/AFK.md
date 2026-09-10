@@ -167,7 +167,8 @@ itself: a run asked to compose it returned the JSON inside a string field, and e
 as absent.
 
 Concurrent runs count against `max-local-subagents`, the site key the generated block already
-carries. Where the harness's own cap — `min(16, nproc - 2)` — is the smaller of the two, the
+carries — the RAM axis, not the quota one; `WINDOW.md`'s "The tick" names `max-local-opus` as
+the second axis and why the two are not one number. Where the harness's own cap — `min(16, nproc - 2)` — is the smaller of the two, the
 difference stays UNUSED: a second workflow beside the first is the option to weigh, never Agent
 runs whose return lands in this session's context, which is what the vehicle exists to keep out.
 
