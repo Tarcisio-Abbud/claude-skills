@@ -2222,6 +2222,118 @@ def validate_repo(value):
     return value
 
 
+# --- the ticket's repository, against the tracker of the clone it names ---------
+# `--ticket ambiente#257` was written for a tracker whose repository is
+# `homeserver-ambiente`, and nothing refused it: the two halves of a reference
+# meet at DISPATCH, in `tk-ticket-ref`, and provenance is add-only — by then the
+# only repair is cancel-and-re-add. Measured 2026-09-10: the item ran its whole
+# package carrying a reference that closes nothing, and `tk-closure-check` named
+# it at the very end. The pair is checked HERE because this is the last moment the
+# value is still editable.
+#
+# The check fires only where this machine can ANSWER: `--repo` naming a directory
+# that is here, that is a clone, and that declares a readable `tk.tracker`. A URL,
+# a path this machine does not have, a clone with no tracker — each of those adds
+# behaves exactly as it did before this guard, because none of them says what the
+# right repository would have been, and a refusal that cannot name the remedy is a
+# refusal the caller has to work around.
+
+_TICKET_REF = None
+
+
+def ticket_ref():
+    """The `tk-ticket-ref` module, loaded ON FIRST USE and never at import time.
+
+    It is the one reader of `tk.tracker` in this tree — through the same shape
+    gate `bin/tracker-gh` applies — and a second reader written here would be a
+    second answer to which repository a clone tracks.
+
+    LAZY IS NOT A PREFERENCE HERE. That file loads THIS one at its own import, so
+    a load at module level would re-enter it, which would load that file again,
+    without end. Deferred to the one call that needs a tracker, the recursion
+    never starts: the copy of this file that `tk-ticket-ref` loads reaches no call
+    site. The cost is one extra exec of this file's body, on that call path only.
+
+    A load that fails is REPORTED, the way `roster()` reports one: the file is
+    part of this plugin's installation, and a traceback names a line of Python
+    where the remedy is a file to restore. Silence is the other option and it is
+    worse — the guard below would simply stop firing, which is the failure it
+    exists to prevent.
+    """
+    global _TICKET_REF
+    if _TICKET_REF is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tk-ticket-ref")
+        loader = importlib.machinery.SourceFileLoader("tk_ticket_ref", path)
+        spec = importlib.util.spec_from_loader("tk_ticket_ref", loader)
+        mod = importlib.util.module_from_spec(spec)
+        try:
+            loader.exec_module(mod)
+        except Exception as e:
+            fail(f"`tk-ticket-ref` beside this script could not be loaded "
+                 f"({e.__class__.__name__}: {e}), and it is what says which repository "
+                 "the clone `--repo` names tracks. Restore that file, or add without "
+                 "`--repo` — with no clone to ask, the reference is written unchecked.")
+        _TICKET_REF = mod
+    return _TICKET_REF
+
+
+def clone_tracker(repo):
+    """`<owner>/<repo>` for the clone at `repo`, or None when nothing here answers.
+
+    NO ANSWER IS NOT A REFUSAL. Every way of having no tracker — the value is a
+    URL or a path this machine does not carry, the directory is no clone, the
+    clone declares no `tk.tracker`, the config cannot be read — leaves the add
+    exactly as it was before this guard. `tk-ticket-ref` tells those four apart
+    and refuses each with its own remedy, and it is right to: it is asked at
+    dispatch, where a missing tracker blocks the closing line. Asked HERE the same
+    absence blocks nothing, and an `add` that refuses to write an item because a
+    directory it was merely TOLD about has no tracker would be this guard costing
+    more than the defect it catches.
+    """
+    if not repo or not os.path.isdir(repo):
+        return None
+    ref = ticket_ref()
+    try:
+        return ref.tracker_slug(ref.Clone(repo, "`--repo`"), "this item")
+    except ref.Refusal:
+        return None
+    except SystemExit:
+        # `tracker_slug` answers a git that cannot be RUN with its own `fail()`,
+        # which exits the process. Nothing else in an `add` needs git, so a
+        # machine without one keeps writing items: the exit stops here.
+        return None
+
+
+def check_ticket_tracker(repo, refs):
+    """Refuse a provenance reference filed against a repository the clone does not
+    track, and name the reference that would have been right.
+
+    The comparison is on the REPO half alone, lower-cased on both sides: the queue
+    canonicalises what it stores (`canonical_ref`) and a forge repo name is
+    case-insensitive to look up, so `Ambiente#5` and `ambiente#5` are one value
+    and must earn one verdict. The SPELLING offered back is the tracker's own,
+    because that is the one a human recognises.
+    """
+    slug = clone_tracker(repo)
+    if slug is None:
+        return
+    _, _, tracked = slug.partition("/")
+    for flag, value in refs:
+        if value is None:
+            continue
+        named, _, number = value.rpartition("#")
+        if named != tracked.lower():
+            fail(f"--{flag} {value} is filed against {named!r}, and the clone at {repo} "
+                 f"tracks {slug} — a different repository. Write it as "
+                 f"{tracked}#{number}.\n"
+                 "Provenance is add-only: there is no `edit --ticket`, so a repository "
+                 "half wrong at birth stays wrong for the life of the item, and the "
+                 "closing line it feeds closes nothing. If the reference really is filed "
+                 f"in {named!r}, name the clone that tracks THAT repository as `--repo`, "
+                 "or leave `--repo` off — with no clone to ask, nothing here can say who "
+                 "owns it.")
+
+
 def validate_project(tag):
     if not PROJECT_RE.match(tag):
         fail(f"--project must be a short lowercase slug (letters, digits, '-'/'_', "
@@ -4113,6 +4225,9 @@ def cmd_add(args):
     args.blocked_by = validate_blocker(args.blocked_by)
     # returned UNCHANGED where the two above are canonicalised — validate_repo says why
     args.repo = validate_repo(args.repo)
+    # the PAIR — the reference and the repository it is filed against — at the last
+    # moment either can still be corrected; see check_ticket_tracker
+    check_ticket_tracker(args.repo, (("ticket", args.ticket), ("spec", args.spec)))
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:
