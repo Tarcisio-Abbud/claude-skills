@@ -62,6 +62,8 @@ discarded in step 1, which never entered the queue — so the group is labelled 
 are never summed. **The Sensor line under it is the afk close's** — `../kickoff/AFK.md` step
 6 computes it, and a close that ran no package leaves it out. Discarding needs a user to do
 it, so an unattended run reports no discards and carries its findings to the gates instead.
+An afk report states, literally, `wrap-up afk: rodou` or `wrap-up afk: nao rodou
+(<motivo>)` — `<motivo>` covers a legitimate skip as much as an outright one.
 The outcome groups below are the balance and nothing more: each item with its outcome, and
 the reason wherever the outcome does not carry it — the substance was already spent above.
 Items group by outcome, never by chronology, and a group of three or more becomes a table

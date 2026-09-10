@@ -312,6 +312,11 @@ Run `../wrap-up/SKILL.md` with its `afk` argument, executed FROM that file: both
 `disable-model-invocation: true`, and reading the file is how the chaining honours the lock. The
 close owns committing and pushing before any review, the five verdicts of safe-to-merge, which
 items merge unattended, and the closing template.
+
+The package's closing report states, literally, `wrap-up afk: rodou` or
+`wrap-up afk: nao rodou (<motivo>)` — no Stop hook catches the skip on every machine, and
+`<motivo>` covers a legitimate one (a concurrent guard, the quota wall) as much as an
+outright omission.
 **Done when:** the wrap-up reached its own "Done when" — or it did not run, and the report names
 the step that stopped the package and the state the tree was left in.
 
