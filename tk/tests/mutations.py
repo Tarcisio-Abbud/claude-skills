@@ -4221,6 +4221,18 @@ MUTATIONS = [
      ["TestTicketAgainstTheClonesTracker."
       "test_the_reader_of_the_tracker_cannot_go_missing_in_silence"]),
 
+    # the reader is written for a DISPATCH, where a git that cannot be run stops
+    # the run: it answers one with `fail()`, which exits the process. Crossing
+    # this gate that exit would take an `add` down over a comparison the machine
+    # cannot make — the one absence that is not the caller's to repair
+    ("T392 a git that cannot be run takes the whole add down with it",
+     "    except SystemExit:\n"
+     "        # `tracker_slug` answers a git that cannot be RUN with its own `fail()`,",
+     "    except KeyboardInterrupt:\n"
+     "        # `tracker_slug` answers a git that cannot be RUN with its own `fail()`,",
+     ["TestTicketAgainstTheClonesTracker."
+      "test_a_machine_that_cannot_run_git_still_writes_the_item"]),
+
 ]
 
 

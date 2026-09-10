@@ -4544,6 +4544,25 @@ class TestTicketAgainstTheClonesTracker(QueueTest):
         self.assertNotIn("Traceback", r.stderr)
         self.assertNotIn("- [ ] ", self.body())
 
+    def test_a_machine_that_cannot_run_git_still_writes_the_item(self):
+        """`tracker_slug` answers a git it cannot RUN with its own `fail()`, and
+        that call EXITS the process — a reader written for a dispatch, where a
+        tracker nobody can read stops the run. Here it must not: nothing else in
+        an `add` needs git, so a machine without one keeps writing its queue, and
+        an exit crossing this gate would take the whole command down over a
+        comparison the machine simply cannot make."""
+        self.seed()
+        nowhere = os.path.join(self.dir, "no-bin")
+        os.makedirs(nowhere, exist_ok=True)
+        r = subprocess.run([sys.executable, TK, "add", "importado",
+                            "--class", "AUTONOMOUS", "--effort", "S",
+                            "--criterion", "A: x", "--ticket", "other-repo#257",
+                            "--repo", self.clone, "--dir", self.mem],
+                           capture_output=True, text=True, cwd=self.dir,
+                           env=dict(self.gitenv(), PATH=nowhere))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("**Ticket:** other-repo#257.", self.body())
+
 
 class TestPackRepo(PackOutput):
     """The package is dispatched from this output, so the address is returned by
