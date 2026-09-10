@@ -70,6 +70,20 @@ measured, in the alarming direction, and a floor that overstates is not a floor.
 It is refused the way any unvouchable window is — named on stderr, with the
 5-hour line still on stdout.
 
+A RESET ALREADY CROSSED IS THE THIRD SHAPE, and `--estimate` answers there too.
+A window whose recorded `resets_at` has passed is refused as a reading — it
+describes a window that ENDED — and an unattended package that crosses a reset
+with nobody rendering would sit at exit 2 until a human typed. The boundary is
+not unknown, though: it is in the sidecar, and the window that opened after it
+started at 0%. So `--estimate` anchors a floor of 0% AT that reset and climbs it
+at the same pp/h, and says so in words of its own — `reset-anchored floor`, the
+shape `skills/kickoff/LEDGER.md` already admits. It is a bound in the FORBIDDING
+direction and not a measurement: the new window opened at the first request after
+the reset, which is at or after the anchor, so the elapsed time can only be
+counted long. Past one whole window length the anchor is dropped rather than
+stretched — by then the window it anchors may itself have reset, and a floor
+computed across two windows describes neither.
+
 THE INVARIANT THE MODE TURNS ON: an estimate never presents itself as a reading.
 Taking one for the other is what put wrong lines in the 05-07/09 ledger — a
 reading 1h25m old said 8% while the account stood near 70%. So the estimate line
@@ -94,7 +108,8 @@ remaining, both reproduced from the schedule alone).
 Usage:  tk-quota [--file PATH]           read the sidecar and print the windows
         tk-quota --write [--file PATH]   record the statusline payload on stdin
         tk-quota --estimate --opus N [--rate PP_PER_HOUR] [--file PATH]
-                                         a floor from the last reading and its age
+                                         a floor from the last reading and its age,
+                                         or from the reset it has already crossed
 Exit:   0 done · 1 nothing was recorded (--write) · 2 no number · 64 bad usage
 """
 
@@ -361,6 +376,28 @@ def window(payload, key, now):
     return Vouched(pct, int(resets - now), int(now - written)), None
 
 
+def crossed_reset(payload, key, now):
+    """The reset this window has ALREADY passed, or None.
+
+    Read from the same recorded block `window` refuses on, and by the same
+    `reading_of`: the boundary is in the file, it just describes a window that
+    ended. A second parse of the block would be a second answer to "what does
+    this sidecar say", which is how two readers of one file stop agreeing.
+
+    None covers both of the other cases — a block that carries no reading at
+    all, and one whose window is still open. Neither is a crossed reset, and a
+    floor anchored on a guess at one would be exactly the invented anchor this
+    mode refuses.
+    """
+    found = reading_of(payload.get(key))
+    if found is None:
+        return None
+    resets = found[1]
+    if resets > now:
+        return None
+    return resets
+
+
 def spell(seconds):
     # No clamp, still. Two callers compute a difference their guard already
     # proved positive. The third is the age, which a `written_at` in the future
@@ -405,16 +442,63 @@ def estimate_line(spec, value, opus, rate):
             f"{spell(value.age)} ago, {applied:g} pp/h = {opus} Opus x {rate:g})")
 
 
+def reset_anchored_line(spec, crossed, now, opus, rate):
+    """A floor anchored at 0% on the reset just crossed, said as its own shape.
+
+    The words `reset-anchored floor` are what keep it out of the other two
+    channels: a READING is a measurement, an `estimate` climbs from a percentage
+    somebody rendered, and this one climbs from a boundary. `LEDGER.md` refuses
+    a bare number in the quota field precisely because nothing downstream can
+    tell the three apart once the words are gone.
+
+    The reset is printed as a clock time, which is how the package ledger writes
+    every hour, so the line can be pasted into it whole.
+    """
+    elapsed = int(now - crossed)
+    # spelled `opus * rate`, not `rate * opus`: the sibling line's product is a
+    # mutation anchor, and a second copy of that literal makes the mutant match
+    # twice and stop running at all
+    applied = opus * rate
+    # Clamped like the sibling floor, and reachable the same way: two Opus
+    # agents clear 100 pp inside five hours at the measured rate.
+    floor = min(100.0, applied * (elapsed / 3600))
+    at = time.strftime("%H:%M", time.localtime(crossed))
+    return (f"{spec.label} reset-anchored floor: at least {int(floor)}% used "
+            f"(0% at the {at} reset, {spell(elapsed)} ago, "
+            f"{applied:g} pp/h = {opus} Opus x {rate:g})")
+
+
 def report(payload, now, estimate=None):
     """The windows this command may speak for, and the ones it may not.
 
     `estimate` is None for a reading and an `Estimate` for a floor. The two
     never mix inside one run: a line that is part measurement and part
     arithmetic is exactly the confusion this mode was built to end.
+
+    A floor has two anchors and picks between them here, never inside the line
+    builders: the vouched READING where there is one, and the crossed RESET
+    where the reading was refused for having described a window that ended. The
+    choice is a branch and not a fallback — the reset anchor is reached for only
+    where `window` said no, so a window still open never gets it.
     """
     parts, refused = [], []
     for key, spec in WINDOWS.items():
         value, reason = window(payload, key, now)
+        if value is None and estimate is not None and spec.rate is not None:
+            # The one refusal a floor may reach past, and only because it does
+            # not have to invent an anchor: the crossed boundary is in the file.
+            crossed = crossed_reset(payload, key, now)
+            if crossed is not None:
+                if now - crossed > spec.length:
+                    refused.append(
+                        f"{spec.label}: it reset {spell(int(now - crossed))} ago, longer "
+                        "than the window itself, so the window that opened there may have "
+                        "reset again and no floor spans both")
+                else:
+                    rate = spec.rate if estimate.rate is None else estimate.rate
+                    parts.append(reset_anchored_line(spec, crossed, now,
+                                                     estimate.opus, rate))
+                continue
         if value is None:
             refused.append(f"{spec.label}: {reason}")
         elif estimate is None:

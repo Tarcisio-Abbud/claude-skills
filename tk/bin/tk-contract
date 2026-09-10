@@ -5,7 +5,7 @@ An orchestrator that writes the contract from memory writes a different one
 each time: a ceiling it half-remembers, a role row it approximates, a rule it
 drops because the prompt was already long. This bin produces the block from the
 two files that hold the answers — the SITE file (`~/.claude/tk/env`: this
-machine's identity and its two subagent ceilings) and the ROLE TABLE
+machine's identity and its subagent ceilings) and the ROLE TABLE
 (`tk/reference/subagent-policy.md`: model, effort, venue, whether the role opens
 a pull request of its own and whether it owes the checkpoint invariant, per
 role).
@@ -69,6 +69,12 @@ VOCABULARY = (
 )
 
 LOCAL_KEY = "max-local-subagents"
+# The QUOTA ceiling, and a different axis from the two venue ones. Read here
+# beside them because a block that states RAM and says nothing about quota
+# authorises exactly the run that spends the window: `max-local-subagents` was
+# sized on parallel Sonnet runs, and a machine that holds six of those cannot
+# afford six Opus ones.
+OPUS_KEY = "max-local-opus"
 CLOUD_KEY = "max-cloud-subagents"
 
 
@@ -206,8 +212,43 @@ def pick(roles, name):
         "deviation.")
 
 
+def opus_lines(site, fleet):
+    """The QUOTA ceiling, said as its own axis and never folded into the local one.
+
+    It is divided by the fleet for the same reason the local ceiling is, and a
+    stronger one: RAM is one machine's and quota is the ACCOUNT's, so three
+    orchestrators each reading the whole number put three times the ceiling into
+    one 5-hour window. The division is stated even where it rounds to none —
+    rounding up would be the ceiling not existing.
+
+    An absent key is stated as absent. A default invented here is the fork the
+    whole bin exists to prevent, and this key's value is the one a machine is
+    most tempted to guess: five live Opus agents spent a whole window in a little
+    over two hours, and nothing in the block would have said so.
+    """
+    opus = site.ceilings.get(OPUS_KEY)
+    if opus is None:
+        return [f"- Opus subagents: the site file declares no `{OPUS_KEY}`, so this block "
+                "states no number for the QUOTA ceiling either. Decide and log it — and "
+                "do not read the local ceiling as this one, which is the substitution "
+                "the separate key exists to prevent."]
+    if fleet is None:
+        share = (f"at most {opus} at a time. No fleet divisor was given, so the whole "
+                 "ceiling belongs to this run.")
+    elif opus // fleet == 0:
+        share = (f"the ceiling is {opus} and the fleet is {fleet}, so an equal share rounds "
+                 "down to none. Dispatch NO Opus subagents — use a cheaper model, or shrink "
+                 "the fleet.")
+    else:
+        share = (f"the ceiling is {opus} and the fleet is {fleet}, so this run's share is "
+                 f"at most {opus // fleet} at a time.")
+    return [f"- Opus subagents, in EITHER venue: {share} This is the QUOTA axis and not the "
+            f"RAM one above: `{OPUS_KEY}` counts Opus agents wherever they run, so moving "
+            "one to the cloud does not free a slot under it."]
+
+
 def ceiling_lines(site, fleet):
-    """The two ceilings as the block states them. Both keys are optional in the
+    """The three ceilings as the block states them. Every key is optional in the
     site file (a machine that runs no fleet never writes them), and an absent
     one is stated as absent — never as a number this bin picked."""
     lines = []
@@ -230,6 +271,7 @@ def ceiling_lines(site, fleet):
     else:
         lines.append(f"- Local subagents: the ceiling is {local} and the fleet is {fleet}, "
                      f"so this run's share is at most {local // fleet} at a time.")
+    lines.extend(opus_lines(site, fleet))
     if cloud is None:
         lines.append(f"- Cloud subagents: the site file declares no `{CLOUD_KEY}`, so this "
                      "block states no number either. Same rule: decide and log it.")
@@ -238,7 +280,8 @@ def ceiling_lines(site, fleet):
                      "touches this one — it bounds concurrent remotes, and what they "
                      "contend for is not this machine's memory.")
     lines.append("- Quota is ONE window across both venues. A cloud run buys RAM, not quota, "
-                 "so moving work off this machine relieves the ceiling above and nothing else.")
+                 "so moving work off this machine relieves the LOCAL ceiling and nothing "
+                 f"else — the `{OPUS_KEY}` line above travels with the agent.")
     return lines
 
 

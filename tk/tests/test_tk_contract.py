@@ -36,6 +36,7 @@ RULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
 SITE = """identity = alpha
 environments = alpha, bravo, charlie-2
 max-local-subagents = 6
+max-local-opus = 3
 max-cloud-subagents = 4
 """
 
@@ -126,9 +127,13 @@ class TestFleetDivisor(ContractTest):
                       "most 2 at a time", out)
 
     def test_without_a_fleet_the_whole_ceiling_is_this_run_s(self):
+        # Read against the whole block, `whole ceiling` is also the Opus line's
+        # phrase, and this assertion passed over a Local line that had lost it.
+        # The unit is the LINE the claim is about.
         out = self.block("--role", "implementer")
-        self.assertIn("Local subagents: at most 6 at a time", out)
-        self.assertIn("whole ceiling", out)
+        local = [l for l in out.splitlines() if "Local subagents" in l][0]
+        self.assertIn("Local subagents: at most 6 at a time", local)
+        self.assertIn("whole ceiling", local)
 
     def test_a_fleet_wider_than_the_ceiling_dispatches_none(self):
         self.site(SITE.replace("max-local-subagents = 6", "max-local-subagents = 2"))
@@ -169,6 +174,68 @@ class TestCeilings(ContractTest):
         out = self.block("--role", "implementer")
         self.assertIn("Local subagents: at most 9 at a time", out)
         self.assertIn("Cloud subagents: at most 7 at a time", out)
+
+    def test_the_opus_ceiling_is_read_from_the_file_and_named(self):
+        # The QUOTA ceiling has to reach the block by NAME. A block that states
+        # a number without saying which key holds it sends the next reader to
+        # recalibrate it in prose, which is the fork the site file prevents.
+        out = self.block("--role", "implementer")
+        self.assertIn("Opus subagents", out)
+        self.assertIn("at most 3 at a time", out)
+        self.assertIn("max-local-opus", out)
+
+    def test_the_opus_ceiling_is_not_the_local_one_under_another_name(self):
+        # The two are different axes: RAM against quota. Read from the same key,
+        # the block would authorise six Opus agents on a machine whose measured
+        # Opus ceiling is three, which is the configuration the budget forbids.
+        out = self.block("--role", "implementer")
+        ceilings = out.split("### Ceilings")[1].split("###")[0]
+        opus = [l for l in ceilings.splitlines() if "Opus subagents" in l]
+        self.assertEqual(len(opus), 1, ceilings)
+        self.assertIn("at most 3 at a time", opus[0])
+        self.assertNotIn("at most 6", opus[0])
+
+    def test_the_opus_ceiling_spans_both_venues(self):
+        # Quota is the account's, not the machine's, so a run moved to the cloud
+        # still spends under this ceiling. A block silent on that reads as if
+        # the cloud were free of it.
+        out = self.block("--role", "implementer")
+        opus = [l for l in out.splitlines() if "Opus subagents" in l][0]
+        self.assertIn("EITHER venue", opus)
+        self.assertIn("does not free a slot", opus)
+
+    def test_an_absent_opus_ceiling_is_stated_absent_never_invented(self):
+        self.site("identity = alpha\nenvironments = alpha, bravo\n")
+        out = self.block("--role", "implementer")
+        self.assertIn("declares no `max-local-opus`", out)
+        opus = [l for l in out.splitlines() if "Opus subagents" in l][0]
+        self.assertNotRegex(opus, r"\d")
+
+    def test_the_fleet_divides_the_opus_ceiling(self):
+        # Stronger than for RAM: RAM is this machine's and quota is the
+        # account's, so three orchestrators each reading the whole number put
+        # three times the ceiling into one 5-hour window.
+        out = self.block("--role", "implementer", "--fleet", "3")
+        opus = [l for l in out.splitlines() if "Opus subagents" in l][0]
+        self.assertIn("the ceiling is 3 and the fleet is 3, so this run's share is at "
+                      "most 1 at a time", opus)
+
+    def test_a_fleet_wider_than_the_opus_ceiling_dispatches_none(self):
+        out = self.block("--role", "implementer", "--fleet", "5")
+        opus = [l for l in out.splitlines() if "Opus subagents" in l][0]
+        self.assertIn("Dispatch NO Opus subagents", opus)
+        self.assertNotIn("share is at most", opus)
+
+    def test_a_malformed_opus_ceiling_is_refused_and_never_ignored(self):
+        # The site file ignores an UNKNOWN key by design, so a key that is read
+        # has to be validated: read as unknown, `max-local-opus = four` would
+        # silently unset the ceiling and the block would state none.
+        for junk in ("four", "0", "-1", "2.5", ""):
+            with self.subTest(junk=junk):
+                self.site(SITE.replace("max-local-opus = 3", f"max-local-opus = {junk}"))
+                r = self.run_tk("--role", "implementer")
+                self.assertNotEqual(r.returncode, 0, f"{junk!r} was accepted")
+                self.assertIn("max-local-opus", r.stderr)
 
     def test_no_site_file_asks_for_one_and_shows_the_format(self):
         self.unsite()

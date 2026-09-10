@@ -113,9 +113,27 @@ class TheDispatchBudget(DocTest):
         # The key already reaches every dispatched run through tk-contract, so
         # what this file owes is the key's NAME and the measurement beside it.
         self.assertCarries(self.body(), (
-            "max-local-subagents", "~/.claude/tk/env", "../../bin/tk-contract",
+            "max-local-opus", "~/.claude/tk/env", "../../bin/tk-contract",
             "is a fork of the policy",
         ), "the Opus ceiling is not written as the site key the contract reads")
+
+    def test_the_quota_key_is_not_the_ram_key(self):
+        # Read as one number, `max-local-subagents` — sized on parallel Sonnet
+        # runs — authorises exactly the five live Opus agents this budget
+        # forbids. The file has to say which key is which axis.
+        body = self.body()
+        self.assertCarries(body, (
+            "`max-local-subagents` is the RAM one", "`max-local-opus` is the QUOTA one",
+            "authorised by `max-local-opus`",
+        ), "the two ceilings read as one number again")
+        self.assertNotIn("not in the site file yet", body,
+                         "the file still says the key does not exist, so a reader "
+                         "falls back on the RAM ceiling the sentence forbids")
+
+    def test_the_quota_ceiling_is_not_relieved_by_the_cloud(self):
+        self.assertIn("EITHER venue", self.body(),
+                      "the ceiling reads as this machine's, and a run moved to the "
+                      "cloud reads as free of it — quota is the account's")
 
     def test_the_sibling_measurement_is_named_and_not_duplicated(self):
         self.assertIn("T270", self.body(),
@@ -181,6 +199,19 @@ class TheDispatchBudget(DocTest):
                       "state a whole package can sit in until a human types")
         self.assertIn("window boundaries are fixed and known", body,
                       "the reason the floor is computable at all is gone")
+
+    def test_the_reset_anchored_floor_is_printed_and_not_computed_by_hand(self):
+        # It was the one shape no bin printed, which left a package that crossed
+        # a reset with nobody rendering at exit 2 until a human typed.
+        body = self.body()
+        self.assertIn("the bin prints it as a **RESET-ANCHORED FLOOR**", body)
+        self.assertNotIn("no bin printed", body)
+
+    def test_an_anchor_older_than_a_whole_window_is_dropped(self):
+        # Stretched instead, the floor spans two windows and describes neither.
+        self.assertIn("Past one whole window the anchor is dropped", self.body(),
+                      "the anchor has no expiry, so a reset crossed days ago still "
+                      "computes a floor for a window that has since reset again")
 
     def test_the_floors_do_not_contradict_the_wall(self):
         body = self.body()

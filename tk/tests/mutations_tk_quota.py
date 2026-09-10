@@ -100,8 +100,22 @@ E_CLAMP = E + "test_the_floor_never_climbs_past_a_hundred"
 E_WEEKLY = E + "test_the_weekly_window_gets_no_floor_and_the_refusal_is_said_aloud"
 E_WEEKLY_RATE = E + "test_a_recalibrated_rate_does_not_unlock_the_weekly_either"
 
+R = "TheResetAnchoredFloor."
+R_IS = R + "test_a_crossed_reset_is_a_floor_and_not_no_number"
+R_ZERO = R + "test_the_anchor_is_zero_at_the_reset_and_says_which_reset"
+R_LEAST = R + "test_the_line_is_qualified_as_a_floor"
+R_RATE = R + "test_the_line_carries_the_rate_that_was_applied"
+R_CLIMB = R + "test_the_floor_climbs_with_the_elapsed_time_and_the_agent_count"
+R_NOTREAD = R + "test_the_recorded_percentage_is_not_the_anchor"
+R_NOAGENT = R + "test_no_agents_at_all_leaves_the_floor_at_the_reset"
+R_RECAL = R + "test_the_rate_can_be_recalibrated_from_a_runs_own_ledger"
+R_CLAMP = R + "test_the_floor_never_climbs_past_a_hundred"
+R_SHAPE = R + "test_it_is_not_said_as_the_other_two_lines"
+R_BARE = R + "test_the_bare_reading_mode_still_refuses_the_same_sidecar"
+R_TOOOLD = R + "test_a_reset_older_than_a_whole_window_is_refused_instead"
+R_WEEKLY = R + "test_the_weekly_window_gets_no_reset_anchored_floor_either"
+
 N = "TheEstimateWhenItCannotAnswer."
-E_RESET = N + "test_a_window_that_has_reset_gets_no_floor_either"
 E_OLD = N + "test_a_reading_older_than_its_own_window_gets_no_floor_either"
 E_NOFILE = N + "test_no_sidecar_at_all_is_still_exit_2"
 E_CORRUPT = N + "test_a_corrupt_sidecar_is_still_exit_2"
@@ -194,7 +208,79 @@ MUTATIONS = [
     ("a window whose reset has passed is reported anyway",
      "    if resets <= now:",
      "    if False:",
-     [RESET, E_RESET], QUOTA),
+     [RESET, R_IS], QUOTA),
+
+    # -- the third shape: a floor anchored on a boundary ---------------------
+    # Not a loosening of the refusal above. The reading is still refused; what
+    # the estimate reaches for is the BOUNDARY the same block carries, which is
+    # the one anchor it does not have to invent.
+    ("the crossed reset is never read, so an unattended package sits at exit 2",
+     "    found = reading_of(payload.get(key))\n    if found is None:\n        return None\n"
+     "    resets = found[1]",
+     "    return None\n    found = reading_of(payload.get(key))\n    if found is None:\n"
+     "        return None\n    resets = found[1]",
+     [R_IS, R_ZERO, R_LEAST, R_RATE, R_CLIMB, R_NOTREAD, R_NOAGENT, R_RECAL,
+      R_CLAMP, R_SHAPE, R_TOOOLD], QUOTA),
+
+    ("a reading refused for staleness falls through to a boundary in the FUTURE",
+     "    if resets > now:\n        return None\n    return resets",
+     "    return resets",
+     [E_OLD], QUOTA),
+
+    ("the anchor is the percentage the ended window reached, not zero",
+     "    floor = min(100.0, applied * (elapsed / 3600))",
+     "    floor = min(100.0, 71 + applied * (elapsed / 3600))",
+     [R_NOTREAD, R_NOAGENT, R_CLIMB], QUOTA),
+
+    ("the elapsed time is ignored, so the floor never climbs",
+     "    elapsed = int(now - crossed)",
+     "    elapsed = 3600",
+     [R_CLIMB], QUOTA),
+
+    ("the agent count is ignored in the reset-anchored floor too",
+     "    applied = opus * rate",
+     "    applied = rate",
+     [R_CLIMB, R_NOAGENT], QUOTA),
+
+    ("the reset-anchored floor is not clamped, so it prints a number past 100",
+     "    floor = min(100.0, applied * (elapsed / 3600))",
+     "    floor = applied * (elapsed / 3600)",
+     [R_CLAMP], QUOTA),
+
+    ("the caller's recalibrated rate is dropped for the reset-anchored floor",
+     "                    rate = spec.rate if estimate.rate is None else estimate.rate",
+     "                    rate = spec.rate",
+     [R_RECAL], QUOTA),
+
+    ("the line loses the words that keep it out of the other two channels",
+     'return (f"{spec.label} reset-anchored floor: at least {int(floor)}% used "',
+     'return (f"{spec.label} {int(floor)}% used, "',
+     [R_IS, R_LEAST, R_SHAPE], QUOTA),
+
+    ("the line does not say which reset it is anchored on",
+     'f"(0% at the {at} reset, {spell(elapsed)} ago, "',
+     'f"(anchored at a reset, "',
+     [R_ZERO], QUOTA),
+
+    ("the line drops the rate it applied",
+     'f"{applied:g} pp/h = {opus} Opus x {rate:g})")',
+     'f")")',
+     [R_RATE], QUOTA),
+
+    ("a reset older than a whole window is stretched instead of dropped",
+     "                if now - crossed > spec.length:",
+     "                if False:",
+     [R_TOOOLD], QUOTA),
+
+    ("the weekly window gets the 5-hour rate once its reset is crossed",
+     "        if value is None and estimate is not None and spec.rate is not None:",
+     "        if value is None and estimate is not None:",
+     [R_WEEKLY], QUOTA),
+
+    ("the floor is reached for in reading mode too, so exit 2 stops meaning what it means",
+     "        if value is None and estimate is not None and spec.rate is not None:",
+     "        if value is None and spec.rate is not None:",
+     [R_BARE], QUOTA),
 
     ("a boolean is accepted as a percentage",
      "    if isinstance(value, bool) or not isinstance(value, (int, float)):",

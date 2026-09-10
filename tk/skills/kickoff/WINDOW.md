@@ -328,19 +328,22 @@ not a fixed grid — and a cron written at 22:20 for a fixed hour missed every o
 Four numbers bound what a fire may dispatch. Each is calibrable, and each carries what
 measured it.
 
-- **How many Opus agents run at once is the site's number, not this file's.** It is a key of
-  `~/.claude/tk/env`, which `../../bin/tk-contract` already reads into the block of every
-  dispatched run; a ceiling written into prose here is a fork of the policy
-  (`../fleet/SKILL.md` §3). **The two ceilings are different axes and are not one number.**
-  `max-local-subagents` is the RAM one — its site value was measured on five parallel Sonnet
-  runs, and `tk-contract` emits it as *Local subagents* — while what this list bounds is
-  QUOTA, and the key for it is not in the site file yet. Until a site key exists, this budget
-  is not authorised by `max-local-subagents`: a fire that would put a fifth Opus agent in
-  flight waits, whatever that key says. What the weekend measured is why: with
-  five live Opus agents the 5-hour window went 20→41% in 25 minutes (~50 pp/h) and 56→70% in
-  14 minutes (~60 pp/h), which spends a whole window in a little over two hours. **T270 is
-  the sibling measurement** that recalibrates `max-local-subagents` against the same ledger;
-  this file names it and does not duplicate it.
+- **How many Opus agents run at once is the site's number, not this file's.** It is
+  `max-local-opus` in `~/.claude/tk/env`, which `../../bin/tk-contract` reads into the block
+  of every dispatched run as *Opus subagents*; a ceiling written into prose here is a fork of
+  the policy (`../fleet/SKILL.md` §3). **The two ceilings are different axes and are not one
+  number.** `max-local-subagents` is the RAM one — its site value was measured on five
+  parallel Sonnet runs, and `tk-contract` emits it as *Local subagents* — while
+  `max-local-opus` is the QUOTA one, and it counts Opus agents in EITHER venue, since a cloud
+  run buys RAM and not quota. This budget is authorised by `max-local-opus` and by nothing
+  else: a fire that would put one more Opus agent in flight than that key allows waits,
+  whatever the RAM ceiling says, and where the site file carries no `max-local-opus` the
+  block states no number, which is a decision to take and log rather than a ceiling to read
+  off the other key. What the weekend measured is why: with five live Opus agents the 5-hour
+  window went 20→41% in 25 minutes (~50 pp/h) and 56→70% in 14 minutes (~60 pp/h), which
+  spends a whole window in a little over two hours. **T270 is the sibling measurement** that
+  recalibrates `max-local-subagents` against the same ledger; this file names it and does not
+  duplicate it.
 - **Nothing at all is dispatched below 15% of the window remaining.** A run the wall kills
   before its first commit delivered nothing and refuted nothing, and the item pays for it
   anyway (*The wall*).
@@ -364,12 +367,14 @@ only the crossing found it.
 interchangeable.** A READING is a measurement. A FLOOR — `tk-quota --estimate --opus <n>` —
 is a lower bound on what has been spent, so it may only ever FORBID a dispatch and never
 authorise one: "at least 41% used" is as true at 95% as at 41%. The third mode is the reset.
-The bin refuses a window whose reset has passed with nobody rendering since, and returns no
-number at all; the tick does not stop there, because the window boundaries are fixed and
-known. It anchors a floor of 0% at the reset it has just crossed and counts its own
-dispatches forward from there at the same rate. That is a floor too, and it is the one line in
-the ledger no bin printed: it is written as a **RESET-ANCHORED FLOOR**, the shape the package
-ledger admits under that name, marked as computed by the tick and never pasted as a reading.
+The bin refuses a window whose reset has passed with nobody rendering since as a READING, and
+`--estimate` does not stop there, because the window boundaries are fixed and known — the
+crossed one is in the sidecar. It anchors a floor of 0% at the reset it has just crossed and
+counts the dispatches forward from there at the same rate. That is a floor too, and the bin
+prints it as a **RESET-ANCHORED FLOOR**, the shape the package ledger admits under that name,
+in words of its own and never as a reading. Past one whole window the anchor is dropped
+rather than stretched: the window that opened there may itself have reset, no floor spans
+both, and the tick is back to judgement and says so.
 
 None of the four floors displaces *The wall*. They decide what is dispatched while the
 window still has room; the wall's five steps are what happens when it has none, and a tick
