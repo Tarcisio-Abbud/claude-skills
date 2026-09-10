@@ -61,7 +61,26 @@ MAIN session's shell too (measured), so it marks a child PROCESS and not a
 subagent, and a guard on it would fire on every ordinary call. No prose asks a
 subagent for this number; a subagent that wants one asks its parent.
 
-Usage:  tk-context [--curve] [--session ID] [--transcript PATH]
+THE WINDOW IS THE HARNESS'S, AND `--window` ONLY REPORTS IT. The compaction
+this session will meet is the harness's own, fixed by the `autoCompactWindow`
+key (settings user, project or local) with the environment variable
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` winning over it, and the threshold is the
+window less the buffer the summary needs. All three were read out of the
+shipped binary on 2026-09-09 (2.1.266): the resolver takes the environment
+first and the settings key second, both bounded to 100,000-1,000,000 tokens,
+and the threshold is `window - min(max output tokens, 20,000)`.
+
+WHY A CHANNEL OF ITS OWN, and not one wider line. The bare invocation is read
+by seams that compare or pipe it, so stdout stays `<n> tokens in context` and
+nothing else; the window and the threshold go to stderr, as `--curve` does.
+
+NO KEY IS NOT "NO NUMBER". Exit 2 means one thing here — the transcript holds
+no token count — and `WINDOW.md` spends it as a licence to decide by judgement.
+An unconfigured `autoCompactWindow` is not that: the harness still has a window,
+`--window` prints the resolution it falls back to, MARKED as the default, and
+the exit stays 0.
+
+Usage:  tk-context [--curve] [--window] [--session ID] [--transcript PATH]
 Exit:   0 the number is printed · 2 no number is available · 64 bad usage.
         The three are distinct on purpose: invariant of the seam calling this,
         a mistyped flag must not read as "no number, decide by judgement".
@@ -86,6 +105,33 @@ INPUT_FIELDS = ("input_tokens", "cache_creation_input_tokens",
                 "cache_read_input_tokens")
 
 CURVE_ROWS = 6                        # how many samples of the curve are shown
+
+# The harness's own compaction window, read from the shipped binary (2.1.266) on
+# 2026-09-09 rather than assumed. The environment variable is consulted first and
+# the settings key second; either is clamped into the same bounds, and the
+# threshold subtracts the room the summary itself needs.
+WINDOW_ENV = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+WINDOW_KEY = "autoCompactWindow"
+WINDOW_FLOOR = 100_000                # the resolver's own lower bound
+WINDOW_CEILING = 1_000_000            # its upper bound, and the `auto` resolution
+WINDOW_AUTO = "auto"                  # the one word the key takes instead of a number
+# `auto` resolves to the model's own context. Measured 1,000,000 on Fable, which
+# is the model an orchestrator runs; it is printed as the DEFAULT and never as a
+# reading, because no key was consulted to get it.
+WINDOW_DEFAULT = 1_000_000
+# `window - min(max output tokens, 20_000)`. The cap is what binds on every model
+# this house dispatches, so the buffer is the cap.
+SUMMARY_BUFFER = 20_000
+
+# Where the merged settings live, in the order the harness merges them: the later
+# file wins. The project pair is resolved from the CWD, and the harness resolves
+# it from the directory the session was opened in — the two agree while the caller
+# runs this from that directory, and the tick of `WINDOW.md` does. Read from
+# anywhere else, the user file is still seen and the project pair is missed, which
+# understates nothing: an unreadable key falls through to the default and says so.
+SETTINGS_FILES = ("~/.claude/settings.json",
+                  ".claude/settings.json",
+                  ".claude/settings.local.json")
 
 
 class Occupancy(NamedTuple):
@@ -218,6 +264,79 @@ def occupancies(path):
     return out
 
 
+def settings_value():
+    """`autoCompactWindow` from the merged settings, and the file it came from.
+
+    Guarding the parse is not guarding the open: a settings path can be a
+    directory, can hold a byte-order mark glued to the first key, and can be a
+    FIFO that never returns. Each file is confirmed a regular file, opened as
+    `utf-8-sig`, and every way it can fail is caught — a settings file nobody
+    can read must not take down the number the caller actually asked for.
+    """
+    found = (None, None)
+    for name in SETTINGS_FILES:
+        path = os.path.expanduser(name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8-sig") as handle:
+                payload = json.load(handle)
+        except (OSError, ValueError, UnicodeDecodeError):
+            continue
+        if isinstance(payload, dict) and WINDOW_KEY in payload:
+            found = (payload[WINDOW_KEY], path)
+    return found
+
+
+def effective_window():
+    """(tokens, where it came from, whether it was configured at all).
+
+    The order is the harness's: the environment variable beats the key, the key
+    beats the default. A value outside the bounds, or a word other than `auto`,
+    is not obeyed — the harness refuses it too — and the resolution falls
+    through to the next source rather than inventing one. `auto` IS obeyed: it
+    is a configured key, reported as one, and its number is the model's own
+    context — measured 1M on Fable, which is what `WINDOW_DEFAULT` holds.
+    """
+    raw = os.environ.get(WINDOW_ENV)
+    if raw is not None:
+        try:
+            asked = int(str(raw).strip())
+        except (TypeError, ValueError):
+            asked = None
+        if asked is not None and WINDOW_FLOOR <= asked <= WINDOW_CEILING:
+            return asked, f"the environment ({WINDOW_ENV})", True
+
+    value, path = settings_value()
+    if isinstance(value, bool):
+        value = None                  # `isinstance(True, int)` is true in Python
+    if isinstance(value, int) and WINDOW_FLOOR <= value <= WINDOW_CEILING:
+        return value, f"`{WINDOW_KEY}` in {plain(path)}", True
+    if isinstance(value, str) and value.strip() == WINDOW_AUTO:
+        return (WINDOW_DEFAULT,
+                f"`{WINDOW_KEY}` = {WINDOW_AUTO} in {plain(path)}", True)
+
+    return WINDOW_DEFAULT, "the harness DEFAULT", False
+
+
+def print_window():
+    """The window and the threshold, on stderr, said as what they are.
+
+    Two lines and not one: a seam that reads the window without the threshold
+    compares its tokens against the wrong number, and the difference is the
+    whole buffer.
+    """
+    window, source, configured = effective_window()
+    said = f"window {window} tokens, from {source}"
+    if not configured:
+        said += (f" — no {WINDOW_ENV} and no readable `{WINDOW_KEY}`; `auto` "
+                 f"measured {WINDOW_DEFAULT} on Fable")
+    print(f"tk-context: {said}", file=sys.stderr)
+    print(f"tk-context: the harness compacts above {window - SUMMARY_BUFFER} "
+          f"tokens (window less {SUMMARY_BUFFER} of summary buffer)",
+          file=sys.stderr)
+
+
 def print_curve(points):
     """The slope, not just the height.
 
@@ -259,6 +378,9 @@ def main(argv=None):
         description="print this session's context occupancy, in tokens")
     parser.add_argument("--curve", action="store_true",
                         help="also print the occupancy over the session, on stderr")
+    parser.add_argument("--window", action="store_true",
+                        help="also print the harness's compaction window and "
+                             "threshold, on stderr")
     parser.add_argument("--session", default=os.environ.get("CLAUDE_CODE_SESSION_ID"),
                         help="session id (default: $CLAUDE_CODE_SESSION_ID)")
     parser.add_argument("--transcript",
@@ -283,6 +405,8 @@ def main(argv=None):
         # filter never saw: it printed the pre-compaction window and looked sure.
         print(f"tk-context: read from the compaction at {plain(last.stamp)[:19]}, "
               "not from an API response", file=sys.stderr)
+    if args.window:
+        print_window()
     if args.curve:
         print_curve(points)
     return EXIT_OK

@@ -101,6 +101,56 @@ one-line claim it makes, since the verdict is the user's to give — and it give
 through the wrap-up gate, a menu or a PR comment. The vista never carries a control that
 displays and decides at once: that is the defect the one-way rule exists to prevent.
 
+## The variant for a cold reader
+
+A package that runs unattended is judged later, far away, by someone who was not in the
+session. **Remote Control is blind**: it shows no statusline and echoes no local command. So a
+number the session had on screen reaches that reader only if this page carries it in TEXT.
+
+This is a SHAPE, not a sixth occasion. When one of the occasions above writes a page for a run
+its reader did not watch — a fleet run, or a long unattended package the user asked a page for
+— that page carries the five sections below, the last of them the prohibition that closes
+them. The five blocks do not change: the variant adds to them.
+
+**1. Quota and context, in text, every number carrying its NATURE.** Paste the line
+`../bin/tk-quota` printed and the count `../bin/tk-context` printed, never a percentage retyped
+from either. A reading and a floor are different claims, and the reader tells them apart by the
+bins' own words: a reading is `<n>% used`, with `(read <age> ago)` once it is stale; a floor
+carries `estimate`, `at least`, and `floor from <n>% read <age> ago`. A number the writer
+reasoned out instead of reading is marked as reasoned, in the same place, with the age of what
+it was reasoned from. Four lines of the ledger of 06/09/2026 were written with the two
+confused, and every rate computed off them was wrong by the same hour.
+
+**2. The chronology, one line per event, out of the ledger.** The source is the package's own
+ledger — the event line of `../skills/kickoff/LEDGER.md` — and never the writer's memory of the
+run. The hour on the page is the hour that ledger read from `date`. A chronology recalled at
+the end of a long package is the one thing on the page the reader can check against nothing.
+
+**3. The measurement line, at LANE granularity.** The variant defines its own line, here:
+**lanes planned × lanes completed × wall clock × peak agents**, the peak being the most
+subagents alive at once. `../skills/fleet/SKILL.md` §6 prescribes a measurement line too, and
+it counts PROJECTS — `projects planned × projects completed × wall clock` — with no word for a
+lane; a package of thirteen lanes measured there reads one project against one project. Two
+things the variant does inherit from §6, by POINTER and not by copy: what **planned** counts
+(the dispatchable units with work, never the roster's own total) and that the clock starts at
+the first dispatch, both read there in lanes instead of projects. Beside the measurement line
+goes the **deviation line** per role, one per departure from the role table. That line is
+already §6's, so the variant points there for its format and does not restate it.
+
+**4. The untreated findings of every lane, in ONE section.** A defect a lane saw and did not
+fix belongs to the package, not to the card of the slice that met it. Scattered across cards
+each one reads as a footnote, and the reader who decides what happens to them cannot count
+them. One line per finding, naming the lane it came from; a package that treated everything
+says so in a line rather than dropping the section.
+
+**5. What does not enter**, as in any vista, and it earns saying here because this page
+travels: no company name, no account name, no internal content. The reader opens it on a phone,
+over a link, off the machine that wrote it.
+
+None of the five sections is a new marker. `tk-vista-check` reads the five blocks and this
+variant hands it nothing more to read, so the sections are prose under free headings, in the
+reader's language, and a variant page is green or red for the same reasons as any other.
+
 ## The gate
 
 Run the checker on the file before naming it in any report, and treat a red run as a page that

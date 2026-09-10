@@ -24,6 +24,15 @@ modelling error underneath it — staleness treated as ONE question (is the wind
 open) when it is two (and is this reading fresh), which lets a six-day-old weekly
 through a window that stays open for seven.
 
+SEVENTEEN ENTRIES MUTATE THE FLOOR, and they carry a design point rather than a
+guard: `--estimate` prints a computed number, and the whole risk is that it be
+read as a measured one. So every mark that separates the two lines is mutated in
+BOTH directions — stripped from the estimate, and pasted onto the reading. A mark
+that both lines carry separates nothing, and an entry that only strips it leaves
+that half unproved. Two more hold the rate on the WINDOW: the weekend measured the
+5-hour window alone, and the same pp/h against a budget seven days wide is an
+overstatement, which is the one thing a floor may never be.
+
 FOUR ENTRIES MUTATE PROSE, in `skills/kickoff/WINDOW.md`: a command the wall
 does not name is a command nobody runs, a wall that promises exit 0 means good
 numbers hides the partial answer this command can give, and a wall naming only
@@ -74,6 +83,36 @@ FLAT_REFUSED = "WhatComesFromOutsideThisProcess.test_the_every_window_refused_ar
 
 THE_FLAG = "TheEdgesOfTheContract.test_the_file_flag_is_the_file_that_gets_read"
 TYPO = "TheEdgesOfTheContract.test_a_mistyped_flag_does_not_read_as_no_number"
+
+E = "TheEstimate."
+E_MARK = E + "test_the_line_carries_the_mark_that_says_it_is_not_a_reading"
+E_NOMARK = E + "test_the_reading_line_carries_no_such_mark"
+E_FLOOR = E + "test_the_estimate_is_qualified_as_a_floor"
+E_NOFLOOR = E + "test_the_reading_line_is_qualified_as_neither"
+E_DIFFER = E + "test_the_two_lines_are_not_the_same_line"
+E_AGE = E + "test_the_line_carries_the_age_of_the_anchor"
+E_RATE = E + "test_the_line_carries_the_rate_that_was_applied"
+E_ANCHOR = E + "test_the_line_carries_the_percentage_the_anchor_actually_read"
+E_CLIMB = E + "test_the_floor_climbs_with_the_age_and_the_agent_count"
+E_ZERO = E + "test_no_agents_at_all_leaves_the_floor_at_the_anchor"
+E_RECAL = E + "test_the_rate_can_be_recalibrated_from_a_runs_own_ledger"
+E_CLAMP = E + "test_the_floor_never_climbs_past_a_hundred"
+E_WEEKLY = E + "test_the_weekly_window_gets_no_floor_and_the_refusal_is_said_aloud"
+E_WEEKLY_RATE = E + "test_a_recalibrated_rate_does_not_unlock_the_weekly_either"
+
+N = "TheEstimateWhenItCannotAnswer."
+E_RESET = N + "test_a_window_that_has_reset_gets_no_floor_either"
+E_OLD = N + "test_a_reading_older_than_its_own_window_gets_no_floor_either"
+E_NOFILE = N + "test_no_sidecar_at_all_is_still_exit_2"
+E_CORRUPT = N + "test_a_corrupt_sidecar_is_still_exit_2"
+
+F = "TheFlagsOfTheEstimate."
+F_NOCOUNT = F + "test_the_estimate_without_a_count_is_a_usage_error_not_a_zero"
+F_COUNTALONE = F + "test_a_count_without_the_estimate_is_a_usage_error"
+F_RATEALONE = F + "test_a_rate_without_the_estimate_is_a_usage_error"
+F_WRITE = F + "test_writing_and_estimating_are_not_asked_together"
+F_NEG = F + "test_a_negative_count_is_a_usage_error"
+F_NAN = F + "test_a_count_that_is_not_a_number_is_a_usage_error_not_no_number"
 
 CALLS_IT = "TheProseThatCallsIt.test_the_wall_sends_the_reader_to_the_command"
 SAYS_REFUSAL = "TheProseThatCallsIt.test_the_wall_says_the_reading_can_be_a_previous_windows"
@@ -132,7 +171,7 @@ MUTATIONS = [
     ("the reading's age is never asked, only whether the window is open",
      "    if written < opened:",
      "    if False:",
-     [OLDER], QUOTA),
+     [OLDER, E_OLD], QUOTA),
 
     ("a sidecar with no written_at is vouched for",
      "    if written is None:\n        return None, \"the sidecar does not say when it was written\"",
@@ -155,7 +194,7 @@ MUTATIONS = [
     ("a window whose reset has passed is reported anyway",
      "    if resets <= now:",
      "    if False:",
-     [RESET], QUOTA),
+     [RESET, E_RESET], QUOTA),
 
     ("a boolean is accepted as a percentage",
      "    if isinstance(value, bool) or not isinstance(value, (int, float)):",
@@ -168,13 +207,13 @@ MUTATIONS = [
     # spend; announcing it on every reading is what makes the announcement mean
     # nothing. Both directions are mutated.
     ("a reading days old is reported with no word about its age",
-     "            if value.age > STALE_AFTER:",
-     "            if False:",
+     "    if value.age > STALE_AFTER:",
+     "    if False:",
      [AGE_SAID], QUOTA),
 
     ("every reading is stamped with an age, so the stamp stops meaning anything",
-     "            if value.age > STALE_AFTER:",
-     "            if True:",
+     "    if value.age > STALE_AFTER:",
+     "    if True:",
      [AGE_QUIET], QUOTA),
 
     ("the wall names only the refusals, so a days-old figure reads as current",
@@ -194,8 +233,8 @@ MUTATIONS = [
      [DAYS], QUOTA),
 
     ("the percentage is rounded, and 99.6 becomes a 100% the bar never showed",
-     '            said = (f"{spec.label} {int(value.used)}% used, "',
-     '            said = (f"{spec.label} {value.used:.0f}% used, "',
+     '    said = f"{spec.label} {int(value.used)}% used, {spell(value.left)} left"',
+     '    said = f"{spec.label} {value.used:.0f}% used, {spell(value.left)} left"',
      [TRUNC], QUOTA),
 
     ("a refused window vanishes with no word, so the seam cannot tell it lost an answer",
@@ -235,7 +274,7 @@ MUTATIONS = [
     ("a mistyped flag exits 2 — indistinguishable from `no number, use judgement`",
      "        sys.exit(EXIT_USAGE)",
      "        sys.exit(EXIT_NO_NUMBER)",
-     [TYPO], QUOTA),
+     [TYPO, F_NAN], QUOTA),
 
     # -- what came from outside this process ---------------------------------
     ("the escape stripper passes everything through",
@@ -252,6 +291,121 @@ MUTATIONS = [
      '        no_number("no window in " + plain(path) + " can be vouched for — "',
      '        no_number("no window in " + path + " can be vouched for — "',
      [FLAT_REFUSED], QUOTA),
+
+    # -- the floor, and the marks that keep it from passing as a reading -----
+    # Taking an estimate for a measurement is what put wrong lines in the
+    # 05-07/09 ledger. Every mark is mutated in BOTH directions: stripped from
+    # the estimate, and pasted onto the reading — a mark both lines carry
+    # separates nothing, and a suite that only checked the estimate stays green.
+
+    ("the estimate line drops the mark that says it is not a reading",
+     '    return (f"{spec.label} estimate: at least {int(floor)}% used, "',
+     '    return (f"{spec.label} {int(floor)}% used, "',
+     [E_MARK, E_FLOOR], QUOTA),
+
+    ("the reading line is stamped with the estimate's own marks",
+     '    said = f"{spec.label} {int(value.used)}% used, {spell(value.left)} left"',
+     '    said = f"{spec.label} estimate: at least {int(value.used)}% used, {spell(value.left)} left"',
+     [E_NOMARK, E_NOFLOOR], QUOTA),
+
+    ("the floor is printed bare, with no rate, no anchor and no age to audit it",
+     '''    return (f"{spec.label} estimate: at least {int(floor)}% used, "
+            f"{spell(value.left)} left (floor from {int(value.used)}% read "
+            f"{spell(value.age)} ago, {applied:g} pp/h = {opus} Opus x {rate:g})")''',
+     '    return f"{spec.label} {int(floor)}% used, {spell(value.left)} left"',
+     [E_AGE, E_RATE, E_ANCHOR], QUOTA),
+
+    ("estimate mode prints the reading line, so a floor arrives dressed as a measurement",
+     '''        else:
+            rate = spec.rate if estimate.rate is None else estimate.rate
+            parts.append(estimate_line(spec, value, estimate.opus, rate))''',
+     "        else:\n            parts.append(reading_line(spec, value))",
+     [E_DIFFER, E_CLIMB], QUOTA),
+
+    # -- the arithmetic ------------------------------------------------------
+
+    ("the anchor's age is never applied, so the floor never leaves the anchor",
+     "    climbed = applied * (value.age / 3600)",
+     "    climbed = 0",
+     [E_CLIMB, E_CLAMP, E_RECAL], QUOTA),
+
+    ("the agent count is ignored, so one Opus and five cost the same",
+     "    applied = rate * opus",
+     "    applied = rate",
+     [E_CLIMB, E_ZERO, E_RATE], QUOTA),
+
+    ("the floor is not clamped, and prints a percentage above a hundred",
+     "    floor = min(100.0, value.used + climbed)",
+     "    floor = value.used + climbed",
+     [E_CLAMP], QUOTA),
+
+    # -- the rate belongs to the window, not to the flag ---------------------
+    # Both weekend measurements are of the 5-hour window. The same pp/h against
+    # a budget seven days wide prints a number nobody measured, in the alarming
+    # direction — and a floor that overstates is not a floor.
+
+    ("the weekly window is given the 5-hour window's measured rate",
+     '    "seven_day": Window("7d", 7 * 86400),   # never measured; see Window.rate',
+     '    "seven_day": Window("7d", 7 * 86400, RATE_PER_OPUS),',
+     [E_WEEKLY, E_WEEKLY_RATE], QUOTA),
+
+    ("a window with no measured rate vanishes instead of being refused out loud",
+     '''        elif spec.rate is None:
+            # Said aloud, through the same channel a refused window uses. A
+            # window that simply vanished here would read as one nobody asked
+            # about, and the 5-hour line beside it as the whole answer.
+            refused.append(f"{spec.label}: no pp/h rate has been measured for "
+                           "it, so no floor can be computed")''',
+     "        elif spec.rate is None:\n            continue",
+     [E_WEEKLY, E_WEEKLY_RATE], QUOTA),
+
+    ("--rate silently promotes a window that had no measured rate",
+     "        elif spec.rate is None:",
+     "        elif spec.rate is None and estimate.rate is None:",
+     [E_WEEKLY_RATE], QUOTA),
+
+    # -- the anchor is not optional ------------------------------------------
+
+    ("the estimate answers from the flags alone, without consulting the sidecar",
+     "    parts, refused = report(read_sidecar(path), now, estimate)",
+     '''    if estimate is not None:
+        print(f"5h estimate: at least {estimate.opus * 10}% used, 0h00m left "
+              f"(floor from 0% read 0h00m ago, {estimate.opus * 10} pp/h)")
+        return EXIT_OK
+    parts, refused = report(read_sidecar(path), now, estimate)''',
+     [E_NOFILE, E_CORRUPT], QUOTA),
+
+    # -- the flags -----------------------------------------------------------
+
+    ("--estimate with no count defaults to zero agents instead of refusing",
+     '''        if args.opus is None:
+            parser.error("--estimate needs --opus N: nothing here can count the agents")''',
+     "        if args.opus is None:\n            args.opus = 0",
+     [F_NOCOUNT], QUOTA),
+
+    ("--opus and --rate are accepted without --estimate, and quietly do nothing",
+     '''    elif args.opus is not None or args.rate is not None:
+        parser.error("--opus and --rate only mean something with --estimate")''',
+     "    elif False:\n        pass",
+     [F_COUNTALONE, F_RATEALONE], QUOTA),
+
+    ("--write and --estimate are asked together and the write silently wins",
+     '''        if args.write:
+            parser.error("--write records a reading and --estimate reads one back")''',
+     "        if False:\n            pass",
+     [F_WRITE], QUOTA),
+
+    ("a negative agent count is accepted, and the floor walks backwards",
+     '''        if args.opus < 0 or (args.rate is not None and args.rate < 0):
+            parser.error("--opus and --rate are never negative")''',
+     '''        if False:
+            parser.error("--opus and --rate are never negative")''',
+     [F_NEG], QUOTA),
+
+    ("the agent count is taken as text, so `two` reaches the arithmetic",
+     '    parser.add_argument("--opus", type=int, default=None,',
+     '    parser.add_argument("--opus", default=None,',
+     [F_NAN], QUOTA),
 
     # -- the prose that calls it ---------------------------------------------
     ("the wall never names the command",

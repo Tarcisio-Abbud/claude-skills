@@ -35,12 +35,12 @@ Three rungs are left, read in order:
 
 1. **Fix on the spot** — the finding reproduces inside THIS session's diff and carries a criterion a run can
    check. It goes to a `fixer` under the fixer cap, the fourth exit of `../skills/review/SKILL.md`.
-2. **Queue with a gate** — `tk-queue add` at the moment of discovery, the gate in the item's own
-   text. A branch-point finding takes the slice's ticket, failing that ONE item per firing
-   (`../skills/review/SKILL.md`). Never a `fixer`: dispatching backlog is scope creep.
+2. **Hand it to the package's vehicle** — `../skills/kickoff/FINDINGS.md` owns which vehicle
+   takes it, and no new queue item is born while a package runs. Never a `fixer`: dispatching
+   backlog is scope creep.
 3. **Park it** — only the user can judge it: a DECISION carrying `--deferred afk`, the branch pushed,
-   the handoff of `../skills/kickoff/WINDOW.md` written, and the package goes on. Either `add`
-   refuses at `max-open-items`, past every flag; `edit --text` folds the finding into an item
+   the handoff of `../skills/kickoff/WINDOW.md` written, and the package goes on. That `add`
+   is refused at `max-open-items`, past every flag; `edit --text` folds the finding into an item
    that exists, `tk-queue handoff` into its briefing.
 
 Every finding is listed in the close under the rung that took it, for the user's **veto** on

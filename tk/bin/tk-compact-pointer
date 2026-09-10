@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""tk-compact-pointer — the `SessionStart` hook, matcher `compact`: where to resume.
+
+WHY IT EXISTS: this is the piece that was missing on 2026-09-06. An
+auto-compacted orchestrator wakes holding a machine summary of its own context
+and no instruction — it does not know that a handoff was written for it, and the
+summary is the one document that never says so. A `SessionStart` hook can INJECT
+text into the session's context, which makes it the one channel that reaches a
+model nobody is talking to. So what it prints is an instruction: read the
+handoff, resume by `RESUME.md`, and the ledger is here.
+
+THE INJECTION IS THE JSON ENVELOPE, NOT PLAIN STDOUT. Measured 2026-09-09 on
+2.1.266, first the wrong way: a hook printing a plain paragraph ran, and the
+session it ran for could not find a word of it. The binary's own reader says why
+— a hook that exits 0 with no JSON payload and nothing on stderr is logged as
+"produced no response payload" and its attachment is skipped. What reaches the
+context is `hookSpecificOutput.additionalContext`, under the matching
+`hookEventName`, so that is what this prints.
+
+IT DECIDES NOTHING ELSE. It does not resume anything, does not read the queue and
+does not run a skill; `../skills/kickoff/RESUME.md` owns the procedure and this
+hook only names it.
+
+WHERE THE ADDRESSES COME FROM: the package pointer at
+`~/.claude/state/tk-package.json`, written by the orchestrator when the package
+opens. **No pointer file, nothing printed.** Most compacted sessions on this
+machine are not packages, and injecting a package's instruction into one of them
+is worse than saying nothing.
+
+`RESUME.md` IS RESOLVED FROM THIS FILE, not from the pointer. The skill travels
+with the bin, so the path is known here and a pointer that named it could go
+stale against a plugin that moved.
+
+Stdin:  the hook's JSON payload. `source` other than `compact` prints nothing, an
+        absent or unreadable one included — the matcher in the wiring already
+        selects, and this is the second guard for a wiring widened by hand.
+Usage:  tk-compact-pointer [--file PATH]
+Exit:   0, always. A hook that fails interrupts a session; what is at stake here
+        is one paragraph.
+"""
+
+import json
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+POINTER = "~/.claude/state/tk-package.json"
+RESUME = os.path.normpath(os.path.join(HERE, os.pardir, "skills", "kickoff", "RESUME.md"))
+SOURCE = "compact"
+EVENT = "SessionStart"
+
+
+def plain(value):
+    """A value read from a file, safe to inject into a context and a terminal."""
+    return re.sub(r"[\x00-\x1f\x7f]", "?", str(value)).strip()
+
+
+def pointer(path):
+    """The package pointer, or None when no package is running."""
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8-sig") as handle:
+            found = json.load(handle)
+    except (OSError, ValueError, UnicodeDecodeError) as exc:
+        print(f"tk-compact-pointer: cannot read {path}: {exc}", file=sys.stderr)
+        return None
+    return found if isinstance(found, dict) else None
+
+
+def lines(package):
+    """What the compacted session is told, or nothing at all.
+
+    The handoff is asked for on disk. A pointer at a briefing nobody wrote is
+    worse than silence — the session would go looking and find a summary of its
+    own context instead — so that case says what is wrong rather than where to
+    read.
+    """
+    handoff = package.get("handoff")
+    if not handoff:
+        return []
+    handoff = os.path.expanduser(plain(handoff))
+    name = plain(package.get("package") or "this package")
+    said = [f"tk: this session was compacted while orchestrating {name}."]
+    if os.path.isfile(handoff):
+        said.append(f"Read the handoff at {handoff} before anything else, then resume "
+                    f"by {RESUME}.")
+    else:
+        said.append(f"The package pointer names a handoff at {handoff} and there is no "
+                    f"file there. Do not reconstruct it from the summary above: read "
+                    f"{RESUME}, and rebuild the state from git and the ledger.")
+    ledger = package.get("ledger")
+    if ledger:
+        said.append(f"The package ledger is {os.path.expanduser(plain(ledger))}; its last "
+                    f"lines say what was running when the window filled.")
+    return said
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    path = os.path.expanduser(POINTER)
+    if argv[:1] == ["--file"] and len(argv) > 1:
+        path = argv[1]
+
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, OSError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    if payload.get("source") != SOURCE:
+        # An absent key is not a compact either: the `{}` above stands in for a
+        # payload nobody could read, and injecting a package's instruction into
+        # an unidentified session is worse than saying nothing.
+        return 0
+
+    package = pointer(path)
+    if not package:
+        return 0
+    said = lines(package)
+    if said:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": EVENT, "additionalContext": " ".join(said)}}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -64,6 +64,15 @@ def boundary_line(post=10340, stamp="2026-09-03T13:00:00.000Z"):
                                            "postTokens": post}})
 
 
+def load_tk_context():
+    """The bin as a module, so a constant is read and never retyped here."""
+    spec = importlib.util.spec_from_loader(
+        "tk_context", importlib.machinery.SourceFileLoader("tk_context", TK_CONTEXT))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class TranscriptFixture(unittest.TestCase):
     """A HOME of its own, holding one session's transcript where the script looks."""
 
@@ -78,13 +87,19 @@ class TranscriptFixture(unittest.TestCase):
         with open(self.transcript, "w") as fh:
             fh.write("\n".join(lines) + "\n")
 
-    def run_it(self, *args, session=SESSION):
+    def run_it(self, *args, session=SESSION, env=None):
+        override = env or {}
         env = dict(os.environ, HOME=self.home.name)
         env.pop("CLAUDE_CODE_SESSION_ID", None)
+        # Inherited from whoever ran the suite, this variable decides the window
+        # under test. Cleared first, then the case sets what it means to set.
+        env.pop("CLAUDE_CODE_AUTO_COMPACT_WINDOW", None)
+        env.update(override)
         if session:
             env["CLAUDE_CODE_SESSION_ID"] = session
         return subprocess.run([sys.executable, TK_CONTEXT, *args],
-                              capture_output=True, text=True, env=env)
+                              capture_output=True, text=True, env=env,
+                              cwd=self.home.name)
 
 
 class TheNumber(TranscriptFixture):
@@ -331,6 +346,158 @@ class TheCurve(TranscriptFixture):
         self.assertEqual(run.stderr.strip(), "")
 
 
+class TheWindowChannel(TranscriptFixture):
+    """The harness's compaction window, on a channel of its own.
+
+    THE CONFUSION THIS CLASS EXISTS TO REFUSE. Exit 2 is spent by `WINDOW.md` as
+    a licence to decide by judgement, and it means one thing: the transcript
+    holds no token count. A first draft of this flag reused the same code for
+    "no window key was configured" — two conditions, one code, and every seam on
+    a host where nobody had set `autoCompactWindow` would have thrown away a
+    perfectly good token reading and gone to judgement. The two are asserted
+    separately below, and the token-absent case is the one that keeps exit 2.
+
+    The numbers are taken from the bin rather than retyped: a buffer changed in
+    one file and not the other is exactly the fork a doc-conformance test cannot
+    see.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.bin = load_tk_context()
+        self.settings = os.path.join(self.home.name, ".claude")
+        os.makedirs(self.settings, exist_ok=True)
+
+    def write_settings(self, value):
+        """`.claude/settings.local.json`, the last file of the merge.
+
+        The fixture's cwd IS its HOME, so the user file and the project file are
+        one path here and only the local one is distinguishable. What the order
+        buys is asserted where it can be: the environment against the key.
+        """
+        with open(os.path.join(self.settings, "settings.local.json"), "w") as fh:
+            json.dump({"autoCompactWindow": value}, fh)
+
+    def run_window(self, *args, **kw):
+        self.write(usage_line(input_tokens=10, cache_read_input_tokens=7990))
+        return self.run_it("--window", *args, **kw)
+
+    def test_the_window_and_the_threshold_go_to_stderr_and_stdout_stays_bare(self):
+        # stdout is what a seam compares or pipes. A window printed beside the
+        # number is a second field every one of those callers has to learn.
+        run = self.run_window()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.stdout.strip(), "8000 tokens in context")
+        self.assertIn("window", run.stderr)
+        self.assertIn(str(self.bin.WINDOW_DEFAULT - self.bin.SUMMARY_BUFFER), run.stderr)
+
+    def test_without_the_flag_a_configured_key_changes_nothing(self):
+        # The invocation `WINDOW.md`'s seams already run must keep the output it
+        # has, on a host where the key IS set.
+        self.write_settings(300000)
+        self.write(usage_line(input_tokens=10, cache_read_input_tokens=7990))
+        run = self.run_it()
+        self.assertEqual(run.stdout.strip(), "8000 tokens in context")
+        self.assertEqual(run.stderr.strip(), "")
+
+    # --- the two absences, one code each -------------------------------------
+
+    def test_no_key_and_no_env_var_is_exit_0_and_the_default_marked_as_one(self):
+        run = self.run_window()
+        self.assertEqual(run.returncode, 0,
+                         "an unconfigured window took the exit code that means "
+                         "'no token number' — every seam on this host would "
+                         "throw away a good reading and go to judgement")
+        self.assertIn(str(self.bin.WINDOW_DEFAULT), run.stderr)
+        self.assertIn("DEFAULT", run.stderr,
+                      "the fallback is printed as though a key had been read")
+
+    def test_no_token_in_the_transcript_is_still_exit_2_with_the_flag_on(self):
+        # The other absence. `--window` may not rescue a run that has no number:
+        # what the seam asked for is the occupancy, and there is none.
+        self.write(json.dumps({"type": "user", "message": {"role": "user"}}))
+        run = self.run_it("--window")
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertEqual(run.stdout.strip(), "")
+        self.assertIn("judgement", run.stderr)
+
+    # --- the resolution order the harness has --------------------------------
+
+    def test_the_settings_key_is_read_and_the_threshold_follows_it(self):
+        self.write_settings(300000)
+        run = self.run_window()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("300000", run.stderr)
+        self.assertIn(str(300000 - self.bin.SUMMARY_BUFFER), run.stderr)
+        self.assertNotIn("DEFAULT", run.stderr)
+
+    def test_the_environment_variable_beats_the_key(self):
+        self.write_settings(300000)
+        env = {self.bin.WINDOW_ENV: "100000"}
+        run = self.run_window(env=env)
+        self.assertIn("100000", run.stderr)
+        self.assertNotIn("300000", run.stderr)
+
+    def test_the_word_auto_is_read_as_a_configured_key_and_not_as_absence(self):
+        # `auto` is a legitimate value of the key — WINDOW.md prescribes the key
+        # and says `auto` resolves to the model's own context, 1M on Fable. Read
+        # as a refusal it printed "no readable `autoCompactWindow`" over a key
+        # that was present, readable and valid, and the tick was told to go and
+        # configure what the session already had.
+        self.write_settings("auto")
+        run = self.run_window()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("autoCompactWindow` = auto", run.stderr,
+                      "`auto` is not reported as the key it is, so the source line "
+                      "names no key at all")
+        self.assertNotIn("DEFAULT", run.stderr,
+                         "a key that is present and valid is reported as absent")
+        self.assertIn(str(self.bin.WINDOW_DEFAULT - self.bin.SUMMARY_BUFFER),
+                      run.stderr,
+                      "`auto` resolves to the model's own context, measured 1M on "
+                      "Fable, and the threshold subtracts the summary buffer from it")
+
+    def test_a_value_the_harness_would_refuse_falls_through_to_the_default(self):
+        # A word that is not `auto`, a number outside the bounds: the harness
+        # obeys none of them, and a reader obeying one would print a threshold no
+        # compaction will ever use. `auto` is the exception and has its own test.
+        default = self.bin.WINDOW_DEFAULT - self.bin.SUMMARY_BUFFER
+        for value in ("three hundred thousand", 42, 5_000_000, True):
+            with self.subTest(value=value):
+                self.write_settings(value)
+                run = self.run_window()
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertIn("DEFAULT", run.stderr)
+                # the threshold is the assertion, not the word: the default line
+                # names `auto` itself, so a word's absence proves nothing.
+                self.assertIn(str(default), run.stderr)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    self.assertNotIn(str(value - self.bin.SUMMARY_BUFFER),
+                                     run.stderr,
+                                     "a value the harness refuses was obeyed, and "
+                                     "the threshold printed is one no compaction "
+                                     "will ever use")
+
+    def test_a_settings_path_that_is_a_directory_costs_the_caller_nothing(self):
+        # Guarding the parse is not guarding the OPEN. The number the caller
+        # asked for is the occupancy, and a settings path nobody can read is no
+        # reason to withhold it.
+        os.makedirs(os.path.join(self.settings, "settings.local.json"), exist_ok=True)
+        run = self.run_window()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.stdout.strip(), "8000 tokens in context")
+        self.assertIn("DEFAULT", run.stderr)
+
+    def test_a_half_written_settings_file_costs_the_caller_nothing(self):
+        # The other half of the same guard: the file opens and does not parse.
+        with open(os.path.join(self.settings, "settings.local.json"), "w") as fh:
+            fh.write('{"autoCompactWindow": 300')
+        run = self.run_window()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.stdout.strip(), "8000 tokens in context")
+        self.assertIn("DEFAULT", run.stderr)
+
+
 class TheProseThatCallsIt(unittest.TestCase):
     """The command is worth nothing unless the seam's instruction names it."""
 
@@ -377,9 +544,15 @@ class TheProseThatCallsIt(unittest.TestCase):
 
     def test_window_states_that_the_threshold_is_absolute(self):
         # Without this the next generation reads 29% of a 1M window as room.
-        window = self.read("WINDOW.md")
-        self.assertIn("smart zone", window)
-        self.assertRegex(window, r"never a fraction")
+        # The assertion is the BULLET, not the words: a second "never a fraction"
+        # arrived elsewhere in the file and the loose search went vacuous — the
+        # mutation that rewrites this bullet survived while the suite stayed
+        # green, which is what a search unit too wide always buys.
+        window = re.sub(r"\s+", " ", self.read("WINDOW.md"))
+        self.assertRegex(
+            window,
+            r"\*\*Compare absolutes, never a fraction\.\*\* "
+            r"The threshold is the smart zone's edge")
 
     def test_window_licenses_judgement_only_when_it_is_declared(self):
         # Tied to the no-number rule on purpose. An earlier draft asserted the

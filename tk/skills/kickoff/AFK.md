@@ -27,6 +27,9 @@ below runs; a generation that built its own package skips it.
 
 ## 1. Build the package
 
+**The tracker import of `ROOT-CAUSE.md` beside this file runs first, whatever the count**; above
+20 eligible candidates that file then owns this step's cut, at or below 20 the cut below stands.
+
 `tk-queue pack --dir "<queue dir>"` (`../../bin/tk-queue`) hands over the candidates: eligible
 items in queue order, every exclusion with the value that caused it, each item's LANE, Ticket and
 `[repo: …]` — filter and line shape in `tk-queue pack --help`. What it does not decide is the
@@ -127,9 +130,14 @@ Solo items dispatch beside it, in series within one repository; neither lane pas
 local ceiling. An item too big for one subagent's context leaves the package carrying its
 briefing (`../verify/SKILL.md` prescribes the form) and its ready-to-paste line.
 
+A lane with its own branch and pull request dispatches under `LANE-CONTRACT.md` beside this file.
+
+Every run dispatched here is handled under `HYGIENE.md` beside this file.
+
 Each run's prompt carries, produced here and never delegated back: the **contract block** pasted
-verbatim from `../../bin/tk-contract --role <row>` — `implementer`, or `implementer-spec` on the
-lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull request — and
+verbatim from `../../bin/tk-contract --role <row>` — `implementer`, `implementer-spec` on the
+accumulated lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull
+request, or `lane-implementer` for a lane that opens its own pull request — and
 the **item's distilled contract**: the item, the memory file behind its `[[slug]]` at one hop,
 its handoff; context in none of the three is a missing handoff, named in its own line. A lane
 run also gets the path `<notes dir>` of the exploration above, read and never re-run. A solo run
@@ -141,10 +149,38 @@ could not be made at all. None of the three is a run dispatched without a refere
 each run by the venue signature it returns, never by the flag you passed. On a wave, step 4 —
 `AUDIT.md` beside this file — stands between the claim and the first run.
 
+### The vehicle: one workflow per package
+
+Fire the site's dynamic workflow from this session (`~/.claude/tk/dispatch.md` names the
+mechanism; the Agent-tool fallback runs the same graph in series). One script per package and
+one `agent()` per run: the lane is a serial loop — the item's implementer, then the
+`lane-merger` of step 5 — the solo items run beside it, and the tail closes the graph. A fleet
+project run (`../fleet/SKILL.md` §4) takes the fallback until a package here measures the
+workflow on that path.
+
+**Every `agent()` takes its `model` and `effort` from `args`, never from a literal in the
+script** — a literal is the fork `../../bin/tk-contract` exists to prevent. The orchestrator
+fills both from the role table: `model` always, `effort` by OMITTING the key where the row
+reads `session`. No contract is copied into the script either — the block above reaches it
+verbatim through `args`, and the lane contract above reaches it as a path. Pass `args` as the object
+itself: a run asked to compose it returned the JSON inside a string field, and every key parsed
+as absent.
+
+Concurrent runs count against `max-local-subagents`, the site key the generated block already
+carries. Where the harness's own cap — `min(16, nproc - 2)` — is the smaller of the two, the
+difference stays UNUSED: a second workflow beside the first is the option to weigh, never Agent
+runs whose return lands in this session's context, which is what the vehicle exists to keep out.
+
+**The script stops dispatching at the first `null` and hands back what it holds.** A `null` is
+the wall or a skip, never one of the three attempts `../verify/SKILL.md` counts, and a graph
+running on past one dispatches into a spent window. The launch is a seam of its own: `WINDOW.md`
+refreshes the handoff right after it, and reads the quota between the launch and the return.
+
 **Done when:** every item is claimed or reported held elsewhere, the lane branch exists and is
 pushed before its first ticket goes out, the base was explored once with its notes outside the
 repository, and every run carries a generated contract block, that path, and a prompt
-self-sufficient without the tracker.
+self-sufficient without the tracker. The vehicle's script names no model, effort or
+contract of its own.
 
 ## 4. Audit the spec and the tickets
 
@@ -167,8 +203,14 @@ own. An approved solo item leaves the queue here —
 `tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>"` — and an item verify turned into a
 DECISION stays, carrying its handoff.
 
-A lane item is verified BEFORE it reaches the shared branch — one cycle per item, every stage the
-orchestrator's own work, in order:
+A lane holding its own pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file.
+
+A lane item is verified BEFORE it reaches the shared branch — one cycle per item, in order —
+while the orchestrator runs stages 1–5 itself. Stages 1–5 may run inside the workflow as one
+`lane-merger` run, never the run that implemented the item; stages 6 and 7 are the
+orchestrator's own, on the workflow's return. Delegated that way the guarantee holds only as far
+as the merger's own green, and *Before the first `done`* below is what catches a red item
+already merged:
 
 1. **Confirm the invariant** in the item's worktree: `git status --porcelain` empty, HEAD equal
    to `@{u}`. A breach is repaired here — commit and push — and reported.
@@ -182,7 +224,8 @@ orchestrator's own work, in order:
    a DECISION (`--deferred afk`) naming its pushed branch and the two tips; the lane continues
    from its unchanged tip.
 5. **Push the lane's branch** — the checkpoint of `WINDOW.md`'s invariant for the lane.
-6. **On the FIRST green merge of the package, open the draft pull request**
+6. **On the first green merge the orchestrator SEES — on the workflow's return, or in the first
+   cycle where it dispatches by Agent — open the draft pull request**
    (`gh pr create --draft --base main`). The body is the orchestrator's and nobody else writes
    it: per closed item it gains `Fixes <owner>/<repo>#<n>`, one line per ticket; the spec is
    named WITHOUT a keyword, so only the user closes it. **Ask verdict 5 for that item HERE**,
@@ -194,8 +237,17 @@ orchestrator's own work, in order:
    the push and after the pull request exists: the push before the `done` is what lets a resumed
    generation recover either death shape without losing work or merging an item twice.
 
-A red item never reaches the lane's branch and the lane does not halt for it: its DECISION names
-its pushed branch, later tickets cut from the unchanged tip, and the report names it beside them.
+**Before the first `done` the remote is what is true, and a merger's report is not.** Read
+`git log --merges origin/spec/<m>-<slug>` on the fetched tip, then run ONCE, by script with the
+exit codes read and a timeout well above 120 s, the whole suite and the criterion of every item
+that tip carries. Red there is a false green a merger returned: that item becomes a DECISION
+naming the sha of its merge, and it is never closed. The tail's suite does not answer this — it
+runs after the `done`s.
+
+A red item never reaches the lane's branch while the orchestrator runs those stages, and the lane
+does not halt for it either way: its DECISION names its pushed branch — the sha of its merge
+where a delegated merger already merged it red — later tickets cut from the unchanged tip, and
+the report names it beside them.
 The item's worktree is removed when it leaves the cycle (`git worktree remove`, never `--force`);
 its branch stays until the lane's pull request merges.
 
@@ -232,8 +284,8 @@ fails on a branch still checked out.
 
 **Done when:** every item carries one verify outcome with its evidence block, every lane item
 reached the branch by a pushed `T<id>` merge before its `done`, verdict 5 was asked of each
-while it was still open, and every red one is absent from
-it, the tail ran its three steps on the final tree and left the pull request out of draft with
+while it was still open, the tip carried the whole suite and every merged item's criterion before
+the first `done`, and every red one is absent from it, the tail ran its three steps on the final tree and left the pull request out of draft with
 the worktree removed, and every claim left with its item or was released.
 
 ## 6. Measure, and hand the package to the close
@@ -268,27 +320,16 @@ the step that stopped the package and the state the tree was left in.
 **A tooling repo — one whose code handles no business data — gets ONE correction cycle per pull
 request.** The cap counts per firing of the review, never for the life of the pull request. A review
 re-fired whole by *A resumed generation starts here* carries its own cycle. That cycle is a single
-`fixer` dispatch, never resumed: findings it leaves unclosed go to ONE item carrying its inventory. A
-`fixer` whose batch touches a file outside the slice's diff stops and reports. Whatever a re-review
-finds after that cycle enters the queue by `tk-queue add --dir "<queue dir>"`, class per the finding's
-nature, as *A session finding, unattended* prescribes. The close's verdict 2 counts a finding queued
-this way as handled, never as one no fixer could close, so the pull request does not wait on it.
+`fixer` dispatch, never resumed. A `fixer` whose batch touches a file outside the slice's diff stops
+and reports. What that cycle leaves unclosed, and whatever a re-review finds after it, take
+`FINDINGS.md` beside this file, inventory and all. The pull request exists by then, so the
+destination that fits is its second — a line in that body, under "Achados não tratados". The
+close's verdict 2 counts the finding by the destination that took it, never as one no fixer could
+close, so the pull request does not wait on it.
 
 ## A session finding, unattended
 
-Unattended, `../../reference/session-finding.md`'s ladder keeps three rungs. **Fix on the spot** —
-a `fixer` under *The fixer cap*. **Queue with a gate** — `tk-queue add --dir "<queue dir>"` at the
-moment of discovery. **Park** — a DECISION with `--deferred afk`, its branch pushed and its
-handoff written. Either `add` is REFUSED at `max-open-items` past every flag: fold with
-`edit --text` or `handoff`, never by closing one. Nothing is discarded, and the package never waits
-on a parked finding.
-
-At the close, never mid-package, ONE `AskUserQuestion` batches every parked DECISION; that
-question and the close report are the same text. Portuguese, these labels verbatim:
-
-- `O que é:` the item or pull request in plain words, never a bare `T123` or `#n`;
-- `O que muda para você:` what each option means for the user;
-- `Se você não responder:` the default the agent takes, and when.
-
-**Done when:** every session finding carries its ladder rung in the close, the parked ones in one
-question, with the veto `tk-queue cancel "<id>" --dir "<queue dir>" --why "<the veto>"`.
+`FINDINGS.md` beside this file owns where the finding goes — the three destinations in order of
+preference, the one exit that leaves the package without code, and the close's single question.
+Read it there, whole, at the moment of discovery. No new queue item is born while the package
+runs, and that rule is what retired this ladder's second rung.

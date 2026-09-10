@@ -167,6 +167,28 @@ tk/
   skills/wrap-up/REPORT.md        branch file: the fixed closing template, read by every
                                   skill that closes on it
   skills/kickoff/AFK.md           branch file: the afk/pack package flow
+  skills/kickoff/ROOT-CAUSE.md    branch file: step 1's cut on a body of work too big for one
+                                  package — the tracker import that runs first, the five
+                                  lists the audit returns, the fusion order, the two topology
+                                  rules, and which of the cookbook's shapes cross
+  skills/kickoff/LANE-CONTRACT.md branch file: what one lane implementer is handed when the
+                                  package's lanes are disjoint by file — the inputs in
+                                  order, one slice one commit, and the single pull request
+                                  the agent never merges
+  skills/kickoff/HYGIENE.md       branch file: the seven rules a package's dispatched runs
+                                  are handled under, all of them seen from OUTSIDE the run —
+                                  the prompt, the count of the live ones, what a return must
+                                  contain, and what is killed before a lane closes
+  skills/kickoff/FINDINGS.md      branch file: which VEHICLE an unattended finding takes —
+                                  the three destinations, and the one exit that parks it
+                                  without code
+  skills/kickoff/REVIEW-CONTRACT.md
+                                  branch file: the cold reviewer of a lane's own pull
+                                  request, which judges and fixes in one agent and hands
+                                  back a colour
+  skills/kickoff/LEDGER.md        branch file: the package ledger a successor reads back
+                                  after a compact or a wall — the event line, the quota
+                                  field's three shapes, the state table and the lane restart
   skills/kickoff/RESUME.md        branch file: what a generation that inherited a
                                   package mid-flight runs before anything else —
                                   reset, draft, close, re-dispatch, and the exits
@@ -255,8 +277,26 @@ tk/
                                   occupancy — an API response and a compaction boundary — and
                                   the last recorded wins. `--curve` prints the occupancy
                                   across the session, since the slope is what says whether
-                                  another review fits. Exit 2 no number, 64 bad usage: a
-                                  mistyped flag may not read as the licence to use judgement
+                                  another review fits. `--window` prints, on the same
+                                  channel, the window the harness will compact at — the env
+                                  var `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then
+                                  `autoCompactWindow` from the merged settings, then the
+                                  harness default marked as one — and the threshold under
+                                  it. Exit 2 no number, 64 bad usage: a mistyped flag may
+                                  not read as the licence to use judgement, and neither may
+                                  an unconfigured window
+  bin/tk-compact-mark             the `PreCompact` hook: appends ONE event line, in
+                                  LEDGER.md's format, to the ledger of the package named by
+                                  `~/.claude/state/tk-package.json`. A trace, never a
+                                  decision — it blocks nothing and exits 0 always, and with
+                                  no package pointer it writes nothing and says nothing
+  bin/tk-compact-pointer          the `SessionStart` hook, matcher `compact`: prints to
+                                  stdout — which Claude Code INJECTS into the compacted
+                                  session's context — where the handoff is and that
+                                  RESUME.md is the procedure. The piece missing on
+                                  2026-09-06, when an orchestrator woke from a compaction
+                                  holding a summary that named no handoff. Silent where no
+                                  package pointer names one
   bin/tk-quota                    what is left of the rolling usage windows — the 5h and
                                   weekly figures reach the STATUSLINE SCRIPT at render time
                                   and are in no transcript, so this is the only way an agent
@@ -270,7 +310,13 @@ tk/
                                   passing as current. The site installs it by calling
                                   `tk-quota --write` from its statusline script, by absolute
                                   path: a path that resolves to nothing no-ops in silence and
-                                  reads exactly like "no session has rendered". Exit 1 nothing
+                                  reads exactly like "no session has rendered". A third mode,
+                                  `--estimate --opus <n>`, returns a FLOOR and never a
+                                  reading: it ages the sidecar's last percentage forward at
+                                  `--rate` pp/h (recalibrable per package) over the Opus
+                                  agents the CALLER counted, so it may only ever forbid a
+                                  dispatch. The 5h window alone — no rate was ever measured
+                                  for the weekly one, and it says so on stderr. Exit 1 nothing
                                   was recorded, 2 no number, 64 bad usage
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
@@ -287,6 +333,10 @@ tk/
                                   the suite's own reader of it, the rest on the bin
   tests/test_tk_quota.py          regression suite for the quota reading, and the doc
                                   conformance of the wall that calls it
+  tests/mutations_compact_hooks.py
+                                  their mutations — the mark hook's silence, its event
+                                  line's seven fields, and the pointer hook's guard and
+                                  envelope, over both hook bins
   tests/mutations_tk_quota.py     its mutations — nine on the writer, which lived
                                   outside any suite until a lens found four wrong-number
                                   defects in it, four on the wall's prose, and one on the
@@ -404,8 +454,9 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 tk/tests/mutations_manifests.py`, the wall's step 2 through
 `python3 tk/tests/mutations_window_wall.py`, and the two closure bins through
 `python3 tk/tests/mutations_closure.py`, `tk-context` through
-`python3 tk/tests/mutations_tk_context.py`, and `tk-quota` through
-`python3 tk/tests/mutations_tk_quota.py`. The harnesses are separate files sharing
+`python3 tk/tests/mutations_tk_context.py`, `tk-quota` through
+`python3 tk/tests/mutations_tk_quota.py`, and the two compaction hooks through
+`python3 tk/tests/mutations_compact_hooks.py`. The harnesses are separate files sharing
 one shape; the oldest differs only in naming its test module inline. FOUR of them mutate
 more than a bin: the manifests one mutates DATA only — its subject is the repository's
 own state, and `marketplace.json` sits at the repo root, outside the `tk/` the runner
