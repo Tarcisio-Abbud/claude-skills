@@ -34,6 +34,8 @@ suite gives beside its own copy: a test computing the expected name with the
 function under test would agree with any mutation of it.
 """
 
+import importlib.machinery
+import importlib.util
 import os
 import re
 import shutil
@@ -789,11 +791,41 @@ class BashGuardTest(unittest.TestCase):
             p.stderr,
         )
 
+    def test_sh_invocation_exits_nonzero_with_a_clear_message(self):
+        # POSIX `sh` (dash on this machine) parses the guard the same way bash
+        # does; a guard that only worked under bash's own quoting rules would
+        # pass the test above and still fall through under `sh tk-hygiene`.
+        p = subprocess.run(["sh", self.HYGIENE], capture_output=True, text=True,
+                           timeout=30)
+        self.assertNotEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn(
+            "tk-hygiene: run it with python3 or directly, not via bash",
+            p.stderr,
+        )
+
     def test_python3_help_is_unaffected_by_the_guard(self):
         p = subprocess.run([sys.executable, self.HYGIENE, "--help"],
                            capture_output=True, text=True, timeout=30)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("usage:", p.stdout)
+
+    def test_module_doc_is_the_real_docstring_not_the_guard_text(self):
+        # The guard is the module's first statement; a bare string literal
+        # right after it would NOT become `__doc__` (only the first string
+        # literal in a module does), so a sibling bin's
+        # `__doc__.splitlines()[0]` pattern (tk-queue, tk-contract) would
+        # silently read the guard's own text instead of the real one-line
+        # summary. The bin assigns `__doc__` explicitly to keep this true.
+        # `main()` runs only under `if __name__ == "__main__":`, so loading
+        # the module this way never runs the audit.
+        loader = importlib.machinery.SourceFileLoader("tk_hygiene_under_test",
+                                                        self.HYGIENE)
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        self.assertTrue(module.__doc__.startswith("tk-hygiene —"), module.__doc__)
+        self.assertNotIn("run it with python3 or directly, not via bash",
+                         module.__doc__)
 
 
 if __name__ == "__main__":
