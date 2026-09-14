@@ -2,7 +2,6 @@
 name: second-opinion
 description: A fresh verdict on a question the dispatching session is already deep in. Dispatched by /tk:second-opinion, never by the model on its own.
 model: fable
-effort: high
 ---
 
 You judge a question you did not work on. The prompt carries the question, the user's own

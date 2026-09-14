@@ -30,7 +30,7 @@ included, which step 1 consumes and that line never names.
    context could answer the question from the prompt alone.
 
 2. **Dispatch** `Agent` with `subagent_type: "tk:second-opinion"`. Its definition pins
-   `model: fable` and `effort: high`, whatever this session's effort is. In `consensus`, record
+   `model: fable`; `Agent` has no `effort` field, so effort is inherited. In `consensus`, record
    the agent name the result returns: `SendMessage` continues it. Done when the reply is in hand
    — turn 1.
 
@@ -48,5 +48,5 @@ included, which step 1 consumes and that line never names.
      settles a split.
 
    Close with the policy's deviation line:
-   `second-opinion: none→fable, effort high — fired by the user via /tk:second-opinion`.
+   `second-opinion: none→fable, effort: session — fired by the user via /tk:second-opinion`.
    Done when the user has the outcome and the line.
