@@ -208,8 +208,8 @@ never once at the start: a fleet is hours long and its own runs are what move th
 **The bin can refuse the window the ceiling is on.** It vouches for the two windows separately:
 exit 0 may print one of them with stderr naming what it refused, and exit 2 prints neither.
 `WINDOW.md`'s *The wall* owns those exits, and the fleet reads the refusal before it reads the
-line. A dispatch with no weekly figure has no ceiling reading at all. It authorises nothing, and
-what the fleet owes then is the judgement the stale case below owes, said aloud in the report
+line. A dispatch with no weekly figure has no ceiling reading at all, and it authorises nothing.
+What the fleet owes then is the judgement the stale case below owes, said aloud in the report
 beside the dispatch it did not stop.
 
 **The quota ceiling is a third ceiling, on an axis neither block states.** The two of step 3
@@ -296,9 +296,13 @@ printed `handoff-T001.md removed`. The same close with a second OPEN item carryi
 handoff NAMED for the item being closed is deleted by the very `done` that follows it.
 
 The package's one handoff — `WINDOW.md`'s *The wall*, step 2 — hangs on an item still open, and
-that is where the texts go. A run killed between its `done` and its return leaves them there for
-the close to find. That death is the measured one: a run the ceiling stopped in the first fleet
-run left an item closed, its pull request open, and its text in no queue at all.
+that is where the texts go. **Which item is the one that closes LAST.** A briefing outlives a
+`done` only while some item still OPEN names it, so every earlier close leaves it standing and
+the last one takes it down. Where the run is closing that last item, no briefing survives the
+close: the texts go in the return, and the run says there that no briefing holds them. A run
+killed between its `done` and its return leaves them there for the close to find. That death is
+the measured one: a run the ceiling stopped in the first fleet run left an item closed, its
+pull request open, and its text in no queue at all.
 
 ### The checkpoint is a completed project, not a wave
 
@@ -330,6 +334,12 @@ covering every project that finished. The ones still in flight are named as such
 **One project's failure is that project's.** A run may return empty, error, or report a package
 it could not close. None of that stops the fleet: its slot frees, its section of the report says
 what came back, and the next project enters.
+
+**An empty return is a failure and never an approval.** It says nothing about that project's
+package, so nothing in it is counted done on the strength of the return. The section reports
+that the run came back empty, and what the report says about the project is built from the
+artefacts below instead. Two such returns arrived in the first fleet run; item 5 of step 4's
+prompt is what stops one being produced.
 
 **The quota wall is the one exception**, because it is not that project's failure. It is the
 machine's window, and step 4 stops the fleet on it. So the fleet's stop conditions are four.
@@ -382,9 +392,8 @@ Three things belong to the fleet and to no other reader of that file:
   each with its age: this run is the one that produces the evidence to recalibrate the ceiling.
 
 **Birth the texts the runs returned**, by *The texts a run returns are born at the close* in
-step 4. This one is the close's and not `vista.md`'s, which is why it stands outside the three
-above: the close is where a returned text becomes an item, and the report is where it stops
-being one.
+step 4. It stands outside the three above because it is the close's and not `vista.md`'s. The
+close is where a returned text becomes an item; the report is where it stops being one.
 
 A red gate does not hold the fleet, because the textual report is the close. Report the refusal
 in the state `vista.md` names, and end the run anyway.
