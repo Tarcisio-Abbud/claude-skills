@@ -768,5 +768,33 @@ class TestIdempotence(HygieneTest):
         self.assertIn("delete_branch_on_merge=true", second.stdout)
 
 
+class BashGuardTest(unittest.TestCase):
+    """`bash tk-hygiene` used to fall through into bash trying to parse the
+    python source, exiting with garbled quoting errors and no clear message
+    (measured 2026-09-13, still true 2026-09-14 with a different garbled exit).
+    The polyglot guard at the top of the bin catches this before a single line
+    of the audit runs, so — unlike `HygieneTest` above — running the checkout's
+    own copy here never risks pruning this repository's own branches: the
+    guarded path exits before `tk-roster` or `gh` is ever reached.
+    """
+
+    HYGIENE = os.path.join(BIN_DIR, "tk-hygiene")
+
+    def test_bash_invocation_exits_nonzero_with_a_clear_message(self):
+        p = subprocess.run(["bash", self.HYGIENE], capture_output=True, text=True,
+                           timeout=30)
+        self.assertNotEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn(
+            "tk-hygiene: run it with python3 or directly, not via bash",
+            p.stderr,
+        )
+
+    def test_python3_help_is_unaffected_by_the_guard(self):
+        p = subprocess.run([sys.executable, self.HYGIENE, "--help"],
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("usage:", p.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
