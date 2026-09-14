@@ -184,12 +184,66 @@ The prompt carries, in this order:
    one generation and writes a handoff instead of opening a successor. A successor opened
    from inside a project run would be a second live orchestrator over that queue;
 4. **the project's directory**, as the FIRST instruction the run obeys. Every `tk-queue` call
-   resolves its queue from the cwd, and no dispatch mechanism here sets a subagent's cwd.
+   resolves its queue from the cwd, and no dispatch mechanism here sets a subagent's cwd;
+5. **the order to run every suite in the FOREGROUND, with a declared timeout.** A run that
+   fires its suite as a background job ends its turn there and returns announcing the wait,
+   which is no report at all — twice on one project in the first fleet run. The empty return
+   that arrives is graded by `../kickoff/HYGIENE.md`'s *An empty or malformed return is a
+   failure, never an approval*; this line is what stops it being produced;
+6. **the order to write the texts it would return into the package handoff, BEFORE the `done`
+   that closes the item they came from** — *The texts a run returns are born at the close*
+   below.
 
 **No barrier between waves.** `W` is a ceiling on concurrency, not a batch size. When a project
 run returns, its slot is free and the next project in the step-2 order enters immediately.
 Waiting for the slowest project run of a wave leaves every earlier finisher's slot idle for
 exactly as long as that member runs.
+
+### The fleet's quota ceiling
+
+**Read the quota before every project dispatch, and stop above the ceiling.** The wall below is
+what the fleet does once the window is spent; the ceiling is what keeps it from walking into
+one. `../../bin/tk-quota` prints both rolling windows and both are read at every dispatch,
+never once at the start: a fleet is hours long and its own runs are what move the number.
+
+**The quota ceiling is a third ceiling, on an axis neither block states.** The two of step 3
+bound AGENTS — `max-local-subagents` the RAM axis, `max-local-opus` the quota-agent axis of
+`../kickoff/WINDOW.md`'s "The tick". This one bounds the WINDOW: how much of it the fleet may
+spend before it stops sending work.
+
+- **On the weekly window the ceiling is 80% used, this skill's chosen default.** The first
+  fleet run, nine projects on 2026-09-13, spent 9 pp of the weekly. That is about 1 pp for a
+  small project and 4 pp for a package of four items. It ran under a ceiling of 82% fixed by
+  hand from a menu, because this file named none. A fleet opened above the default cannot
+  finish; one that crosses it mid-run leaves the rest of the week to everything else.
+- **On the 5-hour window the fleet adds no number.** `WINDOW.md`'s "The tick" already states
+  the floors every dispatch answers to, and a second number here would fork them.
+- **The user overrides by naming a ceiling in the turn that fires the run.** This skill takes
+  no flag of its own: the argument slot is the load's. The override is NOT a site-file key
+  either. An unknown key in `~/.claude/tk/env` is ignored in silence, so prose sending the user
+  there would promise a switch no bin reads.
+
+**Above the ceiling, stop dispatching and close.** The runs in flight keep running: they have
+already spent what they spent, and killing one buys none of it back. What stops is the SENDING.
+The close is step 6's, naming the ceiling, the reading that crossed it, and the projects that
+never entered. This is a fourth stop condition, beside step 1's two and the wall.
+
+**A stale reading is a floor, and a floor forbids where it can never authorise.** `tk-quota`
+marks its own age — `(read 58m ago)` on the line — and what that makes the percentage is
+`WINDOW.md`'s to say, in "The wall" and in "The tick"'s three modes. Read it there rather than
+from a number copied to here. Three consequences are the fleet's own:
+
+- **Above the ceiling a stale reading stops the dispatch**, exactly as a fresh one does. It is a
+  lower bound on what is spent, so the ceiling is crossed whatever has happened since.
+- **Below the ceiling a stale reading authorises nothing.** The fleet has no reading, and what
+  it owes then is judgement said aloud, in the report, beside the age of the figure it had.
+- **An unattended fleet goes stale by construction**, because the sidecar is written only while
+  a session renders. The reading that decides is taken AT a return, in the turn that dispatches
+  the next project. One taken while the fleet merely waits ages against runs that keep spending.
+  In the first fleet run a 58-minute-old figure was read as current, by the monitoring turns and
+  by the runs themselves.
+
+### The quota wall
 
 **The quota wall is the FLEET's, not one project's.** Quota is one window across every run on
 this machine. A run returning a quota failure is reporting a fact about the fleet. On the
@@ -200,6 +254,43 @@ carried.
 Each project run still carries `../kickoff/WINDOW.md` for itself, at `--budget 1` — its own
 handoff, its claims, its pushed tree. The fleet writes none of those. It stops sending work and
 reports.
+
+### The texts a run returns are born at the close
+
+A project run returns text meant for its own queue — a finding no lane could reach, a decision
+nobody was there to take. **The fleet births those texts and the run does not.** `tk-queue add`
+is refused inside a subagent by this machine's `ask-before-queue-add` hook, and the refusal is
+the point: an item is written only after a human has seen its words. The first fleet run brought
+back twelve such texts and none was born. They reached the report, and a report line is a
+deferral with another name — `../kickoff/FINDINGS.md` owns that verdict.
+
+**The birth is one menu at the close, and every command carries `--dir`:**
+
+```sh
+python3 <.../tk/bin>/tk-queue add --dir "<that project's queue dir>" ... "<the returned text>"
+```
+
+The fleet's cwd is its own and `tk-queue` resolves the queue from the cwd, so an `add` without
+`--dir` lands in whatever queue this session's directory encodes to. The head of this file holds
+because the address is explicit, not because the fleet changed directory. One `AskUserQuestion`
+carries every project's texts together, in the item's own words, on `FINDINGS.md`'s three labels.
+
+**Unattended, the birth waits on a named blocker.** The hook admits an `add` in an unattended
+session only when the user's last typed turn opened one. The commands it knows as opening one
+are `kickoff` and `wrap-up`, not `fleet`. So a fleet nobody watched births nothing, and its texts
+stay where the runs wrote them. The blocker is **T045 in the `.ambiente` queue**; this file names
+it and implements nothing of it.
+
+**A `done` collects the briefing of the item it closes.** That is why item 6 of the prompt says
+the PACKAGE handoff. Run against `tk-queue` in a throwaway queue on 2026-09-14: `done T001`
+printed `handoff-T001.md removed`. The same close with a second OPEN item carrying
+`[[handoff-T001]]` printed `handoff-T001.md kept — still reached by T002`. So a text left in the
+handoff NAMED for the item being closed is deleted by the very `done` that follows it.
+
+The package's one handoff — `WINDOW.md`'s *The wall*, step 2 — hangs on an item still open, and
+that is where the texts go. A run killed between its `done` and its return leaves them there for
+the close to find. That death is the measured one: a run the ceiling stopped in the first fleet
+run left an item closed, its pull request open, and its text in no queue at all.
 
 ### The checkpoint is a completed project, not a wave
 
@@ -218,10 +309,12 @@ covering every project that finished. The ones still in flight are named as such
 
 **Done when:**
 
-- every dispatchable project has been dispatched or is queued behind a slot, unless the wall
-  stopped the fleet first;
-- every in-flight run carries a generated block, an absolute load path, that load's flags and its
-  own working directory;
+- every dispatchable project has been dispatched or is queued behind a slot, unless the quota
+  ceiling or the wall stopped the fleet first;
+- a quota reading was taken before each dispatch, and each one's age is on record;
+- every in-flight run carries a generated block, an absolute load path, that load's flags, its
+  own working directory, the foreground-suite order and the order to write its texts into the
+  package handoff;
 - the textual report on disk covers every run that has returned.
 
 ## 5. A project fails alone
@@ -231,8 +324,9 @@ it could not close. None of that stops the fleet: its slot frees, its section of
 what came back, and the next project enters.
 
 **The quota wall is the one exception**, because it is not that project's failure. It is the
-machine's window, and step 4 stops the fleet on it. So the fleet's stop conditions are three: a
-rotten site file and an empty roster, both from step 1, and the wall.
+machine's window, and step 4 stops the fleet on it. So the fleet's stop conditions are four.
+Step 1 owns two, a rotten site file and an empty roster. Step 4 owns the quota ceiling and the
+wall: the ceiling before the window is spent, the wall once it is.
 
 **The fleet never repairs a project run's work.** It holds no context on that project's items,
 its criteria or its tree. Judging the repair from here is the partial-context verdict the
@@ -275,7 +369,12 @@ Three things belong to the fleet and to no other reader of that file:
   format. **Planned is the count that entered step 4**, the dispatchable projects with work,
   never the roster's own total. The roster measures the machine, and the fleet measures what it
   ran. The clock starts at the first dispatch. The model inherits by the role table, and a
-  downgrade is legitimate and costs the line.
+  downgrade is legitimate and costs the line. The line also carries the **quota ceiling** in
+  force, said to be the default or the user's. Beside it go the first and last quota readings,
+  each with its age: this run is the one that produces the evidence to recalibrate the ceiling.
+- **Birth the texts the runs returned**, by *The texts a run returns are born at the close* in
+  step 4. The close is where a returned text becomes an item; the report is where it stops being
+  one.
 
 A red gate does not hold the fleet, because the textual report is the close. Report the refusal
 in the state `vista.md` names, and end the run anyway.
@@ -286,7 +385,9 @@ in the state `vista.md` names, and end the run anyway.
 - the vista satisfies `vista.md` rather than this section's summary of it, with every card naming
   its project;
 - the gate was run and its state is in the report;
-- the measurement and deviation lines are written.
+- the measurement and deviation lines are written, the first carrying the quota ceiling;
+- every text a run returned was born with `--dir`, or is named in the report with the reason it
+  could not be.
 
 ## The load is a parameter
 
