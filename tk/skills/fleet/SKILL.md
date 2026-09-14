@@ -187,9 +187,8 @@ The prompt carries, in this order:
    resolves its queue from the cwd, and no dispatch mechanism here sets a subagent's cwd;
 5. **the order to run every suite in the FOREGROUND, with a declared timeout.** A run that
    fires its suite as a background job ends its turn there and returns announcing the wait,
-   which is no report at all — twice on one project in the first fleet run. The empty return
-   that arrives is graded by `../kickoff/HYGIENE.md`'s *An empty or malformed return is a
-   failure, never an approval*; this line is what stops it being produced;
+   which is no report at all — twice on one project in the first fleet run. Step 5 is where an
+   empty return is graded; this line is what stops one being produced;
 6. **the order to write the texts it would return into the package handoff, BEFORE the `done`
    that closes the item they came from** — *The texts a run returns are born at the close*
    below.
@@ -257,8 +256,8 @@ reports.
 
 ### The texts a run returns are born at the close
 
-A project run returns text meant for its own queue — a finding no lane could reach, a decision
-nobody was there to take. **The fleet births those texts and the run does not.** `tk-queue add`
+A project run returns text meant for its own queue — a finding its package could not fix, a
+decision nobody was there to take. **The fleet births those texts and the run does not.** `tk-queue add`
 is refused inside a subagent by this machine's `ask-before-queue-add` hook, and the refusal is
 the point: an item is written only after a human has seen its words. The first fleet run brought
 back twelve such texts and none was born. They reached the report, and a report line is a
@@ -267,7 +266,9 @@ deferral with another name — `../kickoff/FINDINGS.md` owns that verdict.
 **The birth is one menu at the close, and every command carries `--dir`:**
 
 ```sh
-python3 <.../tk/bin>/tk-queue add --dir "<that project's queue dir>" ... "<the returned text>"
+python3 "<.../tk/bin>/tk-queue" add --dir "<that project's queue dir>" \
+    --class "<CLASS>" --effort "<S|M|L (~time)>" --criterion "<A: ... | B: ...>" \
+    "<the text the run returned>"
 ```
 
 The fleet's cwd is its own and `tk-queue` resolves the queue from the cwd, so an `add` without
