@@ -205,6 +205,13 @@ what the fleet does once the window is spent; the ceiling is what keeps it from 
 one. `../../bin/tk-quota` prints both rolling windows and both are read at every dispatch,
 never once at the start: a fleet is hours long and its own runs are what move the number.
 
+**The bin can refuse the window the ceiling is on.** It vouches for the two windows separately:
+exit 0 may print one of them with stderr naming what it refused, and exit 2 prints neither.
+`WINDOW.md`'s *The wall* owns those exits, and the fleet reads the refusal before it reads the
+line. A dispatch with no weekly figure has no ceiling reading at all. It authorises nothing, and
+what the fleet owes then is the judgement the stale case below owes, said aloud in the report
+beside the dispatch it did not stop.
+
 **The quota ceiling is a third ceiling, on an axis neither block states.** The two of step 3
 bound AGENTS — `max-local-subagents` the RAM axis, `max-local-opus` the quota-agent axis of
 `../kickoff/WINDOW.md`'s "The tick". This one bounds the WINDOW: how much of it the fleet may
@@ -257,11 +264,11 @@ reports.
 ### The texts a run returns are born at the close
 
 A project run returns text meant for its own queue — a finding its package could not fix, a
-decision nobody was there to take. **The fleet births those texts and the run does not.** `tk-queue add`
-is refused inside a subagent by this machine's `ask-before-queue-add` hook, and the refusal is
-the point: an item is written only after a human has seen its words. The first fleet run brought
-back twelve such texts and none was born. They reached the report, and a report line is a
-deferral with another name — `../kickoff/FINDINGS.md` owns that verdict.
+decision nobody was there to take. **The fleet births those texts and the run does not.**
+A `tk-queue add` is refused inside a subagent by this machine's `ask-before-queue-add` hook,
+and the refusal is the point: an item is written only after a human has seen its words. The
+first fleet run brought back twelve such texts and none was born. They reached the report, and
+a report line is a deferral with another name — `../kickoff/FINDINGS.md` owns that verdict.
 
 **The birth is one menu at the close, and every command carries `--dir`:**
 
@@ -373,9 +380,11 @@ Three things belong to the fleet and to no other reader of that file:
   downgrade is legitimate and costs the line. The line also carries the **quota ceiling** in
   force, said to be the default or the user's. Beside it go the first and last quota readings,
   each with its age: this run is the one that produces the evidence to recalibrate the ceiling.
-- **Birth the texts the runs returned**, by *The texts a run returns are born at the close* in
-  step 4. The close is where a returned text becomes an item; the report is where it stops being
-  one.
+
+**Birth the texts the runs returned**, by *The texts a run returns are born at the close* in
+step 4. This one is the close's and not `vista.md`'s, which is why it stands outside the three
+above: the close is where a returned text becomes an item, and the report is where it stops
+being one.
 
 A red gate does not hold the fleet, because the textual report is the close. Report the refusal
 in the state `vista.md` names, and end the run anyway.
