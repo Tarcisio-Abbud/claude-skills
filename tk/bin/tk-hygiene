@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
-"""tk-hygiene — the versioning residue a session leaves behind, cleaned without a menu.
+# `bash tk-hygiene` used to run this file as shell and fail with garbled syntax
+# errors instead of a clear message (measured 2026-09-13 and 2026-09-14). The
+# string below is a python/bash polyglot: python sees one ordinary (unused)
+# string literal and moves on to the real docstring beneath it; bash sees three
+# lines it can execute — a no-op, an `echo` to stderr, and `exit 64` — and never
+# reaches the python below that line, which is not valid shell.
+#
+# The guard is the FIRST statement, so plain Python only assigns `__doc__`
+# from a bare string literal that comes first — this one, not the real
+# docstring below it, which a sibling bin's `__doc__.splitlines()[0]`
+# convention (tk-queue, tk-contract) would then read as garbled guard text.
+# The line below assigns `__doc__` explicitly so the real text survives.
+""":"
+echo "tk-hygiene: run it with python3 or directly, not via bash" >&2
+exit 64
+":"""
+__doc__ = """tk-hygiene — the versioning residue a session leaves behind, cleaned without a menu.
+
+Run with `python3 tk-hygiene ...` or `./tk-hygiene ...`; invoking it through
+`bash` exits 64 with a one-line message instead of running (see the polyglot
+guard at the top of this file).
 
 Two jobs, both automatic and both idempotent, run at the top of a kickoff so the
 session opens on a clean tree instead of ending on a tired questionnaire:
