@@ -76,12 +76,12 @@ finding alone, so overlap shows only in the SET: fold items in the same FILE, an
 are two halves of one RULE. `edit --text` on the survivor FIRST and `cancel --why` on the
 source after — the block ceiling refuses the union once the source's text is gone.
 
-**Encode into the system:** a correction the user repeated or a check they did by hand is
-a system signal, not an instance signal — propose encoding it (project skill, hook rule,
-test) so it holds in every future iteration.
+**Encode into the system:** a repeated correction, a manual check, or a **mechanical** error
+fixed once is a system signal — propose encoding it (skill, hook, test, lint). Name
+`/retro` for a mechanical error when `~/.claude/skills/retro/` or a plugin ships it.
 **Done when:** every durable fact has a memory file (pointer in `MEMORY.md`), every open
 item names its survival gate, no RECURRING item is parked, what a package queued was
-consolidated, and every recurring correction has an encoding proposed or discarded.
+consolidated, and every system signal has an encoding proposed or discarded.
 
 ## 3. Update the repo documentation
 
