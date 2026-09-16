@@ -76,9 +76,10 @@ finding alone, so overlap shows only in the SET: fold items in the same FILE, an
 are two halves of one RULE. `edit --text` on the survivor FIRST and `cancel --why` on the
 source after — the block ceiling refuses the union once the source's text is gone.
 
-**Encode into the system:** a repeated correction, a manual check, or a **mechanical** error
-fixed once is a system signal — propose encoding it (skill, hook, test, lint). Name
-`/retro` for a mechanical error when `~/.claude/skills/retro/` or a plugin ships it.
+**Encode into the system:** a repeated correction, a manual check, or a **mechanical**
+error (fixed pattern, banned call, misplaced file) corrected once is a system signal —
+propose encoding it (skill, hook, test, lint). Name `/retro` for one when
+`~/.claude/skills/retro/` exists.
 **Done when:** every durable fact has a memory file (pointer in `MEMORY.md`), every open
 item names its survival gate, no RECURRING item is parked, what a package queued was
 consolidated, and every system signal has an encoding proposed or discarded.
