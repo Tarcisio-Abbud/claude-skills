@@ -113,8 +113,9 @@ VALUE_FLAGS = ("--dir",)
 # invocation is not one, and unquoted it looks exactly like one.
 READERS = ("echo", "printf", "grep", "rg", "cat", "head", "tail", "less",
            "man", "which", "type", "comm", "diff")
-# Where one invocation ends inside a compound command. Only the shapes `shlex`
-# hands back as their own token are listed, because only those can be seen here.
+# Where one invocation ends inside a compound command. `tokenize` below is what
+# makes these reachable: the plain splitter keeps `CHORE;` in one word, and every
+# boundary written without a space around it would be invisible here.
 SEPARATORS = (";", "|", "||", "&", "&&")
 # A subcommand invoked with `--help` writes nothing. Counted as a write it reports
 # a mismatch on every session that looked the flags up — measured, 3 of 9 rows on
@@ -216,6 +217,25 @@ def block_text(block):
     return ""
 
 
+def tokenize(command):
+    """The command split as the shell splits it, punctuation and all.
+
+    `shlex.split` breaks on WHITESPACE and never on a shell metacharacter, so
+    `add X; tk-queue done --help` hands back `X;` as one word and the boundary
+    between the two invocations is not in the token list at all. Unspaced `;` is
+    how this house writes a batched command, so that was the common shape, not
+    the exotic one. `punctuation_chars` gives `();<>|&` tokens of their own while
+    leaving a metacharacter inside quotes part of its word — which is the
+    distinction `SEPARATORS` needs and the plain splitter cannot make.
+
+    Raises `ValueError` on quoting it cannot close, exactly as `shlex.split`
+    does; the caller reports that command unconfirmed.
+    """
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True         # words, not the lexer's default atoms
+    return list(lexer)                    # `commenters` is already `#` by default
+
+
 def queue_writes(command):
     """The writing `tk-queue` subcommands this shell command invokes, in order.
 
@@ -231,7 +251,7 @@ def queue_writes(command):
         # command exists to count.
         return []
     try:
-        tokens = shlex.split(command, comments=True)
+        tokens = tokenize(command)
     except ValueError as exc:
         found = [sub for sub in SUCCESS
                  if re.search(rf"{re.escape(QUEUE_BIN)}[^;&|\n]*?\b{sub}\b", command)]
@@ -251,10 +271,13 @@ def queue_writes(command):
             position += 2 if flag in VALUE_FLAGS else 1
         if position < len(rest) and rest[position] in SUCCESS:
             segment = []
-            for token in rest[position + 1:]:
-                if token in SEPARATORS:
+            for later in rest[position + 1:]:
+                # The binary's own name ends the segment too. A newline joins two
+                # commands with no token between them, and without this the
+                # `--help` of the NEXT invocation would suppress THIS write.
+                if later in SEPARATORS or os.path.basename(later) == QUEUE_BIN:
                     break
-                segment.append(token)
+                segment.append(later)
             if not any(flag in segment for flag in HELP_FLAGS):
                 out.append((rest[position], ""))
     return out

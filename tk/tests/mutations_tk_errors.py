@@ -59,6 +59,10 @@ TWO_CALLS = "TheQueueInvariant.test_two_invocations_in_one_command_are_counted_a
 NO_OP = "TheQueueInvariant.test_an_honest_no_op_counts_as_a_success_line"
 UNPARSED = "TheQueueInvariant.test_an_untokenizable_command_carrying_the_bin_is_unconfirmed"
 NOT_MINE = "TheQueueInvariant.test_an_untokenizable_command_without_the_bin_is_silent"
+UNSPACED = "TheQueueInvariant.test_an_unspaced_separator_still_starts_an_invocation"
+LATER_HELP = "TheQueueInvariant.test_a_later_help_does_not_suppress_an_earlier_write"
+QUOTED_SEP = "TheQueueInvariant.test_a_separator_inside_quotes_is_not_a_boundary"
+NEWLINE = "TheQueueInvariant.test_a_newline_between_two_calls_ends_the_first_one"
 ANCHORED = "TheQueueInvariant.test_a_success_line_quoted_back_does_not_confirm_another_call"
 BOTH = "TheQueueInvariant.test_a_refused_write_lands_in_both_classes"
 
@@ -173,6 +177,30 @@ MUTATIONS = [
      """            if not any(flag in segment for flag in HELP_FLAGS) and not out:
                 out.append((rest[position], ""))""",
      [TWO_CALLS], ERRORS),
+
+    ("the plain splitter is back, and an unspaced `;` hides the call after it",
+     """    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True         # words, not the lexer's default atoms
+    return list(lexer)                    # `commenters` is already `#` by default""",
+     "    return shlex.split(command, comments=True)",
+     [UNSPACED], ERRORS),
+
+    ("only a separator ends the segment, so a newline-joined `--help` reaches back",
+     "                if later in SEPARATORS or os.path.basename(later) == QUEUE_BIN:",
+     "                if later in SEPARATORS:",
+     [NEWLINE], ERRORS),
+
+    ("the segment runs to the end of the command, and any later `--help` reaches back",
+     """                if later in SEPARATORS or os.path.basename(later) == QUEUE_BIN:
+                    break
+""",
+     "",
+     [LATER_HELP, NEWLINE], ERRORS),
+
+    ("`--help` is matched inside a token, so the item's own text can suppress it",
+     "            if not any(flag in segment for flag in HELP_FLAGS):",
+     '            if not any(flag in " ".join(segment) for flag in HELP_FLAGS):',
+     [QUOTED_SEP], ERRORS),
 
     ("a name read by another command counts as an invocation",
      """        if index and os.path.basename(tokens[index - 1]) in READERS:

@@ -267,6 +267,42 @@ class TheQueueInvariant(TranscriptFixture):
         self.assertEqual(self.counts(run), (0, 1))
         self.assertIn("edit", run.stdout)
 
+    def test_an_unspaced_separator_still_starts_an_invocation(self):
+        # `shlex.split` breaks on whitespace and never on a metacharacter, so
+        # `ready;tk-queue` arrived as ONE word and the call after it was missed
+        # outright. Unspaced `;` is how this house batches commands.
+        run = self.transcript_for("echo ready;tk-queue add 'an item' --class CHORE",
+                                  "tk-queue: the WIP cap is full")
+        self.assertEqual(self.counts(run), (0, 1))
+        self.assertIn("add", run.stdout)
+
+    def test_a_later_help_does_not_suppress_an_earlier_write(self):
+        # The reported defect, end to end: the boundary after `CHORE` was not a
+        # token, so the `--help` of the SECOND command landed inside the first
+        # command's segment and the real, failed `add` was reported as clean.
+        run = self.transcript_for(
+            "tk-queue add 'an item' --class CHORE; tk-queue done --help",
+            "tk-queue: the WIP cap is full")
+        self.assertEqual(self.counts(run), (0, 1))
+        self.assertIn("add", run.stdout)
+
+    def test_a_newline_between_two_calls_ends_the_first_one(self):
+        # A newline is whitespace to the tokenizer and leaves no separator token
+        # behind, so the binary's own name has to end the segment. Without it the
+        # second call's `--help` suppresses the first call's write.
+        run = self.transcript_for(
+            "tk-queue add 'an item' --class CHORE\ntk-queue done --help",
+            "tk-queue: the WIP cap is full")
+        self.assertEqual(self.counts(run), (0, 1))
+        self.assertIn("add", run.stdout)
+
+    def test_a_separator_inside_quotes_is_not_a_boundary(self):
+        # The other direction: the item's own text may carry a `;`, and a reader
+        # that split on the raw character would cut the segment inside it.
+        run = self.transcript_for("tk-queue add 'first; then --help' --class CHORE",
+                                  "tk-queue: the WIP cap is full")
+        self.assertEqual(self.counts(run), (0, 1))
+
     def test_an_honest_no_op_counts_as_a_success_line(self):
         # `release` on an unclaimed item and `done` on an item already logged are
         # reported by tk-queue in their own words. Reading them as failures would
