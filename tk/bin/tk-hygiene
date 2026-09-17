@@ -605,9 +605,12 @@ def holding_worktree(repo, name):
     for record in rows[1:]:
         if record.get("branch") != ref:
             continue
-        path = record.get("worktree")
+        # the porcelain always names a path, and a record without one is left
+        # to `git branch -D` to refuse rather than reasoned about here: there is
+        # nothing safe to point a removal at
+        path = record.get("worktree", "")
         if not path:
-            return None, "checked out in a worktree git named without a path"
+            continue
         if any(under(ground, path) for ground in standing_on()):
             return None, f"checked out in {path}, which this run is standing in"
         return path, None

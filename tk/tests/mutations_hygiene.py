@@ -77,8 +77,80 @@ MUTATIONS = [
      'first_line(err, code, "git branch -D")))',
      '        if False:\n            out.append(("kept", name, '
      'first_line(err, code, "git branch -D")))',
-     ["TestPrune.test_a_branch_checked_out_in_another_worktree_survives_the_refusal"],
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_a_branch_checked_out_in_the_repositorys_own_tree_is_kept"],
      HYGIENE),
+
+    # --- the linked worktree standing on a prunable branch -----------------
+    ("T420 hygiene the worktree is never looked for, so the branch stays under it",
+     "        tree, held = holding_worktree(repo, name)",
+     "        tree, held = None, None",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_a_linked_worktree_is_removed_and_then_the_branch_is_deleted"],
+     HYGIENE),
+
+    ("T420 hygiene the removal is forced, so unsaved work in the worktree is deleted",
+     '            code, _, err = git(repo, "worktree", "remove", tree)',
+     '            code, _, err = git(repo, "worktree", "remove", "--force", tree)',
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_a_worktree_carrying_unsaved_work_is_kept_rather_than_forced"],
+     HYGIENE),
+
+    ("T420 hygiene the MAIN working tree is a candidate for removal like any other",
+     "    for record in rows[1:]:", "    for record in rows:",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_a_branch_checked_out_in_the_repositorys_own_tree_is_kept"],
+     HYGIENE),
+
+    # --- the ground this run is standing on --------------------------------
+    ("T420 hygiene the run removes the directory it is standing in",
+     "        if any(under(ground, path) for ground in standing_on()):",
+     "        if False:",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_the_directory_the_run_was_fired_from_is_never_removed",
+      "TestTheWorktreeStandingOnTheBranch."
+      "test_the_worktree_this_bin_is_installed_in_is_never_removed"],
+     HYGIENE),
+
+    ("T420 hygiene the session's own directory is not one of the grounds",
+     "        grounds.append(os.getcwd())", "        grounds.append(own_tree())",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_the_directory_the_run_was_fired_from_is_never_removed"],
+     HYGIENE),
+
+    ("T420 hygiene the tree this bin is installed in is not one of the grounds",
+     "    grounds = [own_tree()]", "    grounds = []",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_the_worktree_this_bin_is_installed_in_is_never_removed"],
+     HYGIENE),
+
+    ("T420 hygiene a directory INSIDE the worktree is not read as standing in it",
+     "    return child == parent or child.startswith(parent + os.sep)",
+     "    return child == parent",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_the_directory_the_run_was_fired_from_is_never_removed"],
+     HYGIENE),
+
+    # --- --dry-run ----------------------------------------------------------
+    ("T420 hygiene --dry-run is parsed and the local branch is deleted anyway",
+     '        if dry_run:\n            out.append(("would-prune", name, why + (',
+     '        if False:\n            out.append(("would-prune", name, why + (',
+     ["TestDryRun.test_nothing_is_pruned_and_the_verdicts_are_the_same",
+      "TestDryRun.test_the_worktree_is_left_standing"], HYGIENE),
+
+    ("T420 hygiene --dry-run is parsed and the remote branch is deleted anyway",
+     '        if dry_run:\n            out.append(("would-delete", name,',
+     '        if False:\n            out.append(("would-delete", name,',
+     ["TestDryRun.test_the_remote_branch_is_left_where_it_was"], HYGIENE),
+
+    ("T420 hygiene the flag never reaches the local step",
+     "        rows = prune(repo, dry_run=args.dry_run)", "        rows = prune(repo)",
+     ["TestDryRun.test_nothing_is_pruned_and_the_verdicts_are_the_same"], HYGIENE),
+
+    ("T420 hygiene the flag never reaches the remote step",
+     "            rows = prune_remote(repo, dry_run=args.dry_run)",
+     "            rows = prune_remote(repo)",
+     ["TestDryRun.test_the_remote_branch_is_left_where_it_was"], HYGIENE),
 
     # --- the content test, for what a squash or a rebase rewrote -----------
     ("T281 hygiene a branch that fails the ancestry test is never asked about its content",
@@ -220,6 +292,34 @@ MUTATIONS = [
      '        p = subprocess.run(("gh", "api", f"repos/{slug}",',
      '        p = subprocess.run(("/nonexistent/gh", "api", f"repos/{slug}",',
      ["TestNoNetwork.test_the_forge_cli_is_resolved_through_path_so_the_fake_is_reached"],
+     HYGIENE),
+
+    # --- the python/bash polyglot guard at the top of the bin ---------------
+    # Four tests stood here with no entry naming them, which the runner reports
+    # as UNPROVED and exits 1 over — so the acceptance criterion "the mutation
+    # harness is green" could not be met by any change to the prune. The guard
+    # is falsifiable in four independent ways, one per test.
+    ("T420 hygiene the shell guard lets the interpreter through instead of exiting",
+     'exit 64\n":"""', 'exit 0\n":"""',
+     ["BashGuardTest.test_bash_invocation_exits_nonzero_with_a_clear_message",
+      "BashGuardTest.test_sh_invocation_exits_nonzero_with_a_clear_message"], HYGIENE),
+
+    ("T420 hygiene the shell guard exits without saying which interpreter to use",
+     'echo "tk-hygiene: run it with python3 or directly, not via bash" >&2',
+     'echo "tk-hygiene: no" >&2',
+     ["BashGuardTest.test_bash_invocation_exits_nonzero_with_a_clear_message",
+      "BashGuardTest.test_sh_invocation_exits_nonzero_with_a_clear_message"], HYGIENE),
+
+    # the polyglot's python half: `":"` is a string literal shell runs as `:`,
+    # so the guard still works under bash and sh — and python now meets `echo`
+    # on the next line as a syntax error, which is the half this test holds
+    ("T420 hygiene the guard is shell-only, so python cannot parse the file at all",
+     '""":"', '":"',
+     ["BashGuardTest.test_python3_help_is_unaffected_by_the_guard"], HYGIENE),
+
+    ("T420 hygiene __doc__ is left to the guard's own text",
+     '__doc__ = """tk-hygiene —', '_guard_text = """tk-hygiene —',
+     ["BashGuardTest.test_module_doc_is_the_real_docstring_not_the_guard_text"],
      HYGIENE),
 ]
 
