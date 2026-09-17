@@ -59,8 +59,43 @@ WHAT IS NEVER PRUNED, and why each guard exists:
   - a branch with no upstream — nothing ever said it was merged, so there is no
     evidence to act on. A local-only branch is work in progress by definition;
   - a branch whose upstream is alive — the ordinary case, and silent here;
-  - a branch checked out in any worktree — git refuses, and the refusal is
-    reported rather than forced.
+  - a branch checked out in this repository's OWN working tree — there is no
+    second tree to take it out of, so git's refusal is what the report carries;
+  - a branch whose LINKED worktree will not come away cleanly — next paragraph.
+
+A PRUNABLE BRANCH CHECKED OUT IN A LINKED WORKTREE has that worktree removed
+first, and is then deleted like any other. A lane's worktree outlives the merge
+of its pull request, and the branch under it cannot be pruned for as long as the
+directory stands: 41 of them were holding branches on this machine on
+2026-09-16, which is what the local step was reporting `kept` about. The removal
+is `git worktree remove`, NEVER `--force`: a worktree carrying modified or
+untracked files is somebody's unsaved work, git refuses to remove it, and the
+branch is kept with that refusal as its reason. The worktree is found through
+`git worktree list --porcelain` and matched on `branch refs/heads/<name>`, never
+by guessing at a path from the branch's name — and the MAIN working tree, which
+is the first record git prints, is never a candidate for removal.
+
+THE TREE THIS RUN IS STANDING IN is never removed, however prunable its branch.
+A kickoff fires this bin from whatever directory the session opened in, and
+removing that directory leaves every later command of that session failing on a
+working directory that no longer exists — measured 2026-09-16: `git worktree
+remove` pointed at the cwd succeeds, and the shell after it cannot so much as
+run `pwd`. Both the current directory and the tree this bin is INSTALLED in are
+held back, and the branch is reported kept with that as its reason.
+
+NOTHING IS DELETED UNDER `--dry-run`, a permanent flag rather than a debugging
+one: the same run, with every irreversible act named instead of done. A branch
+that would go reads `would-prune` rather than `pruned`, and a remote branch
+`would-delete` rather than `deleted`, because these lines are quoted one at a
+time into a kickoff's own report — and there, a line reading `pruned` over a
+branch still on disk is a lie that no banner above it can reach.
+
+REACHING THE SAME VERDICT costs the dry run one read-only question. A worktree
+carrying modified or untracked files is refused by the real removal and its
+branch is kept; a dry run that only named the removal would answer
+`would-prune` over a branch the run that acts keeps. So it asks
+`git status --porcelain` inside the tree first — see `removal_blocked` — and
+keeps the branch with that as its reason.
 
 ANCESTRY IS NOT THE WHOLE QUESTION. A squash merge replays the branch as one new
 commit and a rebase replays it as several, and after either, no commit of the
@@ -438,7 +473,7 @@ def remote_heads(repo):
     return heads, None
 
 
-def prune_remote(repo):
+def prune_remote(repo, dry_run=False):
     """[(action, branch, detail)] — what this repo's per-ticket branches did.
 
     Empty when there is no candidate, which is the ordinary case and the one
@@ -467,6 +502,10 @@ def prune_remote(repo):
         if held is not None:
             out.append(("kept", name, held))
             continue
+        if dry_run:
+            out.append(("would-delete", name,
+                        f"already in {default}, and no PR's head"))
+            continue
         code, _, err = git(repo, "push", f"--force-with-lease=refs/heads/{name}:{sha}",
                            "origin", "--delete", name)
         if code != 0:
@@ -490,7 +529,122 @@ def audit(named):
     return answers
 
 
-def prune(repo):
+def under(child, parent):
+    """Whether `child` is `parent` or sits inside it, both resolved of symlinks.
+
+    String comparison alone answers yes to `/a/bc` under `/a/b`, and this decides
+    whether a directory is about to be deleted out from under the running
+    session, so the separator is part of the question.
+    """
+    try:
+        child, parent = os.path.realpath(child), os.path.realpath(parent)
+    except OSError:
+        return False
+    return child == parent or child.startswith(parent + os.sep)
+
+
+def standing_on():
+    """The directories this run would pull out from under itself by deleting.
+
+    Two, and they are rarely the same one: the directory the session fired this
+    bin FROM — a kickoff runs wherever the session opened, which on this machine
+    is routinely a lane's worktree — and the tree this bin is INSTALLED in, which
+    is a clone that may itself be a linked worktree.
+
+    A cwd that has already been deleted raises rather than answering, and it is
+    then no longer a directory anything here could delete.
+    """
+    grounds = [own_tree()]
+    try:
+        grounds.append(os.getcwd())
+    except OSError:
+        pass
+    return grounds
+
+
+def worktrees(repo):
+    """([record], None) for `git worktree list --porcelain`, or (None, why).
+
+    A record is the porcelain's own keys — `worktree`, `HEAD`, `branch`,
+    `detached`, `locked`, `prunable` — for one tree, and the list is in git's
+    order, which puts the MAIN working tree first and every linked one after it.
+    That order is what tells the two apart here; a linked tree is not otherwise
+    distinguishable from the main one by its path.
+    """
+    code, out, err = git(repo, "worktree", "list", "--porcelain")
+    if code != 0:
+        return None, first_line(err, code, "git worktree list")
+    found, current = [], {}
+    for line in out.splitlines():
+        if not line.strip():
+            if current:
+                found.append(current)
+            current = {}
+            continue
+        key, _, value = line.partition(" ")
+        current[key] = value
+    if current:
+        found.append(current)
+    return found, None
+
+
+def holding_worktree(repo, name):
+    """(path, None) for the LINKED worktree `name` is checked out in.
+
+    (None, None) when no linked worktree holds it — the branch is free, and the
+    delete may go ahead. (None, reason) when one holds it and must not be
+    removed, which is a branch KEPT with that reason in the report.
+
+    The match is on the porcelain's `branch refs/heads/<name>`, never on a path
+    built from the branch's name: this answer is what a `rm -rf` of a directory
+    is pointed at, and a name that merely looks like a worktree's is not the same
+    fact as git saying that tree has that branch checked out.
+    """
+    rows, err = worktrees(repo)
+    if rows is None:
+        return None, f"its worktrees could not be listed: {err}"
+    ref = f"refs/heads/{name}"
+    # `rows[1:]` — the first record is the main working tree, and there is no
+    # second tree to take the branch out of. Left in, this would point
+    # `git worktree remove` at the repository itself, which git refuses (rc 128,
+    # "is a main working tree"); the report that matters there is git's own
+    # refusal of `branch -D`, which names the tree holding the branch
+    for record in rows[1:]:
+        if record.get("branch") != ref:
+            continue
+        # the porcelain always names a path, and a record without one is left
+        # to `git branch -D` to refuse rather than reasoned about here: there is
+        # nothing safe to point a removal at
+        path = record.get("worktree", "")
+        if not path:
+            continue
+        if any(under(ground, path) for ground in standing_on()):
+            return None, f"checked out in {path}, which this run is standing in"
+        return path, None
+    return None, None
+
+
+def removal_blocked(tree):
+    """Why `git worktree remove` would refuse `tree`, or None if it would not.
+
+    The run that ACTS learns this by attempting the removal and reporting git's
+    own refusal. A dry run may not attempt it, and predicting `would-prune` over
+    a tree the real run keeps is exactly the lie the flag exists to prevent — so
+    the same question is asked read-only: `status --porcelain` is empty for a
+    tree git will take away, and every line of it is work that a forced removal
+    would destroy. A status that cannot be read at all is not a clean tree: the
+    branch is kept, and the report says the state could not be read.
+    """
+    code, out, err = git(tree, "status", "--porcelain")
+    if code != 0:
+        return "its state could not be read: " + first_line(err, code,
+                                                            "git status")
+    if out:
+        return "it contains modified or untracked files, and this is unforced"
+    return None
+
+
+def prune(repo, dry_run=False):
     """[(action, branch, detail)] — what this repo's branches did, and why."""
     rows, err = branches(repo)
     if rows is None:
@@ -507,11 +661,39 @@ def prune(repo):
         if reason is not None:
             out.append(("kept", name, reason))
             continue
+        tree, held = holding_worktree(repo, name)
+        if held is not None:
+            out.append(("kept", name, held))
+            continue
+        why = f"merged into {default}, remote gone"
+        if dry_run:
+            # the same verdict as the run that acts, which means asking the
+            # worktree's state here: the wet run below keeps the branch when
+            # the removal is refused, and a dry run that skipped this would
+            # answer `would-prune` over a branch it will not touch
+            blocked = removal_blocked(tree) if tree else None
+            if blocked is not None:
+                out.append(("kept", name,
+                            f"its worktree {tree} would not come away: "
+                            + blocked))
+                continue
+            out.append(("would-prune", name, why + (
+                f"; the worktree {tree} would be removed first, unforced"
+                if tree else "")))
+            continue
+        if tree is not None:
+            code, _, err = git(repo, "worktree", "remove", tree)
+            if code != 0:
+                out.append(("kept", name, f"its worktree {tree} would not come "
+                            "away: " + first_line(err, code,
+                                                  "git worktree remove")))
+                continue
+            why += f"; its worktree {tree} was removed first"
         code, _, err = git(repo, "branch", "-D", name)
         if code != 0:
             out.append(("kept", name, first_line(err, code, "git branch -D")))
         else:
-            out.append(("pruned", name, f"merged into {default}, remote gone"))
+            out.append(("pruned", name, why))
     return out
 
 
@@ -532,15 +714,27 @@ def report_forge(answers):
         print(line)
 
 
+def action_width(blocks):
+    """How far to pad the action column, from the actions actually present.
+
+    Derived rather than written down: `would-prune` is half again as long as
+    `pruned`, and a constant beside a growing set of verbs is the next line to
+    go stale.
+    """
+    return max((len(action) for _, rows in blocks for action, _, _ in rows),
+               default=0)
+
+
 def report_branches(pruned):
     print("\n## local branches")
     if not pruned:
         print("\nno branch with a gone upstream and none without one — nothing to do")
         return
+    width = action_width(pruned)
     for repo, rows in pruned:
         print(f"\n{repo}")
         for action, name, detail in rows:
-            print(f"  {action.ljust(6)}  {name}  ({detail})")
+            print(f"  {action.ljust(width)}  {name}  ({detail})")
 
 
 def report_remote(rows):
@@ -553,10 +747,11 @@ def report_remote(rows):
     if not rows:
         return
     print("\n## remote branches — the lane's per-ticket ones")
+    width = action_width(rows)
     for repo, out in rows:
         print(f"\n{repo}")
         for action, name, detail in out:
-            print(f"  {action.ljust(7)}  {name}  ({detail})")
+            print(f"  {action.ljust(width)}  {name}  ({detail})")
 
 
 def load_site():
@@ -581,6 +776,11 @@ def main(argv=None):
         help="skip the remote step. It is the only part of this bin that reaches "
              "the network for git, and on a slow or absent one a kickoff would "
              "wait for it")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="report what would happen and change nothing: no worktree removed, "
+             "no branch deleted here or on the remote. A branch that would go "
+             "reads `would-prune`, a remote one `would-delete`")
     args = parser.parse_args(argv)
 
     site = load_site()
@@ -597,7 +797,7 @@ def main(argv=None):
 
     pruned = []
     for repo in repos:
-        rows = prune(repo)
+        rows = prune(repo, dry_run=args.dry_run)
         if rows:
             pruned.append((repo, rows))
     report_branches(pruned)
@@ -605,7 +805,7 @@ def main(argv=None):
     remote = []
     if not args.no_remote:
         for repo in repos:
-            rows = prune_remote(repo)
+            rows = prune_remote(repo, dry_run=args.dry_run)
             if rows:
                 remote.append((repo, rows))
     report_remote(remote)

@@ -241,10 +241,16 @@ tk/
                                   ancestry or after a squash: a local branch whose remote
                                   is gone, and a lane's spec/<m>/T<id> left on the remote,
                                   which no PR's head ever was and the forge never deletes.
-                                  `--no-remote` skips that second one, the only step here
-                                  that reaches the network for git. Exit 0 green, 1 a box
-                                  still off, 3 a repo it could not audit, 2 the run did
-                                  not happen
+                                  A local branch held by a LINKED worktree has that
+                                  worktree removed first — never `--force`, so a tree
+                                  carrying unsaved work keeps its branch, and neither the
+                                  main working tree nor the directory the run was fired
+                                  from is ever removed. `--no-remote` skips the remote
+                                  step, the only one here that reaches the network for
+                                  git; `--dry-run` names every irreversible act instead of
+                                  doing it (`would-prune`, `would-delete`). Exit 0 green,
+                                  1 a box still off, 3 a repo it could not audit, 2 the
+                                  run did not happen
   bin/tk-collisions               merges each pair of open branches for real, so a pair
                                   that cannot both land is named before either does; with
                                   `--against`, one UNION per other branch instead, graded by
