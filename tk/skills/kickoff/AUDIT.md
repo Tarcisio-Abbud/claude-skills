@@ -3,10 +3,20 @@
 Read from step 4 of `AFK.md` beside this file, on a package whose items came from a spec and
 ticket set written in this flow — a **wave**. It stands between step 3's claim and that step's
 first run, and it is the only step that halts a package with no run fired. A package assembled
-from an aged queue has no spec to read, and the block owed to step 6 says so. Skipping is
-allowed only for a wave of at most two tickets judged mechanical and fully specified — a bet
-with no hedge, stated in the block with what was read to judge it — and a wave re-sliced after
-a REGRILL refuses the bet.
+from an aged queue has no spec to read, and the block owed to step 6 says so. Skipping an
+unaudited wave is allowed only for a wave of at most two tickets judged mechanical and fully
+specified — a bet with no hedge, stated in the block with what was read to judge it — and a
+wave re-sliced after a REGRILL refuses the bet.
+
+**The audit runs once per wave, not once per package.** A wave sliced into several packages
+is audited by the first package to reach this step, before its first implement; a later package
+over the SAME spec inherits that audit and fires no lens. The record is on the tracker: the
+orchestrator that runs the audit comments `Wave audit <date>` on every ticket it read, and the
+orchestrator that finds that comment reports **skipped** to step 6, naming the date and the
+ticket it read it on — an inherited audit, not the two-ticket bet above. Budget about 50pp of
+the 5h window for an eight-ticket wave: one measured run spent 37 agents and 3.5M subagent
+tokens over three items, more than implementing those items cost. A wave re-sliced after a
+REGRILL is a new wave, and a new wave is audited again.
 
 ## The lenses and the verifiers
 
@@ -52,7 +62,8 @@ release what the package was holding per step 3, and hand the halt to step 6.
 block is for.
 
 **Done when:** the block step 6 is owed names one of four states — **ran**, each finding under
-its outcome with its verifier's verdict; **skipped**, with the judgement; **partial** — the
-lenses delivered and the verifier died: re-dispatch it, else every unverdicted finding goes to
+its outcome with its verifier's verdict; **skipped**, with the judgement or the inherited
+audit's date; **partial** — the lenses delivered and the verifier died: re-dispatch it, else
+every unverdicted finding goes to
 backlog as *unverified by the audit*, counted; or **failed** — a lens nobody could make run, and
 the wave is unaudited.

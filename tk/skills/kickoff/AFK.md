@@ -189,9 +189,11 @@ contract of its own.
 A package whose items came from a spec and ticket set written in this flow — a **wave** — is
 audited before any of it is implemented. The procedure is `AUDIT.md` beside this file: the
 three lenses, one verifier per finding, the four outcomes and the REGRILL that halts the
-package. Read it there, whole, and hand its block to step 6. Every `--criterion` the audit
-reads is anchored by `../verify/SKILL.md`, *The anchor outlives the tree* — one of its three
-rotten shapes — and this is where the wording is still cheap to change.
+package. Read it there, whole, and hand its block to step 6. It runs once per wave, not once
+per package: over a spec an earlier package already audited, report that audit's date and fire
+no lens. Every `--criterion` the audit reads is anchored by `../verify/SKILL.md`, *The anchor
+outlives the tree* — one of its three rotten shapes — and this is where the wording is still
+cheap to change.
 
 **Done when:** `AUDIT.md`'s own "Done when" holds — the block step 6 is owed names one of its
 four states.
