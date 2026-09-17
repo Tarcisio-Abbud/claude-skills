@@ -205,6 +205,11 @@ own. An approved solo item leaves the queue here —
 `tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>"` — and an item verify turned into a
 DECISION stays, carrying its handoff.
 
+**The package's handoff hangs on the item that closes LAST** — `done` deletes the briefing of
+the item it closes, so a head-item handoff dies at the first close. Before each `done`, run
+`ls "<queue dir>"/handoff-T*.md`. Where the closing item holds the package's briefing, rewrite
+it on the item that now closes last.
+
 A lane holding its own pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file.
 
 A lane item is verified BEFORE it reaches the shared branch — one cycle per item, in order —
