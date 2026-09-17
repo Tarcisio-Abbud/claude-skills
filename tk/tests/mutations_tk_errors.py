@@ -86,7 +86,9 @@ BLANK_LINES = "TheQueueInvariant.test_two_blank_lines_separate_as_one_does"
 GLUED = "TheQueueInvariant.test_a_separator_glued_to_the_newline_still_separates"
 QUOTED_NEWLINE = ("TheQueueInvariant."
                   "test_a_newline_inside_the_items_own_text_is_not_a_boundary")
-COMMENT = "TheQueueInvariant.test_a_trailing_comment_swallows_the_newline_after_it"
+COMMENT = ("TheQueueInvariant."
+           "test_a_trailing_comment_does_not_eat_the_newline_after_it")
+HASH_WORD = "TheQueueInvariant.test_a_hash_inside_a_word_is_not_a_comment"
 ANCHORED = "TheQueueInvariant.test_a_success_line_quoted_back_does_not_confirm_another_call"
 BOTH = "TheQueueInvariant.test_a_refused_write_lands_in_both_classes"
 TWO_LINES = "TheQueueInvariant.test_two_writes_of_one_kind_need_two_success_lines"
@@ -257,7 +259,7 @@ MUTATIONS = [
     ("a run of punctuation is not collapsed, so a blank line stops separating",
      '''    return ["\\n" if token and "\\n" in token and set(token) <= set(PUNCTUATION)
             else token
-            for token in lexer]           # `commenters` is already `#` by default''',
+            for token in lexer]''',
      "    return list(lexer)",
      [BLANK_LINES, GLUED], ERRORS),
 
@@ -279,13 +281,14 @@ MUTATIONS = [
     lexer = None""",
      [QUOTED_NEWLINE, UNSPACED], ERRORS),
 
-    ("only a separator ends the segment, so a commented line lets `--help` back",
-     "                if later in SEPARATORS or os.path.basename(later) == QUEUE_BIN:",
-     "                if later in SEPARATORS:",
-     [COMMENT], ERRORS),
+    ("the comments come back on, and a `#` eats the newline that ends the line",
+     '    lexer.commenters = ""                 '
+     '# `#` must not eat the newline after it\n',
+     "",
+     [COMMENT, HASH_WORD], ERRORS),
 
     ("the segment runs to the end of the command, and any later `--help` reaches back",
-     """                if later in SEPARATORS or os.path.basename(later) == QUEUE_BIN:
+     """                if later in SEPARATORS:
                     break
 """,
      "",

@@ -452,13 +452,29 @@ class TheQueueInvariant(TranscriptFixture):
             "tk-queue: the WIP cap is full")
         self.assertEqual(self.headline(run), (0, 1, 0))
 
-    def test_a_trailing_comment_swallows_the_newline_after_it(self):
-        # `shlex` reads a `#` comment to the end of the line, newline included,
-        # so the separator never reaches the token list. The binary's own name
-        # is what ends the segment here.
+    def test_a_trailing_comment_does_not_eat_the_newline_after_it(self):
+        # `shlex`'s commenter reads a `#` to the end of the line, NEWLINE
+        # INCLUDED, so the separator never reached the token list and the flag
+        # of the next line landed inside this write's segment. The binary's own
+        # name ended the segment only when the next line was another
+        # `tk-queue` — half a fix, and the other half is the second case here.
+        # Comments are off in the lexer now, which closes both.
+        for label, later in (("another invocation", "tk-queue done --help"),
+                             ("anything else", "df -h /workspace")):
+            with self.subTest(label):
+                run = self.transcript_for(
+                    "tk-queue add 'an item' --class CHORE  # queue it\n" + later,
+                    "tk-queue: the WIP cap is full")
+                self.assertEqual(self.headline(run), (0, 1, 0))
+                self.assertIn("add", run.stdout)
+
+    def test_a_hash_inside_a_word_is_not_a_comment(self):
+        # The price of turning comments off, and the measured surprise: a `#`
+        # in `${N##*/}` opens no comment in a shell either, and the commenter
+        # was eating the rest of that line — a real invocation with it. Two of
+        # the 150 largest transcripts on this machine gained a row this way.
         run = self.transcript_for(
-            "tk-queue add 'an item' --class CHORE  # queue it\n"
-            "tk-queue done --help",
+            'n=${N##*/}; tk-queue add "an item #$n" --class CHORE',
             "tk-queue: the WIP cap is full")
         self.assertEqual(self.headline(run), (0, 1, 0))
         self.assertIn("add", run.stdout)

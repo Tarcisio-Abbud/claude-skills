@@ -45,12 +45,12 @@ what makes the count honest and also what makes it brittle: reword a line in
 shut — it asserts every shape here is still a literal in `tk/bin/tk-queue`.
 
 WHAT COUNTS AS AN INVOCATION. The command string is tokenized as the shell would
-(`shlex`, comments honoured), and a token whose basename is `tk-queue` names one,
-the subcommand being the first bare word after it — `--dir` and its value
-skipped, as the parser skips them. A mention inside quotes never matches: the
-shell keeps it in one token. Invocations are COUNTED, not merely found, and one
-success line confirms one of them: a presence check let the first `added` line
-answer for both halves of a batched command.
+(`shlex`, with comments OFF — see `tokenize`), and a token whose basename is
+`tk-queue` names one, the subcommand being the first bare word after it —
+`--dir` and its value skipped, as the parser skips them. A mention inside quotes
+never matches: the shell keeps it in one token. Invocations are COUNTED, not
+merely found, and one success line confirms one of them: a presence check let
+the first `added` line answer for both halves of a batched command.
 
 THE BLIND SPOT IN THAT COUNT: a loop. `for id in T1 T2 T3; do tk-queue bump
 $id; done` is ONE invocation in the command text and three at runtime, so a
@@ -358,12 +358,25 @@ def tokenize(command):
     its own EXCEPT when another metacharacter sits against it — `;\n` lexes as
     one run — which is what the collapse below is for.
 
+    COMMENTS ARE OFF, and the newline is why. `shlex`'s commenter eats the `#`
+    AND the newline that ends it, so a trailing comment left two invocations
+    with no boundary between them and the `--help` of the second suppressed the
+    first. The price was measured over the 150 largest transcripts on this
+    machine, and it is not the one expected: in theory a commented-out
+    invocation (`# tk-queue bump T001`) now counts as a real write, and there
+    were ZERO of those. What actually changed was 4 transcripts — two gained a
+    real `tk-queue` invocation the commenter had been swallowing (a `#` in
+    `${N##*/}` opens no comment in a shell, and the whole line went with it),
+    and two gained an advisory class 3 row, where an apostrophe inside what used
+    to be read as a comment is now an unbalanced quote.
+
     Raises `ValueError` on quoting it cannot close, exactly as `shlex.split`
     does; the caller reports that command as unparsed.
     """
     lexer = shlex.shlex(command, posix=True, punctuation_chars=PUNCTUATION)
     lexer.whitespace = " \t\r"            # `\n` is a separator here, not a space
     lexer.whitespace_split = True         # words, not the lexer's default atoms
+    lexer.commenters = ""                 # `#` must not eat the newline after it
     # A RUN of adjacent punctuation lexes as ONE token, so `;\n` and `&&\n` are
     # single tokens belonging to no entry of `SEPARATORS` — and a separator that
     # stops separating puts the `-h` of the NEXT command back inside this write's
@@ -373,7 +386,7 @@ def tokenize(command):
     # one does) and the subshell close `)\n`.
     return ["\n" if token and "\n" in token and set(token) <= set(PUNCTUATION)
             else token
-            for token in lexer]           # `commenters` is already `#` by default
+            for token in lexer]
 
 
 def queue_writes(command):
@@ -410,11 +423,14 @@ def queue_writes(command):
         if position < len(rest) and rest[position] in SUCCESS:
             segment = []
             for later in rest[position + 1:]:
-                # The binary's own name ends the segment too: a trailing `#`
-                # comment swallows the newline after it, leaving two invocations
-                # with no separator token between them, and the `--help` of the
-                # SECOND would otherwise suppress THIS write.
-                if later in SEPARATORS or os.path.basename(later) == QUEUE_BIN:
+                # A SEPARATOR, and nothing else. The binary's own name used to
+                # end the segment here as well, because a trailing `#` comment
+                # swallowed the newline after it and left two invocations with
+                # no boundary between them. `tokenize` turns comments off now,
+                # so that boundary is a token again — and the terminator became
+                # both unprovable and wrong: without a separator the shell is
+                # reading ONE invocation, whose later `--help` does suppress it.
+                if later in SEPARATORS:
                     break
                 segment.append(later)
             if not any(flag in segment for flag in HELP_FLAGS):
