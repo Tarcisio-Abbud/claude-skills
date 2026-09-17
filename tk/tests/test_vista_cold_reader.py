@@ -94,7 +94,8 @@ EXAMPLE = """<!doctype html>
 <body><main>
 
 <ul data-vista-bloco="stats"><li><b>4</b><span>closed</span></li>
-<li><b>1</b><span>carried</span></li><li><b>0</b><span>blocked</span></li>
+<li><b>1</b><span>carried</span></li><li><b>0</b><span>new</span></li>
+<li><b>0</b><span>blocked</span></li>
 <li><b>0</b><span>discarded</span></li><li><b>1</b><span>queue</span></li></ul>
 
 <section>

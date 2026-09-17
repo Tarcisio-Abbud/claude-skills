@@ -59,7 +59,8 @@
   .card { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--sub);
           border-radius:10px; padding:16px 20px; margin:12px 0; }
   .card[data-vista-desfecho="merged"], .card[data-vista-desfecho="closed"] { border-left-color:var(--ok); }
-  .card[data-vista-desfecho="open"], .card[data-vista-desfecho="carried"] { border-left-color:var(--warn); }
+  .card[data-vista-desfecho="open"], .card[data-vista-desfecho="carried"],
+  .card[data-vista-desfecho="new"] { border-left-color:var(--warn); }
   .card[data-vista-desfecho="blocked"], .card[data-vista-desfecho="discarded"] { border-left-color:var(--stop); }
   .card h4 { margin:0 0 6px; font-size:1.05rem; }
   .verdicts { margin:10px 0 0; padding-left:20px; font-size:.92rem; }
@@ -90,13 +91,15 @@
   <ul class="stats" data-vista-bloco="stats">
     <li><b>0</b><span>closed</span></li>
     <li><b>0</b><span>carried</span></li>
+    <li><b>0</b><span>new</span></li>
     <li><b>0</b><span>blocked</span></li>
     <li><b>0</b><span>discarded</span></li>
     <li><b>0</b><span>open PRs</span></li><!-- FILL: add the counts this package earned -->
     <li><b>0</b><span>tests</span></li>
   </ul>
-  <p class="nota">The first four never sum: three are the queue's balance, the fourth counts
-    session findings that never entered it.</p>
+  <p class="nota">The first five never sum: four are the queue's balance — carried predates
+    this run, new was born in it — and the fifth counts session findings that never entered
+    the queue.</p>
 
   <!-- BLOCK 2 · one card per PR/item, grouped by outcome -->
   <h2>What the package did</h2>
@@ -105,7 +108,7 @@
       <h3>Open — waiting for the user's verdict</h3><!-- FILL: one group per outcome -->
 
       <!-- one card. data-vista-desfecho groups it; data-vista-risco is block 3 -->
-      <!-- data-vista-desfecho is one of: merged · closed · open · carried · blocked · discarded -->
+      <!-- data-vista-desfecho is one of: merged · closed · open · carried · new · blocked · discarded -->
       <article class="card" data-vista-card="T000" data-vista-desfecho="open" data-vista-risco="low">
         <h4>T000 · WHAT THE SLICE DELIVERED <span class="risk">risk: low</span></h4>
         <p>Two or three sentences a reader who will not open the diff can judge: what changed,

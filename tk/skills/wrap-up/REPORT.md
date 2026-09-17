@@ -1,7 +1,7 @@
 # The closing template
 
 Read from step 6 of `SKILL.md`, before writing the close. Any skill that closes on the
-wrap-up template reads it here too — the fleet's consolidated report takes block 1's four
+wrap-up template reads it here too — the fleet's consolidated report takes block 1's five
 counts from this file.
 
 **Write the report for a cold reader** — someone who was not in this session. An
@@ -21,7 +21,7 @@ response-style preference that disagrees with it loses:
   - now: <what it does now>
   - gain: <the concrete gain it bought>  ·  risk: <what could still bite, in one clause>
 
-**<N> closed · <M> carried · <K> blocked · <D> discarded**
+**<N> closed · <M> carried · <J> new · <K> blocked · <D> discarded**
 
 **Sensor:** <births>/<merged PRs> = <ratio> · open <before> → <after>
 
@@ -29,10 +29,13 @@ response-style preference that disagrees with it loses:
 - <item> — FEITO
 - <item> — DESCARTADO, <why>
 
-**Carried**
+**Carried** — open before this session began
 - <item> — <the survival gate that kept it in the queue>
 
-**Blocked**
+**New** — the queue IDs this session added, still open; a birth already closed is in Closed
+- <item> — <the survival gate that kept it in the queue>
+
+**Blocked** — carried or new alike, when another party holds it
 - <item> — what is missing, and from whom
 
 **Discarded** — session findings, which never entered the queue
@@ -53,19 +56,20 @@ itself worth the line. A DESCARTADO item has no before and no after, so it
 appears in Closed alone; a session that delivered nothing writes the header with "nothing
 delivered" under it — an absent block reads as a block nobody wrote.
 
-**The stats line follows, and its first three counts are the queue's balance**: what left it
-against what is still in it. The fourth counts a different object — session findings
-discarded in step 1, which never entered the queue — so the group is labelled and the two
-are never summed. **The Sensor line under it is the afk close's** — `../kickoff/AFK.md` step
-6 computes it, and a close that ran no package leaves it out. Discarding needs a user to do
-it, so an unattended run reports no discards and carries its findings to the gates instead.
-An afk report states, literally, `wrap-up afk: rodou` or `wrap-up afk: nao rodou
-(<motivo>)` — `<motivo>` covers a legitimate skip as much as an outright one.
-The outcome groups below are the balance and nothing more: each item with its outcome, and
-the reason wherever the outcome does not carry it — the substance was already spent above.
-Items group by outcome, never by chronology, and a group of three or more becomes a table
-with those same columns — the What changed entries stay in lines, a cell being no place for
-a before and an after.
+**The stats line follows, and its first four counts are the queue's balance**: what left it
+against what is still in it. **Blocked** outranks carried and new: an item another party holds
+is blocked whatever its age, and the Sensor line still counts it among this session's births.
+The fifth counts a different object — session findings discarded in step 1, which never
+entered the queue — so the group is labelled and the two are never summed. **The Sensor line
+under it is the afk close's** — `../kickoff/AFK.md` step 6 computes it, and a close that ran
+no package leaves it out. Discarding needs a user to do it, so an unattended run reports no
+discards and carries its findings to the gates instead. An afk report states, literally,
+`wrap-up afk: rodou` or `wrap-up afk: nao rodou (<motivo>)` — `<motivo>` covers a legitimate
+skip as much as an outright one. The outcome groups below are the balance and nothing more:
+each item with its outcome, and the reason wherever the outcome does not carry it — the
+substance was already spent above. Items group by outcome, never by chronology, and a group of
+three or more becomes a table with those same columns — the What changed entries stay in
+lines, a cell being no place for a before and an after.
 
 **The blockers line is unskippable**: "none" written out is an answer, an absent line is
 a rediscovery the next session pays for. It is also the one line of the report that must
