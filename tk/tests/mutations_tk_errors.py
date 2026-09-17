@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Mutation harness for the `tk-errors` suite — puts each defect back.
+
+Run: python3 tk/tests/mutations_tk_errors.py
+
+Same contract as its siblings: each entry restores one defect in a COPY of `tk/`,
+runs only the tests named for it, and requires every one of them to fail. A
+mutation that SURVIVES is a hole in the suite, not a pass.
+
+This file holds entries only. The runner is `mutations_tk_contract.run`.
+
+WHY THIS COMMAND NEEDS MUTATING AT ALL. Its output is two counts and some rows,
+and both failure directions read as ordinary output: a reader that missed a
+refusal prints a smaller number, and a reader that invented one prints a larger.
+Neither can be sanity-checked by looking at it, which is the same reason
+`tk-context` is mutated. The entries below are what say the suite can tell a
+number that counted the right thing from one that did not.
+
+THE ENTRIES THAT REPLACE A WHOLE FUNCTION are not vandalism. `the invocations are
+found by a regex over the raw command` is the naive implementation this design
+rejected, written out: it is what a reader who had not met a quoted briefing
+would write, and the tests that survive it are exactly the ones that encode why
+the tokenizer is there.
+
+ONE ENTRY MUTATES PROSE — the pointer in `wrap-up/SKILL.md`. A command nothing
+calls is a command nobody runs, and the whole point of this one is that the close
+reads it.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mutations_tk_contract import run      # noqa: E402  (path above enables it)
+
+ERRORS = os.path.join("bin", "tk-errors")
+WRAP_UP = os.path.join("skills", "wrap-up", "SKILL.md")
+
+LISTED = "TheRefusals.test_a_refused_call_is_listed_with_its_tool_and_its_command"
+NOT_ERROR = "TheRefusals.test_a_result_that_is_not_an_error_is_not_a_refusal"
+STRUCTURED = "TheRefusals.test_a_structured_result_is_read_like_a_plain_one"
+ORPHAN = "TheRefusals.test_a_refusal_with_no_call_recorded_is_still_reported"
+SIDECHAIN = "TheRefusals.test_a_subagent_entry_is_not_this_session"
+HALF_LINE = "TheRefusals.test_a_half_written_last_line_costs_nothing"
+ESCAPE = "TheRefusals.test_a_control_sequence_in_a_message_is_stripped"
+CAPPED = "TheRefusals.test_the_rows_are_capped_and_the_cut_is_declared"
+
+CONFIRMED = "TheQueueInvariant.test_a_write_that_printed_its_success_line_is_confirmed"
+UNCONFIRMED = "TheQueueInvariant.test_a_write_with_no_success_line_is_unconfirmed"
+NO_RESULT = "TheQueueInvariant.test_a_write_whose_call_never_returned_is_unconfirmed"
+HELP = "TheQueueInvariant.test_help_is_not_a_write"
+READ_ONLY = "TheQueueInvariant.test_a_read_only_subcommand_is_not_a_write"
+QUOTED = "TheQueueInvariant.test_a_quoted_mention_is_not_an_invocation"
+READER = ("TheQueueInvariant."
+          "test_an_unquoted_mention_after_a_reading_command_is_not_an_invocation")
+DIR_FLAG = "TheQueueInvariant.test_the_dir_option_before_the_subcommand_is_skipped"
+QUALIFIED = "TheQueueInvariant.test_a_path_qualified_invocation_is_seen"
+TWO_CALLS = "TheQueueInvariant.test_two_invocations_in_one_command_are_counted_apart"
+NO_OP = "TheQueueInvariant.test_an_honest_no_op_counts_as_a_success_line"
+UNPARSED = "TheQueueInvariant.test_an_untokenizable_command_carrying_the_bin_is_unconfirmed"
+NOT_MINE = "TheQueueInvariant.test_an_untokenizable_command_without_the_bin_is_silent"
+ANCHORED = "TheQueueInvariant.test_a_success_line_quoted_back_does_not_confirm_another_call"
+BOTH = "TheQueueInvariant.test_a_refused_write_lands_in_both_classes"
+
+PINNED = "TheQueueSeam.test_every_pinned_shape_is_still_a_literal_in_tk_queue"
+TABLES = "TheQueueSeam.test_the_two_tables_cover_the_same_subcommands"
+REAL_SUB = "TheQueueSeam.test_every_watched_subcommand_is_a_real_one"
+READS_OUT = "TheQueueSeam.test_the_read_only_subcommands_are_left_out"
+
+ZERO_ONE = "TheExitCodes.test_a_clean_session_exits_zero_and_a_dirty_one_exits_one"
+UNREAD = "TheExitCodes.test_an_unread_transcript_is_not_a_clean_one"
+NO_SESSION = "TheExitCodes.test_a_missing_session_id_says_so"
+USAGE = "TheExitCodes.test_a_bad_flag_exits_sixty_four"
+GLOB = "TheExitCodes.test_a_wildcard_session_id_does_not_glob"
+TWO_FILES = "TheExitCodes.test_two_transcripts_for_one_id_are_refused"
+THE_FLAG = "TheExitCodes.test_a_transcript_path_wins_over_the_session_id"
+
+ARGV = "TheSiblingSeam.test_main_takes_its_argv_like_every_sibling_bin"
+POINTER = "TheSiblingSeam.test_the_wrap_up_sends_its_first_step_here"
+
+# (label, old, new, [tests that must fail], source relative to tk/)
+MUTATIONS = [
+    # -- class 1: the refusals -----------------------------------------------
+    ("the harness's own verdict is ignored, so nothing is ever refused",
+     "                    if block.get(\"is_error\"):",
+     "                    if False:",
+     [LISTED, STRUCTURED, ORPHAN, HALF_LINE, ESCAPE, CAPPED, ZERO_ONE, THE_FLAG,
+      BOTH],
+     ERRORS),
+
+    ("every result is a refusal, so the report is noise and gets skipped",
+     "                    if block.get(\"is_error\"):",
+     "                    if True:",
+     [NOT_ERROR, ZERO_ONE],
+     ERRORS),
+
+    ("a subagent's refusal is reported as this session's",
+     """            if record.get("isSidechain"):
+                continue              # a subagent's window, not this session's
+""",
+     "",
+     [SIDECHAIN], ERRORS),
+
+    ("a half-written last line crashes the reading instead of being skipped",
+     """            except ValueError:
+                continue""",
+     """            except ValueError:
+                raise""",
+     [HALF_LINE], ERRORS),
+
+    ("the row names the tool and not the call, so the reader still has to grep",
+     """    for key in ("command", "file_path", "path", "pattern", "url", "prompt"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+""",
+     "",
+     [LISTED], ERRORS),
+
+    ("a structured result reads as empty, and every one of them as silent",
+     """    if isinstance(content, list):
+        return "\\n".join(part.get("text") or "" for part in content
+                         if isinstance(part, dict))
+""",
+     "",
+     [STRUCTURED], ERRORS),
+
+    ("a value from the file reaches the terminal with its escapes intact",
+     '    return re.sub(r"[\\x00-\\x1f\\x7f]", "?", str(value))',
+     "    return str(value)",
+     [ESCAPE], ERRORS),
+
+    ("the cap is ignored, so a long session prints hundreds of rows",
+     "        for row in rows[:limit]:",
+     "        for row in rows:",
+     [CAPPED], ERRORS),
+
+    ("the headline stops being the first line, and every seam reading it breaks",
+     '    print(f"{len(refusals)} refused tool call(s), "',
+     '    print(f"tk-errors says: {len(refusals)} refused tool call(s), "',
+     [LISTED, CONFIRMED], ERRORS),
+
+    # -- class 2: the queue invariant ----------------------------------------
+    ("a write with no success line is taken as confirmed — the silent loss itself",
+     "        elif not success_count(text, sub):",
+     "        elif False:",
+     [UNCONFIRMED, DIR_FLAG, QUALIFIED, TWO_CALLS, ANCHORED, BOTH], ERRORS),
+
+    ("no output ever confirms a write, so every write is reported as lost",
+     "        elif not success_count(text, sub):",
+     "        elif True:",
+     [CONFIRMED, NO_OP], ERRORS),
+
+    ("a call whose result never came back is taken as confirmed",
+     """        if text is None:
+            unconfirmed.append(Unconfirmed(stamp, sub, command,
+                                           "the call returned nothing"))
+        elif""",
+     """        if text is None:
+            continue
+        elif""",
+     [NO_RESULT], ERRORS),
+
+    ("`--help` counts as a write — the report cries wolf on every lookup",
+     """            if not any(flag in segment for flag in HELP_FLAGS):
+                out.append((rest[position], ""))""",
+     '            out.append((rest[position], ""))',
+     [HELP], ERRORS),
+
+    ("only the first invocation in a compound command is counted",
+     """            if not any(flag in segment for flag in HELP_FLAGS):
+                out.append((rest[position], ""))""",
+     """            if not any(flag in segment for flag in HELP_FLAGS) and not out:
+                out.append((rest[position], ""))""",
+     [TWO_CALLS], ERRORS),
+
+    ("a name read by another command counts as an invocation",
+     """        if index and os.path.basename(tokens[index - 1]) in READERS:
+            continue                  # the command reads this name, it does not run it
+""",
+     "",
+     [READER], ERRORS),
+
+    ("the option's VALUE is read as the subcommand, so no write is ever seen",
+     "            position += 2 if flag in VALUE_FLAGS else 1",
+     "            position += 1",
+     [DIR_FLAG], ERRORS),
+
+    ("only a bare `tk-queue` counts, so every path-qualified call is missed",
+     "        if os.path.basename(token) != QUEUE_BIN:",
+     "        if token != QUEUE_BIN:",
+     [QUALIFIED], ERRORS),
+
+    ("the invocations are found by a regex over the raw command, not by tokens",
+     """    if QUEUE_BIN not in command:
+        # The cheap gate, and a correctness one: without it the tokenizer's
+        # failure below would report every unbalanced quote in the session as an
+        # unconfirmed queue write, which is a wrong number in the class this
+        # command exists to count.
+        return []
+    try:""",
+     """    if QUEUE_BIN not in command:
+        return []
+    return [(m, "") for m in re.findall(
+        rf"{re.escape(QUEUE_BIN)}\\s+({'|'.join(SUCCESS)})\\b", command)]
+    try:""",
+     [QUOTED, HELP, DIR_FLAG], ERRORS),
+
+    ("an unbalanced quote anywhere in the session is reported as a queue write",
+     """    if QUEUE_BIN not in command:
+        # The cheap gate, and a correctness one: without it the tokenizer's
+        # failure below would report every unbalanced quote in the session as an
+        # unconfirmed queue write, which is a wrong number in the class this
+        # command exists to count.
+        return []
+""",
+     "",
+     [NOT_MINE], ERRORS),
+
+    ("a command the shell could not run is skipped rather than reported",
+     '        return [(sub, note) for sub in found] or [("?", note)]',
+     "        return []",
+     [UNPARSED], ERRORS),
+
+    ("the success line is matched anywhere in the output, quotes included",
+     """    return sum(1 for line in text.splitlines()
+               if any(re.search(p, line.strip()) for p in patterns))""",
+     """    return sum(1 for line in text.splitlines()
+               if any(re.search(p.strip("^$"), line) for p in patterns))""",
+     [ANCHORED], ERRORS),
+
+    ("an honest no-op is read as a failed write",
+     '    "release": (r"^\\S+ released — ", r"^\\S+ carries no claim — nothing to release$"),',
+     '    "release": (r"^\\S+ released — ",),',
+     [NO_OP, TABLES], ERRORS),
+
+    # -- the seam with tk-queue ----------------------------------------------
+    ("a pinned shape drifts from the line tk-queue actually prints",
+     '    "edit": (\'print(f"{label} updated")\',),',
+     '    "edit": (\'print(f"{label} was updated")\',),',
+     [PINNED], ERRORS),
+
+    ("a subcommand is watched that tk-queue does not have",
+     """    "cancel": (r"^\\S+ → done-log as ", r"^\\S+ → out of the queue;"),
+}""",
+     """    "cancel": (r"^\\S+ → done-log as ", r"^\\S+ → out of the queue;"),
+    "purge": (r"^\\S+ purged$",),
+}""",
+     [REAL_SUB, TABLES], ERRORS),
+
+    ("a read is counted as a write, so every `list` reports a mismatch",
+     '    "add": (r"^added T\\S*: ",),\n    "edit"',
+     '    "add": (r"^added T\\S*: ",),\n    "list": (r"^never$",),\n    "edit"',
+     [READ_ONLY, READS_OUT, TABLES], ERRORS),
+
+    # -- the exit codes ------------------------------------------------------
+    ("an unread transcript exits 0, so nobody read reads as nothing wrong",
+     "EXIT_NO_TRANSCRIPT = 2",
+     "EXIT_NO_TRANSCRIPT = 0",
+     [UNREAD, NO_SESSION, GLOB, TWO_FILES], ERRORS),
+
+    ("the failure says nothing about being unread, which is the whole warning",
+     '''    print("tk-errors: nothing was read — this is not a clean session, it is an "
+          "unread one", file=sys.stderr)
+''',
+     "",
+     [UNREAD], ERRORS),
+
+    ("a mistyped flag reads as `no transcript`, and the seam decides on it",
+     "EXIT_USAGE = 64                       # sysexits.h EX_USAGE; argparse's own 2 collides",
+     "EXIT_USAGE = 2",
+     [USAGE], ERRORS),
+
+    ("a limit of zero is accepted, and the rows vanish with no error",
+     """    if args.limit < 1:
+        parser.error("--limit must be at least 1")
+""",
+     "",
+     [USAGE], ERRORS),
+
+    ("the session id reaches the glob unescaped, and matches a stranger's file",
+     'f"{glob.escape(session_id)}.jsonl"',
+     'f"{session_id}.jsonl"',
+     [GLOB], ERRORS),
+
+    ("two files for one id are resolved by sorting, in silence",
+     """    if len(hits) > 1:
+        no_transcript("two transcripts carry this session id: "
+                      + ", ".join(plain(h) for h in hits))
+""",
+     "",
+     [TWO_FILES], ERRORS),
+
+    ("`--transcript` is ignored, so the flag reads the wrong session",
+     "    path = args.transcript",
+     "    path = None",
+     [THE_FLAG], ERRORS),
+
+    ("`main` stops taking its argv, and no caller can drive the parser",
+     "def main(argv=None):",
+     "def main(argv=()):",
+     [ARGV], ERRORS),
+
+    # -- the prose that calls it ---------------------------------------------
+    ("the close stops naming the command, so nobody ever runs it",
+     "`tk-errors` (what this session was\nrefused, and which queue writes never confirmed) ",
+     "",
+     [POINTER], WRAP_UP),
+]
+
+if __name__ == "__main__":
+    sys.exit(run(MUTATIONS, "test_tk_errors"))

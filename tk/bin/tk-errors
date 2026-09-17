@@ -221,8 +221,8 @@ def queue_writes(command):
 
     Returns a list of (subcommand, note) pairs, `note` being empty on a clean
     reading. A command the tokenizer rejects yields one pair per subcommand name
-    found by a plain substring scan, noted as unparsed — the caller reports those
-    unconfirmed, because the shell did not run that command either.
+    a regex finds near the binary's own, noted as unparsed — the caller reports
+    those unconfirmed, because the shell did not run that command either.
     """
     if QUEUE_BIN not in command:
         # The cheap gate, and a correctness one: without it the tokenizer's
