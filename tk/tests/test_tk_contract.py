@@ -19,6 +19,7 @@ repo is written as if public and the site file is the one place a deployment's
 proper names live, which is exactly why they are not in it.
 """
 
+import contextlib
 import io
 import os
 import shutil
@@ -680,6 +681,146 @@ class TestHarness(unittest.TestCase):
         self.assertEqual(bad, ["typo -> TestRoleTable.test_no_such_thing"])
         gone = self.h.misnamed([("gone", "a", "b", ["TestVanished.test_x"])], self.mod)
         self.assertEqual(gone, ["gone -> TestVanished.test_x"])
+
+    # --- the other hole: a SOURCE LINE no test input reaches ---------------
+    # `unproved` above answers "which test does no entry mutate". These answer
+    # "which line does no test run at all" — the guard that is invisible at
+    # 100% killed, because the score counts the mutants somebody wrote.
+
+    # line 6 is the one no call reaches; lines 2, 3, 8 and 9 can never run
+    PROBE = ("import sys\n"                     # 1
+             "\n"                               # 2
+             "\n"                               # 3
+             "def guard(flag):\n"               # 4
+             "    if flag:\n"                   # 5
+             "        return 'cold'\n"          # 6
+             "    return 'warm'\n"              # 7
+             "\n"                               # 8
+             "\n"                               # 9
+             "sys.stdout.write(guard(False))\n")  # 10
+
+    def tree(self):
+        """A throwaway `tk/`, shaped like the real one: Python with and without
+        an extension, beside the two kinds of file an entry also anchors in."""
+        root = tempfile.mkdtemp(prefix="tk-reach-test.")
+        self.addCleanup(shutil.rmtree, root, True)
+        os.makedirs(os.path.join(root, "bin"))
+        os.makedirs(os.path.join(root, "data"))
+        os.makedirs(os.path.join(root, "tests"))
+        for rel, body in (("bin/probe.py", self.PROBE),
+                          ("bin/other.py", "x = 1\n"),
+                          ("bin/tool", "#!/usr/bin/env python3\nx = 1\n"),
+                          ("bin/shell.sh", "#!/bin/sh\necho hi\n"),
+                          ("tests/reach_tracer.py", "x = 1\n"),
+                          ("data/thing.json", '{"not": "python"}\n')):
+            with open(os.path.join(root, rel), "w", encoding="utf-8") as f:
+                f.write(body)
+        return root
+
+    def test_the_lines_a_source_can_run_are_the_lines_the_compiler_emits(self):
+        # the walk into NESTED code objects is the whole of it: the top-level
+        # object lists the `def` and nothing inside the function, so a
+        # denominator that stopped there calls a suite complete for never
+        # entering one
+        root = self.tree()
+        lines = self.h.executable_lines(os.path.join(root, "bin", "probe.py"))
+        self.assertEqual(sorted(lines), [1, 4, 5, 6, 7, 10])
+
+    def test_only_the_python_sources_an_entry_mutates_are_measured(self):
+        root = self.tree()
+        entries = [("a", "x", "y", [], os.path.join("bin", "probe.py")),
+                   ("b", "x", "y", [], os.path.join("data", "thing.json")),
+                   ("c", "x", "y", [], os.path.join("bin", "shell.sh")),
+                   ("d", "x", "y", [], os.path.join("bin", "tool")),
+                   ("e", "x", "y", [], os.path.join("tests", "reach_tracer.py")),
+                   ("f", "x", "y", [])]
+        # the manifest and the shell script are dropped — the interpreter never
+        # runs either, so neither has a line to reach — while `bin/tool` is kept
+        # on its shebang, which is the shape every bin in this repo has; the
+        # default is measured because entry `f` mutates it. The tracer is
+        # dropped too: Python does not trace a trace function, so measuring it
+        # would print one permanently unmeasured file under every run.
+        self.assertEqual(self.h.reach_sources(entries, root, "bin/other.py"),
+                         ("bin/other.py", os.path.join("bin", "probe.py"),
+                          os.path.join("bin", "tool")))
+        # every entry naming its own source, the default is a file this suite
+        # never opens, and reporting it would call it wholly unreached
+        self.assertEqual(self.h.reach_sources(entries[:1], root, "bin/other.py"),
+                         (os.path.join("bin", "probe.py"),))
+
+    def test_the_probe_records_which_lines_a_child_process_ran(self):
+        # the probe travels by PYTHONPATH into a child interpreter and writes
+        # what it saw on the way out; each half is a way it can measure NOTHING
+        # while reporting every line of a live file as cold
+        root = self.tree()
+        rel = os.path.join("bin", "probe.py")
+        probe_dir = tempfile.mkdtemp(prefix="tk-reach-probe.")
+        self.addCleanup(shutil.rmtree, probe_dir, True)
+        env, out_dir = self.h.reach_env(probe_dir, (rel,))
+        ran = subprocess.run([sys.executable, os.path.join(root, rel)],
+                             capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(ran.stdout, "warm")
+        cold, unmeasured = self.h.reach_report(out_dir, root, (rel,))
+        self.assertEqual(unmeasured, [])
+        self.assertEqual(cold, {rel: ([6], 6)})
+
+        # nothing recorded at all is NOT "every line is cold": a suite that
+        # never runs the file and a probe that never reached the child leave
+        # the same empty directory behind, and only one of them is a finding
+        empty = tempfile.mkdtemp(prefix="tk-reach-empty.")
+        self.addCleanup(shutil.rmtree, empty, True)
+        cold, unmeasured = self.h.reach_report(empty, root, (rel,))
+        self.assertEqual((cold, unmeasured), ({}, [rel]))
+
+    def test_the_unreached_lines_are_collapsed_into_ranges(self):
+        self.assertEqual(self.h.line_ranges([1, 2, 3, 7, 9, 10]), "1-3, 7, 9-10")
+        self.assertEqual(self.h.line_ranges([5]), "5")
+        self.assertEqual(self.h.line_ranges([]), "")
+
+    def test_the_reach_report_names_the_file_the_count_and_the_module(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.h.report_reach({"bin/probe.py": ([6, 7, 8], 12)},
+                                ["bin/other.py"], "test_probe")
+        # read with the wrapping flattened: what is asserted is the wording,
+        # and where a long line breaks is the terminal's business
+        printed = " ".join(out.getvalue().split())
+        self.assertIn("UNREACHED bin/probe.py — 3 of 12 line(s) "
+                      "no test in test_probe reaches 6-8", printed)
+        # the module is named because the scope is one suite, not the repo
+        self.assertIn("UNMEASURED bin/other.py — the probe recorded no line of "
+                      "this file; either test_probe never runs it", printed)
+
+    def test_a_listing_too_tall_to_read_is_held_back_behind_a_switch(self):
+        # one suite here reaches a third of a 1900-line bin whose other tests
+        # live in another module, and forty lines of numbers above every run
+        # bury the six real lines the suite next door reports
+        many = {"bin/big.py": (list(range(100, 700, 2)), 1914)}
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.h.report_reach(many, [], "test_probe")
+        printed = " ".join(out.getvalue().split())
+        self.assertIn("300 of 1914 line(s)", printed)      # the count stays
+        self.assertIn("held back", printed)
+        self.assertNotIn("100, 102", printed)
+
+        os.environ[self.h.REACH_FULL] = "1"
+        self.addCleanup(os.environ.pop, self.h.REACH_FULL, None)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.h.report_reach(many, [], "test_probe")
+        printed = " ".join(out.getvalue().split())
+        self.assertIn("100, 102", printed)
+        self.assertNotIn("held back", printed)
+
+    def test_an_unreached_line_reports_without_failing_the_run(self):
+        # every suite here has unreached lines today, so a run that went red on
+        # them would be red on arrival — and a check that is red on arrival is
+        # a check somebody turns off
+        self.assertEqual(self.h.exit_code([], [], []), 0)
+        self.assertEqual(self.h.exit_code(["survived"], [], []), 1)
+        self.assertEqual(self.h.exit_code([], ["unrunnable"], []), 1)
+        self.assertEqual(self.h.exit_code([], [], ["orphan"]), 1)
 
 
 if __name__ == "__main__":

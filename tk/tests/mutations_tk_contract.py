@@ -31,6 +31,14 @@ anchor also matches inside its own entry literal, and the count check calls it
 UNRUNNABLE. An anchor spanning a line break escapes it, because a `\n` written
 in an entry is two characters in the file and never a newline.
 
+TWO HOLES A 100% SCORE CANNOT SHOW, both reported beside the score. UNPROVED
+names a test no entry mutates. UNREACHED names a SOURCE LINE that no test input
+executes at all — measured by running the baseline under a probe (see
+`reach_tracer.py`) and subtracting what ran from what can run. A guard nobody
+reaches is invisible to `87/87 killed`, because the score counts the mutants
+somebody wrote. UNREACHED reports and does not fail the run; `exit_code` says
+why.
+
 WHAT THESE CHECKS DO NOT CATCH, so that a clean run is not read for more than
 it says. A mutation whose damage is collateral — one that breaks the module
 outright — kills whatever test it names, related or not; only reading the entry
@@ -40,11 +48,14 @@ a mutation and a test can agree with each other and both miss the behaviour
 that matters.
 """
 
+import dis
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
+import types
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -443,14 +454,106 @@ MUTATIONS = [
      "            cls = getattr(module_obj, cls_name, None)\n            if False:",
      ["TestHarness.test_an_entry_naming_a_test_that_does_not_exist_is_reported"],
      os.path.join("tests", "mutations_tk_contract.py")),
+
+    # --- the reach probe: every way it measures NOTHING and says so quietly -
+    # Each of these leaves a run that still prints a score and still exits 0,
+    # while the line it exists to find is reported as covered or not at all.
+    ("the denominator stops at the top-level code object, so a function's body "
+     "counts as no line at all",
+     "        lines.update(line for _, line in dis.findlinestarts(current) if line)\n"
+     "        stack.extend(k for k in current.co_consts if isinstance(k, types.CodeType))",
+     "        lines.update(line for _, line in dis.findlinestarts(current) if line)\n"
+     "        stack.extend([])",
+     ["TestHarness.test_the_lines_a_source_can_run_are_the_lines_the_compiler_emits"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("a file the interpreter never runs is measured anyway — a JSON object "
+     "parses as a Python expression, so compiling is not the test",
+     "            if not is_python(os.path.join(tk_dir, rel)):\n"
+     "                continue",
+     "            if False:\n                continue",
+     ["TestHarness.test_only_the_python_sources_an_entry_mutates_are_measured"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the probe is asked to measure itself, and stands unmeasured in every run",
+     "        if os.path.basename(rel) == TRACER:\n            continue",
+     "        if False:\n            continue",
+     ["TestHarness.test_only_the_python_sources_an_entry_mutates_are_measured"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the default source is measured even where no entry mutates it",
+     '    """\n'
+     "    rels = {entry[4] if len(entry) > 4 else default_src for entry in mutations}",
+     '    """\n'
+     "    rels = {default_src} | {entry[4] if len(entry) > 4 else default_src\n"
+     "                            for entry in mutations}",
+     ["TestHarness.test_only_the_python_sources_an_entry_mutates_are_measured"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("a file the probe recorded nothing for is passed over in silence, so a "
+     "probe that reached no child reads as a suite with nothing to report",
+     "        if rel not in seen:\n            unmeasured.append(rel)\n            continue",
+     "        if rel not in seen:\n            continue",
+     ["TestHarness.test_the_probe_records_which_lines_a_child_process_ran"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the probe never travels to the child, because its directory is left off "
+     "PYTHONPATH",
+     '    env = dict(os.environ)\n'
+     '    env["PYTHONPATH"] = probe_dir + (os.pathsep + inherited if inherited else "")',
+     '    env = dict(os.environ)\n    env["PYTHONPATH"] = inherited or ""',
+     ["TestHarness.test_the_probe_records_which_lines_a_child_process_ran"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the child records what it ran and never writes it down",
+     "    atexit.register(_dump)", "    pass",
+     ["TestHarness.test_the_probe_records_which_lines_a_child_process_ran"],
+     os.path.join("tests", "reach_tracer.py")),
+
+    ("the watched files are matched from the front, so an absolute path in a "
+     "copied tree matches nothing",
+     "    if name.endswith(_WATCH):", "    if name.startswith(_WATCH):",
+     ["TestHarness.test_the_probe_records_which_lines_a_child_process_ran"],
+     os.path.join("tests", "reach_tracer.py")),
+
+    ("sixty loose line numbers are printed one by one",
+     "    for number in numbers:\n        if start is None or number != prev + 1:",
+     "    for number in numbers:\n        if True:",
+     ["TestHarness.test_the_unreached_lines_are_collapsed_into_ranges"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the unreached lines are counted and never printed",
+     '            width=88, subsequent_indent=" " * 11))\n'
+     "    for rel, (missing, total) in sorted(cold.items()):",
+     '            width=88, subsequent_indent=" " * 11))\n'
+     "    for rel, (missing, total) in sorted({}.items()):",
+     ["TestHarness.test_the_reach_report_names_the_file_the_count_and_the_module"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("a thousand cold lines are printed in full, and the report becomes the "
+     "wall above every run that nobody reads",
+     "        tall = len(detail.splitlines())\n"
+     "        if tall <= DETAIL_LINES or os.environ.get(REACH_FULL):",
+     "        tall = len(detail.splitlines())\n        if True:",
+     ["TestHarness.test_a_listing_too_tall_to_read_is_held_back_behind_a_switch"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("a run with a survivor in it exits 0",
+     '    """\n    return 1 if survived or unrunnable or orphans else 0',
+     '    """\n    return 0',
+     ["TestHarness.test_an_unreached_line_reports_without_failing_the_run"],
+     os.path.join("tests", "mutations_tk_contract.py")),
 ]
 
 
-def run_suite(tk_dir, module, names):
-    """The named tests, run from the (possibly mutated) tree's own tests dir."""
+def run_suite(tk_dir, module, names, env=None):
+    """The named tests, run from the (possibly mutated) tree's own tests dir.
+
+    `env` is the reach probe's, and only the baseline run is given one: a
+    mutant is asked whether a test falls, never which lines it touched."""
     tests = os.path.join(tk_dir, "tests")
     argv = [sys.executable, "-m", "unittest", "-v"] + [f"{module}.{n}" for n in names]
-    return subprocess.run(argv, cwd=tests, capture_output=True, text=True)
+    return subprocess.run(argv, cwd=tests, capture_output=True, text=True, env=env)
 
 
 def load_module(module, tk_dir):
@@ -506,6 +609,187 @@ def misnamed(mutations, module_obj):
     return sorted(bad)
 
 
+REACH_FILES = "TK_REACH_FILES"
+REACH_DIR = "TK_REACH_DIR"
+TRACER = "reach_tracer.py"
+REACH_FULL = "TK_REACH_FULL"
+DETAIL_LINES = 3
+
+
+def executable_lines(path):
+    """The lines of a source file that CAN run — the denominator of reach.
+
+    `dis.findlinestarts`, walked over the module's code object and every code
+    object nested in it, is the stdlib's own answer to the question: blank
+    lines, comments, continuation lines and the body of a docstring are not in
+    it. Walking the nesting is the whole of it — the top-level code object
+    lists a `def` line and nothing inside the function, and a denominator that
+    stopped there would call a suite complete for never entering one.
+    """
+    with open(path, encoding="utf-8") as handle:
+        code = compile(handle.read(), path, "exec")
+    lines, stack = set(), [code]
+    while stack:
+        current = stack.pop()
+        lines.update(line for _, line in dis.findlinestarts(current) if line)
+        stack.extend(k for k in current.co_consts if isinstance(k, types.CodeType))
+    return lines
+
+
+def is_python(path):
+    """Python by extension, or by a shebang naming it — the bins have no `.py`."""
+    if path.endswith(".py"):
+        return True
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        first = handle.readline()
+    return first.startswith("#!") and "python" in first
+
+
+def reach_sources(mutations, tk_dir, default_src):
+    """The files to measure: the ones the ENTRIES mutate, that Python runs.
+
+    Not `default_src` on its own. A suite whose every entry names its own
+    source never touches the default — several here pass no `default_src` at
+    all and mutate only files of their own — and measuring it would report a
+    file the suite never opens as wholly unreached.
+
+    A `rel` is kept only if it is Python the interpreter runs: entries also
+    anchor in a JSON manifest and in shell, and a file the interpreter never
+    executes has no line for the probe to see. The test is the extension or a
+    `python` shebang, NOT whether the file compiles — the bins here carry no
+    extension, and a JSON object happens to parse as a Python expression, so
+    compiling alone would keep every manifest and report it wholly cold.
+    """
+    rels = {entry[4] if len(entry) > 4 else default_src for entry in mutations}
+    kept = []
+    for rel in sorted(rels):
+        # the probe cannot measure itself: Python does not trace the frames of
+        # a trace function, and the module body runs before `settrace` anyway,
+        # so the tracer would stand in every report as permanently unmeasured
+        if os.path.basename(rel) == TRACER:
+            continue
+        try:
+            if not is_python(os.path.join(tk_dir, rel)):
+                continue
+            executable_lines(os.path.join(tk_dir, rel))
+        except (OSError, SyntaxError, ValueError):
+            continue
+        kept.append(rel)
+    return tuple(kept)
+
+
+def reach_env(probe_dir, rels):
+    """Install the probe and return `(env, out_dir)` for the baseline run.
+
+    See `reach_tracer.py` for how the probe reaches a child process. The cost
+    of that mechanism is that our copy shadows any other `sitecustomize` on the
+    path — Debian ships one that installs a crash hook this repo does not use —
+    for the length of the one run that carries this environment.
+    """
+    out_dir = os.path.join(probe_dir, "records")
+    os.makedirs(out_dir, exist_ok=True)
+    shutil.copyfile(os.path.join(HERE, "reach_tracer.py"),
+                    os.path.join(probe_dir, "sitecustomize.py"))
+    inherited = os.environ.get("PYTHONPATH")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = probe_dir + (os.pathsep + inherited if inherited else "")
+    env[REACH_FILES] = os.pathsep.join(os.sep + rel for rel in rels)
+    env[REACH_DIR] = out_dir
+    return env, out_dir
+
+
+def reach_report(out_dir, tk_dir, rels):
+    """What the probe saw, as `({rel: (unreached lines, total)}, [unmeasured])`.
+
+    A file with NO record of its own is reported apart, as unmeasured, rather
+    than as every one of its lines unreached. The two are indistinguishable
+    from here — a suite that never runs the file and a probe that never reached
+    the child both leave nothing behind — and printing several hundred lines on
+    the second reading would bury the handful of real ones under a wall nobody
+    reads twice.
+    """
+    seen = {}
+    for name in sorted(os.listdir(out_dir)):
+        with open(os.path.join(out_dir, name), encoding="utf-8") as handle:
+            for record in handle:
+                fields = record.split()
+                if not fields:
+                    continue
+                for rel in rels:
+                    if fields[0].endswith(os.sep + rel):
+                        seen.setdefault(rel, set()).update(int(n) for n in fields[1:])
+    cold, unmeasured = {}, []
+    for rel in rels:
+        if rel not in seen:
+            unmeasured.append(rel)
+            continue
+        runnable = executable_lines(os.path.join(tk_dir, rel))
+        missing = sorted(runnable - seen[rel])
+        if missing:
+            cold[rel] = (missing, len(runnable))
+    return cold, unmeasured
+
+
+def line_ranges(numbers):
+    """`[1, 2, 3, 7]` -> `"1-3, 7"`. Sixty loose numbers are not read."""
+    out, start, prev = [], None, None
+    for number in numbers:
+        if start is None or number != prev + 1:
+            if start is not None:
+                out.append(str(start) if start == prev else f"{start}-{prev}")
+            start = number
+        prev = number
+    if start is not None:
+        out.append(str(start) if start == prev else f"{start}-{prev}")
+    return ", ".join(out)
+
+
+def report_reach(cold, unmeasured, module):
+    """Print the reach block. It returns nothing on purpose — see `exit_code`.
+
+    The module is named on every line because the scope is this suite and not
+    the repository: a line of a shared source that only a SIBLING module
+    exercises is unreached here, and it is, for a mutant of that line runs only
+    the tests named in this file's entries.
+
+    That is also why a long listing is HELD BACK. One suite here reaches a
+    third of `bin/tk-queue`, whose other tests live in another module, and
+    printing its thousand cold lines puts forty lines of numbers above every
+    run — the wall that gets a report ignored, and with it the six real lines
+    the suite next door reports. The count stays; `TK_REACH_FULL=1` prints the
+    rest."""
+    for rel in unmeasured:
+        print(textwrap.fill(
+            f"UNMEASURED {rel} — the probe recorded no line of this file; either "
+            f"{module} never runs it, or the probe never reached the child",
+            width=88, subsequent_indent=" " * 11))
+    for rel, (missing, total) in sorted(cold.items()):
+        print(f"UNREACHED  {rel} — {len(missing)} of {total} line(s) "
+              f"no test in {module} reaches")
+        detail = textwrap.fill(line_ranges(missing), width=88,
+                               initial_indent=" " * 11, subsequent_indent=" " * 11)
+        tall = len(detail.splitlines())
+        if tall <= DETAIL_LINES or os.environ.get(REACH_FULL):
+            print(detail)
+        else:
+            print(f"{' ' * 11}held back: {tall} lines of numbers. "
+                  f"Set {REACH_FULL}=1 to print them")
+    if cold or unmeasured:
+        print()
+
+
+def exit_code(survived, unrunnable, orphans):
+    """What makes a run RED, in one place so that it can be read in one place.
+
+    Unreached lines are deliberately absent. Every suite here has them today —
+    an error branch no fixture provokes, a guard against a machine state the
+    tests do not build — so failing on them would turn all ten red at once, and
+    a check that is red on arrival is a check somebody turns off. It reports;
+    the reader decides which line is worth a test.
+    """
+    return 1 if survived or unrunnable or orphans else 0
+
+
 def run(mutations=MUTATIONS, module=TEST_MODULE, tk_dir=TK_DIR,
         default_src=DEFAULT_SRC):
     """Replay every mutation. Returns the process exit code.
@@ -519,12 +803,22 @@ def run(mutations=MUTATIONS, module=TEST_MODULE, tk_dir=TK_DIR,
               "and this runner would read that as the mutant dying")
     if wrong:
         return 1
-    baseline = run_suite(tk_dir, module, list(test_classes(module_obj)))
-    if baseline.returncode != 0:
-        print("BASELINE IS RED — fix the suite before mutating it\n")
-        print(baseline.stderr[-4000:])
-        return 1
+    # the baseline runs every test once anyway, so it is where reach is
+    # measured: the probe costs the run no second pass over the suite
+    rels = reach_sources(mutations, tk_dir, default_src)
+    probe_dir = tempfile.mkdtemp(prefix="tk-reach.")
+    try:
+        env, out_dir = reach_env(probe_dir, rels) if rels else (None, None)
+        baseline = run_suite(tk_dir, module, list(test_classes(module_obj)), env=env)
+        if baseline.returncode != 0:
+            print("BASELINE IS RED — fix the suite before mutating it\n")
+            print(baseline.stderr[-4000:])
+            return 1
+        cold, unmeasured = reach_report(out_dir, tk_dir, rels) if rels else ({}, [])
+    finally:
+        shutil.rmtree(probe_dir, ignore_errors=True)
     print(f"baseline green ({module})\n")
+    report_reach(cold, unmeasured, module)
 
     orphans = unproved(mutations, module_obj)
     for name in orphans:
@@ -579,10 +873,11 @@ def run(mutations=MUTATIONS, module=TEST_MODULE, tk_dir=TK_DIR,
             print(f"killed     {label}")
 
     print(f"\n{len(mutations) - len(survived) - len(unrunnable)}/{len(mutations)} killed"
-          f", {len(orphans)} test(s) no entry proves")
+          f", {len(orphans)} test(s) no entry proves"
+          f", {sum(len(m) for m, _ in cold.values())} source line(s) no test reaches")
     for line in survived + unrunnable + [f"UNPROVED {n}" for n in orphans]:
         print(f"  ! {line}")
-    return 1 if survived or unrunnable or orphans else 0
+    return exit_code(survived, unrunnable, orphans)
 
 
 if __name__ == "__main__":
