@@ -418,7 +418,10 @@ whatsapp/
   bin/wa_export.py                the delta CLI (diff two exports, fold transcripts back)
   tests/test_wa_export.py         the CLI as a subprocess, against synthetic exports built
                                   in a tempdir — the real ones are private conversations
-  tests/mutations_wa_export.py    entries only, through the same seam as githooks/tests
+  tests/mutations_wa_export.py    entries AND their runner — `mutations_tk_contract.run`
+                                  is tk's, and a plugin does not import another's test
+                                  helper; `githooks/tests` carries its own copy for the
+                                  same reason
 docs/agents/                      what the mattpocock engineering skills read; versioned,
                                   for the reason given below
   issue-tracker.md                where the issues live and how to reach them, with the

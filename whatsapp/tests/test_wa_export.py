@@ -275,6 +275,81 @@ class AttachmentTest(Fixture):
         )
 
 
+class CollisionNameTest(Fixture):
+    """Two zip members flattening onto one basename, seen from the digest.
+
+    `extract` already writes the second one as `x~2.pdf` and counts the collision. The
+    reader opens what the TABLE names, so a table naming both rows `x.pdf` hands them a
+    file whose content belongs to the other message — the harm the collision count exists
+    to prevent, one step further down.
+    """
+
+    def collided_pair(self):
+        lines = BASE + [
+            "10/08/2026 08:05 - Ana: \u200edocumento.pdf (arquivo anexado)",
+            "documento.pdf",
+            "10/08/2026 08:06 - Bruno: \u200edocumento.pdf (arquivo anexado)",
+            "documento.pdf",
+        ]
+        old = make_export(self.path("2026-08-01-export.zip"), CHAT, BASE,
+                          [("segue-anexo.pdf", b"old")])
+        new = make_export(self.path("2026-08-10-export.zip"), CHAT, lines,
+                          [("segue-anexo.pdf", b"old"),
+                           ("media/documento.pdf", b"da-ana"),
+                           ("docs/documento.pdf", b"do-bruno")])
+        return old, new
+
+    def test_the_digest_names_the_file_the_reader_will_open(self):
+        _old, new = self.collided_pair()
+        out = self.path("out")
+        result = run("diff", new, "--out", out)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        digest = self.digest(out)
+        self.assertIn("saved as `documento~2.pdf`", digest)
+        attachments = os.path.join(out, "attachments")
+        self.assertTrue(os.path.exists(os.path.join(attachments, "documento.pdf")))
+        self.assertTrue(os.path.exists(os.path.join(attachments, "documento~2.pdf")))
+
+    def test_a_name_that_did_not_collide_is_not_dressed_up(self):
+        _old, new = self.pair()
+        out = self.path("out")
+        result = run("diff", new, "--out", out)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("saved as", self.digest(out))
+
+
+class ContextSchemaTest(Fixture):
+    """`context.json` is a contract between two runs of this script.
+
+    Without a version on it, a directory written by an older version fails deep inside the
+    renderer with a KeyError, instead of the re-diff message the code already writes for a
+    delta directory it cannot read.
+    """
+
+    def test_a_context_from_another_version_is_refused_by_name(self):
+        _old, new = self.audio_pair_for_schema()
+        out = self.path("out")
+        self.assertEqual(run("diff", new, "--out", out).returncode, 0)
+        context_path = os.path.join(out, "context.json")
+        with open(context_path, encoding="utf-8") as handle:
+            context = json.load(handle)
+        del context["line_runs"]
+        context["schema"] = 99
+        with open(context_path, "w", encoding="utf-8") as handle:
+            json.dump(context, handle)
+        with open(os.path.join(out, "attachments", "transcript.jsonl"), "w",
+                  encoding="utf-8") as handle:
+            handle.write(json.dumps({"file": "PTT-20260810-WA0001.opus",
+                                     "text": "oi"}) + "\n")
+        folded = run("transcripts", out)
+        self.assertEqual(folded.returncode, 2, folded.stdout)
+        self.assertIn("another version", folded.stderr)
+        self.assertIn("re-run `diff`", folded.stderr)
+
+    def audio_pair_for_schema(self):
+        return AudioTest.audio_pair(self)
+
+
 class AudioTest(Fixture):
     def audio_pair(self):
         lines = BASE + [
@@ -296,9 +371,27 @@ class AudioTest(Fixture):
 
     def test_the_transcription_command_is_ready_to_paste(self):
         _old, new = self.audio_pair()
+        out = self.path("out")
+        result = run("diff", new, "--out", out)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        digest = self.digest(out)
+        self.assertIn("transcripts", digest)
+        self.assertIn("asr:transcribe-audio", digest)
+
+    def test_no_extract_neither_claims_an_extraction_nor_points_at_one(self):
+        """`--no-extract` writes no attachments/ — the digest must not say it did.
+
+        The digest is what the reader acts on: a line naming a directory that was never
+        written sends them to transcribe an empty path, and the `Unaccounted` line below
+        it is read as trustworthy because the lines above it are.
+        """
+        _old, new = self.audio_pair()
         self.diff_json(new)
-        self.assertIn("transcripts", self.digest())
-        self.assertIn("asr:transcribe-audio", self.digest())
+        digest = self.digest()
+        self.assertNotIn("Extracted into", digest)
+        self.assertIn("Not extracted", digest)
+        self.assertNotIn("asr:transcribe-audio", digest)
+        self.assertFalse(os.path.isdir(os.path.join(self.path("out"), "attachments")))
 
     def test_transcripts_fold_into_the_digest_with_who_and_when(self):
         _old, new = self.audio_pair()

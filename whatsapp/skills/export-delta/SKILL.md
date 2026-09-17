@@ -1,13 +1,13 @@
 ---
 name: export-delta
-description: Read a WhatsApp conversation export (.zip) by its DELTA against the last export — only the messages and attachments that arrived since, with the new voice notes transcribed. Use when a .zip export of a chat has to be processed, when a conversation is the evidence for something (a payment, a decision, who is who), or when a second export of a conversation already read arrives.
+description: Read a WhatsApp export (.zip) by its DELTA against the previous export — only what arrived since, voice notes transcribed. Use when a chat export has to be processed, when a conversation is the evidence for a payment or a decision, or when a second export of a conversation already read arrives.
 ---
 
 # Read a WhatsApp export by its delta
 
 Every export of a conversation carries the **whole** history again. Re-reading one to learn
-the fifty lines that arrived since the last export burns the window on text already read, and
-the reader who skims instead misses the one message that mattered. `wa_export.py` hands over
+the fifty lines that arrived since the last export burns the window on text already read.
+The reader who skims instead misses the one message that mattered. `wa_export.py` hands over
 the delta: new messages, new attachments, and a place to put the transcripts.
 
 ## Run it
@@ -23,6 +23,10 @@ path from THIS file, where the script is `../../bin/wa_export.py`.
 Stdlib only — the system `python3` runs it. The previous export is found beside the new one
 by the conversation's own name; `--previous OLD.zip` names it when the two sit apart. Every
 flag is in `--help`.
+
+**Step 2 needs the `asr` plugin installed.** This plugin transcribes nothing itself: it
+extracts the voice notes and folds back the records `asr:transcribe-audio` writes. Without
+that plugin the delta still reads, minus whatever the audio said.
 
 The run writes `<NEW-stem>-delta/` beside the zip: `delta.md` to read, `delta.jsonl` to
 process, `attachments/` holding the new attachments extracted, and `context.json`, the data
@@ -43,17 +47,21 @@ replaces it, `--out` writes elsewhere.
 
 ## What the digest tells you, and what it does not
 
-**An `## Anomalies` section means the pair is suspect.** A WhatsApp export only grows, so an
-edited or vanished message — or an attachment the previous export had and this one does not —
-says the two zips are probably different conversations, or the "new" one is the older. Settle
-that before trusting a single line of the delta.
+**An `## Anomalies` section means the pair is suspect.** A WhatsApp export only grows. So an
+edited message, a vanished one, or an attachment the previous export had and this one does not
+says the two zips are probably different conversations — or that the "new" one is the older.
+Settle that before trusting a single line of the delta.
 
 **The `Unaccounted` line is the digest's own confession.** It counts what the run could not
 place: lines before the first message, other `.txt` members, attachment markers naming a file
 the zip does not carry, new files no message announces, names that collided on extraction,
 attachments the previous export had. `nothing` means every line and every file is placed.
-Anything else is a document somebody is waiting for, or a sender the delta cannot name — and
-it is read BEFORE the delta, because it says how much of the delta to believe.
+Anything else is a document somebody is waiting for, or a sender the delta cannot name. Read
+it BEFORE the delta: it says how much of the delta to believe.
+
+**A row reading *saved as* collided with another member of the zip.** Two files travel
+under one name, and the one on disk is the second. Open the name the row gives after
+*saved as*, never the announced one.
 
 **A file under `## Attachments whose CONTENT changed` was read before under that name.**
 Same name, different bytes: whatever was concluded from the old one is unproven.

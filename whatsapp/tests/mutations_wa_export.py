@@ -33,12 +33,20 @@ MUTATIONS = [
     ),
     (
         "the folded filename is tried before the exact one",
-        "    exact = plain_name(info.filename)\n"
+        "NAME_FORMS = (plain_name, normalize_attachment)",
+        "NAME_FORMS = (normalize_attachment, plain_name)",
+        ["test_the_dedup_suffix_does_not_hand_the_file_to_the_older_message"],
+    ),
+    (
+        "a form is tried message by message, so a fallback match beats a later exact one",
+        "    for form in NAME_FORMS:\n"
+        "        wanted = form(name)\n"
+        "        for message in messages:",
         "    for message in messages:\n"
-        "        for named in message.attachments:\n"
-        "            if plain_name(named) == exact:\n"
-        "                return message\n",
-        "",
+        "        for form in NAME_FORMS:\n"
+        "            wanted = form(name)\n"
+        "            _ = message\n"
+        "        for message in messages:",
         ["test_the_dedup_suffix_does_not_hand_the_file_to_the_older_message"],
     ),
     (
@@ -131,8 +139,8 @@ MUTATIONS = [
     ),
     (
         "the transcript is never credited to the message that sent the voice note",
-        '    """Same two passes as `owning_message`, over the records `diff` wrote."""',
-        '    """Same two passes as `owning_message`, over the records `diff` wrote."""\n'
+        '    """The same search as `owning_message`, over the records `diff` wrote to disk."""',
+        '    """The same search as `owning_message`, over the records `diff` wrote to disk."""\n'
         "    return None",
         ["test_transcripts_fold_into_the_digest_with_who_and_when"],
     ),
@@ -261,8 +269,8 @@ MUTATIONS = [
     ),
     (
         "a marker naming no file in the zip is not counted",
-        "            if plain_name(named) not in exact and "
-        "normalize_attachment(named) not in folded:\n                missing += 1",
+        "            if not any(form(named) in names "
+        "for form, names in zip(NAME_FORMS, carried)):\n                missing += 1",
         "            if False:\n                missing += 1",
         ["test_a_marker_naming_no_file_is_counted"],
     ),
@@ -329,6 +337,37 @@ MUTATIONS = [
         "            if info.filename in seen:\n                duplicates += 1",
         "            if False:\n                duplicates += 1",
         ["test_an_entry_the_zip_carries_twice_is_counted"],
+    ),
+    (
+        "the table names the announced file, not the one the collision wrote to disk",
+        '''            shown = ("`%s` — saved as `%s`" % (announced, on_disk)
+                     if on_disk and on_disk != announced else "`%s`" % announced)''',
+        '            shown = "`%s`" % announced',
+        ["test_the_digest_names_the_file_the_reader_will_open"],
+    ),
+    (
+        "a run that extracted nothing still says where it extracted to",
+        '        if context.get("extracted", True):\n            renamed',
+        '        if True:\n            renamed',
+        ["test_no_extract_neither_claims_an_extraction_nor_points_at_one"],
+    ),
+    (
+        "a digest that extracted nothing still hands a transcriber the empty directory",
+        '        if not context.get("extracted", True):',
+        "        if False:",
+        ["test_no_extract_neither_claims_an_extraction_nor_points_at_one"],
+    ),
+    (
+        "the legend for `saved as` prints over a delta where nothing collided",
+        "            if renamed:",
+        "            if True:",
+        ["test_a_name_that_did_not_collide_is_not_dressed_up"],
+    ),
+    (
+        "context.json is read whatever version wrote it, so a missing key raises KeyError",
+        '    if context.get("schema") != CONTEXT_SCHEMA:',
+        "    if False:",
+        ["test_a_context_from_another_version_is_refused_by_name"],
     ),
 ]
 

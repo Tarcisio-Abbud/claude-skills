@@ -4,8 +4,8 @@
 A WhatsApp export is cumulative: every export of a conversation carries the whole history
 again. Re-reading one costs the whole conversation to learn the handful of messages that
 arrived since the last export. This script hands over the delta — the new messages, the new
-attachments extracted into a dated directory, and the ready-to-paste command that
-transcribes the new voice notes.
+attachments extracted into a dated directory, and the ready-to-paste command that folds
+the transcripts of the new voice notes back into the digest.
 
     wa_export.py diff NEW.zip [--previous OLD.zip] [--out DIR]
     wa_export.py transcripts DIR
@@ -18,6 +18,7 @@ import difflib
 import json
 import os
 import re
+import shlex
 import sys
 import unicodedata
 import zipfile
@@ -297,7 +298,9 @@ class Delta:
         self.total_old = total_old
 
     @property
-    def anomalies(self):
+    def message_anomalies(self):
+        """Messages the new export edited or dropped. Attachments gone are counted apart,
+        by `diff_attachments`; the digest's `## Anomalies` is the two together."""
         return self.changed or self.removed
 
     @property
@@ -378,25 +381,33 @@ def diff_attachments(old_index, new_index):
     return added, modified, dropped
 
 
-def owning_message(info, messages):
-    """The message that announced this attachment, or None when the chat never names it.
+# The two forms a filename is matched by, in the order they are tried. EXACT name first,
+# folded name only as a fallback: the `-1` suffix exists precisely because an earlier
+# attachment already took the bare name, so folding it away first hands a September file to
+# the August message that sent its namesake — measured, and the reason the passes are two.
+# Every site that matches a name reads this list, so the rule cannot drift between the
+# attribution and the tally that counts what the attribution missed.
+NAME_FORMS = (plain_name, normalize_attachment)
 
-    EXACT name first, folded name only as a fallback. The `-1` suffix exists precisely
-    because an earlier attachment already took the bare name, so folding it away first
-    hands a September file to the August message that sent its namesake — measured, and
-    the reason the two passes are not one.
+
+def owner_by_name(name, messages, attachments_of):
+    """The message announcing `name`, or None when the chat never names it.
+
+    Each form is tried over EVERY message before the next form is tried at all: a fallback
+    match on message 2 must not beat an exact match on message 40.
     """
-    exact = plain_name(info.filename)
-    for message in messages:
-        for named in message.attachments:
-            if plain_name(named) == exact:
-                return message
-    wanted = normalize_attachment(info.filename)
-    for message in messages:
-        for named in message.attachments:
-            if normalize_attachment(named) == wanted:
-                return message
+    for form in NAME_FORMS:
+        wanted = form(name)
+        for message in messages:
+            for named in attachments_of(message):
+                if form(named) == wanted:
+                    return message
     return None
+
+
+def owning_message(info, messages):
+    """The message that announced this attachment, over the parsed `Message` objects."""
+    return owner_by_name(info.filename, messages, lambda message: message.attachments)
 
 
 def is_audio(name):
@@ -539,11 +550,25 @@ def render_digest(context):
         add("| File | Size | Sender | When |")
         add("|---|---|---|---|")
         for entry in context["added_files"]:
-            add("| `%s` | %s | %s | %s |"
-                % (os.path.basename(entry["name"]), human_size(entry["size"]),
+            announced = os.path.basename(entry["name"])
+            on_disk = entry.get("on_disk")
+            shown = ("`%s` — saved as `%s`" % (announced, on_disk)
+                     if on_disk and on_disk != announced else "`%s`" % announced)
+            add("| %s | %s | %s | %s |"
+                % (shown, human_size(entry["size"]),
                    entry["sender"] or "—", entry["when"] or "—"))
         add("")
-        add("Extracted into `%s`." % context["attachments_dir"])
+        if context.get("extracted", True):
+            renamed = any(e.get("on_disk") and e["on_disk"] != os.path.basename(e["name"])
+                          for e in context["added_files"])
+            add("Extracted into `%s`." % context["attachments_dir"])
+            if renamed:
+                add("")
+                add("A row reading *saved as* collided with another member of the zip: two "
+                    "files travel under one name, and the one on disk is the second.")
+        else:
+            add("**Not extracted** (`--no-extract`): every file above is still inside the "
+                "zip, and no `attachments/` directory was written.")
     else:
         add("_None._")
     add("")
@@ -583,13 +608,17 @@ def render_digest(context):
             "in a working conversation the voice note is usually where WHO IS WHO lives."
             % len(context["added_audio"]))
         add("")
-        add("1. Transcribe the attachments directory with the `asr:transcribe-audio` skill, "
-            "which reads `.opus` directly.")
-        add("2. Fold the transcripts back into this file:")
-        add("")
-        add("```sh")
-        add("%s transcripts %s" % (context["self_name"], shell_quote(context["out_dir"])))
-        add("```")
+        if not context.get("extracted", True):
+            add("They were **not extracted** (`--no-extract`), so there is nothing to hand a "
+                "transcriber. Re-run `diff` without `--no-extract` first.")
+        else:
+            add("1. Transcribe the attachments directory with the `asr:transcribe-audio` "
+                "skill, which reads `.opus` directly.")
+            add("2. Fold the transcripts back into this file:")
+            add("")
+            add("```sh")
+            add("%s transcripts %s" % (context["self_name"], shlex.quote(context["out_dir"])))
+            add("```")
     else:
         add("_None._ Nothing to transcribe this round.")
     add("")
@@ -634,11 +663,12 @@ def one_line(text):
     return " ".join(text.split())
 
 
-def shell_quote(path):
-    return path if re.match(r"^[\w@%+=:,./-]+$", path) else "'%s'" % path.replace("'", "'\\''")
-
-
 TRANSCRIPT_HEADING = "## New voice notes"
+
+# Bumped whenever `context.json` gains or loses a key `render_digest` indexes directly.
+# `transcripts` refuses a directory written by any other version rather than failing on
+# the missing key halfway through re-rendering the digest.
+CONTEXT_SCHEMA = 1
 
 
 def cmd_diff(args):
@@ -675,13 +705,15 @@ def cmd_diff(args):
     os.makedirs(out_dir, exist_ok=True)
     attachments_dir = os.path.join(out_dir, "attachments")
     collisions = []
+    on_disk = []
     if not args.no_extract:
         if args.overwrite and os.path.isdir(attachments_dir):
             for entry in os.listdir(attachments_dir):
                 target = os.path.join(attachments_dir, entry)
                 if os.path.isfile(target):
                     os.unlink(target)
-        _written, collisions = extract(new_zip, added_infos, attachments_dir)
+        written, collisions = extract(new_zip, added_infos, attachments_dir)
+        on_disk = [os.path.basename(path) for path in written]
 
     tally = {
         "orphan_lines": count_orphan_lines(new_text),
@@ -695,6 +727,7 @@ def cmd_diff(args):
     }
 
     context = {
+        "schema": CONTEXT_SCHEMA,
         "title": title,
         "new_zip": new_zip,
         "old_zip": old_zip,
@@ -713,13 +746,17 @@ def cmd_diff(args):
                 "size": info.file_size,
                 "sender": owner.sender if owner and owner.sender else None,
                 "when": ("%s %s" % (owner.date, owner.time)) if owner else None,
+                # The name ON DISK, which a collision changes: `extract` writes the second
+                # `x.pdf` as `x~2.pdf`. The reader opens this one, not the announced name.
+                "on_disk": on_disk[i] if i < len(on_disk) else None,
             }
-            for info, owner in added_files
+            for i, (info, owner) in enumerate(added_files)
         ],
         "modified_files": [{"name": i.filename, "size": i.file_size} for i in modified_infos],
         "dropped_files": [{"name": i.filename, "size": i.file_size} for i in dropped_infos],
         "added_audio": [i.filename for i in added_audio],
         "attachments_dir": attachments_dir,
+        "extracted": not args.no_extract,
         "out_dir": out_dir,
         "line_runs": line_runs(delta.added),
         "tally": tally,
@@ -770,7 +807,7 @@ def cmd_diff(args):
               % (len(delta.added), len(added_infos), len(added_audio)))
         if modified_infos:
             print("changed:   %d attachments kept their name" % len(modified_infos))
-        if delta.anomalies or dropped_infos:
+        if delta.message_anomalies or dropped_infos:
             print("WARNING:   %d edited, %d gone, %d attachments gone — see Anomalies in the "
                   "digest" % (len(delta.changed), len(delta.removed), len(dropped_infos)))
         print("unplaced:  %s" % describe_tally(tally))
@@ -873,12 +910,11 @@ def count_extra_txt(zip_path, chat_member):
 
 def count_unmatched_markers(messages, index):
     """Attachment markers naming a file no member of the zip carries."""
-    exact = {plain_name(name) for name in index}
-    folded = {normalize_attachment(name) for name in index}
+    carried = [{form(name) for name in index} for form in NAME_FORMS]
     missing = 0
     for message in messages:
         for named in message.attachments:
-            if plain_name(named) not in exact and normalize_attachment(named) not in folded:
+            if not any(form(named) in names for form, names in zip(NAME_FORMS, carried)):
                 missing += 1
     return missing
 
@@ -921,6 +957,10 @@ def cmd_transcripts(args):
 
     with open(context_path, encoding="utf-8") as handle:
         context = json.load(handle)
+    if context.get("schema") != CONTEXT_SCHEMA:
+        fail("%s was written by another version of this script (context schema %s, this one "
+             "reads %d) — re-run `diff` on the zip to rebuild it."
+             % (context_path, context.get("schema", "absent"), CONTEXT_SCHEMA))
 
     messages = context.get("added", [])
     transcripts = {}
@@ -948,18 +988,9 @@ def cmd_transcripts(args):
 
 
 def owner_of(name, messages):
-    """Same two passes as `owning_message`, over the records `diff` wrote."""
-    exact = plain_name(name)
-    for message in messages:
-        for named in message.get("attachments", []):
-            if plain_name(named) == exact:
-                return message
-    wanted = normalize_attachment(name)
-    for message in messages:
-        for named in message.get("attachments", []):
-            if normalize_attachment(named) == wanted:
-                return message
-    return None
+    """The same search as `owning_message`, over the records `diff` wrote to disk."""
+    return owner_by_name(name, messages,
+                         lambda message: message.get("attachments", []))
 
 
 def find_transcript(out_dir):
