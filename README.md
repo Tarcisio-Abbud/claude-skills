@@ -348,7 +348,10 @@ tk/
   tests/mutations_tk_contract.py  its mutations, with a runner that takes the suite as
                                   an argument — and that reports a test no mutation
                                   names, since a green score counts only the mutants
-                                  someone wrote
+                                  someone wrote, and a source LINE no test input runs
+  tests/reach_tracer.py           the probe behind that second report: it rides into
+                                  every child interpreter as `sitecustomize` and writes
+                                  down the lines each watched file executed
   tests/mutations_collisions.py   entries only: it enters through that runner's seam,
                                   which is what the seam was written for
   tests/mutations_vista.py        entries only: it folds into the same runner, through the
@@ -466,6 +469,14 @@ mutates prose, the bin AND its own TEST FILE, the last being the only way to pro
 reader that lives in the suite: its statusline check must let the prose SAY the number is
 not there while refusing an instruction to go and read it there — and the `tk-quota` one
 mutates the wall's prose, since a command the wall does not name is a command nobody runs.
+
+Beside the score, the shared runner reports the two holes a score cannot show. UNPROVED
+names a test no entry mutates. UNREACHED names a source LINE that no test in that suite
+executes at all — the probe measures the baseline the run already does, and the report is
+the lines the compiler emits for the file minus the lines that ran. Neither the count nor
+the listing changes the exit code: every suite here has unreached lines today, mostly
+error branches no fixture provokes, and a check that is red on arrival is a check somebody
+turns off. A listing too tall to read is held back behind `TK_REACH_FULL=1`.
 
 Every one of those anchors is a literal substring of its source, and it has to match
 exactly once. `python3 tk/tests/anchor_check.py` asks that of every harness in the
