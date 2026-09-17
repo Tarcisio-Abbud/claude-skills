@@ -106,6 +106,7 @@ USAGE = "TheExitCodes.test_a_bad_flag_exits_sixty_four"
 GLOB = "TheExitCodes.test_a_wildcard_session_id_does_not_glob"
 TWO_FILES = "TheExitCodes.test_two_transcripts_for_one_id_are_refused"
 THE_FLAG = "TheExitCodes.test_a_transcript_path_wins_over_the_session_id"
+PIPE = "TheExitCodes.test_a_reader_that_stopped_reading_is_not_a_failed_reading"
 
 ARGV = "TheSiblingSeam.test_main_takes_its_argv_like_every_sibling_bin"
 POINTER = "TheSiblingSeam.test_the_wrap_up_sends_its_first_step_here"
@@ -505,6 +506,20 @@ MUTATIONS = [
      "    path = args.transcript",
      "    path = None",
      [THE_FLAG], ERRORS),
+
+    ("a closed pipe raises out of `main`, and the seam records a refusal",
+     """    try:
+        report(refusals, unconfirmed, unparsed, args.limit)
+        sys.stdout.flush()            # the flush at exit is past every handler""",
+     "    report(refusals, unconfirmed, unparsed, args.limit)\n    try:\n        pass",
+     [PIPE], ERRORS),
+
+    ("the pipe is quieted but the exit stays non-zero, which is the whole defect",
+     "        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())\n"
+     "    return EXIT_READ",
+     "        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())\n"
+     "        return 1\n    return EXIT_READ",
+     [PIPE], ERRORS),
 
     ("`main` stops taking its argv, and no caller can drive the parser",
      "def main(argv=None):",

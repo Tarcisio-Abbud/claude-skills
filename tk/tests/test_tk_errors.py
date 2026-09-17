@@ -664,6 +664,34 @@ class TheExitCodes(TranscriptFixture):
         self.assertEqual(run.returncode, 2, run.stdout)
         self.assertIn("unread one", run.stderr)
 
+    def test_a_reader_that_stopped_reading_is_not_a_failed_reading(self):
+        # `| head -1` is the documented way to consume this command — the
+        # headline IS the first line — and it closes the pipe on the second.
+        # Uncaught, the `BrokenPipeError` came back as a non-zero exit, which
+        # the Bash tool records as `is_error`: the signal the exit code was
+        # flattened to 0 to stop manufacturing, remade by the pipe.
+        rows = 400                    # past the 64 KiB a pipe buffers
+        lines = []
+        for index in range(rows):
+            lines.append(call_line(f"u{index}", command=f"cmd {index} " + "x" * 150))
+            lines.append(result_line(f"u{index}", "denied " + "y" * 150,
+                                     is_error=True))
+        self.write(*lines)
+        env = dict(os.environ, HOME=self.home.name,
+                   CLAUDE_CODE_SESSION_ID=SESSION)
+        proc = subprocess.Popen(
+            [sys.executable, TK_ERRORS, "--limit", str(rows)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=env, cwd=self.home.name)
+        first = proc.stdout.readline()
+        proc.stdout.close()           # the reader walks away, as `head` does
+        stderr = proc.stderr.read()
+        proc.stderr.close()
+        self.assertEqual(proc.wait(), 0, stderr)
+        self.assertIn(f"{rows} refused tool call(s)", first)
+        self.assertNotIn("BrokenPipeError", stderr)
+        self.assertNotIn("Exception ignored", stderr)
+
     def test_an_unread_transcript_is_not_a_clean_one(self):
         # 2 and 0 are opposite facts. A seam that conflated them would report a
         # session nobody read as a session with nothing wrong in it.

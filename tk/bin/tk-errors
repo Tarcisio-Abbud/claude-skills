@@ -99,6 +99,9 @@ every honest run a refusal in the NEXT session's class 1 — the reader
 manufacturing the very signal it exists to count. 0 and 2 stay distinct for the
 original reason: "the session was clean" and "the reading never happened" are
 opposite facts, and a seam that conflates them reports the second as the first.
+A CLOSED PIPE IS 0 TOO, for the same reason: the headline is the first line, so
+`| head -1` is how a seam reads this command, and an uncaught `BrokenPipeError`
+put the non-zero exit — and the `is_error` — straight back.
 """
 
 import argparse
@@ -624,7 +627,19 @@ def main(argv=None):
         path = find_transcript(args.session)
 
     refusals, unconfirmed, unparsed = walk(path)
-    report(refusals, unconfirmed, unparsed, args.limit)
+    try:
+        report(refusals, unconfirmed, unparsed, args.limit)
+        sys.stdout.flush()            # the flush at exit is past every handler
+    except BrokenPipeError:
+        # A READER THAT STOPPED READING IS NOT A FAILED READING. The headline is
+        # the first line, so `| head -1` is the documented way to consume this
+        # command — and it closes the pipe on the second. Uncaught, that came
+        # back as exit 1 from the raise and exit 120 from the interpreter's own
+        # flush afterwards, which the Bash tool records as `is_error`: the very
+        # signal the exit code was flattened to 0 to stop manufacturing.
+        # `/dev/null` over fd 1 is what keeps the final flush quiet; closing the
+        # stream instead leaves the interpreter printing `Exception ignored`.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
     return EXIT_READ
 
 
