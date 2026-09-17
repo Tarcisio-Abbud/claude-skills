@@ -451,7 +451,10 @@ def success_count(text, sub):
 
 
 def walk(path):
-    """(refusals, unconfirmed writes) from this session's transcripts, oldest first.
+    """(refusals, unconfirmed writes, unparsed) from this session's transcripts.
+
+    Oldest first, one list per signal class, in the order the headline prints
+    them.
 
     ONE READING OVER SEVERAL FILES: the session's own jsonl, then the transcript
     of every agent it dispatched. The parent's `isSidechain` records are skipped
