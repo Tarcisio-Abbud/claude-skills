@@ -95,6 +95,20 @@ class TranscriptFixture(unittest.TestCase):
         with open(self.transcript, "w") as fh:
             fh.write("\n".join(lines) + "\n")
 
+    def write_subagent(self, name, *lines):
+        """One dispatched agent's transcript, where the harness puts it.
+
+        Beside the session's own file, in a directory named for the session:
+        `<project>/<session id>/subagents/agent-<hash>.jsonl`, and one level
+        deeper when a Workflow ran the agent.
+        """
+        directory = os.path.join(self.project, SESSION, "subagents",
+                                 *os.path.split(name)[:-1])
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(self.project, SESSION, "subagents", name),
+                  "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+
     def run_it(self, *args, session=SESSION):
         env = dict(os.environ, HOME=self.home.name)
         env.pop("CLAUDE_CODE_SESSION_ID", None)
@@ -157,15 +171,42 @@ class TheRefusals(TranscriptFixture):
         self.assertEqual(self.counts(run), (1, 0))
         self.assertIn("something was refused", run.stdout)
 
-    def test_a_subagent_entry_is_not_this_session(self):
-        # A dispatched agent's refusals are its own window's, and the parent's
-        # close must not report them as its own.
-        self.write(call_line("t1", command="ls", sidechain=True),
+    def test_a_subagent_entry_in_the_parent_file_is_read_from_its_own(self):
+        # A sidechain record in the session's own jsonl is a COPY of a line the
+        # agent's file already holds. Skipped here so the row is not printed
+        # twice; the agent's file is read on its own, below.
+        self.write(call_line("t0", command="ls"), result_line("t0", "a.txt"),
+                   call_line("t1", command="ls", sidechain=True),
                    result_line("t1", "the subagent's refusal", is_error=True,
                                sidechain=True))
         run = self.run_it()
         self.assertEqual(self.counts(run), (0, 0))
         self.assertNotIn("subagent's refusal", run.stdout)
+
+    def test_a_dispatched_agents_refusals_are_this_sessions(self):
+        # They ARE the session's: a hook that turned a dispatched agent away
+        # refused work this session asked for, and the close is the only place
+        # anyone reads it. Every record in that file is `isSidechain`, which is
+        # why the skip above belongs to the parent file alone.
+        lines = []
+        for n in range(5):
+            lines += [call_line(f"a{n}", command=f"cmd{n}", sidechain=True),
+                      result_line(f"a{n}", f"agent refusal {n}", is_error=True,
+                                  sidechain=True)]
+        self.write(call_line("t0", command="ls"), result_line("t0", "a.txt"))
+        self.write_subagent("agent-a1b2c3.jsonl", *lines)
+        run = self.run_it()
+        self.assertEqual(self.counts(run), (5, 0))
+        self.assertIn("agent refusal 4", run.stdout)
+
+    def test_an_agent_a_workflow_ran_is_read_too(self):
+        # The harness nests those one level deeper, under `workflows/<id>/`.
+        self.write(call_line("t0", command="ls"), result_line("t0", "a.txt"))
+        self.write_subagent(os.path.join("workflows", "wf_1", "agent-z.jsonl"),
+                            result_line("a1", "the workflow agent's refusal",
+                                        is_error=True, sidechain=True))
+        run = self.run_it()
+        self.assertEqual(self.counts(run), (1, 0))
 
     def test_a_half_written_last_line_costs_nothing(self):
         # The transcript is appended to live, and a session asking what it was
@@ -394,6 +435,24 @@ class TheExitCodes(TranscriptFixture):
         self.write(call_line("t1", command="ls"),
                    result_line("t1", "refused", is_error=True))
         self.assertEqual(self.run_it().returncode, 1)
+
+    def test_a_transcript_that_yielded_no_record_is_unread(self):
+        # The false clean this class exists to prevent, one layer in: the file
+        # was OPENED, so the reader never reached its "no transcript" branch,
+        # and nothing in it survived the reading. An empty file, a file of
+        # garbage and a file of somebody else's records all report the same
+        # thing — nothing was read — and that is the opposite of clean.
+        for label, body in (("empty", ""),
+                            ("garbage", "not json\n{\"type\":\n"),
+                            ("all sidechain",
+                             result_line("t1", "an agent's", is_error=True,
+                                         sidechain=True) + "\n")):
+            with self.subTest(label):
+                with open(self.transcript, "w") as fh:
+                    fh.write(body)
+                run = self.run_it()
+                self.assertEqual(run.returncode, 2, run.stdout)
+                self.assertIn("unread one", run.stderr)
 
     def test_an_unread_transcript_is_not_a_clean_one(self):
         # 2 and 0 are opposite facts. A seam that conflated them would report a

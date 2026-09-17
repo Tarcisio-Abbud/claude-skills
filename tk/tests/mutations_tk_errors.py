@@ -40,7 +40,9 @@ LISTED = "TheRefusals.test_a_refused_call_is_listed_with_its_tool_and_its_comman
 NOT_ERROR = "TheRefusals.test_a_result_that_is_not_an_error_is_not_a_refusal"
 STRUCTURED = "TheRefusals.test_a_structured_result_is_read_like_a_plain_one"
 ORPHAN = "TheRefusals.test_a_refusal_with_no_call_recorded_is_still_reported"
-SIDECHAIN = "TheRefusals.test_a_subagent_entry_is_not_this_session"
+SIDECHAIN = "TheRefusals.test_a_subagent_entry_in_the_parent_file_is_read_from_its_own"
+DISPATCHED = "TheRefusals.test_a_dispatched_agents_refusals_are_this_sessions"
+WORKFLOW_AGENT = "TheRefusals.test_an_agent_a_workflow_ran_is_read_too"
 HALF_LINE = "TheRefusals.test_a_half_written_last_line_costs_nothing"
 ESCAPE = "TheRefusals.test_a_control_sequence_in_a_message_is_stripped"
 CAPPED = "TheRefusals.test_the_rows_are_capped_and_the_cut_is_declared"
@@ -73,6 +75,7 @@ READS_OUT = "TheQueueSeam.test_the_read_only_subcommands_are_left_out"
 
 ZERO_ONE = "TheExitCodes.test_a_clean_session_exits_zero_and_a_dirty_one_exits_one"
 UNREAD = "TheExitCodes.test_an_unread_transcript_is_not_a_clean_one"
+NO_RECORD = "TheExitCodes.test_a_transcript_that_yielded_no_record_is_unread"
 NO_SESSION = "TheExitCodes.test_a_missing_session_id_says_so"
 USAGE = "TheExitCodes.test_a_bad_flag_exits_sixty_four"
 GLOB = "TheExitCodes.test_a_wildcard_session_id_does_not_glob"
@@ -99,18 +102,37 @@ MUTATIONS = [
      [NOT_ERROR, ZERO_ONE],
      ERRORS),
 
-    ("a subagent's refusal is reported as this session's",
-     """            if record.get("isSidechain"):
-                continue              # a subagent's window, not this session's
+    ("a dispatched agent's line is reported twice — once from each file",
+     """                if source == path and record.get("isSidechain"):
+                    continue          # the agent's own file carries this line
 """,
      "",
      [SIDECHAIN], ERRORS),
 
+    ("the agents this session dispatched are not read at all",
+     "    for source in [path] + subagent_transcripts(path):",
+     "    for source in [path]:",
+     [DISPATCHED, WORKFLOW_AGENT], ERRORS),
+
+    ("only the agents at the top level are read, and a Workflow's are missed",
+     '''    return sorted(glob.glob(os.path.join(glob.escape(base), "subagents",
+                                         "**", "*.jsonl"), recursive=True))''',
+     '''    return sorted(glob.glob(os.path.join(glob.escape(base), "subagents",
+                                         "*.jsonl")))''',
+     [WORKFLOW_AGENT], ERRORS),
+
+    ("a reading that survived nothing reports a clean session",
+     """    if not considered:
+        no_transcript(f"{plain(path)} yielded no record of this session")
+""",
+     "",
+     [NO_RECORD], ERRORS),
+
     ("a half-written last line crashes the reading instead of being skipped",
-     """            except ValueError:
-                continue""",
-     """            except ValueError:
-                raise""",
+     """                except ValueError:
+                    continue""",
+     """                except ValueError:
+                    raise""",
      [HALF_LINE], ERRORS),
 
     ("the row names the tool and not the call, so the reader still has to grep",

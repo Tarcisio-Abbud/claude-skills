@@ -49,9 +49,19 @@ transcript records is what survived the filter. The row is still worth printing
 the class to expect a false positive from, and the reason this class reports rows
 rather than a verdict.
 
-WHAT IT DOES NOT SEE: subagents. Their transcripts are separate files, as
-`tk-context` documents, so a refusal inside a dispatched agent is in that agent's
-jsonl and not here. Run from inside a subagent, this reads the PARENT's file.
+IT READS THE AGENTS THIS SESSION DISPATCHED. Their transcripts are separate
+files, as `tk-context` documents, and their refusals are this session's: a hook
+that turned a dispatched agent away refused work this session asked for, and the
+close is the only place anybody reads it. So the session's own jsonl and every
+`<session dir>/subagents/**/*.jsonl` beside it are one reading. Every record in
+an agent's file is marked `isSidechain`, and the PARENT file's sidechain records
+— copies of the same lines — are skipped there so no row is printed twice.
+
+A READING THAT FOUND NO RECORD IS NOT A CLEAN SESSION. An empty file, a file of
+garbage and a file whose every record was filtered out all exit 2, for the reason
+a missing file does: "nothing was read" and "nothing was refused" are opposite
+facts, and this is the seam where a file that OPENED could report the first as
+the second.
 
 Usage:  tk-errors [--limit N] [--session ID] [--transcript PATH]
 Exit:   0 nothing refused · 1 signals are listed · 2 no transcript to read ·
@@ -189,6 +199,19 @@ def find_transcript(session_id):
     return hits[0]
 
 
+def subagent_transcripts(path):
+    """The jsonls of the agents this session dispatched, beside its own file.
+
+    The harness writes them under `<transcript without .jsonl>/subagents/`, one
+    per agent, one level deeper for an agent a Workflow ran — hence the
+    recursive glob. The directory is escaped before it reaches that glob, for
+    the reason `find_transcript` escapes the session id.
+    """
+    base = re.sub(r"\.jsonl$", "", path)
+    return sorted(glob.glob(os.path.join(glob.escape(base), "subagents",
+                                         "**", "*.jsonl"), recursive=True))
+
+
 def blocks(record):
     """The content blocks of a record, or an empty list.
 
@@ -296,7 +319,13 @@ def success_count(text, sub):
 
 
 def walk(path):
-    """(refusals, unconfirmed writes) from one transcript, oldest first.
+    """(refusals, unconfirmed writes) from this session's transcripts, oldest first.
+
+    ONE READING OVER SEVERAL FILES: the session's own jsonl, then the transcript
+    of every agent it dispatched. The parent's `isSidechain` records are skipped
+    — the agent's own file holds the same lines, and reading both would print
+    every dispatched refusal twice. A key is the (file, tool_use_id) pair rather
+    than the id alone, so no agent's output can confirm another's write.
 
     Read line by line: a long session's transcript reaches megabytes and only two
     kinds of block are wanted. Malformed lines are skipped rather than fatal — the
@@ -308,51 +337,64 @@ def walk(path):
     results arrive. A call whose result never arrives keeps an empty text and is
     reported unconfirmed, which is what it is — the write was invoked and nothing
     came back to say it landed.
+
+    Zero records CONSIDERED stops with code 2. The count is of what survived the
+    reading, not of what the file held: a transcript that opened and yielded
+    nothing is unread, and reporting it as clean is the one lie this command
+    cannot afford.
     """
-    try:
-        handle = open(path, errors="replace")
-    except OSError as exc:
-        no_transcript(f"cannot read {path}: {exc}")
-
-    calls = {}                        # tool_use_id -> (stamp, tool name, input)
+    calls = {}                        # (file, tool_use_id) -> (stamp, tool, input)
     refusals = []
-    pending = []                      # (stamp, sub, command, note, tool_use_id)
-    results = {}                      # tool_use_id -> the text it returned
+    pending = []                      # (stamp, sub, command, note, key)
+    results = {}                      # (file, tool_use_id) -> the text it returned
+    considered = 0
 
-    with handle:
-        for line in handle:
-            try:
-                record = json.loads(line)
-            except ValueError:
-                continue
-            if record.get("isSidechain"):
-                continue              # a subagent's window, not this session's
-            stamp = record.get("timestamp") or ""
-            for block in blocks(record):
-                kind = block.get("type")
-                if kind == "tool_use":
-                    calls[block.get("id")] = (stamp, block.get("name") or "?",
-                                              block.get("input") or {})
-                    command = (block.get("input") or {}).get("command")
-                    if isinstance(command, str):
-                        for sub, note in queue_writes(command):
-                            pending.append((stamp, sub, command, note,
-                                            block.get("id")))
-                elif kind == "tool_result":
-                    uid = block.get("tool_use_id")
-                    text = block_text(block)
-                    results[uid] = results.get(uid, "") + text
-                    if block.get("is_error"):
-                        called = calls.get(uid, (stamp, "?", {}))
-                        refusals.append(Refusal(called[0] or stamp, called[1],
-                                                call_detail(called[2]), text))
+    for source in [path] + subagent_transcripts(path):
+        try:
+            handle = open(source, errors="replace")
+        except OSError as exc:
+            if source == path:
+                no_transcript(f"cannot read {path}: {exc}")
+            print(f"tk-errors: skipped {plain(source)}: {exc}", file=sys.stderr)
+            continue
+        with handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                if source == path and record.get("isSidechain"):
+                    continue          # the agent's own file carries this line
+                considered += 1
+                stamp = record.get("timestamp") or ""
+                for block in blocks(record):
+                    kind = block.get("type")
+                    if kind == "tool_use":
+                        key = (source, block.get("id"))
+                        calls[key] = (stamp, block.get("name") or "?",
+                                      block.get("input") or {})
+                        command = (block.get("input") or {}).get("command")
+                        if isinstance(command, str):
+                            for sub, note in queue_writes(command):
+                                pending.append((stamp, sub, command, note, key))
+                    elif kind == "tool_result":
+                        key = (source, block.get("tool_use_id"))
+                        text = block_text(block)
+                        results[key] = results.get(key, "") + text
+                        if block.get("is_error"):
+                            called = calls.get(key, (stamp, "?", {}))
+                            refusals.append(Refusal(called[0] or stamp, called[1],
+                                                    call_detail(called[2]), text))
+
+    if not considered:
+        no_transcript(f"{plain(path)} yielded no record of this session")
 
     unconfirmed = []
-    for stamp, sub, command, note, uid in pending:
+    for stamp, sub, command, note, key in pending:
         if note:
             unconfirmed.append(Unconfirmed(stamp, sub, command, note))
             continue
-        text = results.get(uid)
+        text = results.get(key)
         if text is None:
             unconfirmed.append(Unconfirmed(stamp, sub, command,
                                            "the call returned nothing"))
