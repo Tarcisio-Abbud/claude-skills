@@ -78,10 +78,15 @@ facts, and this is the seam where a file that OPENED could report the first as
 the second.
 
 Usage:  tk-errors [--limit N] [--session ID] [--transcript PATH]
-Exit:   0 nothing refused · 1 signals are listed · 2 no transcript to read ·
-        64 bad usage. 1 and 2 are distinct on purpose: "the session was clean"
-        and "the reading never happened" are opposite facts, and a seam that
-        conflates them reports the second as the first.
+Exit:   0 the reading happened · 2 nothing was read · 64 bad usage.
+
+THE EXIT CODE SAYS WHETHER IT READ, NEVER WHAT IT FOUND. The verdict is the
+headline, and this command is run BY the close, through the Bash tool, which
+records a non-zero exit as `is_error`. Exiting 1 on "I found something" made
+every honest run a refusal in the NEXT session's class 1 — the reader
+manufacturing the very signal it exists to count. 0 and 2 stay distinct for the
+original reason: "the session was clean" and "the reading never happened" are
+opposite facts, and a seam that conflates them reports the second as the first.
 """
 
 import argparse
@@ -93,8 +98,7 @@ import shlex
 import sys
 from typing import NamedTuple
 
-EXIT_CLEAN = 0
-EXIT_SIGNALS = 1
+EXIT_READ = 0                         # the reading happened; the headline judges
 EXIT_NO_TRANSCRIPT = 2
 EXIT_USAGE = 64                       # sysexits.h EX_USAGE; argparse's own 2 collides
 
@@ -592,7 +596,7 @@ def main(argv=None):
 
     refusals, unconfirmed, unparsed = walk(path)
     report(refusals, unconfirmed, unparsed, args.limit)
-    return EXIT_SIGNALS if (refusals or unconfirmed) else EXIT_CLEAN
+    return EXIT_READ
 
 
 if __name__ == "__main__":

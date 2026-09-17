@@ -89,7 +89,7 @@ TABLES = "TheQueueSeam.test_the_two_tables_cover_the_same_subcommands"
 REAL_SUB = "TheQueueSeam.test_every_watched_subcommand_is_a_real_one"
 READS_OUT = "TheQueueSeam.test_the_read_only_subcommands_are_left_out"
 
-ZERO_ONE = "TheExitCodes.test_a_clean_session_exits_zero_and_a_dirty_one_exits_one"
+EXIT_ZERO = "TheExitCodes.test_a_reading_that_happened_exits_zero_whatever_it_found"
 UNREAD = "TheExitCodes.test_an_unread_transcript_is_not_a_clean_one"
 NO_RECORD = "TheExitCodes.test_a_transcript_that_yielded_no_record_is_unread"
 NO_SESSION = "TheExitCodes.test_a_missing_session_id_says_so"
@@ -108,14 +108,14 @@ MUTATIONS = [
     ("the harness's own verdict is ignored, so nothing is ever refused",
      "                    if block.get(\"is_error\"):",
      "                    if False:",
-     [LISTED, STRUCTURED, ORPHAN, HALF_LINE, ESCAPE, CAPPED, ZERO_ONE, THE_FLAG,
+     [LISTED, STRUCTURED, ORPHAN, HALF_LINE, ESCAPE, CAPPED, EXIT_ZERO, THE_FLAG,
       BOTH],
      ERRORS),
 
     ("every result is a refusal, so the report is noise and gets skipped",
      "                    if block.get(\"is_error\"):",
      "                    if True:",
-     [NOT_ERROR, ZERO_ONE],
+     [NOT_ERROR, EXIT_ZERO],
      ERRORS),
 
     ("a dispatched agent's line is reported twice — once from each file",
@@ -408,7 +408,12 @@ MUTATIONS = [
     ("an unread transcript exits 0, so nobody read reads as nothing wrong",
      "EXIT_NO_TRANSCRIPT = 2",
      "EXIT_NO_TRANSCRIPT = 0",
-     [UNREAD, NO_SESSION, GLOB, TWO_FILES], ERRORS),
+     [UNREAD, NO_SESSION, GLOB, TWO_FILES, NO_RECORD], ERRORS),
+
+    ("a run that found something exits non-zero, and the close records a refusal",
+     "    return EXIT_READ",
+     "    return 1 if (refusals or unconfirmed) else EXIT_READ",
+     [EXIT_ZERO], ERRORS),
 
     ("the failure says nothing about being unread, which is the whole warning",
      '''    print("tk-errors: nothing was read — this is not a clean session, it is an "

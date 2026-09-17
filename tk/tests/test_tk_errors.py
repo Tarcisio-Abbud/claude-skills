@@ -549,12 +549,19 @@ class TheQueueSeam(unittest.TestCase):
 
 class TheExitCodes(TranscriptFixture):
 
-    def test_a_clean_session_exits_zero_and_a_dirty_one_exits_one(self):
+    def test_a_reading_that_happened_exits_zero_whatever_it_found(self):
+        # The close runs this command through the Bash tool, which records a
+        # non-zero exit as `is_error`. Exiting 1 on "I found something" made
+        # every honest run a refusal in the NEXT session's first class — the
+        # reader manufacturing the signal it exists to count. The headline is
+        # the verdict; the exit code says only whether the reading happened.
         self.write(call_line("t1", command="ls"), result_line("t1", "a.txt"))
-        self.assertEqual(self.run_it().returncode, 0)
+        clean = self.run_it()
+        self.assertEqual((clean.returncode, self.counts(clean)), (0, (0, 0)))
         self.write(call_line("t1", command="ls"),
                    result_line("t1", "refused", is_error=True))
-        self.assertEqual(self.run_it().returncode, 1)
+        dirty = self.run_it()
+        self.assertEqual((dirty.returncode, self.counts(dirty)), (0, (1, 0)))
 
     def test_a_transcript_that_yielded_no_record_is_unread(self):
         # The false clean this class exists to prevent, one layer in: the file
@@ -617,7 +624,7 @@ class TheExitCodes(TranscriptFixture):
             fh.write(result_line("t1", "the other file's refusal",
                                  is_error=True) + "\n")
         run = self.run_it("--transcript", other, session=None)
-        self.assertEqual(run.returncode, 1)
+        self.assertEqual(run.returncode, 0)
         self.assertIn("the other file's refusal", run.stdout)
 
 
