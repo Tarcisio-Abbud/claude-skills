@@ -62,9 +62,10 @@ On the first quota failure, in this order:
    --state "..." --blockers "..."`, in the form `../verify/SKILL.md` prescribes (*Three
    attempts, then the queue*), **then run the `edit` it prints** (same file, *The item
    points at the briefing*). That warning goes to stderr at exit 0, and the wall is the
-   moment nobody is watching that stream. The id is the item in flight; with nothing in
-   flight, it is the head of what the package has left. One handoff, not one per item: the
-   package's remaining state has a single home, and a copy per item is a copy to go stale.
+   moment nobody is watching that stream. The id is the item that closes LAST, never the item in
+   flight: `AFK.md` step 5 owns that rule, and names what a handoff on the head item costs at the
+   first close. One handoff, not one per item: the package's remaining state has a single home,
+   and a copy per item is a copy to go stale.
    The PACKAGE's own state is `LEDGER.md` beside this file, which owns it and the lane restart.
 3. **Say what is left, in `--state`.** Eight contents, because each one is something the next
    generation otherwise rediscovers by doing the work twice:
@@ -301,12 +302,12 @@ leave an orphan claim every later package refuses. Under the threshold the seam 
 
 1. **Record the triage through `tk-queue`** — `add`, `edit`, `cancel` — so the verification
    against reality and the re-triage survive the session that paid for them.
-2. **Write one `tk-queue handoff` on the head item**, in the form `../verify/SKILL.md`
-   prescribes, and run the `edit` it prints (same file, *The item points at the
-   briefing*). Its `--state` carries the seam this session stopped at — which is what tells
-   the successor where to enter (`RESUME.md`, through `AFK.md`'s section of that name) — the cut's
-   order, the context number just read, and whichever of *The wall*'s eight contents a package
-   that dispatched nothing still has to say.
+2. **Write one `tk-queue handoff` on the item that closes last** (`AFK.md` step 5 names it), in
+   the form `../verify/SKILL.md` prescribes, and run the `edit` it prints (same file, *The item
+   points at the briefing*). Its `--state` carries the seam this session stopped at — which is
+   what tells the successor where to enter (`RESUME.md`, through `AFK.md`'s section of that
+   name) — the cut's order, the context number just read, and whichever of *The wall*'s eight
+   contents a package that dispatched nothing still has to say.
 3. **Leave the remote as it stands.** The lane's branch opens at `AFK.md` step 3; a branch
    pushed early takes its spec out of the next package's election (`AFK.md` step 1).
 4. **Hand back the line that resumes the package**, and stop. The successor opens on that
