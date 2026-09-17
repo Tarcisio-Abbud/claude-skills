@@ -175,6 +175,10 @@ tk/
                                   package's lanes are disjoint by file — the inputs in
                                   order, one slice one commit, and the single pull request
                                   the agent never merges
+  skills/kickoff/STALE.md         branch file: the check AFK.md step 3 sends an item that
+                                  cites a code line to — the cited line and the two below it,
+                                  the commit date against the item's Born, and why a hit
+                                  releases the claim instead of closing the item
   skills/kickoff/HYGIENE.md       branch file: the seven rules a package's dispatched runs
                                   are handled under, all of them seen from OUTSIDE the run —
                                   the prompt, the count of the live ones, what a return must

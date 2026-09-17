@@ -134,6 +134,9 @@ A lane with its own branch and pull request dispatches under `LANE-CONTRACT.md` 
 
 Every run dispatched here is handled under `HYGIENE.md` beside this file.
 
+**An item that cites a code line is checked before its run is composed** — where the fix
+already exists, it does not dispatch. `STALE.md` beside this file owns the check.
+
 Each run's prompt carries, produced here and never delegated back: the **contract block** pasted
 verbatim from `../../bin/tk-contract --role <row>` — `implementer`, `implementer-spec` on the
 accumulated lane, whose `pr = none` cell is what keeps the run from opening the per-ticket pull
@@ -180,7 +183,7 @@ refreshes the handoff right after it, and reads the quota between the launch and
 
 **Done when:** every item is claimed or reported held elsewhere, the lane branch exists and is
 pushed before its first ticket goes out, the base was explored once with its notes outside the
-repository, and every run carries a generated contract block, that path, and a prompt
+repository, every cited code line was checked before its run, and every run carries a generated contract block, that path, and a prompt
 self-sufficient without the tracker. The vehicle's script names no model, effort or
 contract of its own.
 
@@ -303,6 +306,7 @@ applies: **blocked** (another environment, "runs on: X"); **carried** under the 
 sibling's claim, owner and moment), the lane gate (a spec's branch on the remote, the pull request's
 number or the deletion repair), any other `pack` exclusion (its printed value, and whether it names
 a defect in the item), or the effort gate (cut for size, with the ready-to-paste line that runs it).
+An item step 3 found already fixed takes the **already resolved** rung, with the sha and date.
 Items verify ended at proof ready or DECISION owe nothing further.
 
 **Done when:** the measurement and sensor lines, audit block and deviation lines are written, every

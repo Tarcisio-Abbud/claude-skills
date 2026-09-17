@@ -22,6 +22,15 @@ package:
   per-ticket worktree, and the recipe it was run with cut the branch from the lane's remote
   branch — which is what the new branch then tracked. Measured 2026-09-02 on T247.
 
+- **the item that is already resolved** (T413). The step composed the run's contract out of the
+  item's own words, and an item is one author's claim about the tree, dated. On T151 the remedy
+  sat one line BELOW the line the item cited, committed the day before the item was born; the
+  orchestrator greped the same keyword, read the same single line, and spent a whole implementer
+  on a fix that already existed. The check lives in `STALE.md` beside the step — AFK.md is under
+  the pruning lock and holds the pointer — so what is asserted here spans two files: the pointer
+  standing before the run is composed, the procedure in the file that owns it, and step 6's rung,
+  because a category the reporting step does not enumerate leaves the screen in silence.
+
 THE PROSE IS WHAT IS ASSERTED, except for one recipe that is RUN. Nothing here can see an
 orchestrator, so most of what this file holds is the text the orchestrator executes — the
 call carrying its flag, the sentence standing in the right place. The worktree recipe is the
@@ -52,6 +61,14 @@ STEP_HEADING = re.compile(r"^## 3\. Claim, then dispatch\s*$", re.M)
 DISPATCH_ANCHOR = "The lane is serial"
 NOTES = "<notes dir>"
 QUEUE_DIR = '--dir "<queue dir>"'
+
+# The already-resolved check (T413). Step 3 carries the POINTER and `STALE.md` the procedure;
+# `PROMPT_ANCHOR` is what the pointer must stand before, since a check reached after the
+# contract is composed has already shipped the shallow read it exists to catch.
+STALE = os.path.join(HERE, os.pardir, "skills", "kickoff", "STALE.md")
+POINTER_LEAD = "An item that cites a code line is checked before its run is composed"
+PROMPT_ANCHOR = "Each run's prompt carries"
+STEP6_HEADING = re.compile(r"^## 6\. Measure, and hand the package to the close\s*$", re.M)
 
 # The metavariables of the per-ticket recipe, and the values this file fills them with.
 # `<m>` and `<slug>` are the lane's; `<id>` is the ticket's. Fictional, as every fixture
@@ -96,6 +113,29 @@ def sh_blocks(text):
     return [[line.strip() for line in re.sub(r"\\\n\s*", " ", block).splitlines()
              if line.strip()]
             for block in re.findall(r"^```sh\n(.*?)^```", text, re.M | re.S)]
+
+
+def step6(text=None):
+    """AFK.md's step 6, up to the next `## ` heading — scoped as `step3` is."""
+    text = read(AFK) if text is None else text
+    m = STEP6_HEADING.search(text)
+    if not m:
+        return ""
+    rest = text[m.end():]
+    nxt = re.search(r"^## ", rest, re.M)
+    return rest[:nxt.start()] if nxt else rest
+
+
+def log_recipe(text):
+    """The fence of `STALE.md` that reads the last commit over the cited line.
+
+    Told apart from any neighbour by the subcommand it runs, as the ticket recipe is
+    told apart from the lane's by the branch it names.
+    """
+    for block in sh_blocks(text):
+        if any(" log " in line for line in block):
+            return block
+    return []
 
 
 def ticket_recipe(text):
@@ -311,6 +351,158 @@ class TicketWorktreeTest(unittest.TestCase):
                          "reviewed")
         self.assertNotEqual(self.git(self.clone, "rev-parse", f"origin/{TICKET_BRANCH}"),
                             before, "the push did not reach the ticket's own branch")
+
+
+class StaleItemCheckTest(unittest.TestCase):
+    """T413 — the item is checked against the code before its run is composed.
+
+    Two files answer for one prescription: step 3 must SEND the reader, and `STALE.md`
+    must hold a check worth being sent to. A pointer aimed at a file that says nothing
+    sends the reader to silence, so both halves are asserted here.
+    """
+
+    def setUp(self):
+        self.step = step3()
+        self.check = read(STALE)
+
+    def test_step_3_sends_the_reader_to_the_file_that_owns_the_check(self):
+        """The vacuity guard for every check in this class."""
+        self.assertIn(POINTER_LEAD, flat(self.step),
+                      f"step 3 no longer carries the already-resolved pointer "
+                      f"(`{POINTER_LEAD}`) — re-anchor this class")
+        self.assertIn("STALE.md", self.step,
+                      "the pointer names no file: an orchestrator told to check "
+                      "something, with nowhere to read how, invents the check")
+        self.assertTrue(self.check.strip(),
+                        "STALE.md is empty — the pointer sends the reader to silence")
+
+    def test_the_pointer_stands_before_the_run_s_prompt_is_composed(self):
+        """Its whole value is the ORDER, as the exploration's is: a check reached
+        after the contract is composed has already paid for the dispatch it exists
+        to prevent."""
+        flat_step = flat(self.step)
+        self.assertLess(flat_step.index(POINTER_LEAD), flat_step.index(PROMPT_ANCHOR),
+                        "the check is pointed at after the run's prompt is composed — "
+                        "the shallow read has already reached the implementer with "
+                        "contract authority, which is the defect it was written against")
+
+    def test_the_check_reads_the_cited_line_and_the_two_below_it(self):
+        """The whole defect: the fix sat one line down, and the item cited the line
+        above it."""
+        opened = sentences_with(self.check, "Open")
+        self.assertTrue(opened, "STALE.md instructs nobody to open the cited line — "
+                                "re-anchor this check")
+        self.assertRegex(" ".join(opened), r"(?i)two below",
+                         "the INSTRUCTION opens the cited line alone. Prose lower in the "
+                         "file may still mention the two below it, and an orchestrator "
+                         "follows the instruction: that single-line read is T151, twice, "
+                         "fifteen days apart")
+        recipe = " ".join(log_recipe(self.check))
+        self.assertTrue(recipe, "STALE.md prescribes no command: an orchestrator asked "
+                                "to compare dates with no reader named invents one")
+        self.assertIn("-L", recipe,
+                      f"the prescribed command does not follow the LINE (`-L`): {recipe}")
+        self.assertIn("+3", recipe,
+                      "the `-L` range is not `<line>,+3` — `+n` counts lines from the "
+                      f"start, so the cited line plus the two below it is `+3`: {recipe}")
+
+    def test_the_check_compares_the_commit_against_the_item_s_birth(self):
+        self.assertIn("**Born:**", self.check,
+                      "STALE.md names no date to compare the commit against; a commit "
+                      "date alone says nothing about whether the item predates the fix")
+
+    def test_a_hit_releases_the_claim_and_closes_nothing(self):
+        """A commit over the cited line is evidence, not the verdict: the item may ask
+        for more than the line carries, and `done` is the user's call."""
+        self.assertIn("tk-queue release", self.check,
+                      "a hit leaves the item claimed by a package that will not run it, "
+                      "and that claim is what refuses the next session")
+        self.assertRegex(self.check, r"(?i)close nothing",
+                         "STALE.md does not refuse the close: a check that closes items "
+                         "on its own turns one grep into a queue write nobody reviewed")
+        for said in sentences_with(self.check, "tk-queue done"):
+            self.assertIn("user", said,
+                          f"STALE.md prescribes `tk-queue done` on a hit: {said}")
+
+    def test_step_6_reports_the_hit_on_a_rung_of_its_own(self):
+        """A correction that adds a category adds it to the step that REPORTS, or the
+        item falls out of every bucket and leaves the screen in silence."""
+        six = step6()
+        self.assertTrue(six.strip(), "AFK.md has no `## 6.` step — re-anchor this check")
+        rungs = [p for p in six.split("\n\n") if "unclosed item carries" in flat(p)]
+        self.assertTrue(rungs, "step 6 no longer enumerates the rungs an unclosed item "
+                               "takes — re-anchor this check")
+        self.assertIn("already resolved", flat(" ".join(rungs)),
+                      "step 6 has no rung for an item step 3 found already fixed: it "
+                      "matches no other reason listed there, so it is released at "
+                      f"dispatch and named nowhere in the report: {rungs}")
+
+
+class StaleLineRecipeTest(unittest.TestCase):
+    """The prescribed `git log` is RUN, against a tree shaped like T151's.
+
+    The fixture is the measured shape: the item cites line 2, the remedy is on line 3,
+    and the commit that put it there is older than the item. Reading line 2 alone finds
+    nothing; the prescribed range is what shows the fix.
+    """
+
+    LINE = 2  # the line the fixture's item cites
+
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp(prefix="tk-afk-stale-test."))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        absent = os.path.join(self.tmp, "no-such-git-config")
+        self.environ = dict(os.environ, HOME=self.tmp, GIT_CONFIG_GLOBAL=absent,
+                            GIT_CONFIG_SYSTEM=absent, GIT_TERMINAL_PROMPT="0")
+        self.clone = os.path.join(self.tmp, "clone")
+        os.makedirs(self.clone)
+        self.git("init", "-q", "--initial-branch=main", ".")
+        self.git("config", "user.email", "fixture@example.invalid")
+        self.git("config", "user.name", "Fixture")
+        self.write('open(path)\ntext = f.read()\nprint(text)\n')
+        self.git("add", "f.py")
+        self.git("commit", "-qm", "the line the item cites")
+        self.write('open(path)\ntext = f.read()\ntext = text.replace(MARK, "")\nprint(text)\n')
+        self.git("commit", "-qam", "the remedy, one line below")
+        self.fix = self.git("rev-parse", "--short", "HEAD")
+
+    def write(self, text):
+        with open(os.path.join(self.clone, "f.py"), "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def git(self, *argv):
+        run = subprocess.run(["git", "-C", self.clone] + list(argv), capture_output=True,
+                             text=True, env=self.environ, cwd=self.tmp, timeout=60)
+        self.assertEqual(run.returncode, 0, f"git {' '.join(argv)}\n{run.stderr}")
+        return run.stdout.strip()
+
+    def filled(self):
+        """The prescribed line with its metavariables replaced — the only edit made."""
+        lines = log_recipe(read(STALE))
+        self.assertTrue(lines, "STALE.md prescribes no command for the check")
+        self.assertEqual(len(lines), 1, f"the check's fence is no longer one line: {lines}")
+        return (lines[0]
+                .replace('"<the item\'s repo address>"', self.clone)
+                .replace("<line>", str(self.LINE))
+                .replace("<file>", "f.py"))
+
+    def test_the_prescribed_line_runs_and_finds_the_commit_over_the_cited_line(self):
+        run = subprocess.run(self.filled(), shell=True, capture_output=True, text=True,
+                             env=self.environ, cwd=self.tmp, timeout=60)
+        self.assertEqual(run.returncode, 0,
+                         f"the prescribed line does not run:\n{run.stderr}")
+        self.assertIn(self.fix, run.stdout,
+                      "the prescribed line does not name the commit that put the remedy "
+                      f"one line below the cited one:\n{run.stdout}")
+
+    def test_the_range_reaches_the_line_the_remedy_is_on(self):
+        """`-L <line>,+3` is what makes the fix visible; the cited line alone is blind,
+        and that blindness is the whole of T151."""
+        out = subprocess.run(self.filled(), shell=True, capture_output=True, text=True,
+                             env=self.environ, cwd=self.tmp, timeout=60).stdout
+        self.assertIn("text.replace", out,
+                      "the prescribed range stops short of the remedy: the orchestrator "
+                      f"reads the cited line and dispatches an item already fixed:\n{out}")
 
 
 if __name__ == "__main__":
