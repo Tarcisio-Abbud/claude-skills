@@ -1,7 +1,7 @@
 # claude-skills
 
-Own-authored skills for Claude Code, shipped as the **`tk`** (v3), **`tk-cowork`**, **`asr`**
-and **`plugin-drift`** plugins, served by the marketplace defined in
+Own-authored skills for Claude Code, shipped as the **`tk`** (v3), **`tk-cowork`**, **`asr`**,
+**`whatsapp`** and **`plugin-drift`** plugins, served by the marketplace defined in
 `.claude-plugin/marketplace.json`.
 
 ## Install (a fresh machine)
@@ -128,6 +128,25 @@ that over, which is what makes `.opus` work with no system ffmpeg.
 
 Machine-specific addresses — which interpreter, where the weights live, how they are
 provisioned — stay out of this repo and live in the extension file below.
+
+## The whatsapp plugin
+
+`whatsapp-export` reads an export `.zip` by its **delta** against the previous export. A
+WhatsApp export is cumulative: every one carries the whole conversation again, so reading the
+new one costs the entire history to learn the fifty lines that arrived since. `bin/wa_export.py`
+hands over what is new — the messages with their line numbers, the attachments extracted beside
+the zip, the voice notes routed to `asr:transcribe-audio` and folded back in, so one file
+carries the whole delta.
+
+Three design points carry it, each measured against two real exports of one conversation
+eleven days apart. Messages are matched on **date, sender and text, never the clock**: an
+untouched message had moved from `16:04` to `16:05`, and a key carrying the minute reports it
+as edited. An attachment is credited to the message naming it **exactly** before the folded
+name is tried: WhatsApp stores a repeated `invoice (1).pdf` as `invoice (1)-1.pdf`, and
+folding first hands the new file to the older message that sent its namesake. And because an
+export only ever grows, anything but a tail of inserts is **surfaced as an anomaly** rather
+than absorbed — that, plus an overlap floor that refuses a pair of exports which is not the
+same conversation, is what stops a wrong pair reading as a clean delta.
 
 ## Site extensions
 
@@ -393,6 +412,13 @@ asr/
   .claude-plugin/plugin.json      the plugin manifest
   skills/transcribe-audio/SKILL.md
   bin/transcribe.py               the transcription CLI (Parakeet / faster-whisper)
+whatsapp/
+  .claude-plugin/plugin.json      the plugin manifest
+  skills/whatsapp-export/SKILL.md
+  bin/wa_export.py                the delta CLI (diff two exports, fold transcripts back)
+  tests/test_wa_export.py         the CLI as a subprocess, against synthetic exports built
+                                  in a tempdir — the real ones are private conversations
+  tests/mutations_wa_export.py    entries only, through the same seam as githooks/tests
 docs/agents/                      what the mattpocock engineering skills read; versioned,
                                   for the reason given below
   issue-tracker.md                where the issues live and how to reach them, with the
