@@ -25,7 +25,9 @@ by the conversation's own name; `--previous OLD.zip` names it when the two sit a
 flag is in `--help`.
 
 The run writes `<NEW-stem>-delta/` beside the zip: `delta.md` to read, `delta.jsonl` to
-process, and `attachments/` holding the new attachments extracted.
+process, `attachments/` holding the new attachments extracted, and `context.json`, the data
+both files were rendered from. A directory that already holds a run is refused: `--overwrite`
+replaces it, `--out` writes elsewhere.
 
 ## The four steps
 
@@ -42,8 +44,16 @@ process, and `attachments/` holding the new attachments extracted.
 ## What the digest tells you, and what it does not
 
 **An `## Anomalies` section means the pair is suspect.** A WhatsApp export only grows, so an
-edited or vanished message says the two zips are probably different conversations, or the
-"new" one is the older. Settle that before trusting a single line of the delta.
+edited or vanished message — or an attachment the previous export had and this one does not —
+says the two zips are probably different conversations, or the "new" one is the older. Settle
+that before trusting a single line of the delta.
+
+**The `Unaccounted` line is the digest's own confession.** It counts what the run could not
+place: lines before the first message, other `.txt` members, attachment markers naming a file
+the zip does not carry, new files no message announces, names that collided on extraction,
+attachments the previous export had. `nothing` means every line and every file is placed.
+Anything else is a document somebody is waiting for, or a sender the delta cannot name — and
+it is read BEFORE the delta, because it says how much of the delta to believe.
 
 **A file under `## Attachments whose CONTENT changed` was read before under that name.**
 Same name, different bytes: whatever was concluded from the old one is unproven.
@@ -55,10 +65,10 @@ paid. Open them.
 **A message proves what was REQUESTED, never what happened.** The delta is one side's
 account. Confirm anything consequential against the system that records the fact.
 
-## Two things the format does, that a naive diff gets wrong
+## Five things the format does, that a naive diff gets wrong
 
-Both are measured, and both are already handled — they are here so a surprising digest reads
-as expected behaviour rather than a bug.
+Every one is measured on a real export, and every one is already handled — they are here so a
+surprising digest reads as expected behaviour rather than a bug.
 
 - **The clock drifts between exports.** An untouched message moved from `16:04` to `16:05`
   across two exports eleven days apart. Messages are matched on date, sender and text; the
@@ -66,3 +76,29 @@ as expected behaviour rather than a bug.
 - **A repeated filename gains a suffix.** A second `invoice (1).pdf` is stored as
   `invoice (1)-1.pdf`, and the message names the suffixed form. The exact name wins over the
   folded one, so the new file is credited to the message that actually sent it.
+- **There are two attachment markers.** Android writes `NAME (arquivo anexado)`, iOS and
+  `_chat.txt` write `<anexado: NAME>`, each translated per locale. One export of 151
+  attachments uses the second shape alone.
+- **A filename can arrive as mojibake.** A zip declares UTF-8 with one flag bit, and an
+  export writes UTF-8 bytes with the bit clear: `ALTERAÇÃO` then reads as `ALTERAC╠ºA╠âO` and
+  matches no message. The name is repaired, and an accent is composed before comparing —
+  iOS stores it decomposed while the chat text composes it.
+- **The conversation is not always the biggest `.txt`.** A bank return file sent as an
+  attachment outweighs the transcript. The member is chosen by NAME first, so the export
+  does not silently parse to zero messages.
+
+## What the pair check refuses
+
+The two exports must look like one conversation, measured as the share of the OLD export the
+new one still carries — an export only grows, so the question is containment. Below
+`--min-overlap` (0.5 by default) the run refuses rather than diff two unrelated zips;
+`--force` diffs them anyway. Measuring the other direction — the share of the NEW export that
+is old — refuses a real pair whose conversation exploded between exports.
+
+**A refusal is not always a wrong pair.** Two exports of one conversation saved under
+different phone locales spell every date differently (`8/19/26` against `19/08/2026`), so no
+message matches and the run refuses a pair that is real. The refusal is the safe direction —
+the delta would otherwise be the whole history — and the fix is to export both sides again
+from one locale, not `--force`. Two exports can also share a title and be different
+conversations: same contact, two threads. The message the run prints names the file it
+refused; check that file before overriding it.

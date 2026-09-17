@@ -19,13 +19,17 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import zipfile
 
 AUDIO_EXTS = (".opus", ".ogg", ".m4a", ".mp3", ".wav", ".aac", ".flac", ".amr")
 
-# WhatsApp writes U+200E (LEFT-TO-RIGHT MARK) before an attachment marker and U+202F
-# (NARROW NO-BREAK SPACE) between the clock and an am/pm suffix. Neither is visible and
-# both break a naive comparison, so they are stripped before anything else reads the text.
+# WhatsApp writes U+200E (LEFT-TO-RIGHT MARK) before an attachment marker, and the other
+# three directional marks turn up around a name written right-to-left. None is visible and
+# each breaks a naive comparison, so they are stripped before anything else reads the text.
+# U+202F (NARROW NO-BREAK SPACE) is deliberately NOT here: it separates the clock from an
+# am/pm suffix, where it is a space doing a space's job, and the patterns that read a clock
+# accept it alongside the ordinary one.
 INVISIBLE = dict.fromkeys(map(ord, "‎‏‪‬"), None)
 
 # Two header shapes ship in the wild and a conversation can change shape between exports:
@@ -41,11 +45,21 @@ HEADER_RE = re.compile(
     r"(?P<rest>.*)$"
 )
 
-# `<name> (arquivo anexado)` and its siblings. The locale word list is open-ended by
-# design: an unknown locale falls back to matching the bare filename against the zip.
+# Two marker shapes ship, and one export uses one of them throughout:
+#   `<name> (arquivo anexado)`   Android, the word translated per locale
+#   `<anexado: <name>>`          iOS and `_chat.txt`, likewise translated
+# Both are needed. One real export of this population carries the second shape alone, and
+# reading it with the first pattern only attributed NONE of its 151 attachments to a
+# sender or a date. The locale word list is open-ended by design: an unknown locale falls
+# back to matching the bare filename against the zip, and the Tally counts what that left
+# unattributed.
+ATTACHED_WORDS = (
+    "arquivo anexado|archivo adjunto|file attached|attached|fichier joint|"
+    "Datei angeh\u00e4ngt|anexado|adjunto|joint|angeh\u00e4ngt"
+)
 ATTACHED_RE = re.compile(
-    r"(?P<name>\S.*?)[  ]*\((?:arquivo anexado|archivo adjunto|file attached|"
-    r"attached|fichier joint|Datei angehängt)\)",
+    r"(?P<name>\S.*?)[\u0020\u00a0]*\((?:" + ATTACHED_WORDS + r")\)"
+    r"|<(?:" + ATTACHED_WORDS + r"):[\u0020\u00a0]*(?P<ios>[^>]+)>",
     re.IGNORECASE,
 )
 
@@ -90,7 +104,12 @@ class Message:
     @property
     def attachments(self):
         """Filenames this message says it attached, in the order they appear."""
-        return [m.group("name").strip() for m in ATTACHED_RE.finditer(self.body)]
+        names = []
+        for match in ATTACHED_RE.finditer(self.body):
+            name = match.group("name") or match.group("ios")
+            if name:
+                names.append(name.strip())
+        return names
 
     def as_dict(self):
         return {
@@ -100,6 +119,7 @@ class Message:
             "time": self.time,
             "sender": self.sender,
             "body": self.body,
+            "raw": self.raw,
             "attachments": self.attachments,
         }
 
@@ -164,13 +184,56 @@ def normalize_date(raw):
     return "%02d/%02d/%s" % (int(day), int(month), year)
 
 
+def fix_member_name(info):
+    """Repair a member name the zip stored as UTF-8 without saying so, in place.
+
+    A zip entry declares UTF-8 with bit 11 of its flags; with the bit clear the format says
+    the name is CP437, and `zipfile` obeys. One real export writes UTF-8 bytes with the bit
+    CLEAR, so an accented attachment arrives spelled `ALTERAC\u2560\u00baA...` — a name the
+    chat text never uses, so the file belongs to no message and the reader is never told the
+    document is there. `orig_filename` keeps the stored spelling, and that is what `open()`
+    matches against the local header, so renaming the entry here is safe.
+    """
+    if info.flag_bits & 0x800:
+        return info
+    try:
+        info.filename = info.filename.encode("cp437").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    return info
+
+
+def zip_members(archive):
+    """Every entry of an archive, each with its name repaired."""
+    return [fix_member_name(info) for info in archive.infolist()]
+
+
+def chat_rank(info):
+    """Sort key deciding which `.txt` of an export is the conversation.
+
+    The NAME decides before the size does. Taking the largest `.txt` is right until the
+    conversation carries a `.txt` ATTACHMENT — a bank return file, an exported statement —
+    that outweighs the transcript. The attachment then becomes "the chat", parses to zero
+    messages, and the real transcript is filed as an attachment: the whole delta is wrong
+    and nothing says so.
+    """
+    base = os.path.basename(info.filename)
+    if base.lower() in ("_chat.txt", "chat.txt"):
+        named = 0
+    elif TITLE_RE.match(base):
+        named = 1
+    else:
+        named = 2
+    return (named, info.filename.count("/"), -info.file_size)
+
+
 def read_chat(zip_path):
     """Return (member name, decoded text) for the conversation inside an export."""
     with zipfile.ZipFile(zip_path) as archive:
-        members = [i for i in archive.infolist() if i.filename.lower().endswith(".txt")]
-        if not members:
+        txts = [i for i in zip_members(archive) if i.filename.lower().endswith(".txt")]
+        if not txts:
             raise ValueError("%s carries no .txt: not a WhatsApp export" % zip_path)
-        chat = min(members, key=lambda i: (i.filename.count("/"), -i.file_size))
+        chat = min(txts, key=chat_rank)
         raw = archive.read(chat.filename)
     return chat.filename, raw.decode("utf-8", errors="replace").lstrip("﻿")
 
@@ -195,28 +258,43 @@ def attachment_index(zip_path):
     chat_member, _ = read_chat(zip_path)
     index = {}
     with zipfile.ZipFile(zip_path) as archive:
-        for info in archive.infolist():
+        for info in zip_members(archive):
             if info.is_dir() or info.filename == chat_member:
                 continue
             index[info.filename] = info
     return index
 
 
+def plain_name(name):
+    """A filename as the comparison sees it: basename, no invisible marks, composed.
+
+    The composition is not cosmetic. An export written on iOS stores its zip entries
+    DECOMPOSED (`C` + a combining cedilla) while the chat text spells the same name
+    composed (`Ç`). The two are the same name to a reader and different strings to
+    `==`, and the file then belongs to no message: measured on a real export, where
+    exactly one attachment of 151 carried an accent in its name.
+    """
+    return unicodedata.normalize(
+        "NFC", os.path.basename(name).translate(INVISIBLE).strip()
+    )
+
+
 def normalize_attachment(name):
     """Fold the `-1` WhatsApp appends when two attachments share a name."""
-    stem, ext = os.path.splitext(os.path.basename(name).translate(INVISIBLE).strip())
+    stem, ext = os.path.splitext(plain_name(name))
     return (DEDUP_SUFFIX_RE.sub("", stem).strip().casefold(), ext.casefold())
 
 
 class Delta:
     """What the new export carries that the old one did not."""
 
-    def __init__(self, added, changed, removed, matched, total_new):
+    def __init__(self, added, changed, removed, matched, total_new, total_old):
         self.added = added          # messages present only in the new export
         self.changed = changed      # (old, new) pairs whose key moved — never expected
         self.removed = removed      # messages the new export dropped — never expected
         self.matched = matched      # messages aligned across the two
         self.total_new = total_new
+        self.total_old = total_old
 
     @property
     def anomalies(self):
@@ -224,12 +302,19 @@ class Delta:
 
     @property
     def overlap(self):
-        """Share of the new export that the old one already carried.
+        """Share of the OLD export the new one still carries.
 
-        Two exports of the SAME conversation overlap almost entirely; a low value means the
-        pair is wrong, and that is worth refusing rather than diffing.
+        The invariant a WhatsApp export obeys is append-only: everything the old export
+        held is in the new one, plus what arrived since. So the question is whether the
+        new export CONTAINS the old, not what fraction of the new is old — a pair eleven
+        days apart where the conversation exploded is a perfectly good pair with a low
+        share of the new, and measuring it that way refused a real one (11 of 11 old
+        messages present, 37% of the new).
+
+        An old export with no messages at all contains nothing to confirm the pair with,
+        and returns 0.0 rather than a vacuous 1.0.
         """
-        return self.matched / self.total_new if self.total_new else 1.0
+        return self.matched / self.total_old if self.total_old else 0.0
 
 
 def align(old_messages, new_messages):
@@ -268,11 +353,17 @@ def align(old_messages, new_messages):
                 if old is not None:
                     removed.append(old)
     added.sort(key=lambda m: m.index)
-    return Delta(added, changed, removed, matched, len(new_messages))
+    return Delta(added, changed, removed, matched, len(new_messages), len(old_messages))
 
 
 def diff_attachments(old_index, new_index):
-    """(added, modified) — members the new export gained, and members whose bytes moved."""
+    """(added, modified, dropped) across the two exports.
+
+    `dropped` is the same kind of fact as a vanished message: an export only grows, so a
+    file the old export held and the new one does not means the pair is suspect, or the
+    media was deleted on the phone. Either way whatever was concluded from that file is
+    now unbacked, and the digest says so under Anomalies.
+    """
     added, modified = [], []
     for name, info in new_index.items():
         previous = old_index.get(name)
@@ -280,9 +371,11 @@ def diff_attachments(old_index, new_index):
             added.append(info)
         elif previous.CRC != info.CRC or previous.file_size != info.file_size:
             modified.append(info)
+    dropped = [info for name, info in old_index.items() if name not in new_index]
     added.sort(key=lambda i: i.filename)
     modified.sort(key=lambda i: i.filename)
-    return added, modified
+    dropped.sort(key=lambda i: i.filename)
+    return added, modified, dropped
 
 
 def owning_message(info, messages):
@@ -293,10 +386,10 @@ def owning_message(info, messages):
     hands a September file to the August message that sent its namesake — measured, and
     the reason the two passes are not one.
     """
-    exact = os.path.basename(info.filename).translate(INVISIBLE).strip()
+    exact = plain_name(info.filename)
     for message in messages:
         for named in message.attachments:
-            if os.path.basename(named).translate(INVISIBLE).strip() == exact:
+            if plain_name(named) == exact:
                 return message
     wanted = normalize_attachment(info.filename)
     for message in messages:
@@ -343,18 +436,37 @@ def find_previous(new_zip, title, new_count, directory=None):
 
 
 def extract(zip_path, infos, dest):
-    """Copy the named members out of the export, flattened into one directory."""
+    """Copy the named members out of the export, flattened into one directory.
+
+    Returns (written, collisions). Flattening is what makes two members collide: a zip can
+    carry `media/x.pdf` and `docs/x.pdf`, and writing both under `x.pdf` leaves one of them
+    on disk with the other's content and nothing said. The second one is written under a
+    `~2` name and the collision is REPORTED, because a reader who opens the wrong PDF and
+    concludes from it has no way of noticing.
+    """
     if not infos:
-        return []
+        return [], []
     os.makedirs(dest, exist_ok=True)
     written = []
+    collisions = []
+    taken = {}
     with zipfile.ZipFile(zip_path) as archive:
         for info in infos:
-            target = os.path.join(dest, os.path.basename(info.filename))
+            base = os.path.basename(info.filename)
+            target = os.path.join(dest, base)
+            if base in taken or os.path.exists(target):
+                collisions.append((info.filename, taken.get(base)))
+                stem, ext = os.path.splitext(base)
+                n = 2
+                while os.path.exists(os.path.join(dest, "%s~%d%s" % (stem, n, ext))):
+                    n += 1
+                base = "%s~%d%s" % (stem, n, ext)
+                target = os.path.join(dest, base)
+            taken[base] = info.filename
             with archive.open(info) as src, open(target, "wb") as out:
                 out.write(src.read())
             written.append(target)
-    return written
+    return written, collisions
 
 
 def human_size(n):
@@ -365,7 +477,13 @@ def human_size(n):
 
 
 def render_digest(context):
-    """The readable delta. One file, so the reader is never sent back to the export."""
+    """The readable delta, rendered from PLAIN DATA and nothing else.
+
+    Every input is JSON, which is what lets `transcripts` re-render this file whole instead
+    of splicing a new section onto the text of the old one. Splicing was the first design
+    and it is a trap: the digest is then written by two different pieces of code, and the
+    second one silently keeps whatever the first got wrong.
+    """
     out = []
     add = out.append
     add("# What is new — %s" % context["title"])
@@ -374,37 +492,42 @@ def render_digest(context):
         % (os.path.basename(context["new_zip"]), context["new_total"], context["new_files"]))
     add("- **Previous export:** `%s` — %d messages, %d attachments"
         % (os.path.basename(context["old_zip"]), context["old_total"], context["old_files"]))
-    delta = context["delta"]
-    if delta.added:
-        add("- **New:** %d messages (lines %d–%d of `%s`) · %d attachments, %d voice notes"
-            % (len(delta.added), delta.added[0].line, context["last_line"],
+    if context["added"]:
+        add("- **New:** %d messages (%s of `%s`) · %d attachments, %d voice notes"
+            % (len(context["added"]), describe_runs(context["line_runs"]),
                os.path.basename(context["chat_member"]), len(context["added_files"]),
                len(context["added_audio"])))
     else:
         add("- **New:** nothing. The new export adds no message at all.")
-    add("- Generated on %s" % datetime.date.today().isoformat())
+    add("- **Unaccounted:** %s" % describe_tally(context["tally"]))
+    add("- Generated on %s" % context["generated"])
     add("")
 
-    if delta.anomalies:
+    anomalies = context["changed"] or context["removed"] or context["dropped_files"]
+    if anomalies:
         add("## Anomalies")
         add("")
         add("A WhatsApp export only GROWS. What follows should not exist — check that the two "
             "files are really the same conversation before trusting this digest.")
         add("")
-        for old, new in delta.changed:
+        for pair in context["changed"]:
             add("- **Message edited** (line %d → %d): `%s` → `%s`"
-                % (old.line, new.line, one_line(old.raw), one_line(new.raw)))
-        for gone in delta.removed:
+                % (pair["old_line"], pair["new_line"],
+                   one_line(pair["old_raw"]), one_line(pair["new_raw"])))
+        for gone in context["removed"]:
             add("- **Message gone** (line %d of the previous export): `%s`"
-                % (gone.line, one_line(gone.raw)))
+                % (gone["line"], one_line(gone["raw"])))
+        for gone in context["dropped_files"]:
+            add("- **Attachment gone**: `%s` was in the previous export and is not in this one"
+                % os.path.basename(gone["name"]))
         add("")
 
     add("## New messages")
     add("")
-    if delta.added:
+    if context["added"]:
         add("```")
-        for message in delta.added:
-            add(message.raw)
+        for message in context["added"]:
+            add(message["raw"])
         add("```")
     else:
         add("_None._")
@@ -415,11 +538,10 @@ def render_digest(context):
     if context["added_files"]:
         add("| File | Size | Sender | When |")
         add("|---|---|---|---|")
-        for info, owner in context["added_files"]:
+        for entry in context["added_files"]:
             add("| `%s` | %s | %s | %s |"
-                % (os.path.basename(info.filename), human_size(info.file_size),
-                   (owner.sender if owner and owner.sender else "—"),
-                   ("%s %s" % (owner.date, owner.time)) if owner else "—"))
+                % (os.path.basename(entry["name"]), human_size(entry["size"]),
+                   entry["sender"] or "—", entry["when"] or "—"))
         add("")
         add("Extracted into `%s`." % context["attachments_dir"])
     else:
@@ -432,13 +554,31 @@ def render_digest(context):
         add("Same name, different bytes. The previous export held something else under this "
             "name; re-read it before trusting what was read then.")
         add("")
-        for info in context["modified_files"]:
-            add("- `%s` (%s)" % (os.path.basename(info.filename), human_size(info.file_size)))
+        for entry in context["modified_files"]:
+            add("- `%s` (%s)" % (os.path.basename(entry["name"]), human_size(entry["size"])))
         add("")
 
-    add("## New voice notes")
+    add(TRANSCRIPT_HEADING)
     add("")
-    if context["added_audio"]:
+    transcripts = context.get("transcripts") or {}
+    if transcripts:
+        add("%d voice note(s), transcribed locally." % len(transcripts))
+        add("")
+        for name in sorted(transcripts):
+            entry = transcripts[name]
+            add("### `%s`" % name)
+            add("")
+            add("_%s · %s_" % (entry.get("sender") or "—", entry.get("when") or "—"))
+            add("")
+            add(entry.get("text") or "_(silence: the transcriber returned no text)_")
+            add("")
+        pending = [n for n in context["added_audio"]
+                   if os.path.basename(n) not in transcripts]
+        if pending:
+            add("**Still pending:** %s" % ", ".join("`%s`" % os.path.basename(n)
+                                                    for n in sorted(pending)))
+            add("")
+    elif context["added_audio"]:
         add("%d new voice note(s). **This digest is incomplete until they are transcribed** — "
             "in a working conversation the voice note is usually where WHO IS WHO lives."
             % len(context["added_audio"]))
@@ -454,6 +594,39 @@ def render_digest(context):
         add("_None._ Nothing to transcribe this round.")
     add("")
     return "\n".join(out) + "\n"
+
+
+def describe_runs(runs):
+    """`lines 923–972` for one block, and every block when the new messages are not one.
+
+    A single spanning range is a lie whenever the delta is not contiguous: two arrivals with
+    an untouched stretch between them read as one run covering text nobody added.
+    """
+    if not runs:
+        return "no lines"
+    parts = ["%d–%d" % (start, end) if end > start else "%d" % start for start, end in runs]
+    return "lines " + ", ".join(parts)
+
+
+TALLY_LABELS = (
+    ("orphan_lines", "lines before the first message"),
+    ("unparsed_headers", "lines that look like a header and opened no message"),
+    ("extra_txt", "other .txt members"),
+    ("markers_without_file", "attachment markers naming no file in the zip"),
+    ("files_without_message", "new files no message announces"),
+    ("collisions", "names that collided on extraction"),
+    ("dropped_files", "attachments the previous export had"),
+)
+
+
+def describe_tally(tally):
+    """What the run could not place. Zero across the board is the fact worth printing.
+
+    Without this line the digest reports only what it managed to understand, and an export
+    it understood half of looks exactly like one it understood entirely.
+    """
+    parts = ["%d %s" % (tally[key], label) for key, label in TALLY_LABELS if tally.get(key)]
+    return "nothing — every line and every file is placed" if not parts else "; ".join(parts)
 
 
 def one_line(text):
@@ -472,6 +645,10 @@ def cmd_diff(args):
     chat_member, new_text = read_chat(new_zip)
     title = conversation_title(chat_member, new_zip)
     new_messages = parse_messages(new_text)
+    if not new_messages:
+        fail("%s parses to NO messages — `%s` is not a chat transcript in a shape this "
+             "script reads. Every line of it would be reported as unaccounted."
+             % (os.path.basename(new_zip), chat_member))
 
     old_zip = args.previous or find_previous(new_zip, title, len(new_messages))
     if old_zip is None:
@@ -482,21 +659,38 @@ def cmd_diff(args):
 
     delta = align(old_messages, new_messages)
     if delta.overlap < args.min_overlap and not args.force:
-        fail("only %.0f%% of the new export appears in %s — the two do not look like the "
+        fail("only %.0f%% of %s survives into the new export — the two do not look like the "
              "same conversation. Name the right one with --previous, or --force to diff "
              "them anyway." % (delta.overlap * 100, os.path.basename(old_zip)))
 
     old_index = attachment_index(old_zip)
     new_index = attachment_index(new_zip)
-    added_infos, modified_infos = diff_attachments(old_index, new_index)
+    added_infos, modified_infos, dropped_infos = diff_attachments(old_index, new_index)
     added_files = [(info, owning_message(info, new_messages)) for info in added_infos]
     added_audio = [info for info in added_infos if is_audio(info.filename)]
 
     out_dir = args.out or default_out_dir(new_zip)
+    guard_out_dir(out_dir, args.overwrite)
     os.makedirs(out_dir, exist_ok=True)
     attachments_dir = os.path.join(out_dir, "attachments")
+    collisions = []
     if not args.no_extract:
-        extract(new_zip, added_infos, attachments_dir)
+        if args.overwrite and os.path.isdir(attachments_dir):
+            for entry in os.listdir(attachments_dir):
+                target = os.path.join(attachments_dir, entry)
+                if os.path.isfile(target):
+                    os.unlink(target)
+        _written, collisions = extract(new_zip, added_infos, attachments_dir)
+
+    tally = {
+        "orphan_lines": count_orphan_lines(new_text),
+        "unparsed_headers": count_unparsed_headers(new_text),
+        "extra_txt": count_extra_txt(new_zip, chat_member),
+        "markers_without_file": count_unmatched_markers(new_messages, new_index),
+        "files_without_message": sum(1 for _info, owner in added_files if owner is None),
+        "collisions": len(collisions),
+        "dropped_files": len(dropped_infos),
+    }
 
     context = {
         "title": title,
@@ -507,19 +701,39 @@ def cmd_diff(args):
         "old_total": len(old_messages),
         "new_files": len(new_index),
         "old_files": len(old_index),
-        "delta": delta,
-        "added_files": added_files,
-        "modified_files": modified_infos,
-        "added_audio": added_audio,
+        "added": [m.as_dict() for m in delta.added],
+        "changed": [{"old_line": o.line, "new_line": n.line, "old_raw": o.raw,
+                     "new_raw": n.raw} for o, n in delta.changed],
+        "removed": [{"line": m.line, "raw": m.raw} for m in delta.removed],
+        "added_files": [
+            {
+                "name": info.filename,
+                "size": info.file_size,
+                "sender": owner.sender if owner and owner.sender else None,
+                "when": ("%s %s" % (owner.date, owner.time)) if owner else None,
+            }
+            for info, owner in added_files
+        ],
+        "modified_files": [{"name": i.filename, "size": i.file_size} for i in modified_infos],
+        "dropped_files": [{"name": i.filename, "size": i.file_size} for i in dropped_infos],
+        "added_audio": [i.filename for i in added_audio],
         "attachments_dir": attachments_dir,
         "out_dir": out_dir,
-        "last_line": last_line_of(new_text, delta),
+        "line_runs": line_runs(delta.added),
+        "tally": tally,
+        "transcripts": {},
+        "generated": datetime.date.today().isoformat(),
         "self_name": os.path.basename(sys.argv[0]) or "wa_export.py",
     }
 
     digest_path = os.path.join(out_dir, "delta.md")
     with open(digest_path, "w", encoding="utf-8") as handle:
         handle.write(render_digest(context))
+
+    # The same data the digest was rendered from, so `transcripts` re-renders the whole
+    # file rather than splicing a section into text it did not write.
+    with open(os.path.join(out_dir, "context.json"), "w", encoding="utf-8") as handle:
+        json.dump(context, handle, ensure_ascii=False, indent=2)
 
     records_path = os.path.join(out_dir, "delta.jsonl")
     with open(records_path, "w", encoding="utf-8") as handle:
@@ -538,7 +752,9 @@ def cmd_diff(args):
                 "anomalies": {
                     "changed": [[o.line, n.line] for o, n in delta.changed],
                     "removed": [m.line for m in delta.removed],
+                    "dropped": [i.filename for i in dropped_infos],
                 },
+                "tally": tally,
                 "out_dir": out_dir,
             },
             sys.stdout,
@@ -552,20 +768,98 @@ def cmd_diff(args):
               % (len(delta.added), len(added_infos), len(added_audio)))
         if modified_infos:
             print("changed:   %d attachments kept their name" % len(modified_infos))
-        if delta.anomalies:
-            print("WARNING:   %d edited, %d gone — see Anomalies in the digest"
-                  % (len(delta.changed), len(delta.removed)))
+        if delta.anomalies or dropped_infos:
+            print("WARNING:   %d edited, %d gone, %d attachments gone — see Anomalies in the "
+                  "digest" % (len(delta.changed), len(delta.removed), len(dropped_infos)))
+        print("unplaced:  %s" % describe_tally(tally))
         print("digest:    %s" % digest_path)
         if added_audio:
             print("audio:     %d to transcribe in %s" % (len(added_audio), attachments_dir))
     return 0
 
 
-def last_line_of(new_text, delta):
-    if not delta.added:
-        return 0
-    last = delta.added[-1]
-    return last.line + last.raw.count("\n")
+def guard_out_dir(out_dir, overwrite):
+    """A digest never lands on top of another run's without being asked.
+
+    `--out` pointed at a directory that already holds files leaves the reader with a
+    delta.md from this run beside attachments from the last one, and no way to tell. The
+    default directory is named after the zip, so the same zip re-run is the common case:
+    `--overwrite` is how that is said out loud.
+    """
+    if overwrite or not os.path.isdir(out_dir):
+        return
+    if os.listdir(out_dir):
+        fail("%s is not empty — it holds another run. Pass --overwrite to replace it, or "
+             "--out to write somewhere else." % out_dir)
+
+
+def line_runs(messages):
+    """Contiguous [start, end] line runs the new messages occupy, in file order."""
+    runs = []
+    for message in sorted(messages, key=lambda m: m.line):
+        start = message.line
+        end = message.line + message.raw.count("\n")
+        if runs and start <= runs[-1][1] + 1:
+            runs[-1][1] = max(runs[-1][1], end)
+        else:
+            runs.append([start, end])
+    return runs
+
+
+def count_orphan_lines(text):
+    """Non-empty lines before the first header, which `parse_messages` cannot place."""
+    count = 0
+    for line in text.splitlines():
+        if HEADER_RE.match(line.translate(INVISIBLE)):
+            return count
+        if line.strip():
+            count += 1
+    return count
+
+
+# A line OPENING with a date is what a header looks like from a distance, whatever shape the
+# rest of it takes. The anchor is the date and not a clock, which is what keeps the count
+# quiet: measured across 17 real exports, a clock anywhere near the start of a line also
+# matched two ordinary sentences, and a tally that cries wolf twice is one nobody reads a
+# third time.
+DATE_START_RE = re.compile(r"^\[?[ ]*\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}\b")
+
+
+def count_unparsed_headers(text):
+    """Lines that look like a header and did not open a message.
+
+    Measured: the same clock written with U+00A0 instead of U+202F fails to parse, and the
+    line is then GLUED onto the message above it — changing that message's text, and with it
+    its identity across two exports. Nothing said so. This counts the shapes the parser does
+    not know, including the ones nobody has thought of yet, so an export it half-understood
+    stops looking like one it understood entirely.
+    """
+    count = 0
+    for line in text.splitlines():
+        clean = line.translate(INVISIBLE)
+        if HEADER_RE.match(clean):
+            continue
+        if DATE_START_RE.match(clean):
+            count += 1
+    return count
+
+
+def count_extra_txt(zip_path, chat_member):
+    with zipfile.ZipFile(zip_path) as archive:
+        return sum(1 for i in zip_members(archive)
+                   if i.filename.lower().endswith(".txt") and i.filename != chat_member)
+
+
+def count_unmatched_markers(messages, index):
+    """Attachment markers naming a file no member of the zip carries."""
+    exact = {plain_name(name) for name in index}
+    folded = {normalize_attachment(name) for name in index}
+    missing = 0
+    for message in messages:
+        for named in message.attachments:
+            if plain_name(named) not in exact and normalize_attachment(named) not in folded:
+                missing += 1
+    return missing
 
 
 def default_out_dir(new_zip):
@@ -574,11 +868,19 @@ def default_out_dir(new_zip):
 
 
 def cmd_transcripts(args):
-    """Fold what the transcriber wrote back into the digest, under the audio heading."""
+    """Re-render the digest with the transcripts in it, from the data `diff` recorded.
+
+    The digest is written in ONE place, `render_digest`. An earlier version spliced the new
+    section onto the text of the old file, which meant two pieces of code wrote one
+    document: everything below the splice point was whatever the previous run produced,
+    preserved even when this run would have written it differently.
+    """
     out_dir = args.dir
     digest_path = os.path.join(out_dir, "delta.md")
-    if not os.path.exists(digest_path):
-        fail("%s has no delta.md — run `diff` first." % out_dir)
+    context_path = os.path.join(out_dir, "context.json")
+    if not os.path.exists(context_path):
+        fail("%s has no context.json — run `diff` first (a delta directory from an older "
+             "version of this script has to be re-diffed)." % out_dir)
     transcript_path = args.transcript or find_transcript(out_dir)
     if transcript_path is None:
         fail("no transcript.jsonl in %s — transcribe the voice notes first." % out_dir)
@@ -596,41 +898,40 @@ def cmd_transcripts(args):
     if not by_file:
         fail("%s carries no transcript at all." % transcript_path)
 
-    messages = []
-    records_path = os.path.join(out_dir, "delta.jsonl")
-    if os.path.exists(records_path):
-        with open(records_path, encoding="utf-8") as handle:
-            messages = [json.loads(line) for line in handle if line.strip()]
+    with open(context_path, encoding="utf-8") as handle:
+        context = json.load(handle)
 
-    section = [TRANSCRIPT_HEADING, "", "%d voice note(s), transcribed locally." % len(by_file), ""]
+    messages = context.get("added", [])
+    transcripts = {}
     for name in sorted(by_file):
         owner = owner_of(name, messages)
-        who = owner["sender"] if owner and owner.get("sender") else "—"
-        when = "%s %s" % (owner["date"], owner["time"]) if owner else "—"
-        section.append("### `%s`" % name)
-        section.append("")
-        section.append("_%s · %s_" % (who, when))
-        section.append("")
-        section.append(by_file[name] or "_(silence: the transcriber returned no text)_")
-        section.append("")
+        transcripts[name] = {
+            "text": by_file[name],
+            "sender": owner.get("sender") if owner else None,
+            "when": ("%s %s" % (owner["date"], owner["time"])) if owner else None,
+        }
+    context["transcripts"] = transcripts
 
-    with open(digest_path, encoding="utf-8") as handle:
-        digest = handle.read()
-    head, sep, _tail = digest.partition(TRANSCRIPT_HEADING)
-    if not sep:
-        fail("%s has no %r section." % (digest_path, TRANSCRIPT_HEADING))
     with open(digest_path, "w", encoding="utf-8") as handle:
-        handle.write(head + "\n".join(section))
+        handle.write(render_digest(context))
+    with open(context_path, "w", encoding="utf-8") as handle:
+        json.dump(context, handle, ensure_ascii=False, indent=2)
+
+    pending = [os.path.basename(n) for n in context.get("added_audio", [])
+               if os.path.basename(n) not in transcripts]
     print("folded %d voice notes into %s" % (len(by_file), digest_path))
+    if pending:
+        print("pending:   %d voice note(s) still without a transcript: %s"
+              % (len(pending), ", ".join(sorted(pending))))
     return 0
 
 
 def owner_of(name, messages):
     """Same two passes as `owning_message`, over the records `diff` wrote."""
-    exact = os.path.basename(name).translate(INVISIBLE).strip()
+    exact = plain_name(name)
     for message in messages:
         for named in message.get("attachments", []):
-            if os.path.basename(named).translate(INVISIBLE).strip() == exact:
+            if plain_name(named) == exact:
                 return message
     wanted = normalize_attachment(name)
     for message in messages:
@@ -673,6 +974,8 @@ def build_parser():
                       help="minimum overlap between the two exports (0-1, default 0.5)")
     diff.add_argument("--force", action="store_true",
                       help="diff even when the overlap is below the minimum")
+    diff.add_argument("--overwrite", action="store_true",
+                      help="replace a delta directory that already holds a run")
     diff.set_defaults(func=cmd_diff)
 
     transcripts = sub.add_parser(

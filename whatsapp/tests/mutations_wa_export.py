@@ -33,10 +33,10 @@ MUTATIONS = [
     ),
     (
         "the folded filename is tried before the exact one",
-        "    exact = os.path.basename(info.filename).translate(INVISIBLE).strip()\n"
+        "    exact = plain_name(info.filename)\n"
         "    for message in messages:\n"
         "        for named in message.attachments:\n"
-        "            if os.path.basename(named).translate(INVISIBLE).strip() == exact:\n"
+        "            if plain_name(named) == exact:\n"
         "                return message\n",
         "",
         ["test_the_dedup_suffix_does_not_hand_the_file_to_the_older_message"],
@@ -115,9 +115,9 @@ MUTATIONS = [
     (
         "extraction copies the whole export instead of the new members",
         "        for info in infos:\n"
-        "            target = os.path.join(dest, os.path.basename(info.filename))",
+        "            base = os.path.basename(info.filename)",
         "        for info in archive.infolist():\n"
-        "            target = os.path.join(dest, os.path.basename(info.filename))",
+        "            base = os.path.basename(info.filename)",
         ["test_the_attachments_are_extracted_beside_the_digest"],
     ),
     (
@@ -192,6 +192,137 @@ MUTATIONS = [
         'INVISIBLE = dict.fromkeys(map(ord, "\u200e\u200f\u202a\u202c"), None)',
         "INVISIBLE = {}",
         ["test_an_invisible_mark_does_not_split_a_message"],
+    ),
+    (
+        "only the Android attachment marker is read, so an iOS export attributes nothing",
+        r'    r"|<(?:" + ATTACHED_WORDS + r"):[\u0020\u00a0]*(?P<ios>[^>]+)>",',
+        r'    r"|<(?:ZZZ_NEVER):[\u0020\u00a0]*(?P<ios>[^>]+)>",',
+        ["test_the_ios_attachment_marker_is_read"],
+    ),
+    (
+        "the biggest .txt is the conversation, so a .txt attachment displaces it",
+        "        chat = min(txts, key=chat_rank)",
+        "        chat = min(txts, key=lambda i: (i.filename.count(\"/\"), -i.file_size))",
+        ["test_a_txt_attachment_does_not_become_the_chat"],
+    ),
+    (
+        "an export that parses to no message at all is diffed instead of refused",
+        '    if not new_messages:\n        fail("%s parses to NO messages',
+        '    if False:\n        fail("%s parses to NO messages',
+        ["test_an_export_with_no_messages_at_all_is_refused"],
+    ),
+    (
+        "the overlap measures the share of the NEW export, refusing a conversation that grew",
+        "        return self.matched / self.total_old if self.total_old else 0.0",
+        "        return self.matched / self.total_new if self.total_new else 1.0",
+        ["test_a_conversation_that_exploded_is_still_the_same_pair"],
+    ),
+    (
+        "an old export with no messages divides by zero instead of refusing the pair",
+        "        return self.matched / self.total_old if self.total_old else 0.0",
+        "        return self.matched / self.total_old",
+        ["test_an_empty_predecessor_confirms_nothing"],
+    ),
+    (
+        "the tally line is built the same way whether or not anything was unplaced",
+        '    return "nothing — every line and every file is placed" if not parts else "; ".join(parts)',
+        '    return "; ".join(parts)',
+        ["test_the_tally_is_clean_when_everything_is_placed"],
+    ),
+    (
+        "an attachment the new export dropped passes unremarked",
+        "    dropped = [info for name, info in old_index.items() if name not in new_index]",
+        "    dropped = []",
+        ["test_an_attachment_the_previous_export_had_is_an_anomaly"],
+    ),
+    (
+        "a run lands on top of a previous run's delta directory",
+        "    if os.listdir(out_dir):\n        fail(\"%s is not empty",
+        "    if False:\n        fail(\"%s is not empty",
+        ["test_a_second_run_will_not_land_on_the_first"],
+    ),
+    (
+        "an overwriting run leaves the previous run's attachments in place",
+        "        if args.overwrite and os.path.isdir(attachments_dir):",
+        "        if False and os.path.isdir(attachments_dir):",
+        ["test_an_overwriting_run_clears_the_old_attachments"],
+    ),
+    (
+        "two members sharing a basename overwrite each other on extraction",
+        "            if base in taken or os.path.exists(target):",
+        "            if False:",
+        ["test_two_members_sharing_a_basename_are_both_extracted"],
+    ),
+    (
+        "the new messages report as ONE spanning range, covering lines nobody added",
+        "        if runs and start <= runs[-1][1] + 1:",
+        "        if runs:",
+        ["test_the_new_message_lines_are_reported_run_by_run"],
+    ),
+    (
+        "a marker naming no file in the zip is not counted",
+        "            if plain_name(named) not in exact and "
+        "normalize_attachment(named) not in folded:\n                missing += 1",
+        "            if False:\n                missing += 1",
+        ["test_a_marker_naming_no_file_is_counted"],
+    ),
+    (
+        "lines before the first message are dropped without a count",
+        "        if line.strip():\n            count += 1",
+        "        if False:\n            count += 1",
+        ["test_lines_before_the_first_message_are_counted"],
+    ),
+    (
+        "the tally line claims everything is placed whatever it found",
+        '    parts = ["%d %s" % (tally[key], label) for key, label in TALLY_LABELS if tally.get(key)]',
+        "    parts = []",
+        [
+            "test_a_marker_naming_no_file_is_counted",
+            "test_two_members_sharing_a_basename_are_both_extracted",
+        ],
+    ),
+    (
+        "the fold splices its section onto the old text instead of re-rendering",
+        '    with open(digest_path, "w", encoding="utf-8") as handle:\n'
+        "        handle.write(render_digest(context))\n"
+        '    with open(context_path, "w", encoding="utf-8") as handle:',
+        '    with open(digest_path, encoding="utf-8") as old_handle:\n'
+        "        head = old_handle.read().partition(TRANSCRIPT_HEADING)[0]\n"
+        '    with open(digest_path, "w", encoding="utf-8") as handle:\n'
+        '        handle.write(head + TRANSCRIPT_HEADING + "\\n\\n"\n'
+        '                     + "\\n".join(sorted(transcripts)))\n'
+        '    with open(context_path, "w", encoding="utf-8") as handle:',
+        ["test_the_fold_re_renders_the_whole_digest"],
+    ),
+    (
+        "a decomposed filename is a different string, so the file belongs to no message",
+        '    return unicodedata.normalize(\n        "NFC", os.path.basename(name).translate(INVISIBLE).strip()\n    )',
+        "    return os.path.basename(name).translate(INVISIBLE).strip()",
+        ["test_a_decomposed_accent_in_the_zip_is_the_same_name_as_a_composed_one"],
+    ),
+    (
+        "a member name stored as UTF-8 without the flag is left as mojibake",
+        '        info.filename = info.filename.encode("cp437").decode("utf-8")',
+        "        pass",
+        ["test_a_name_stored_as_utf8_without_the_flag_is_repaired"],
+    ),
+    (
+        "the repair ignores the flag and re-encodes a name that was already UTF-8",
+        "    if info.flag_bits & 0x800:\n        return info",
+        "    if False:\n        return info",
+        ["test_a_name_the_zip_declared_utf8_is_left_alone"],
+    ),
+    (
+        "a header shape the parser misses is absorbed into the message above, silently",
+        "        if DATE_START_RE.match(clean):\n            count += 1",
+        "        if False:\n            count += 1",
+        ["test_a_header_shape_the_parser_misses_is_counted"],
+    ),
+    (
+        "every line that opens no message counts as a missed header, drowning the tally",
+        r'DATE_START_RE = re.compile(r"^\[?[ ]*\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}\b")',
+        r'DATE_START_RE = re.compile(r"")',
+        ["test_a_continuation_line_is_not_counted_as_a_missed_header"],
     ),
 ]
 
