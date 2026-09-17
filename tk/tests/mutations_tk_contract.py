@@ -530,6 +530,14 @@ MUTATIONS = [
      ["TestHarness.test_the_reach_report_names_the_file_the_count_and_the_module"],
      os.path.join("tests", "mutations_tk_contract.py")),
 
+    ("a thousand cold lines are printed in full, and the report becomes the "
+     "wall above every run that nobody reads",
+     "        tall = len(detail.splitlines())\n"
+     "        if tall <= DETAIL_LINES or os.environ.get(REACH_FULL):",
+     "        tall = len(detail.splitlines())\n        if True:",
+     ["TestHarness.test_a_listing_too_tall_to_read_is_held_back_behind_a_switch"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
     ("a run with a survivor in it exits 0",
      '    """\n    return 1 if survived or unrunnable or orphans else 0',
      '    """\n    return 0',
@@ -604,6 +612,8 @@ def misnamed(mutations, module_obj):
 REACH_FILES = "TK_REACH_FILES"
 REACH_DIR = "TK_REACH_DIR"
 TRACER = "reach_tracer.py"
+REACH_FULL = "TK_REACH_FULL"
+DETAIL_LINES = 3
 
 
 def executable_lines(path):
@@ -740,7 +750,14 @@ def report_reach(cold, unmeasured, module):
     The module is named on every line because the scope is this suite and not
     the repository: a line of a shared source that only a SIBLING module
     exercises is unreached here, and it is, for a mutant of that line runs only
-    the tests named in this file's entries."""
+    the tests named in this file's entries.
+
+    That is also why a long listing is HELD BACK. One suite here reaches a
+    third of `bin/tk-queue`, whose other tests live in another module, and
+    printing its thousand cold lines puts forty lines of numbers above every
+    run — the wall that gets a report ignored, and with it the six real lines
+    the suite next door reports. The count stays; `TK_REACH_FULL=1` prints the
+    rest."""
     for rel in unmeasured:
         print(textwrap.fill(
             f"UNMEASURED {rel} — the probe recorded no line of this file; either "
@@ -749,8 +766,14 @@ def report_reach(cold, unmeasured, module):
     for rel, (missing, total) in sorted(cold.items()):
         print(f"UNREACHED  {rel} — {len(missing)} of {total} line(s) "
               f"no test in {module} reaches")
-        print(textwrap.fill(line_ranges(missing), width=88,
-                            initial_indent=" " * 11, subsequent_indent=" " * 11))
+        detail = textwrap.fill(line_ranges(missing), width=88,
+                               initial_indent=" " * 11, subsequent_indent=" " * 11)
+        tall = len(detail.splitlines())
+        if tall <= DETAIL_LINES or os.environ.get(REACH_FULL):
+            print(detail)
+        else:
+            print(f"{' ' * 11}held back: {tall} lines of numbers. "
+                  f"Set {REACH_FULL}=1 to print them")
     if cold or unmeasured:
         print()
 

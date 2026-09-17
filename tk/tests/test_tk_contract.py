@@ -791,6 +791,28 @@ class TestHarness(unittest.TestCase):
         self.assertIn("UNMEASURED bin/other.py — the probe recorded no line of "
                       "this file; either test_probe never runs it", printed)
 
+    def test_a_listing_too_tall_to_read_is_held_back_behind_a_switch(self):
+        # one suite here reaches a third of a 1900-line bin whose other tests
+        # live in another module, and forty lines of numbers above every run
+        # bury the six real lines the suite next door reports
+        many = {"bin/big.py": (list(range(100, 700, 2)), 1914)}
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.h.report_reach(many, [], "test_probe")
+        printed = " ".join(out.getvalue().split())
+        self.assertIn("300 of 1914 line(s)", printed)      # the count stays
+        self.assertIn("held back", printed)
+        self.assertNotIn("100, 102", printed)
+
+        os.environ[self.h.REACH_FULL] = "1"
+        self.addCleanup(os.environ.pop, self.h.REACH_FULL, None)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.h.report_reach(many, [], "test_probe")
+        printed = " ".join(out.getvalue().split())
+        self.assertIn("100, 102", printed)
+        self.assertNotIn("held back", printed)
+
     def test_an_unreached_line_reports_without_failing_the_run(self):
         # every suite here has unreached lines today, so a run that went red on
         # them would be red on arrival — and a check that is red on arrival is
