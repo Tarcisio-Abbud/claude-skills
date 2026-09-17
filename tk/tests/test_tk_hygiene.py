@@ -883,6 +883,37 @@ class TestDryRun(HygieneTest):
         self.assertTrue(any(l.startswith("would-prune") and "held" in l
                             and tree in l for l in lines), lines)
 
+    def test_a_worktree_carrying_unsaved_work_is_kept_by_the_dry_run_too(self):
+        # the verdict, not just the absence of the delete: the run that acts
+        # keeps this branch, because `git worktree remove` refuses a tree with
+        # unsaved work in it. A dry run answering `would-prune` here would
+        # predict a removal that never happens
+        repo = self.repo("dirty", origin="https://github.com/example-owner/dirty.git")
+        self.forge("example-owner/dirty", "true")
+        tree = self.prunable_worktree(repo)
+        with open(os.path.join(tree, "unsaved.txt"), "w", encoding="utf-8") as f:
+            f.write("work nobody committed\n")
+
+        dry = self.run_hygiene("--dry-run")
+        self.assertEqual(dry.returncode, 0, dry.stdout + dry.stderr)
+        dry_lines = self.branch_lines(dry.stdout, repo)
+        self.assertTrue(any(l.startswith("kept") and "held" in l
+                            and "would not come away" in l
+                            for l in dry_lines), dry_lines)
+        self.assertEqual([l for l in dry_lines if l.startswith("would-prune")],
+                         [], dry_lines)
+
+        # and the run that acts agrees: same verdict, same branch, tree intact
+        wet = self.run_hygiene()
+        self.assertEqual(wet.returncode, 0, wet.stdout + wet.stderr)
+        self.assertIn("held", self.branch_names(repo))
+        self.assertTrue(os.path.isdir(tree), tree)
+        def verdicts(lines):
+            return sorted(l.split()[0] + " " + l.split()[1] for l in lines)
+
+        self.assertEqual(verdicts(dry_lines),
+                         verdicts(self.branch_lines(wet.stdout, repo)))
+
     def test_the_remote_branch_is_left_where_it_was(self):
         repo, _ = self.lane_repo()
         self.forge("example-owner/example-repo", "true")

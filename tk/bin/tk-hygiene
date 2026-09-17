@@ -90,6 +90,13 @@ that would go reads `would-prune` rather than `pruned`, and a remote branch
 time into a kickoff's own report — and there, a line reading `pruned` over a
 branch still on disk is a lie that no banner above it can reach.
 
+REACHING THE SAME VERDICT costs the dry run one read-only question. A worktree
+carrying modified or untracked files is refused by the real removal and its
+branch is kept; a dry run that only named the removal would answer
+`would-prune` over a branch the run that acts keeps. So it asks
+`git status --porcelain` inside the tree first — see `removal_blocked` — and
+keeps the branch with that as its reason.
+
 ANCESTRY IS NOT THE WHOLE QUESTION. A squash merge replays the branch as one new
 commit and a rebase replays it as several, and after either, no commit of the
 branch is an ancestor of the default while every line it wrote is already there.
@@ -617,6 +624,26 @@ def holding_worktree(repo, name):
     return None, None
 
 
+def removal_blocked(tree):
+    """Why `git worktree remove` would refuse `tree`, or None if it would not.
+
+    The run that ACTS learns this by attempting the removal and reporting git's
+    own refusal. A dry run may not attempt it, and predicting `would-prune` over
+    a tree the real run keeps is exactly the lie the flag exists to prevent — so
+    the same question is asked read-only: `status --porcelain` is empty for a
+    tree git will take away, and every line of it is work that a forced removal
+    would destroy. A status that cannot be read at all is not a clean tree: the
+    branch is kept, and the report says the state could not be read.
+    """
+    code, out, err = git(tree, "status", "--porcelain")
+    if code != 0:
+        return "its state could not be read: " + first_line(err, code,
+                                                            "git status")
+    if out:
+        return "it contains modified or untracked files, and this is unforced"
+    return None
+
+
 def prune(repo, dry_run=False):
     """[(action, branch, detail)] — what this repo's branches did, and why."""
     rows, err = branches(repo)
@@ -640,6 +667,16 @@ def prune(repo, dry_run=False):
             continue
         why = f"merged into {default}, remote gone"
         if dry_run:
+            # the same verdict as the run that acts, which means asking the
+            # worktree's state here: the wet run below keeps the branch when
+            # the removal is refused, and a dry run that skipped this would
+            # answer `would-prune` over a branch it will not touch
+            blocked = removal_blocked(tree) if tree else None
+            if blocked is not None:
+                out.append(("kept", name,
+                            f"its worktree {tree} would not come away: "
+                            + blocked))
+                continue
             out.append(("would-prune", name, why + (
                 f"; the worktree {tree} would be removed first, unforced"
                 if tree else "")))

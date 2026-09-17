@@ -133,8 +133,8 @@ MUTATIONS = [
 
     # --- --dry-run ----------------------------------------------------------
     ("T420 hygiene --dry-run is parsed and the local branch is deleted anyway",
-     '        if dry_run:\n            out.append(("would-prune", name, why + (',
-     '        if False:\n            out.append(("would-prune", name, why + (',
+     '        if dry_run:\n            # the same verdict as the run that acts',
+     '        if False:\n            # the same verdict as the run that acts',
      ["TestDryRun.test_nothing_is_pruned_and_the_verdicts_are_the_same",
       "TestDryRun.test_the_worktree_is_left_standing"], HYGIENE),
 
@@ -142,6 +142,20 @@ MUTATIONS = [
      '        if dry_run:\n            out.append(("would-delete", name,',
      '        if False:\n            out.append(("would-delete", name,',
      ["TestDryRun.test_the_remote_branch_is_left_where_it_was"], HYGIENE),
+
+    ("T420 hygiene the dry run never asks whether the worktree would come away",
+     "            blocked = removal_blocked(tree) if tree else None",
+     "            blocked = None",
+     ["TestDryRun."
+      "test_a_worktree_carrying_unsaved_work_is_kept_by_the_dry_run_too"],
+     HYGIENE),
+
+    ("T420 hygiene unsaved work in the worktree reads as a tree that would come away",
+     '    if out:\n        return "it contains modified',
+     '    if not out:\n        return "it contains modified',
+     ["TestDryRun."
+      "test_a_worktree_carrying_unsaved_work_is_kept_by_the_dry_run_too"],
+     HYGIENE),
 
     ("T420 hygiene the flag never reaches the local step",
      "        rows = prune(repo, dry_run=args.dry_run)", "        rows = prune(repo)",
