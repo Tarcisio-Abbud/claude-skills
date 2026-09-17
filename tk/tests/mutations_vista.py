@@ -210,8 +210,8 @@ MUTATIONS = [
      ["TestFiveBlocks.test_an_outcome_outside_the_vocabulary_is_refused"], CHECK),
 
     ("T139 the vocabulary loses a word the closing template uses",
+     'OUTCOMES = ("merged", "closed", "open", "carried", "new", "blocked", "discarded")',
      'OUTCOMES = ("merged", "closed", "open", "carried", "blocked", "discarded")',
-     'OUTCOMES = ("merged", "closed", "open", "blocked", "discarded")',
      ["TestFiveBlocks.test_every_outcome_of_the_vocabulary_is_accepted"], CHECK),
 
     ("T139 the risk tag is optional",

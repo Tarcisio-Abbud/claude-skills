@@ -253,7 +253,7 @@ them for each returned run, in that run's project.
 
 The close has two artefacts. The **textual report** is the close itself. Step 4 has been
 appending to it since the first return, on the template in `../wrap-up/REPORT.md`. That template
-is also where block 1's four counts come from. Its companion is the vista, whose coinage and whole
+is also where block 1's five counts come from. Its companion is the vista, whose coinage and whole
 contract are `../../reference/vista.md`. That file carries the five blocks, the closed outcome
 vocabulary, the outbox it lands in, the gate `tk-vista-check` and that gate's four states.
 **Read it and follow it.** It is the consolidated reporter's contract as much as the package

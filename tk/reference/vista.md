@@ -69,12 +69,12 @@ the design. Every marker is a `data-vista-*` attribute, and `tk-vista-check` rea
 
 | # | Block | Marker | What fills it |
 |---|---|---|---|
-| 1 | Stats line, at the opening | `data-vista-bloco="stats"` | the closing template's own four counts — closed · carried · blocked · discarded, which never sum with each other — plus whatever else the run earned (open PRs, tests). Across several projects each count is the sum of that count over them, and the line says how many queues it covers |
+| 1 | Stats line, at the opening | `data-vista-bloco="stats"` | the closing template's own five counts — closed · carried · new · blocked · discarded, which never sum with each other — plus whatever else the run earned (open PRs, tests). Across several projects each count is the sum of that count over them, and the line says how many queues it covers |
 | 2 | One card per PR or item, grouped by outcome | `data-vista-bloco="cards"` on the region; `data-vista-card="<id>"` and `data-vista-desfecho="<outcome>"` on each card | what the slice delivered, in prose a reader who will not open the diff can judge |
 
-**The outcome vocabulary is closed**: `merged` · `closed` · `open` · `carried` · `blocked` ·
-`discarded`. The gate refuses anything else, because the CSS that colours a card knows only
-these — a card carrying a seventh word renders grey and reads as unremarkable. Grouping headings
+**The outcome vocabulary is closed**: `merged` · `closed` · `open` · `carried` · `new` ·
+`blocked` · `discarded`. The gate refuses anything else, because the CSS that colours a card knows only
+these — a card carrying an eighth word renders grey and reads as unremarkable. Grouping headings
 are prose and free; the attribute is not.
 
 **A proof link is a real address.** The gate refuses a placeholder — an empty or `#` href, a

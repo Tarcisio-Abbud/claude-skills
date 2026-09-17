@@ -314,7 +314,7 @@ class TestFiveBlocks(CheckTest):
                            "outside the vocabulary")
 
     def test_every_outcome_of_the_vocabulary_is_accepted(self):
-        for outcome in ("merged", "closed", "open", "carried", "blocked", "discarded"):
+        for outcome in ("merged", "closed", "open", "carried", "new", "blocked", "discarded"):
             with self.subTest(outcome=outcome):
                 self.assertAccepted(PAGE.replace('data-vista-desfecho="open"',
                                                  f'data-vista-desfecho="{outcome}"'))

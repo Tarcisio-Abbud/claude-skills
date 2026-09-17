@@ -80,7 +80,7 @@ PAGE_BLOCKS = tuple(m for m in BLOCKS if m != CARD_BLOCK)
 # The closed vocabulary of outcomes. One list, here, because the CSS that
 # colours a card and the report that groups them have to agree, and a value
 # outside it renders as an uncoloured card nobody notices
-OUTCOMES = ("merged", "closed", "open", "carried", "blocked", "discarded")
+OUTCOMES = ("merged", "closed", "open", "carried", "new", "blocked", "discarded")
 
 # The five safe-to-merge verdicts a card gives when it stands for a PR offered as
 # merge. Closed for the same reason as OUTCOMES, and checked ALL-OR-NONE: the
