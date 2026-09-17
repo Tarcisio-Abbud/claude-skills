@@ -460,6 +460,18 @@ class TheSiblingSeam(TranscriptFixture):
         step_one = text.split("## 1. ", 1)[-1].split("## 2. ", 1)[0]
         self.assertIn("tk-errors", step_one)
 
+    def test_the_first_step_cannot_close_over_what_the_command_found(self):
+        # A step that PRINTS the two classes and closes without naming them is a
+        # step nobody has to act on: the sweep scrolls past and the unconfirmed
+        # `add` is marked done unread. The gate enumerates the categories, which
+        # is the rule that a correction adding one adds it to the step that
+        # reports.
+        with open(WRAP_UP) as fh:
+            text = re.sub(r"\s+", " ", fh.read())
+        gate = text.split("**Done when:**", 1)[-1].split("## 2. ", 1)[0]
+        self.assertIn("refusal", gate)
+        self.assertIn("unconfirmed queue write", gate)
+
 
 if __name__ == "__main__":
     unittest.main()

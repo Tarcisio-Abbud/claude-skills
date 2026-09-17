@@ -81,6 +81,7 @@ THE_FLAG = "TheExitCodes.test_a_transcript_path_wins_over_the_session_id"
 
 ARGV = "TheSiblingSeam.test_main_takes_its_argv_like_every_sibling_bin"
 POINTER = "TheSiblingSeam.test_the_wrap_up_sends_its_first_step_here"
+GATE = "TheSiblingSeam.test_the_first_step_cannot_close_over_what_the_command_found"
 
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
@@ -331,9 +332,14 @@ MUTATIONS = [
 
     # -- the prose that calls it ---------------------------------------------
     ("the close stops naming the command, so nobody ever runs it",
-     "`tk-errors` (what this session was\nrefused, and which queue writes never confirmed) ",
+     "`tk-errors` (refusals and unconfirmed\nqueue writes) ",
      "",
      [POINTER], WRAP_UP),
+
+    ("the step closes without naming what it printed, so nobody acts on it",
+     "every session finding, refusal and unconfirmed queue write was",
+     "every session finding was",
+     [GATE], WRAP_UP),
 ]
 
 if __name__ == "__main__":
