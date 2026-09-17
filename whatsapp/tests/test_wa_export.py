@@ -428,6 +428,21 @@ class TallyTest(Fixture):
         self.assertEqual(payload["tally"]["markers_without_file"], 1)
         self.assertIn("1 attachment markers naming no file", self.digest())
 
+    def test_an_entry_the_zip_carries_twice_is_counted(self):
+        """The attachment index is keyed by name, so the second entry replaces the first and
+        the file leaves the delta without a word — the same silence as every other item on
+        this line."""
+        old = make_export(self.path("2026-08-01-export.zip"), CHAT, BASE, [])
+        path = self.path("2026-08-10-export.zip")
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr(CHAT, "\n".join(BASE + TAIL) + "\n")
+            archive.writestr("segue-anexo.pdf", b"first")
+            archive.writestr("segue-anexo.pdf", b"second")
+            archive.writestr("nota-nova.pdf", b"new-invoice")
+        payload = self.diff_json(path, "--previous", old)
+        self.assertEqual(payload["tally"]["duplicate_members"], 1)
+        self.assertIn("1 entries the zip carries twice", self.digest())
+
     def test_lines_before_the_first_message_are_counted(self):
         old = make_export(self.path("2026-08-01-export.zip"), CHAT, BASE, [])
         new = make_export(self.path("2026-08-10-export.zip"), CHAT,

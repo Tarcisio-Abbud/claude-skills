@@ -324,6 +324,12 @@ MUTATIONS = [
         r'DATE_START_RE = re.compile(r"")',
         ["test_a_continuation_line_is_not_counted_as_a_missed_header"],
     ),
+    (
+        "an entry the zip carries twice replaces its twin without a word",
+        "            if info.filename in seen:\n                duplicates += 1",
+        "            if False:\n                duplicates += 1",
+        ["test_an_entry_the_zip_carries_twice_is_counted"],
+    ),
 ]
 
 

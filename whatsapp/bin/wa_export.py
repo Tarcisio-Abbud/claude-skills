@@ -612,6 +612,7 @@ TALLY_LABELS = (
     ("orphan_lines", "lines before the first message"),
     ("unparsed_headers", "lines that look like a header and opened no message"),
     ("extra_txt", "other .txt members"),
+    ("duplicate_members", "entries the zip carries twice under one name"),
     ("markers_without_file", "attachment markers naming no file in the zip"),
     ("files_without_message", "new files no message announces"),
     ("collisions", "names that collided on extraction"),
@@ -686,6 +687,7 @@ def cmd_diff(args):
         "orphan_lines": count_orphan_lines(new_text),
         "unparsed_headers": count_unparsed_headers(new_text),
         "extra_txt": count_extra_txt(new_zip, chat_member),
+        "duplicate_members": count_duplicate_members(new_zip),
         "markers_without_file": count_unmatched_markers(new_messages, new_index),
         "files_without_message": sum(1 for _info, owner in added_files if owner is None),
         "collisions": len(collisions),
@@ -842,6 +844,25 @@ def count_unparsed_headers(text):
         if DATE_START_RE.match(clean):
             count += 1
     return count
+
+
+def count_duplicate_members(zip_path):
+    """Entries a zip carries twice under one name.
+
+    The index is keyed by name, so the second entry replaces the first and the file is gone
+    from the delta without a word — the same class as every other item on this line, and the
+    last one the lens found.
+    """
+    seen = set()
+    duplicates = 0
+    with zipfile.ZipFile(zip_path) as archive:
+        for info in zip_members(archive):
+            if info.is_dir():
+                continue
+            if info.filename in seen:
+                duplicates += 1
+            seen.add(info.filename)
+    return duplicates
 
 
 def count_extra_txt(zip_path, chat_member):
