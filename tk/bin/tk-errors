@@ -76,9 +76,12 @@ IT READS THE AGENTS THIS SESSION DISPATCHED. Their transcripts are separate
 files, as `tk-context` documents, and their refusals are this session's: a hook
 that turned a dispatched agent away refused work this session asked for, and the
 close is the only place anybody reads it. So the session's own jsonl and every
-`<session dir>/subagents/**/*.jsonl` beside it are one reading. Every record in
-an agent's file is marked `isSidechain`, and the PARENT file's sidechain records
-— copies of the same lines — are skipped there so no row is printed twice.
+`<session dir>/subagents/**/agent-*.jsonl` beside it are one reading — that name
+and not `*.jsonl`, because a Workflow's `journal.jsonl` is not a transcript and
+counting it as one read left the gate below satisfied by a file of nothing.
+Every record in an agent's file is marked `isSidechain`, and the PARENT file's
+sidechain records — copies of the same lines — are skipped there so no row is
+printed twice.
 
 A READING THAT FOUND NO RECORD IS NOT A CLEAN SESSION. An empty file, a file of
 garbage and a file whose every record was filtered out all exit 2, for the reason
@@ -265,10 +268,19 @@ def subagent_transcripts(path):
     per agent, one level deeper for an agent a Workflow ran — hence the
     recursive glob. The directory is escaped before it reaches that glob, for
     the reason `find_transcript` escapes the session id.
+
+    ONLY `agent-*.jsonl`, and the name is the whole guard. A Workflow leaves a
+    `journal.jsonl` beside its agents whose records carry no `message` at all
+    (`agentId/key/label/phase/result/type`), so it yields no row and still
+    counted toward `considered` — which is the single number the "nothing was
+    read" gate below depends on. An empty parent transcript plus one journal
+    therefore reported a clean session and exited 0, the exact lie that gate
+    exists to prevent. Measured over this machine's transcripts: 2014 agent
+    files, all `agent-<hash>.jsonl`, and 24 journals, the only other name.
     """
     base = re.sub(r"\.jsonl$", "", path)
     return sorted(glob.glob(os.path.join(glob.escape(base), "subagents",
-                                         "**", "*.jsonl"), recursive=True))
+                                         "**", "agent-*.jsonl"), recursive=True))
 
 
 def blocks(record):

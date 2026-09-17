@@ -649,6 +649,21 @@ class TheExitCodes(TranscriptFixture):
                 self.assertEqual(run.returncode, 2, run.stdout)
                 self.assertIn("unread one", run.stderr)
 
+    def test_a_workflows_journal_does_not_pass_for_a_reading(self):
+        # A Workflow leaves a `journal.jsonl` among the agents it ran, and its
+        # records carry no `message` at all. It yields no row, so it used to
+        # satisfy the gate while saying nothing: an empty parent transcript plus
+        # one journal reported a clean session and exited 0 — the exact lie the
+        # gate exists to prevent.
+        with open(self.transcript, "w") as fh:
+            fh.write("")
+        self.write_subagent(os.path.join("workflows", "wf_x", "journal.jsonl"),
+                            json.dumps({"type": "launched"}),
+                            json.dumps({"type": "started", "agentId": "a1"}))
+        run = self.run_it()
+        self.assertEqual(run.returncode, 2, run.stdout)
+        self.assertIn("unread one", run.stderr)
+
     def test_an_unread_transcript_is_not_a_clean_one(self):
         # 2 and 0 are opposite facts. A seam that conflated them would report a
         # session nobody read as a session with nothing wrong in it.

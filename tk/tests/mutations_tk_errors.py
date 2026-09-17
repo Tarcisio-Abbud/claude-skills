@@ -100,6 +100,7 @@ READS_OUT = "TheQueueSeam.test_the_read_only_subcommands_are_left_out"
 EXIT_ZERO = "TheExitCodes.test_a_reading_that_happened_exits_zero_whatever_it_found"
 UNREAD = "TheExitCodes.test_an_unread_transcript_is_not_a_clean_one"
 NO_RECORD = "TheExitCodes.test_a_transcript_that_yielded_no_record_is_unread"
+JOURNAL = "TheExitCodes.test_a_workflows_journal_does_not_pass_for_a_reading"
 NO_SESSION = "TheExitCodes.test_a_missing_session_id_says_so"
 USAGE = "TheExitCodes.test_a_bad_flag_exits_sixty_four"
 GLOB = "TheExitCodes.test_a_wildcard_session_id_does_not_glob"
@@ -140,10 +141,15 @@ MUTATIONS = [
 
     ("only the agents at the top level are read, and a Workflow's are missed",
      '''    return sorted(glob.glob(os.path.join(glob.escape(base), "subagents",
-                                         "**", "*.jsonl"), recursive=True))''',
+                                         "**", "agent-*.jsonl"), recursive=True))''',
      '''    return sorted(glob.glob(os.path.join(glob.escape(base), "subagents",
-                                         "*.jsonl")))''',
+                                         "agent-*.jsonl")))''',
      [WORKFLOW_AGENT], ERRORS),
+
+    ("every jsonl under `subagents` is read, so a Workflow's journal counts as one",
+     '''                                         "**", "agent-*.jsonl"), recursive=True))''',
+     '''                                         "**", "*.jsonl"), recursive=True))''',
+     [JOURNAL], ERRORS),
 
     ("a reading that survived nothing reports a clean session",
      """    if not considered:
