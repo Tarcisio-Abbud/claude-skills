@@ -331,8 +331,22 @@ class HygieneTest(unittest.TestCase):
         return sorted(line.split("refs/heads/")[-1] for line in out.splitlines()
                       if "refs/heads/" in line)
 
+    def prunable_worktree(self, repo, name="held"):
+        """A LINKED worktree over a branch that is prunable but for the tree.
+
+        `[gone]` upstream and not one commit of its own: everything `prunable`
+        asks for, so the only thing between it and the delete is the directory
+        standing on it. That is the shape a lane leaves behind once its pull
+        request merges and the forge deletes the remote branch.
+        """
+        head = self.git(repo, "rev-parse", "HEAD").stdout.strip()
+        tree = os.path.join(self.tmp, name + "-tree")
+        self.git(repo, "worktree", "add", "-q", tree, "-b", name, head)
+        self.track(repo, name, name)
+        return tree
+
     # --- driving the bin ---------------------------------------------------
-    def run_hygiene(self, *argv, hygiene=None):
+    def run_hygiene(self, *argv, hygiene=None, cwd=None):
         # GIT_CEILING_DIRECTORIES is the second lock on "the suite never reaches
         # the checkout": even were the temporary tree carved out of a repository
         # one day, git may not walk up out of it looking for one
@@ -343,7 +357,7 @@ class HygieneTest(unittest.TestCase):
                    FAKE_GH_TABLE=self.table)
         env.pop("USERPROFILE", None)
         return subprocess.run([sys.executable, hygiene or self.hygiene, *argv], env=env,
-                              capture_output=True, text=True, timeout=120)
+                              cwd=cwd, capture_output=True, text=True, timeout=120)
 
     def branch_names(self, repo):
         out = self.git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads")
@@ -571,19 +585,99 @@ class TestPrune(HygieneTest):
         self.assertIn("merged-gone", self.branch_names(repo))
         self.assertIn("no default branch", r.stdout)
 
-    def test_a_branch_checked_out_in_another_worktree_survives_the_refusal(self):
+
+# --- the linked worktree standing on a prunable branch ----------------------
+
+class TestTheWorktreeStandingOnTheBranch(HygieneTest):
+    """A lane's worktree outlives the merge of its pull request, and while the
+    directory stands the branch under it cannot be pruned — 41 of them were
+    holding branches on this machine on 2026-09-16. The worktree is removed
+    first, and NEVER forced: a tree carrying unsaved work is somebody's."""
+
+    def test_a_linked_worktree_is_removed_and_then_the_branch_is_deleted(self):
         repo = self.repo("busy", origin="https://github.com/example-owner/busy.git")
         self.forge("example-owner/busy", "true")
-        head = self.git(repo, "rev-parse", "HEAD").stdout.strip()
-        tree = os.path.join(self.tmp, "busy-tree")
-        self.git(repo, "worktree", "add", "-q", tree, "-b", "held", head)
-        self.track(repo, "held", "held")
+        tree = self.prunable_worktree(repo)
 
         r = self.run_hygiene()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("held", self.branch_names(repo))
+        self.assertFalse(os.path.exists(tree), tree)
+        # git's own bookkeeping, not just the directory: a tree unregistered
+        # only on disk comes back in every `worktree list` until someone prunes
+        self.assertNotIn(tree, self.git(repo, "worktree", "list").stdout)
+        lines = self.branch_lines(r.stdout, repo)
+        self.assertTrue(any(l.startswith("pruned") and "held" in l and tree in l
+                            for l in lines), lines)
+
+    def test_a_worktree_carrying_unsaved_work_is_kept_rather_than_forced(self):
+        repo = self.repo("dirty", origin="https://github.com/example-owner/dirty.git")
+        self.forge("example-owner/dirty", "true")
+        tree = self.prunable_worktree(repo)
+        with open(os.path.join(tree, "unsaved.txt"), "w", encoding="utf-8") as f:
+            f.write("work nobody committed\n")
+
+        r = self.run_hygiene()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("held", self.branch_names(repo))
+        self.assertTrue(os.path.isdir(tree), tree)
+        lines = self.branch_lines(r.stdout, repo)
         self.assertTrue(any(l.startswith("kept") and "held" in l
-                            for l in self.branch_lines(r.stdout, repo)),
-                        self.branch_lines(r.stdout, repo))
+                            and "would not come away" in l for l in lines), lines)
+
+    def test_a_branch_checked_out_in_the_repositorys_own_tree_is_kept(self):
+        # the MAIN working tree is never a candidate for removal: there is no
+        # second tree to take the branch out of, and git's refusal of the
+        # delete — which names the tree holding it — is the report
+        repo = self.repo("here", origin="https://github.com/example-owner/here.git")
+        self.forge("example-owner/here", "true")
+        self.git(repo, "checkout", "-q", "-b", "occupied")
+        self.track(repo, "occupied", "occupied")
+
+        r = self.run_hygiene()
+        self.assertIn("occupied", self.branch_names(repo))
+        self.assertTrue(os.path.isdir(repo), repo)
+        lines = self.branch_lines(r.stdout, repo)
+        self.assertTrue(any(l.startswith("kept") and "occupied" in l
+                            and "checked out at" in l for l in lines), lines)
+
+    def test_the_directory_the_run_was_fired_from_is_never_removed(self):
+        # a kickoff fires this bin from wherever the session opened, which on
+        # this machine is routinely a lane's own worktree. Removing it leaves
+        # every later command of that session on a cwd that no longer exists
+        repo = self.repo("standing",
+                         origin="https://github.com/example-owner/standing.git")
+        self.forge("example-owner/standing", "true")
+        tree = self.prunable_worktree(repo)
+        # a subdirectory, so that the test is not satisfied by comparing the two
+        # paths for equality; an EMPTY one, so the tree stays clean and the
+        # keeping cannot be credited to the unsaved-work guard above
+        inner = os.path.join(tree, "inner")
+        os.makedirs(inner)
+
+        r = self.run_hygiene(cwd=inner)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("held", self.branch_names(repo))
+        self.assertTrue(os.path.isdir(tree), tree)
+        lines = self.branch_lines(r.stdout, repo)
+        self.assertTrue(any(l.startswith("kept") and "held" in l
+                            and "standing in" in l for l in lines), lines)
+
+    def test_the_worktree_this_bin_is_installed_in_is_never_removed(self):
+        # the other half of the same guard, and rarely the same directory: the
+        # cwd is the session's, this is the clone the bin was copied into
+        repo = self.repo("installed",
+                         origin="https://github.com/example-owner/installed.git")
+        self.forge("example-owner/installed", "true")
+        tree = self.prunable_worktree(repo)
+        installed = self.install(os.path.join(tree, "tk", "bin"))
+
+        r = self.run_hygiene(hygiene=installed)
+        self.assertIn("held", self.branch_names(repo))
+        self.assertTrue(os.path.isdir(tree), tree)
+        lines = self.branch_lines(r.stdout, repo)
+        self.assertTrue(any(l.startswith("kept") and "held" in l
+                            and "standing in" in l for l in lines), lines)
 
 
 # --- the content test: a squash merge leaves no ancestor behind ------------
@@ -738,6 +832,68 @@ class TestRemoteResidue(HygieneTest):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(branch, self.remote_branches(repo))
         self.assertNotIn(REMOTE, r.stdout)
+
+
+# --- --dry-run: the same run, with the irreversible acts named -------------
+
+class TestDryRun(HygieneTest):
+    """`--dry-run` is permanent and not a debugging flag. Its report reaches the
+    same verdicts, and the lines that would destroy something say `would-` —
+    these lines are quoted one at a time into a kickoff's own report, where
+    `pruned` over a branch still on disk is a lie no banner above it reaches."""
+
+    def test_nothing_is_pruned_and_the_verdicts_are_the_same(self):
+        repo = self.repo("three", origin="https://github.com/example-owner/three.git")
+        self.forge("example-owner/three", "true")
+        self.three_branches(repo)
+        before = self.branch_names(repo)
+
+        dry = self.run_hygiene("--dry-run")
+        self.assertEqual(dry.returncode, 0, dry.stdout + dry.stderr)
+        self.assertEqual(self.branch_names(repo), before)
+        dry_lines = self.branch_lines(dry.stdout, repo)
+        self.assertTrue(any(l.startswith("would-prune") and "merged-gone" in l
+                            for l in dry_lines), dry_lines)
+        self.assertEqual([l for l in dry_lines if l.startswith("pruned")], [])
+
+        # the same verdicts: every branch the dry run KEPT, with the same
+        # reason, is kept by the run that acts — and the one it named is the
+        # one that goes
+        wet = self.run_hygiene()
+        self.assertEqual(self.branch_names(repo), ["local-only", "main", "unmerged-gone"])
+        # whitespace squeezed out: the action column is padded to the widest
+        # verb in the block, and `would-prune` is wider than `pruned`
+        def kept_lines(lines):
+            return [" ".join(l.split()) for l in lines if l.startswith("kept")]
+
+        kept = kept_lines(dry_lines)
+        self.assertEqual(kept, kept_lines(self.branch_lines(wet.stdout, repo)))
+        self.assertEqual(len(kept), 2, kept)
+
+    def test_the_worktree_is_left_standing(self):
+        repo = self.repo("busy", origin="https://github.com/example-owner/busy.git")
+        self.forge("example-owner/busy", "true")
+        tree = self.prunable_worktree(repo)
+
+        r = self.run_hygiene("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isdir(tree), tree)
+        self.assertIn("held", self.branch_names(repo))
+        lines = self.branch_lines(r.stdout, repo)
+        self.assertTrue(any(l.startswith("would-prune") and "held" in l
+                            and tree in l for l in lines), lines)
+
+    def test_the_remote_branch_is_left_where_it_was(self):
+        repo, _ = self.lane_repo()
+        self.forge("example-owner/example-repo", "true")
+        branch = self.pushed_branch(repo, "spec/163/T420", merged=True)
+
+        r = self.run_hygiene("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(branch, self.remote_branches(repo))
+        lines = self.branch_lines(r.stdout, repo, REMOTE)
+        self.assertTrue(any(l.startswith("would-delete") and branch in l
+                            for l in lines), lines)
 
 
 # --- idempotence ------------------------------------------------------------
