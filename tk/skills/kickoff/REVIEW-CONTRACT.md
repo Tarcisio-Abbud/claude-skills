@@ -76,9 +76,14 @@ the standard this line holds. The reviewer of the repair is never the agent that
 ## The collision check closes the package
 
 When every lane of the run has been reviewed, run **`tk-collisions`** over the run's OPEN pull
-requests. `../merge-gate/SKILL.md` §5 owns its argument form and its exit codes; read them there
-rather than here, so one file states the mechanics. The forge cannot answer this question: its own
-`mergeable` field is blind between two pull requests.
+requests, in TWO passes. The first pass merges every pair. The second pass runs once per
+repository, with `--against` naming the branch assumed to land first and `--suite` running that
+repository's whole suite inside each union. That second pass is what catches a merge landing RED
+on a repository whose branches were each green alone, which a pair-wise pass leaves open.
+`../merge-gate/SKILL.md` §5 owns the first pass's argument form; `UNION.md` beside this file
+owns the second's, and the exit codes both answer with. Read them there rather than here, so one
+file states each mechanic. The forge answers neither question: its own `mergeable` field is
+blind between two pull requests.
 
 A REAL collision — a pair that fails to merge, not a marker in a file a tool regenerates — goes
 to one **Sonnet** agent, which resolves that pair alone and writes the resolved file. The agent
@@ -91,6 +96,11 @@ gh pr comment "<n>" -R "<owner>/<repo>" --body-file "<abs path to the resolved f
 `--body-file` takes a path; `--body @<file>` publishes the literal `@` string, which happened
 twice on 2026-09-06 and was repaired by re-posting. The agent resolves and posts; it merges
 nothing.
+
+A RED UNION is the second pass's own finding shape, and it takes another route. No single branch
+holds the defect, so there is no pair to resolve and no one file to post. It goes to
+`UNION.md` beside this file, whose *Where a finding goes* routes it. Report the failing suite's tail and the pivot the run assumed, since another merge
+order is another measurement.
 
 ## Hard rules
 
