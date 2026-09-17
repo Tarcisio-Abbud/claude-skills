@@ -284,11 +284,17 @@ rewrites anything pushed. In order:
 Then mark the pull request ready and remove the lane's worktree — the gate's `--delete-branch`
 fails on a branch still checked out.
 
+### The sweep over the union
+
+Runs once per package, after the last item is verified and BEFORE step 6 measures. `UNION.md`
+beside this file carries it whole. It is FIXED, and a package with no accumulated lane runs it.
+
 **Done when:** every item carries one verify outcome with its evidence block, every lane item
 reached the branch by a pushed `T<id>` merge before its `done`, verdict 5 was asked of each
 while it was still open, the tip carried the whole suite and every merged item's criterion before
 the first `done`, and every red one is absent from it, the tail ran its three steps on the final tree and left the pull request out of draft with
-the worktree removed, and every claim left with its item or was released.
+the worktree removed, `UNION.md`'s own "Done when" holds, and every claim left with its item
+or was released.
 
 ## 6. Measure, and hand the package to the close
 

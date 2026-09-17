@@ -33,7 +33,9 @@ with the rest of the package still to run.
    finding repeats across lanes, or destination 2 would hand it to nobody. Dispatch it as any
    other lane, under `LANE-CONTRACT.md`, and cut it over the union of what the package opened.
    The union is the point: one lane's branch does not hold a defect the package spread across
-   several.
+   several. `UNION.md` beside this file is where this destination is reached, and that sweep
+   runs on EVERY package: the condition above decides only whether this finding rides it into
+   a lane, never whether the union is looked at.
 
 **A report line is not a destination.** "Linha de relatório é adiamento com outro nome" — the
 user's verdict, 2026-09-06. A finding written down for a reader nobody asked to act is a
