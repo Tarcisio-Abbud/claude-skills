@@ -59,6 +59,11 @@ DIR_FLAG = "TheQueueInvariant.test_the_dir_option_before_the_subcommand_is_skipp
 QUALIFIED = "TheQueueInvariant.test_a_path_qualified_invocation_is_seen"
 TWO_CALLS = "TheQueueInvariant.test_two_invocations_in_one_command_are_counted_apart"
 NO_OP = "TheQueueInvariant.test_an_honest_no_op_counts_as_a_success_line"
+THREE_WRITES = ("TheQueueInvariant."
+                "test_the_briefing_the_order_and_the_done_log_are_writes_too")
+TOP_NO_OP = ("TheQueueInvariant."
+             "test_a_bump_on_an_item_already_at_the_top_is_a_no_op_not_a_loss")
+REWROTE = "TheQueueInvariant.test_a_rewritten_briefing_counts_as_a_write"
 UNPARSED = "TheQueueInvariant.test_an_untokenizable_command_is_its_own_class_not_a_write"
 HEREDOC = "TheQueueInvariant.test_a_heredoc_body_is_data_and_not_a_command"
 COMMIT_MSG = "TheQueueInvariant.test_a_commit_message_naming_a_write_is_not_one"
@@ -319,6 +324,34 @@ MUTATIONS = [
      '    "release": (r"^\\S+ released — ",),',
      [NO_OP, TABLES], ERRORS),
 
+    ("the briefing is written and nobody checks that it was",
+     '    "handoff": (r"^(?:re)?wrote \\S*handoff-T\\d+\\.md$",),\n',
+     "",
+     [THREE_WRITES, TABLES], ERRORS),
+
+    ("the queue's order is rewritten and nobody checks that it was",
+     '''    "bump": (r"^\\S+ → top of the queue$",
+             r"^\\S+ is already at the top of the queue$"),
+''',
+     "",
+     [THREE_WRITES, TABLES], ERRORS),
+
+    ("the done-log is folded and nobody checks that it was",
+     '    "migrate": (r"^\\d+ \\[x\\] item\\(s\\) → done-log;",),\n',
+     "",
+     [THREE_WRITES, TABLES], ERRORS),
+
+    ("a re-written briefing reads as a failed one",
+     r'    "handoff": (r"^(?:re)?wrote \S*handoff-T\d+\.md$",),',
+     r'    "handoff": (r"^wrote \S*handoff-T\d+\.md$",),',
+     [REWROTE], ERRORS),
+
+    ("a bump on an item already at the top reads as a failed write",
+     '''    "bump": (r"^\\S+ → top of the queue$",
+             r"^\\S+ is already at the top of the queue$"),''',
+     '    "bump": (r"^\\S+ → top of the queue$",),',
+     [TOP_NO_OP, TABLES], ERRORS),
+
     # -- the seam with tk-queue ----------------------------------------------
     ("a pinned shape drifts from the line tk-queue actually prints",
      '    "edit": (\'print(f"{label} updated")\',),',
@@ -326,9 +359,9 @@ MUTATIONS = [
      [PINNED], ERRORS),
 
     ("a subcommand is watched that tk-queue does not have",
-     """    "cancel": (r"^\\S+ → done-log as ", r"^\\S+ → out of the queue;"),
+     """    "migrate": (r"^\\d+ \\[x\\] item\\(s\\) → done-log;",),
 }""",
-     """    "cancel": (r"^\\S+ → done-log as ", r"^\\S+ → out of the queue;"),
+     """    "migrate": (r"^\\d+ \\[x\\] item\\(s\\) → done-log;",),
     "purge": (r"^\\S+ purged$",),
 }""",
      [REAL_SUB, TABLES], ERRORS),

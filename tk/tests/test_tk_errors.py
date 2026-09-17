@@ -365,6 +365,35 @@ class TheQueueInvariant(TranscriptFixture):
                                   "tk-queue: the WIP cap is full")
         self.assertEqual(self.counts(run), (0, 1))
 
+    def test_the_briefing_the_order_and_the_done_log_are_writes_too(self):
+        # Each writes a file and none was in the table, so a failed one was
+        # invisible to the close: the briefing a sibling session is waiting on,
+        # the order the next kickoff reads, the done-log a migrate folds into.
+        for sub, command, printed in (
+                ("handoff", "tk-queue handoff T418",
+                 "wrote /workspace/projects/memory/handoff-T418.md"),
+                ("bump", "tk-queue bump T418", "T418 → top of the queue"),
+                ("migrate", "tk-queue migrate --dir memory",
+                 "2 [x] item(s) → done-log; IDs assigned up to T420")):
+            with self.subTest(sub, direction="confirmed"):
+                run = self.transcript_for(command, printed)
+                self.assertEqual(self.headline(run), (0, 0, 0))
+            with self.subTest(sub, direction="unconfirmed"):
+                run = self.transcript_for(command, "tk-queue: refused")
+                self.assertEqual(self.headline(run), (0, 1, 0))
+                self.assertIn(sub, run.stdout)
+
+    def test_a_bump_on_an_item_already_at_the_top_is_a_no_op_not_a_loss(self):
+        run = self.transcript_for("tk-queue bump T418",
+                                  "T418 is already at the top of the queue")
+        self.assertEqual(self.headline(run), (0, 0, 0))
+
+    def test_a_rewritten_briefing_counts_as_a_write(self):
+        run = self.transcript_for(
+            "tk-queue handoff T418 --force",
+            "rewrote /workspace/projects/memory/handoff-T418.md")
+        self.assertEqual(self.headline(run), (0, 0, 0))
+
     def test_an_honest_no_op_counts_as_a_success_line(self):
         # `release` on an unclaimed item and `done` on an item already logged are
         # reported by tk-queue in their own words. Reading them as failures would

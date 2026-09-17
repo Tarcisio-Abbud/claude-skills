@@ -103,10 +103,14 @@ EXIT_USAGE = 64                       # sysexits.h EX_USAGE; argparse's own 2 co
 # `tk/bin/tk-queue`; `LITERALS` names the substring of that f-string a test
 # greps for, so a reworded line fails the suite instead of going quiet here.
 #
-# Two-shape entries are not redundancy: `release` on an unclaimed item and
-# `done` on an item already in the done-log are honest no-ops that tk-queue
-# reports in their own words, and reading them as failures would report a write
-# that did happen as missing.
+# Two-shape entries are not redundancy: `release` on an unclaimed item, `done`
+# on an item already in the done-log and `bump` on an item already at the top
+# are honest no-ops that tk-queue reports in their own words, and reading them
+# as failures would report a write that did happen as missing.
+#
+# The table is the whole class: a writing subcommand missing from it is a write
+# nobody checks. `handoff`, `bump` and `migrate` were missing, and each writes a
+# file — the briefing, the queue's order, the done-log.
 SUCCESS = {
     "add": (r"^added T\S*: ",),
     "edit": (r"^\S+ updated$",),
@@ -114,6 +118,10 @@ SUCCESS = {
     "release": (r"^\S+ released — ", r"^\S+ carries no claim — nothing to release$"),
     "done": (r"^\S+ → done-log as ", r"^\S+ → out of the queue;"),
     "cancel": (r"^\S+ → done-log as ", r"^\S+ → out of the queue;"),
+    "handoff": (r"^(?:re)?wrote \S*handoff-T\d+\.md$",),
+    "bump": (r"^\S+ → top of the queue$",
+             r"^\S+ is already at the top of the queue$"),
+    "migrate": (r"^\d+ \[x\] item\(s\) → done-log;",),
 }
 # What `test_tk_errors.py` requires to still be a literal in `tk-queue`, one per
 # pattern above. Derived from the same reading and kept beside it so the two
@@ -126,6 +134,10 @@ LITERALS = {
                 'carries no claim — nothing to release'),
     "done": ('→ done-log as ', '→ out of the queue;'),
     "cancel": ('→ done-log as ', '→ out of the queue;'),
+    "handoff": ('print(("rewrote " if existed else "wrote ") + path)',),
+    "bump": ('print(f"{label} → top of the queue")',
+             'print(f"{label} is already at the top of the queue")'),
+    "migrate": ('[x] item(s) → done-log;',),
 }
 
 QUEUE_BIN = "tk-queue"
