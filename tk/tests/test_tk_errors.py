@@ -233,6 +233,17 @@ class TheRefusals(TranscriptFixture):
         self.assertNotIn("\x1b", run.stdout)
         self.assertIn("red", run.stdout)
 
+    def test_a_long_message_is_cut_and_says_so(self):
+        # A message cut at a word boundary reads like the whole message, and the
+        # reader acts on half a sentence without knowing there was more.
+        self.write(call_line("t1", command="ls"),
+                   result_line("t1", "refused because " + "x" * 200 + " END",
+                               is_error=True))
+        run = self.run_it()
+        self.assertEqual(self.counts(run), (1, 0))
+        self.assertIn("[…cut]", run.stdout)
+        self.assertNotIn(" END", run.stdout)
+
     def test_the_rows_are_capped_and_the_cut_is_declared(self):
         lines = []
         for n in range(5):
@@ -279,6 +290,45 @@ class TheQueueInvariant(TranscriptFixture):
         # the flags. A report that cries wolf is a report nobody opens.
         run = self.transcript_for("tk-queue add --help", "usage: tk-queue add ...")
         self.assertEqual(self.counts(run), (0, 0))
+
+    def test_the_short_help_flag_is_not_a_write_either(self):
+        # `-h` is how the flags actually get looked up mid-command, and it is a
+        # separate string from `--help`: dropping it from the list costs nothing
+        # the rest of the suite notices.
+        run = self.transcript_for("tk-queue add -h", "usage: tk-queue add ...")
+        self.assertEqual(self.headline(run), (0, 0, 0))
+
+    def test_a_semicolon_ends_the_segment_before_an_unrelated_flag(self):
+        # The same shape as the newline case, with the boundary the shell writes
+        # most often. Nothing after the `;` names the binary, so without the
+        # separator the segment runs to the end and `df -h` suppresses a write
+        # that really failed.
+        run = self.transcript_for(
+            "tk-queue add 'an item' --class CHORE; df -h /workspace",
+            "tk-queue: the WIP cap is full")
+        self.assertEqual(self.headline(run), (0, 1, 0))
+        self.assertIn("add", run.stdout)
+
+    def test_a_result_written_in_two_records_is_read_whole(self):
+        # One call's output can arrive as more than one `tool_result` record.
+        # A reader that assigned instead of appending would keep the LAST piece
+        # and score the call by it, so a success line in the first piece would
+        # read as a write that printed nothing.
+        self.write(call_line("t1", command="tk-queue add 'one' --class CHORE"),
+                   result_line("t1", "added T418: one"),
+                   result_line("t1", "\nand the rest of the output"))
+        run = self.run_it()
+        self.assertEqual(self.headline(run), (0, 0, 0))
+
+    def test_a_success_line_echoed_at_the_end_of_a_line_does_not_confirm(self):
+        # The `^` half of the anchor, which the quoted-ledger case above does
+        # not reach: there the echo sits mid-line and the `$` still refuses it.
+        # Here the echo ENDS the line, and only the anchor at the start says
+        # this is not the call's own success line.
+        run = self.transcript_for(
+            "tk-queue edit T418 --effort S",
+            "the ledger said: T400 updated")
+        self.assertEqual(self.headline(run), (0, 1, 0))
 
     def test_a_read_only_subcommand_is_not_a_write(self):
         run = self.transcript_for("tk-queue list", "T418  something open")

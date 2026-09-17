@@ -46,11 +46,18 @@ WORKFLOW_AGENT = "TheRefusals.test_an_agent_a_workflow_ran_is_read_too"
 HALF_LINE = "TheRefusals.test_a_half_written_last_line_costs_nothing"
 ESCAPE = "TheRefusals.test_a_control_sequence_in_a_message_is_stripped"
 CAPPED = "TheRefusals.test_the_rows_are_capped_and_the_cut_is_declared"
+CUT = "TheRefusals.test_a_long_message_is_cut_and_says_so"
 
 CONFIRMED = "TheQueueInvariant.test_a_write_that_printed_its_success_line_is_confirmed"
 UNCONFIRMED = "TheQueueInvariant.test_a_write_with_no_success_line_is_unconfirmed"
 NO_RESULT = "TheQueueInvariant.test_a_write_whose_call_never_returned_is_unconfirmed"
 HELP = "TheQueueInvariant.test_help_is_not_a_write"
+SHORT_HELP = "TheQueueInvariant.test_the_short_help_flag_is_not_a_write_either"
+SEMICOLON = ("TheQueueInvariant."
+             "test_a_semicolon_ends_the_segment_before_an_unrelated_flag")
+TWO_RECORDS = "TheQueueInvariant.test_a_result_written_in_two_records_is_read_whole"
+LINE_END = ("TheQueueInvariant."
+            "test_a_success_line_echoed_at_the_end_of_a_line_does_not_confirm")
 READ_ONLY = "TheQueueInvariant.test_a_read_only_subcommand_is_not_a_write"
 QUOTED = "TheQueueInvariant.test_a_quoted_mention_is_not_an_invocation"
 READER = ("TheQueueInvariant."
@@ -403,6 +410,38 @@ MUTATIONS = [
      '    "add": (r"^added T\\S*: ",),\n    "edit"',
      '    "add": (r"^added T\\S*: ",),\n    "list": (r"^never$",),\n    "edit"',
      [READ_ONLY, READS_OUT, TABLES], ERRORS),
+
+    ("`-h` drops out of the help list, and a flag lookup reports a lost write",
+     'HELP_FLAGS = ("--help", "-h")',
+     'HELP_FLAGS = ("--help",)',
+     [SHORT_HELP], ERRORS),
+
+    ("the separators are emptied, and every later flag reaches back",
+     'SEPARATORS = (";", "|", "||", "&", "&&", "\\n")',
+     "SEPARATORS = ()",
+     [SEMICOLON, LATER_FLAG, BLANK_LINES], ERRORS),
+
+    ("the `;` alone stops separating, and the commonest boundary goes blind",
+     'SEPARATORS = (";", "|", "||", "&", "&&", "\\n")',
+     'SEPARATORS = ("|", "||", "&", "&&", "\\n")',
+     [SEMICOLON], ERRORS),
+
+    ("a second result record overwrites the first instead of continuing it",
+     '                        results[key] = results.get(key, "") + text',
+     "                        results[key] = text",
+     [TWO_RECORDS], ERRORS),
+
+    ("the cut is silent, and half a refusal message reads like the whole one",
+     '    return folded if len(folded) <= chars else folded[:chars] + " […cut]"',
+     "    return folded[:chars]",
+     [CUT], ERRORS),
+
+    ("the success line is matched without its opening anchor",
+     """    return sum(1 for line in text.splitlines()
+               if any(re.search(p, line.strip()) for p in patterns))""",
+     """    return sum(1 for line in text.splitlines()
+               if any(re.search(p.lstrip("^"), line.strip()) for p in patterns))""",
+     [LINE_END], ERRORS),
 
     # -- the exit codes ------------------------------------------------------
     ("an unread transcript exits 0, so nobody read reads as nothing wrong",
