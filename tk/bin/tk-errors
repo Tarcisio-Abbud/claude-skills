@@ -8,6 +8,12 @@ turned away leaves no item, and the wrap-up reports a queue it believes it wrote
 Sibling of `tk-context`, and the same trick: the session's own jsonl holds the
 record, and `CLAUDE_CODE_SESSION_ID` names the file.
 
+IT READS THROUGH THE COMPACTION BOUNDARY, deliberately. The jsonl keeps every
+turn and the window does not, and a `/compact` drops the turns nobody went back
+to — which is exactly where a refusal sits. The refusals worth the most are the
+ones the compacted window forgot, so the reading starts at the first line of the
+file and not at the last summary.
+
 THREE SIGNAL CLASSES, and they answer different questions.
 
 1. REFUSED CALLS — every `tool_result` carrying `is_error: true`. That is the
