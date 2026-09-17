@@ -299,7 +299,8 @@ package (the age column of `tk-queue list`; highest − lowest + 1, one queue on
 IDs in the range count too) over its merged pull requests, with `pack`'s open count before and
 after. The target is under 2, open not rising. One deviation line per
 departure from the role table, and the audit's block. An unclosed item carries the first reason that
-applies: **blocked** (another environment, "runs on: X"); **carried** under the dependency gate (a
+applies: **blocked** (another environment, "runs on: X"); otherwise **new** when the package
+created the item and **carried** when it predates the package, each under the dependency gate (a
 sibling's claim, owner and moment), the lane gate (a spec's branch on the remote, the pull request's
 number or the deletion repair), any other `pack` exclusion (its printed value, and whether it names
 a defect in the item), or the effort gate (cut for size, with the ready-to-paste line that runs it).

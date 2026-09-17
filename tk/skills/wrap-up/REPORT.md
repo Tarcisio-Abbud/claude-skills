@@ -21,7 +21,7 @@ response-style preference that disagrees with it loses:
   - now: <what it does now>
   - gain: <the concrete gain it bought>  ·  risk: <what could still bite, in one clause>
 
-**<N> closed · <M> carried · <B> new · <K> blocked · <D> discarded**
+**<N> closed · <M> carried · <J> new · <K> blocked · <D> discarded**
 
 **Sensor:** <births>/<merged PRs> = <ratio> · open <before> → <after>
 
@@ -32,10 +32,10 @@ response-style preference that disagrees with it loses:
 **Carried** — open before this session began
 - <item> — <the survival gate that kept it in the queue>
 
-**New** — born in this session and still open; a birth already closed is in Closed
+**New** — the queue IDs this session added, still open; a birth already closed is in Closed
 - <item> — <the survival gate that kept it in the queue>
 
-**Blocked**
+**Blocked** — carried or new alike, when another party holds it
 - <item> — what is missing, and from whom
 
 **Discarded** — session findings, which never entered the queue
@@ -57,19 +57,19 @@ appears in Closed alone; a session that delivered nothing writes the header with
 delivered" under it — an absent block reads as a block nobody wrote.
 
 **The stats line follows, and its first four counts are the queue's balance**: what left it
-against what is still in it. An unclosed item lands in ONE open group, the first that fits:
-**blocked** when someone else holds it, **new** when this session created it, **carried** when
-it predates the session. The fifth counts a different object — session findings discarded in
-step 1, which never entered the queue — so the group is labelled and the two are never summed.
-**The Sensor line under it is the afk close's** — `../kickoff/AFK.md` step 6 computes it, and
-a close that ran no package leaves it out. Discarding needs a user to do it, so an unattended
-run reports no discards and carries its findings to the gates instead. An afk report states,
-literally, `wrap-up afk: rodou` or `wrap-up afk: nao rodou (<motivo>)` — `<motivo>` covers a
-legitimate skip as much as an outright one. The outcome groups below are the balance and
-nothing more: each item with its outcome, and the reason wherever the outcome does not carry
-it — the substance was already spent above. Items group by outcome, never by chronology, and a
-group of three or more becomes a table with those same columns — the What changed entries stay
-in lines, a cell being no place for a before and an after.
+against what is still in it. **Blocked** outranks carried and new: an item another party holds
+is blocked whatever its age, and the Sensor line still counts it among this session's births.
+The fifth counts a different object — session findings discarded in step 1, which never
+entered the queue — so the group is labelled and the two are never summed. **The Sensor line
+under it is the afk close's** — `../kickoff/AFK.md` step 6 computes it, and a close that ran
+no package leaves it out. Discarding needs a user to do it, so an unattended run reports no
+discards and carries its findings to the gates instead. An afk report states, literally,
+`wrap-up afk: rodou` or `wrap-up afk: nao rodou (<motivo>)` — `<motivo>` covers a legitimate
+skip as much as an outright one. The outcome groups below are the balance and nothing more:
+each item with its outcome, and the reason wherever the outcome does not carry it — the
+substance was already spent above. Items group by outcome, never by chronology, and a group of
+three or more becomes a table with those same columns — the What changed entries stay in
+lines, a cell being no place for a before and an after.
 
 **The blockers line is unskippable**: "none" written out is an answer, an absent line is
 a rediscovery the next session pays for. It is also the one line of the report that must
