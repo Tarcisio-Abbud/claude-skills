@@ -9,8 +9,7 @@ unattended run gives them no other window, so this report is where they learn wh
 happened. What they lack is context, not vocabulary: resolve every identifier on first
 mention (`T41` arrives with what it is, never as a bare ID; an item that never reached
 What changed resolves its identity on its own group line), name every artefact by what it
-does before what it is called, and let every reference resolve from the report alone. An
-unattended run walks its items one at a time, each from zero knowledge of the session.
+does before what it is called, and let every reference resolve from the report alone.
 
 The report follows this structure, and it is the structure that travels — a
 response-style preference that disagrees with it loses:
@@ -47,12 +46,10 @@ response-style preference that disagrees with it loses:
 **What changed opens the report, and it retransmits.** One entry per DELIVERED item,
 three lines under it — the risk clause rides the gain line where there is one — read off
 the digest step 5 already wrote (its section 3, *Before/after in practice*, is literally
-these lines), or off the work itself where the item closed without a PR. At an attended
-gate the user has already read those lines in the terminal, before the menu, so this block
-repeats them where the report keeps them; an unattended run's reader meets them here
-first. The gain is concrete — "the queue can no longer lose a resolved item" beats "improved
-the queue" — and an item that closed with no gain worth a line says exactly that on its gain
-line, which is itself worth the line. A DESCARTADO item has no before and no after, so it
+these lines), or off the work itself where the item closed without a PR. The gain is
+concrete — "the queue can no longer lose a resolved item" beats "improved the queue" — and
+an item that closed with no gain worth a line says exactly that on its gain line, which is
+itself worth the line. A DESCARTADO item has no before and no after, so it
 appears in Closed alone; a session that delivered nothing writes the header with "nothing
 delivered" under it — an absent block reads as a block nobody wrote.
 
