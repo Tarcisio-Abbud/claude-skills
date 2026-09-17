@@ -740,6 +740,9 @@ class TheSiblingSeam(TranscriptFixture):
         gate = text.split("**Done when:**", 1)[-1].split("## 2. ", 1)[0]
         self.assertIn("refusal", gate)
         self.assertIn("unconfirmed queue write", gate)
+        # The third class was born after this gate was written and did not
+        # reach it — the reported shape of that rule.
+        self.assertIn("unparsed command", gate)
 
 
 if __name__ == "__main__":

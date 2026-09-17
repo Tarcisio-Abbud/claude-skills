@@ -23,19 +23,20 @@ list. (A project's own `.claude/skills/wrap-up` overrides this skill entirely.)
 ## 1. Inventory the session's changes
 
 Fire the sweep as ONE parallel batch — `git fetch`, `git status`, `git diff --stat`,
-`git log --branches --not <default> --oneline`, `tk-errors` (refusals and unconfirmed
-queue writes) and, if `gh`/forge CLI exists, the open PRs — and print the inventory. The
-fetch comes first: a sibling session in another clone is a fact to know now, not a
-rejected push at the end of the gate. Add the **facts/decisions/learnings** from the
-conversation, not just code.
+`git log --branches --not <default> --oneline`, `tk-errors` (refusals, unconfirmed
+queue writes and commands it could not parse) and, if `gh`/forge CLI exists, the open
+PRs — and print the inventory. The fetch comes first: a sibling session in another
+clone is a fact to know now, not a rejected push at the end of the gate. Add the
+**facts/decisions/learnings** from the conversation, not just code.
 
 **Then the session findings** — term, triage ladder and unattended form:
 `../../reference/session-finding.md`. The inventory carries a section of every point the
 session RAISED and left unanswered; right after printing it, ONE batched `AskUserQuestion`
 closes it whole.
 **Done when:** the user saw the touched files/commits, branches/PRs and new
-decisions/facts, every session finding, refusal and unconfirmed queue write was
-answered, discarded or carried to step 2 as work, and each later step is marked run/skip.
+decisions/facts, every session finding, refusal, unconfirmed queue write and unparsed
+command was answered, discarded or carried to step 2 as work, and each later step is
+marked run/skip.
 
 ## 2. Update memory, and gate what survives into the queue
 

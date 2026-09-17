@@ -513,12 +513,18 @@ MUTATIONS = [
 
     # -- the prose that calls it ---------------------------------------------
     ("the close stops naming the command, so nobody ever runs it",
-     "`tk-errors` (refusals and unconfirmed\nqueue writes) ",
+     "`tk-errors` (refusals, unconfirmed\nqueue writes and commands it could not parse) ",
      "",
      [POINTER], WRAP_UP),
 
+    ("the gate names the two older classes and leaves the third out",
+     "refusal, unconfirmed queue write and unparsed\ncommand was",
+     "refusal and unconfirmed queue write was",
+     [GATE], WRAP_UP),
+
     ("the step closes without naming what it printed, so nobody acts on it",
-     "every session finding, refusal and unconfirmed queue write was",
+     "every session finding, refusal, unconfirmed queue write and unparsed\n"
+     "command was",
      "every session finding was",
      [GATE], WRAP_UP),
 ]
