@@ -151,8 +151,12 @@ READERS = ("echo", "printf", "grep", "rg", "cat", "head", "tail", "less",
            "man", "which", "type", "comm", "diff")
 # Where one invocation ends inside a compound command. `tokenize` below is what
 # makes these reachable: the plain splitter keeps `CHORE;` in one word, and every
-# boundary written without a space around it would be invisible here.
-SEPARATORS = (";", "|", "||", "&", "&&")
+# boundary written without a space around it would be invisible here. A newline
+# is one of them — the commonest, in a multi-line Bash call — and the only one
+# the shell also treats as whitespace.
+SEPARATORS = (";", "|", "||", "&", "&&", "\n")
+# What `shlex` is told to tokenize on its own; its own default is `();<>|&`.
+PUNCTUATION = "();<>|&\n"
 # A subcommand invoked with `--help` writes nothing. Counted as a write it reports
 # a mismatch on every session that looked the flags up — measured, 3 of 9 rows on
 # the first real transcript this ran against.
@@ -318,12 +322,22 @@ def tokenize(command):
     leaving a metacharacter inside quotes part of its word — which is the
     distinction `SEPARATORS` needs and the plain splitter cannot make.
 
+    A NEWLINE is one of those boundaries, and the default lexer eats it as
+    whitespace: `<write>\ndf -h /` left the `-h` of an unrelated later command
+    inside the write's segment, which suppressed the write. So `\n` is taken out
+    of `whitespace` and put into `punctuation_chars`, where it earns a token of
+    its own and stays part of the word when it falls inside quotes.
+
     Raises `ValueError` on quoting it cannot close, exactly as `shlex.split`
-    does; the caller reports that command unconfirmed.
+    does; the caller reports that command as unparsed.
     """
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=PUNCTUATION)
+    lexer.whitespace = " \t\r"            # `\n` is a separator here, not a space
     lexer.whitespace_split = True         # words, not the lexer's default atoms
-    return list(lexer)                    # `commenters` is already `#` by default
+    # A run of newlines lexes as ONE token; collapsed so `SEPARATORS` can ask
+    # plain membership, since two blank lines separate two commands as one does.
+    return ["\n" if token and not token.strip("\n") else token
+            for token in lexer]           # `commenters` is already `#` by default
 
 
 def queue_writes(command):
@@ -360,9 +374,10 @@ def queue_writes(command):
         if position < len(rest) and rest[position] in SUCCESS:
             segment = []
             for later in rest[position + 1:]:
-                # The binary's own name ends the segment too. A newline joins two
-                # commands with no token between them, and without this the
-                # `--help` of the NEXT invocation would suppress THIS write.
+                # The binary's own name ends the segment too: a trailing `#`
+                # comment swallows the newline after it, leaving two invocations
+                # with no separator token between them, and the `--help` of the
+                # SECOND would otherwise suppress THIS write.
                 if later in SEPARATORS or os.path.basename(later) == QUEUE_BIN:
                     break
                 segment.append(later)

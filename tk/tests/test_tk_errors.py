@@ -349,13 +349,50 @@ class TheQueueInvariant(TranscriptFixture):
         self.assertIn("add", run.stdout)
 
     def test_a_newline_between_two_calls_ends_the_first_one(self):
-        # A newline is whitespace to the tokenizer and leaves no separator token
-        # behind, so the binary's own name has to end the segment. Without it the
-        # second call's `--help` suppresses the first call's write.
+        # A newline is whitespace to the default lexer and leaves no separator
+        # token behind. It is a separator here, so the second call's `--help`
+        # cannot reach back into the first call's segment.
         run = self.transcript_for(
             "tk-queue add 'an item' --class CHORE\ntk-queue done --help",
             "tk-queue: the WIP cap is full")
         self.assertEqual(self.counts(run), (0, 1))
+        self.assertIn("add", run.stdout)
+
+    def test_a_later_unrelated_flag_on_its_own_line_does_not_reach_back(self):
+        # The defect in its measured shape: nothing after the newline names the
+        # binary, so the earlier segment ran to the end of the command and the
+        # `-h` of `df` suppressed a write that had really failed.
+        run = self.transcript_for(
+            "tk-queue add 'an item' --class CHORE\ndf -h /workspace",
+            "tk-queue: the WIP cap is full")
+        self.assertEqual(self.headline(run), (0, 1, 0))
+        self.assertIn("add", run.stdout)
+
+    def test_two_blank_lines_separate_as_one_does(self):
+        # A run of newlines lexes as a single token, which membership in the
+        # separator list would miss.
+        run = self.transcript_for(
+            "tk-queue add 'an item' --class CHORE\n\ndf -h /workspace",
+            "tk-queue: the WIP cap is full")
+        self.assertEqual(self.headline(run), (0, 1, 0))
+
+    def test_a_newline_inside_the_items_own_text_is_not_a_boundary(self):
+        # The other direction, as for `;`: an item's text may span lines, and
+        # the quoted newline stays inside its token.
+        run = self.transcript_for(
+            "tk-queue add 'first line\nsecond line --help' --class CHORE",
+            "tk-queue: the WIP cap is full")
+        self.assertEqual(self.headline(run), (0, 1, 0))
+
+    def test_a_trailing_comment_swallows_the_newline_after_it(self):
+        # `shlex` reads a `#` comment to the end of the line, newline included,
+        # so the separator never reaches the token list. The binary's own name
+        # is what ends the segment here.
+        run = self.transcript_for(
+            "tk-queue add 'an item' --class CHORE  # queue it\n"
+            "tk-queue done --help",
+            "tk-queue: the WIP cap is full")
+        self.assertEqual(self.headline(run), (0, 1, 0))
         self.assertIn("add", run.stdout)
 
     def test_a_separator_inside_quotes_is_not_a_boundary(self):

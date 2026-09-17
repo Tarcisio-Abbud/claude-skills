@@ -73,6 +73,12 @@ UNSPACED = "TheQueueInvariant.test_an_unspaced_separator_still_starts_an_invocat
 LATER_HELP = "TheQueueInvariant.test_a_later_help_does_not_suppress_an_earlier_write"
 QUOTED_SEP = "TheQueueInvariant.test_a_separator_inside_quotes_is_not_a_boundary"
 NEWLINE = "TheQueueInvariant.test_a_newline_between_two_calls_ends_the_first_one"
+LATER_FLAG = ("TheQueueInvariant."
+              "test_a_later_unrelated_flag_on_its_own_line_does_not_reach_back")
+BLANK_LINES = "TheQueueInvariant.test_two_blank_lines_separate_as_one_does"
+QUOTED_NEWLINE = ("TheQueueInvariant."
+                  "test_a_newline_inside_the_items_own_text_is_not_a_boundary")
+COMMENT = "TheQueueInvariant.test_a_trailing_comment_swallows_the_newline_after_it"
 ANCHORED = "TheQueueInvariant.test_a_success_line_quoted_back_does_not_confirm_another_call"
 BOTH = "TheQueueInvariant.test_a_refused_write_lands_in_both_classes"
 TWO_LINES = "TheQueueInvariant.test_two_writes_of_one_kind_need_two_success_lines"
@@ -217,16 +223,43 @@ MUTATIONS = [
      [TWO_CALLS], ERRORS),
 
     ("the plain splitter is back, and an unspaced `;` hides the call after it",
-     """    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True         # words, not the lexer's default atoms
-    return list(lexer)                    # `commenters` is already `#` by default""",
-     "    return shlex.split(command, comments=True)",
-     [UNSPACED], ERRORS),
+     """    lexer = shlex.shlex(command, posix=True, punctuation_chars=PUNCTUATION)
+    lexer.whitespace = " \\t\\r"            # `\\n` is a separator here, not a space
+    lexer.whitespace_split = True         # words, not the lexer's default atoms""",
+     "    return shlex.split(command, comments=True)\n    lexer = None",
+     [UNSPACED, LATER_FLAG], ERRORS),
 
-    ("only a separator ends the segment, so a newline-joined `--help` reaches back",
+    ("the newline goes back to being whitespace, and a later `-h` reaches back",
+     '    lexer.whitespace = " \\t\\r"            # `\\n` is a separator here, not a space\n',
+     "",
+     [LATER_FLAG, BLANK_LINES], ERRORS),
+
+    ("the newline is not a separator, so the segment runs past it",
+     'SEPARATORS = (";", "|", "||", "&", "&&", "\\n")',
+     'SEPARATORS = (";", "|", "||", "&", "&&")',
+     [LATER_FLAG, BLANK_LINES], ERRORS),
+
+    ("a run of newlines is not collapsed, so a blank line stops separating",
+     '''    return ["\\n" if token and not token.strip("\\n") else token
+            for token in lexer]           # `commenters` is already `#` by default''',
+     "    return list(lexer)",
+     [BLANK_LINES], ERRORS),
+
+    ("the command is split on newlines first, which cuts a quoted item in two",
+     """    lexer = shlex.shlex(command, posix=True, punctuation_chars=PUNCTUATION)
+    lexer.whitespace = " \\t\\r"            # `\\n` is a separator here, not a space
+    lexer.whitespace_split = True         # words, not the lexer's default atoms""",
+     """    out = []
+    for one in command.split("\\n"):
+        out += shlex.split(one, comments=True) + ["\\n"]
+    return out
+    lexer = None""",
+     [QUOTED_NEWLINE, UNSPACED], ERRORS),
+
+    ("only a separator ends the segment, so a commented line lets `--help` back",
      "                if later in SEPARATORS or os.path.basename(later) == QUEUE_BIN:",
      "                if later in SEPARATORS:",
-     [NEWLINE], ERRORS),
+     [COMMENT], ERRORS),
 
     ("the segment runs to the end of the command, and any later `--help` reaches back",
      """                if later in SEPARATORS or os.path.basename(later) == QUEUE_BIN:
