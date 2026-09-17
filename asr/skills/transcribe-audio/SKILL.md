@@ -61,6 +61,12 @@ float32 array — which is also why `.opus` works with no system ffmpeg and no t
 
 ## Cross-referencing a WhatsApp export
 
-The audio usually carries the value or the decision the chat text omits. Extract the zip, read
-`_chat.txt`, then match each transcript to its chat line by the **timestamp in the filename**
-(`...-YYYY-MM-DD-HH-MM-SS.opus`, `PTT-YYYYMMDD-WAxxxx.opus`).
+**A SECOND export of a conversation already read belongs to `whatsapp:export-delta`.** It
+diffs the two zips, extracts only the new voice notes and folds the transcripts back into one
+digest — reading `_chat.txt` whole is what it exists to avoid. Come back here for step 2 of
+its four, pointed at the `attachments/` directory it wrote.
+
+For a FIRST export, with nothing to diff against: the audio usually carries the value or the
+decision the chat text omits. Extract the zip, read `_chat.txt`, then match each transcript to
+its chat line by the **timestamp in the filename** (`...-YYYY-MM-DD-HH-MM-SS.opus`,
+`PTT-YYYYMMDD-WAxxxx.opus`).
