@@ -56,12 +56,15 @@ the harness did not mark, and a write whose success line was reworded, are both
 invisible to it. So a clean run licenses nothing — it says these classes are
 clean, and the reader at the close still owes the rest of the inventory.
 
-IT ALSO OVERCOUNTS, in one known shape: a write whose output was FILTERED. A
+IT ALSO OVERCOUNTS, in two known shapes. A write whose output was FILTERED: a
 claim piped into `tail -1` prints its success line into that pipe, and what the
-transcript records is what survived the filter. The row is still worth printing
-— the reader checks the queue and closes the question in one command — but it is
-the class to expect a false positive from, and the reason this class reports rows
-rather than a verdict.
+transcript records is what survived the filter. And a write whose output was
+TRUNCATED: past a few dozen KB the harness saves the whole thing to
+`<session dir>/tool-results/<id>.txt` and leaves `Preview (first 2KB)` in the
+transcript, so a success line below that cut is not in the file this reads. Both
+rows are still worth printing — the reader checks the queue and closes the
+question in one command — but they are the class to expect a false positive
+from, and the reason this class reports rows rather than a verdict.
 
 IT READS THE AGENTS THIS SESSION DISPATCHED. Their transcripts are separate
 files, as `tk-context` documents, and their refusals are this session's: a hook
