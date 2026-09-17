@@ -70,6 +70,8 @@ QUOTED_SEP = "TheQueueInvariant.test_a_separator_inside_quotes_is_not_a_boundary
 NEWLINE = "TheQueueInvariant.test_a_newline_between_two_calls_ends_the_first_one"
 ANCHORED = "TheQueueInvariant.test_a_success_line_quoted_back_does_not_confirm_another_call"
 BOTH = "TheQueueInvariant.test_a_refused_write_lands_in_both_classes"
+TWO_LINES = "TheQueueInvariant.test_two_writes_of_one_kind_need_two_success_lines"
+BOTH_LINES = "TheQueueInvariant.test_two_writes_with_both_lines_are_both_confirmed"
 
 PINNED = "TheQueueSeam.test_every_pinned_shape_is_still_a_literal_in_tk_queue"
 TABLES = "TheQueueSeam.test_the_two_tables_cover_the_same_subcommands"
@@ -172,23 +174,28 @@ MUTATIONS = [
 
     # -- class 2: the queue invariant ----------------------------------------
     ("a write with no success line is taken as confirmed — the silent loss itself",
-     "        elif not success_count(text, sub):",
-     "        elif False:",
-     [UNCONFIRMED, DIR_FLAG, QUALIFIED, TWO_CALLS, ANCHORED, BOTH], ERRORS),
+     "        if claimed < printed:",
+     "        if True:",
+     [UNCONFIRMED, DIR_FLAG, QUALIFIED, TWO_CALLS, ANCHORED, BOTH, TWO_LINES],
+     ERRORS),
 
     ("no output ever confirms a write, so every write is reported as lost",
-     "        elif not success_count(text, sub):",
-     "        elif True:",
-     [CONFIRMED, NO_OP], ERRORS),
+     "        if claimed < printed:",
+     "        if False:",
+     [CONFIRMED, NO_OP, BOTH_LINES], ERRORS),
+
+    ("one success line answers for every invocation of its kind in the call",
+     "        claimed = spent.get((key, sub), 0)",
+     "        claimed = 0",
+     [TWO_LINES], ERRORS),
 
     ("a call whose result never came back is taken as confirmed",
      """        if text is None:
             unconfirmed.append(Unconfirmed(stamp, sub, command,
                                            "the call returned nothing"))
-        elif""",
+            continue""",
      """        if text is None:
-            continue
-        elif""",
+            continue""",
      [NO_RESULT], ERRORS),
 
     ("`--help` counts as a write — the report cries wolf on every lookup",

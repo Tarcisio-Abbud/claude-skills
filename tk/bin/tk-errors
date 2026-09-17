@@ -42,7 +42,14 @@ WHAT COUNTS AS AN INVOCATION. The command string is tokenized as the shell would
 (`shlex`, comments honoured), and a token whose basename is `tk-queue` names one,
 the subcommand being the first bare word after it — `--dir` and its value
 skipped, as the parser skips them. A mention inside quotes never matches: the
-shell keeps it in one token.
+shell keeps it in one token. Invocations are COUNTED, not merely found, and one
+success line confirms one of them: a presence check let the first `added` line
+answer for both halves of a batched command.
+
+THE BLIND SPOT IN THAT COUNT: a loop. `for id in T1 T2 T3; do tk-queue bump
+$id; done` is ONE invocation in the command text and three at runtime, so a
+partial failure inside it reports nothing. The reader who batches a write in a
+loop is the one who has to check the queue by hand.
 
 NOT A GATE, A DIAGNOSIS. Every number here is a floor, never a total: a refusal
 the harness did not mark, and a write whose success line was reworded, are both
@@ -436,6 +443,7 @@ def walk(path):
         no_transcript(f"{plain(path)} yielded no record of this session")
 
     unconfirmed, unparsed = [], []
+    spent = {}                        # (call, subcommand) -> lines already claimed
     for stamp, sub, command, note, key in pending:
         if sub == UNPARSED:
             unparsed.append(Unparsed(stamp, command, note))
@@ -444,9 +452,20 @@ def walk(path):
         if text is None:
             unconfirmed.append(Unconfirmed(stamp, sub, command,
                                            "the call returned nothing"))
-        elif not success_count(text, sub):
-            unconfirmed.append(Unconfirmed(stamp, sub, command,
-                                           f"no `{sub}` success line in the output"))
+            continue
+        # One success line confirms ONE invocation. A presence check would let
+        # the first line answer for every `add` in a batched command, and a
+        # batch whose second half failed is the shape that fails.
+        claimed = spent.get((key, sub), 0)
+        printed = success_count(text, sub)
+        if claimed < printed:
+            spent[(key, sub)] = claimed + 1
+            continue
+        unconfirmed.append(Unconfirmed(
+            stamp, sub, command,
+            f"no `{sub}` success line in the output" if not printed else
+            f"{printed} `{sub}` success line(s) for {claimed + 1} "
+            f"invocation(s) in this call"))
     return refusals, unconfirmed, unparsed
 
 

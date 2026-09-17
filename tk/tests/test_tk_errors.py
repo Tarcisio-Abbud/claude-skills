@@ -313,6 +313,22 @@ class TheQueueInvariant(TranscriptFixture):
         self.assertEqual(self.counts(run), (0, 1))
         self.assertIn("edit", run.stdout)
 
+    def test_two_writes_of_one_kind_need_two_success_lines(self):
+        # A presence check passes the first line for both calls, and the batch
+        # that half failed reports clean. The batched write is the common shape
+        # here, and the second half failing is exactly what it fails at.
+        run = self.transcript_for(
+            "tk-queue add 'one' --class CHORE; tk-queue add 'two' --class CHORE",
+            "added T418: one\ntk-queue: the WIP cap is full")
+        self.assertEqual(self.headline(run), (0, 1, 0))
+        self.assertIn("1 `add` success line(s) for 2 invocation(s)", run.stdout)
+
+    def test_two_writes_with_both_lines_are_both_confirmed(self):
+        run = self.transcript_for(
+            "tk-queue add 'one' --class CHORE; tk-queue add 'two' --class CHORE",
+            "added T418: one\nadded T419: two")
+        self.assertEqual(self.headline(run), (0, 0, 0))
+
     def test_an_unspaced_separator_still_starts_an_invocation(self):
         # `shlex.split` breaks on whitespace and never on a metacharacter, so
         # `ready;tk-queue` arrived as ONE word and the call after it was missed
