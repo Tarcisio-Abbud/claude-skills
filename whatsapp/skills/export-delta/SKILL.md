@@ -1,5 +1,5 @@
 ---
-name: whatsapp-export
+name: export-delta
 description: Read a WhatsApp conversation export (.zip) by its DELTA against the last export — only the messages and attachments that arrived since, with the new voice notes transcribed. Use when a .zip export of a chat has to be processed, when a conversation is the evidence for something (a payment, a decision, who is who), or when a second export of a conversation already read arrives.
 ---
 

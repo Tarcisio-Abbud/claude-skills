@@ -131,7 +131,7 @@ provisioned — stay out of this repo and live in the extension file below.
 
 ## The whatsapp plugin
 
-`whatsapp-export` reads an export `.zip` by its **delta** against the previous export. A
+`whatsapp:export-delta` reads an export `.zip` by its **delta** against the previous export. A
 WhatsApp export is cumulative: every one carries the whole conversation again, so reading the
 new one costs the entire history to learn the fifty lines that arrived since. `bin/wa_export.py`
 hands over what is new — the messages with their line numbers, the attachments extracted beside
@@ -414,7 +414,7 @@ asr/
   bin/transcribe.py               the transcription CLI (Parakeet / faster-whisper)
 whatsapp/
   .claude-plugin/plugin.json      the plugin manifest
-  skills/whatsapp-export/SKILL.md
+  skills/export-delta/SKILL.md
   bin/wa_export.py                the delta CLI (diff two exports, fold transcripts back)
   tests/test_wa_export.py         the CLI as a subprocess, against synthetic exports built
                                   in a tempdir — the real ones are private conversations
