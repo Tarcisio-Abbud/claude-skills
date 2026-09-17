@@ -1,0 +1,666 @@
+#!/usr/bin/env python3
+"""tk-errors — what THIS session was refused, read from its own transcript.
+
+WHY IT EXISTS: a refusal is the one event a session reliably forgets. The tool
+call that came back `is_error` was answered three turns ago, the model moved on,
+and at the close nobody re-reads the scrollback — so a `tk-queue add` a hook
+turned away leaves no item, and the wrap-up reports a queue it believes it wrote.
+Sibling of `tk-context`, and the same trick: the session's own jsonl holds the
+record, and `CLAUDE_CODE_SESSION_ID` names the file.
+
+IT READS THROUGH THE COMPACTION BOUNDARY, deliberately. The jsonl keeps every
+turn and the window does not, and a `/compact` drops the turns nobody went back
+to — which is exactly where a refusal sits. The refusals worth the most are the
+ones the compacted window forgot, so the reading starts at the first line of the
+file and not at the last summary.
+
+THREE SIGNAL CLASSES, and they answer different questions.
+
+1. REFUSED CALLS — every `tool_result` carrying `is_error: true`. That is the
+   harness's own verdict, not a guess: a permission denial, a hook exiting 2, a
+   command that did not parse, a file that was not there. It is broad by design,
+   because a session cannot know in advance which refusal mattered.
+
+2. UNCONFIRMED QUEUE WRITES — a `tk-queue` subcommand that WRITES was invoked and
+   the call printed no success line for it. This class exists because class 1
+   does not cover it: a write can fail with the tool call reporting success (a
+   refusal `tk-queue` prints on stdout and exits 0 on, a guard that answers in
+   the model's voice, a call whose result never came back because the window
+   ended). The queue is the one state whose loss is silent — the item simply is
+   not there — so the invariant is checked rather than assumed.
+
+3. COMMANDS NOT PARSED — a command carrying the binary's name that `shlex`
+   refuses. Its own class, and advisory: what this reader knows about it is that
+   it could not read it. Almost all of them are heredocs the shell ran without
+   complaint — 128 of 135 rows over 254 transcripts, measured — because a
+   heredoc's body is prose and an apostrophe in it is an unbalanced quote to
+   `shlex`. Counting one as a write asserts an invocation nobody can show
+   happened; the earlier version of this file guessed with a regex and read the
+   English inside those heredocs as queue writes.
+
+WHAT A SUCCESS LINE IS. Each writing subcommand prints one, and this file pins
+its shape against `tk-queue`'s own `print` (`SUCCESS`, below). The pinning is
+what makes the count honest and also what makes it brittle: reword a line in
+`tk-queue` and this reader stops seeing it. `test_tk_errors.py` holds that seam
+shut — it asserts every shape here is still a literal in `tk/bin/tk-queue`.
+
+WHAT COUNTS AS AN INVOCATION. The command string is tokenized as the shell would
+(`shlex`, with comments OFF — see `tokenize`), and a token whose basename is
+`tk-queue` names one, the subcommand being the first bare word after it —
+`--dir` and its value skipped, as the parser skips them. A mention inside quotes
+never matches: the shell keeps it in one token. Invocations are COUNTED, not
+merely found, and one success line confirms one of them: a presence check let
+the first `added` line answer for both halves of a batched command.
+
+THE BLIND SPOT IN THAT COUNT: a loop. `for id in T1 T2 T3; do tk-queue bump
+$id; done` is ONE invocation in the command text and three at runtime, so a
+partial failure inside it reports nothing. The reader who batches a write in a
+loop is the one who has to check the queue by hand.
+
+NOT A GATE, A DIAGNOSIS. Every number here is a floor, never a total: a refusal
+the harness did not mark, and a write whose success line was reworded, are both
+invisible to it. So a clean run licenses nothing — it says these classes are
+clean, and the reader at the close still owes the rest of the inventory.
+
+IT ALSO OVERCOUNTS, in two known shapes. A write whose output was FILTERED: a
+claim piped into `tail -1` prints its success line into that pipe, and what the
+transcript records is what survived the filter. And a write whose output was
+TRUNCATED: past a few dozen KB the harness saves the whole thing to
+`<session dir>/tool-results/<id>.txt` and leaves `Preview (first 2KB)` in the
+transcript, so a success line below that cut is not in the file this reads. Both
+rows are still worth printing — the reader checks the queue and closes the
+question in one command — but they are the class to expect a false positive
+from, and the reason this class reports rows rather than a verdict.
+
+IT READS THE AGENTS THIS SESSION DISPATCHED. Their transcripts are separate
+files, as `tk-context` documents, and their refusals are this session's: a hook
+that turned a dispatched agent away refused work this session asked for, and the
+close is the only place anybody reads it. So the session's own jsonl and every
+`<session dir>/subagents/**/agent-*.jsonl` beside it are one reading — that name
+and not `*.jsonl`, because a Workflow's `journal.jsonl` is not a transcript and
+counting it as one read left the gate below satisfied by a file of nothing.
+Every record in an agent's file is marked `isSidechain`, and the PARENT file's
+sidechain records — copies of the same lines — are skipped there so no row is
+printed twice.
+
+A READING THAT FOUND NO RECORD IS NOT A CLEAN SESSION. An empty file, a file of
+garbage and a file whose every record was filtered out all exit 2, for the reason
+a missing file does: "nothing was read" and "nothing was refused" are opposite
+facts, and this is the seam where a file that OPENED could report the first as
+the second.
+
+Usage:  tk-errors [--limit N] [--session ID] [--transcript PATH]
+Exit:   0 the reading happened · 2 nothing was read · 64 bad usage.
+
+THE EXIT CODE SAYS WHETHER IT READ, NEVER WHAT IT FOUND. The verdict is the
+headline, and this command is run BY the close, through the Bash tool, which
+records a non-zero exit as `is_error`. Exiting 1 on "I found something" made
+every honest run a refusal in the NEXT session's class 1 — the reader
+manufacturing the very signal it exists to count. 0 and 2 stay distinct for the
+original reason: "the session was clean" and "the reading never happened" are
+opposite facts, and a seam that conflates them reports the second as the first.
+A CLOSED PIPE IS 0 TOO, for the same reason: the headline is the first line, so
+`| head -1` is how a seam reads this command, and an uncaught `BrokenPipeError`
+put the non-zero exit — and the `is_error` — straight back.
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import shlex
+import sys
+from typing import NamedTuple
+
+EXIT_READ = 0                         # the reading happened; the headline judges
+EXIT_NO_TRANSCRIPT = 2
+EXIT_USAGE = 64                       # sysexits.h EX_USAGE; argparse's own 2 collides
+
+# The subcommands of `tk-queue` that CHANGE the queue, each against the success
+# line it prints. Every pattern below is the tail of a real `print` in
+# `tk/bin/tk-queue`; `LITERALS` names the substring of that f-string a test
+# greps for, so a reworded line fails the suite instead of going quiet here.
+#
+# Two-shape entries are not redundancy: `release` on an unclaimed item, `done`
+# on an item already in the done-log and `bump` on an item already at the top
+# are honest no-ops that tk-queue reports in their own words, and reading them
+# as failures would report a write that did happen as missing.
+#
+# The table is the whole class: a writing subcommand missing from it is a write
+# nobody checks. `handoff`, `bump` and `migrate` were missing, and each writes a
+# file — the briefing, the queue's order, the done-log.
+SUCCESS = {
+    "add": (r"^added T\S*: ",),
+    "edit": (r"^\S+ updated$",),
+    "claim": (r"^\S+ claimed by \S+",),
+    "release": (r"^\S+ released — ", r"^\S+ carries no claim — nothing to release$"),
+    "done": (r"^\S+ → done-log as ", r"^\S+ → out of the queue;"),
+    "cancel": (r"^\S+ → done-log as ", r"^\S+ → out of the queue;"),
+    "handoff": (r"^(?:re)?wrote \S*handoff-T\d+\.md$",),
+    "bump": (r"^\S+ → top of the queue$",
+             r"^\S+ is already at the top of the queue$"),
+    "migrate": (r"^\d+ \[x\] item\(s\) → done-log;",),
+}
+# What `test_tk_errors.py` requires to still be a literal in `tk-queue`, one per
+# pattern above. Derived from the same reading and kept beside it so the two
+# cannot drift apart unnoticed.
+LITERALS = {
+    "add": ('print(f"added T{iid:03d}',),
+    "edit": ('print(f"{label} updated")',),
+    "claim": ('print(f"{label} claimed by ',),
+    "release": ('print(f"{label} released — ',
+                'carries no claim — nothing to release'),
+    "done": ('→ done-log as ', '→ out of the queue;'),
+    "cancel": ('→ done-log as ', '→ out of the queue;'),
+    "handoff": ('print(("rewrote " if existed else "wrote ") + path)',),
+    "bump": ('print(f"{label} → top of the queue")',
+             'print(f"{label} is already at the top of the queue")'),
+    "migrate": ('[x] item(s) → done-log;',),
+}
+
+QUEUE_BIN = "tk-queue"
+# `--dir` is the one option that takes a value and may stand BEFORE the
+# subcommand (`tk-queue --dir X add ...`). Skipping the flag without skipping its
+# value would read the path as the subcommand.
+VALUE_FLAGS = ("--dir",)
+# Commands that READ their argument rather than run it. A briefing that quotes an
+# invocation is not one, and unquoted it looks exactly like one.
+READERS = ("echo", "printf", "grep", "rg", "cat", "head", "tail", "less",
+           "man", "which", "type", "comm", "diff")
+# Where one invocation ends inside a compound command. `tokenize` below is what
+# makes these reachable: the plain splitter keeps `CHORE;` in one word, and every
+# boundary written without a space around it would be invisible here. A newline
+# is one of them — the commonest, in a multi-line Bash call — and the only one
+# the shell also treats as whitespace.
+SEPARATORS = (";", "|", "||", "&", "&&", "\n")
+# What `shlex` is told to tokenize on its own; its own default is `();<>|&`.
+PUNCTUATION = "();<>|&\n"
+# A subcommand invoked with `--help` writes nothing. Counted as a write it reports
+# a mismatch on every session that looked the flags up — measured, 3 of 9 rows on
+# the first real transcript this ran against.
+HELP_FLAGS = ("--help", "-h")
+# A here-document opener, quoted (`<<'EOF'`) or bare (`<< EOF`), `<<-` included.
+# `<<<` is a here-STRING and does not match: the character after `<<` is not a
+# word character there.
+HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)(?P<word>[A-Za-z_][\w.-]*)\1")
+# The subcommand slot of a command the tokenizer refused. Never a real one: what
+# it invoked cannot be known without a shell, and guessing is what class 3 exists
+# to stop.
+UNPARSED = "?"
+
+DEFAULT_LIMIT = 20                    # rows per class before the tail is summarised
+MESSAGE_CHARS = 160                   # of a refusal message; the whole is in the jsonl
+
+
+class Refusal(NamedTuple):
+    """One tool call the harness answered with `is_error: true`."""
+
+    stamp: str
+    tool: str
+    detail: str
+    message: str
+
+
+class Unconfirmed(NamedTuple):
+    """One `tk-queue` write whose success line never appeared."""
+
+    stamp: str
+    sub: str
+    command: str
+    why: str
+
+
+class Unparsed(NamedTuple):
+    """One command naming `tk-queue` that the tokenizer refused."""
+
+    stamp: str
+    command: str
+    why: str
+
+
+def plain(value):
+    """A value from outside this process, safe to print to a terminal.
+
+    Everything this command prints was read out of a jsonl or handed in on the
+    command line: a session id, a path, a timestamp, a shell command somebody
+    typed, and an error message written by a hook. Control sequences are stripped
+    where the value ENTERS the output rather than trusted at their source — the
+    sibling channel where this house measured the defect carried the escape in a
+    directory NAME.
+    """
+    return re.sub(r"[\x00-\x1f\x7f]", "?", str(value))
+
+
+def no_transcript(msg):
+    """Stop with code 2, and say that nothing was read.
+
+    Said aloud because the alternative reading is the dangerous one: a reader
+    that took silence for cleanliness would report an unread session as a session
+    with nothing wrong in it.
+    """
+    print(f"tk-errors: {msg}", file=sys.stderr)
+    print("tk-errors: nothing was read — this is not a clean session, it is an "
+          "unread one", file=sys.stderr)
+    sys.exit(EXIT_NO_TRANSCRIPT)
+
+
+def find_transcript(session_id):
+    """The jsonl for one session id, under any project directory.
+
+    The id is ESCAPED before it reaches the glob: unescaped, `--session '*'`
+    matches a stranger's transcript, and this command would report another
+    session's refusals as this one's. Two files for one id is refused rather than
+    resolved, exactly as `tk-context` refuses it — sorting picks a winner in
+    silence and the loser is as likely to be the live session.
+    """
+    root = os.path.expanduser("~/.claude/projects")
+    hits = sorted(glob.glob(os.path.join(root, "*", f"{glob.escape(session_id)}.jsonl")))
+    if not hits:
+        no_transcript(f"no transcript for session {plain(session_id)} under {root}")
+    if len(hits) > 1:
+        no_transcript("two transcripts carry this session id: "
+                      + ", ".join(plain(h) for h in hits))
+    return hits[0]
+
+
+def subagent_transcripts(path):
+    """The jsonls of the agents this session dispatched, beside its own file.
+
+    The harness writes them under `<transcript without .jsonl>/subagents/`, one
+    per agent, one level deeper for an agent a Workflow ran — hence the
+    recursive glob. The directory is escaped before it reaches that glob, for
+    the reason `find_transcript` escapes the session id.
+
+    ONLY `agent-*.jsonl`, and the name is the whole guard. A Workflow leaves a
+    `journal.jsonl` beside its agents whose records carry no `message` at all
+    (`agentId/key/label/phase/result/type`), so it yields no row and still
+    counted toward `considered` — which is the single number the "nothing was
+    read" gate below depends on. An empty parent transcript plus one journal
+    therefore reported a clean session and exited 0, the exact lie that gate
+    exists to prevent. Measured over this machine's transcripts: 2014 agent
+    files, all `agent-<hash>.jsonl`, and 24 journals, the only other name.
+    """
+    base = re.sub(r"\.jsonl$", "", path)
+    return sorted(glob.glob(os.path.join(glob.escape(base), "subagents",
+                                         "**", "agent-*.jsonl"), recursive=True))
+
+
+def blocks(record):
+    """The content blocks of a record, or an empty list.
+
+    `message.content` is a list of blocks on the records that carry tool traffic
+    and a bare string on plain text turns, so the type is checked rather than
+    assumed: indexing a string here yields characters and every `.get` below
+    would raise on the first one.
+    """
+    content = (record.get("message") or {}).get("content")
+    return [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
+
+
+def block_text(block):
+    """A tool_result's payload as text, whichever of its two shapes it took.
+
+    The harness writes a string for an ordinary result and a list of typed blocks
+    when the tool returned structured content. A reader that handled only the
+    string would score every structured result as "printed no success line".
+    """
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(part.get("text") or "" for part in content
+                         if isinstance(part, dict))
+    return ""
+
+
+def strip_heredocs(command):
+    """The command without the BODIES of its here-documents.
+
+    A heredoc body is data the shell hands to another program — a file being
+    written, a commit message, a briefing — and this house writes all three with
+    `tk-queue` invocations quoted inside them. Read as command text they are
+    invocations that never ran: on one real transcript the body of a `git commit
+    -F -` heredoc reported a `done` that was a line in the commit message.
+
+    The cost, stated rather than hidden: a command actually RUN from a heredoc
+    (`bash <<EOF`) is invisible to this reader. That is the floor this file
+    already declares, and it is the cheaper of the two errors — a missed row
+    sends nobody anywhere, and an invented one is why a report stops being read.
+    """
+    kept, awaiting = [], []
+    for line in command.split("\n"):
+        if awaiting:
+            if line.strip() == awaiting[0]:
+                awaiting.pop(0)       # `<<-` allows the terminator to be indented
+            continue
+        kept.append(line)
+        awaiting = [found.group("word") for found in HEREDOC_OPEN.finditer(line)]
+    return "\n".join(kept)
+
+
+def tokenize(command):
+    """The command split as the shell splits it, punctuation and all.
+
+    `shlex.split` breaks on WHITESPACE and never on a shell metacharacter, so
+    `add X; tk-queue done --help` hands back `X;` as one word and the boundary
+    between the two invocations is not in the token list at all. Unspaced `;` is
+    how this house writes a batched command, so that was the common shape, not
+    the exotic one. `punctuation_chars` gives `();<>|&` tokens of their own while
+    leaving a metacharacter inside quotes part of its word — which is the
+    distinction `SEPARATORS` needs and the plain splitter cannot make.
+
+    A NEWLINE is one of those boundaries, and the default lexer eats it as
+    whitespace: `<write>\ndf -h /` left the `-h` of an unrelated later command
+    inside the write's segment, which suppressed the write. So `\n` is taken out
+    of `whitespace` and put into `punctuation_chars`, where it earns a token of
+    its own and stays part of the word when it falls inside quotes. A token of
+    its own EXCEPT when another metacharacter sits against it — `;\n` lexes as
+    one run — which is what the collapse below is for.
+
+    COMMENTS ARE OFF, and the newline is why. `shlex`'s commenter eats the `#`
+    AND the newline that ends it, so a trailing comment left two invocations
+    with no boundary between them and the `--help` of the second suppressed the
+    first. The price was measured over the 150 largest transcripts on this
+    machine, and it is not the one expected: in theory a commented-out
+    invocation (`# tk-queue bump T001`) now counts as a real write, and there
+    were ZERO of those. What actually changed was 4 transcripts — two gained a
+    real `tk-queue` invocation the commenter had been swallowing (a `#` in
+    `${N##*/}` opens no comment in a shell, and the whole line went with it),
+    and two gained an advisory class 3 row, where an apostrophe inside what used
+    to be read as a comment is now an unbalanced quote.
+
+    Raises `ValueError` on quoting it cannot close, exactly as `shlex.split`
+    does; the caller reports that command as unparsed.
+    """
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=PUNCTUATION)
+    lexer.whitespace = " \t\r"            # `\n` is a separator here, not a space
+    lexer.whitespace_split = True         # words, not the lexer's default atoms
+    lexer.commenters = ""                 # `#` must not eat the newline after it
+    # A RUN of adjacent punctuation lexes as ONE token, so `;\n` and `&&\n` are
+    # single tokens belonging to no entry of `SEPARATORS` — and a separator that
+    # stops separating puts the `-h` of the NEXT command back inside this write's
+    # segment, which suppresses the write. Any run holding a newline IS a
+    # boundary, whatever else it holds, so it collapses to the one token
+    # `SEPARATORS` knows. That also covers `\n\n` (two blank lines separate as
+    # one does) and the subshell close `)\n`.
+    return ["\n" if token and "\n" in token and set(token) <= set(PUNCTUATION)
+            else token
+            for token in lexer]
+
+
+def queue_writes(command):
+    """The writing `tk-queue` subcommands this shell command invokes, in order.
+
+    Returns a list of (subcommand, note) pairs, `note` being empty on a clean
+    reading. A command the tokenizer refuses yields ONE pair, in the `UNPARSED`
+    slot, which the caller reports as class 3. It does NOT yield a subcommand: a
+    regex over the raw text is how the earlier version guessed, and what it read
+    were the English words inside heredocs the shell had run fine.
+    """
+    if QUEUE_BIN not in command:
+        # The cheap gate, and a correctness one: without it the tokenizer's
+        # failure below would report every unbalanced quote in the session as an
+        # unconfirmed queue write, which is a wrong number in the class this
+        # command exists to count.
+        return []
+    try:
+        tokens = tokenize(strip_heredocs(command))
+    except ValueError as exc:
+        return [(UNPARSED, f"the command does not tokenize ({exc})")]
+
+    out = []
+    for index, token in enumerate(tokens):
+        if os.path.basename(token) != QUEUE_BIN:
+            continue
+        if index and os.path.basename(tokens[index - 1]) in READERS:
+            continue                  # the command reads this name, it does not run it
+        rest = tokens[index + 1:]
+        position = 0
+        while position < len(rest) and rest[position].startswith("-"):
+            flag = rest[position]
+            position += 2 if flag in VALUE_FLAGS else 1
+        if position < len(rest) and rest[position] in SUCCESS:
+            segment = []
+            for later in rest[position + 1:]:
+                # A SEPARATOR, and nothing else. The binary's own name used to
+                # end the segment here as well, because a trailing `#` comment
+                # swallowed the newline after it and left two invocations with
+                # no boundary between them. `tokenize` turns comments off now,
+                # so that boundary is a token again — and the terminator became
+                # both unprovable and wrong: without a separator the shell is
+                # reading ONE invocation, whose later `--help` does suppress it.
+                if later in SEPARATORS:
+                    break
+                segment.append(later)
+            if not any(flag in segment for flag in HELP_FLAGS):
+                out.append((rest[position], ""))
+    return out
+
+
+def success_count(text, sub):
+    """How many success lines for `sub` this call printed.
+
+    Line by line and anchored: the shapes start at the item's label, and an
+    unanchored search would find one inside a quoted echo of an earlier run — the
+    briefings this house writes quote queue output verbatim.
+    """
+    patterns = SUCCESS[sub]
+    return sum(1 for line in text.splitlines()
+               if any(re.search(p, line.strip()) for p in patterns))
+
+
+def walk(path):
+    """(refusals, unconfirmed writes, unparsed) from this session's transcripts.
+
+    Oldest first, one list per signal class, in the order the headline prints
+    them.
+
+    ONE READING OVER SEVERAL FILES: the session's own jsonl, then the transcript
+    of every agent it dispatched. The parent's `isSidechain` records are skipped
+    — the agent's own file holds the same lines, and reading both would print
+    every dispatched refusal twice. A key is the (file, tool_use_id) pair rather
+    than the id alone, so no agent's output can confirm another's write.
+
+    Read line by line: a long session's transcript reaches megabytes and only two
+    kinds of block are wanted. Malformed lines are skipped rather than fatal — the
+    file is appended to live, so its last line can be half-written, and a session
+    asking what it was refused is by definition still running.
+
+    The two passes are one walk over an append-only file: a `tool_use` is always
+    written before its `tool_result`, so the calls are known by the time the
+    results arrive. A call whose result never arrives keeps an empty text and is
+    reported unconfirmed, which is what it is — the write was invoked and nothing
+    came back to say it landed.
+
+    Zero records CONSIDERED stops with code 2. The count is of what survived the
+    reading, not of what the file held: a transcript that opened and yielded
+    nothing is unread, and reporting it as clean is the one lie this command
+    cannot afford.
+    """
+    calls = {}                        # (file, tool_use_id) -> (stamp, tool, input)
+    refusals = []
+    pending = []                      # (stamp, sub, command, note, key)
+    results = {}                      # (file, tool_use_id) -> the text it returned
+    considered = 0
+
+    for source in [path] + subagent_transcripts(path):
+        try:
+            handle = open(source, errors="replace")
+        except OSError as exc:
+            if source == path:
+                no_transcript(f"cannot read {path}: {exc}")
+            print(f"tk-errors: skipped {plain(source)}: {exc}", file=sys.stderr)
+            continue
+        with handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                if source == path and record.get("isSidechain"):
+                    continue          # the agent's own file carries this line
+                considered += 1
+                stamp = record.get("timestamp") or ""
+                for block in blocks(record):
+                    kind = block.get("type")
+                    if kind == "tool_use":
+                        key = (source, block.get("id"))
+                        calls[key] = (stamp, block.get("name") or "?",
+                                      block.get("input") or {})
+                        command = (block.get("input") or {}).get("command")
+                        if isinstance(command, str):
+                            for sub, note in queue_writes(command):
+                                pending.append((stamp, sub, command, note, key))
+                    elif kind == "tool_result":
+                        key = (source, block.get("tool_use_id"))
+                        text = block_text(block)
+                        results[key] = results.get(key, "") + text
+                        if block.get("is_error"):
+                            called = calls.get(key, (stamp, "?", {}))
+                            refusals.append(Refusal(called[0] or stamp, called[1],
+                                                    call_detail(called[2]), text))
+
+    if not considered:
+        no_transcript(f"{plain(path)} yielded no record of this session")
+
+    unconfirmed, unparsed = [], []
+    spent = {}                        # (call, subcommand) -> lines already claimed
+    for stamp, sub, command, note, key in pending:
+        if sub == UNPARSED:
+            unparsed.append(Unparsed(stamp, command, note))
+            continue
+        text = results.get(key)
+        if text is None:
+            unconfirmed.append(Unconfirmed(stamp, sub, command,
+                                           "the call returned nothing"))
+            continue
+        # One success line confirms ONE invocation. A presence check would let
+        # the first line answer for every `add` in a batched command, and a
+        # batch whose second half failed is the shape that fails.
+        claimed = spent.get((key, sub), 0)
+        printed = success_count(text, sub)
+        if claimed < printed:
+            spent[(key, sub)] = claimed + 1
+            continue
+        unconfirmed.append(Unconfirmed(
+            stamp, sub, command,
+            f"no `{sub}` success line in the output" if not printed else
+            f"{printed} `{sub}` success line(s) for {claimed + 1} "
+            f"invocation(s) in this call"))
+    return refusals, unconfirmed, unparsed
+
+
+def call_detail(payload):
+    """The one field that says WHICH call this was, for the row.
+
+    A refusal row naming only the tool is unactionable — a session makes hundreds
+    of Bash calls — so the command, the path or the pattern goes in the row and
+    the rest of the input stays in the jsonl.
+    """
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("command", "file_path", "path", "pattern", "url", "prompt"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return ""
+
+
+def clip(text, chars):
+    """One line of at most `chars`, with the cut declared.
+
+    Never a silent truncation: a message cut at a word boundary reads like the
+    whole message, and the reader acts on half a sentence without knowing it.
+    """
+    folded = plain(re.sub(r"\s+", " ", str(text))).strip()
+    return folded if len(folded) <= chars else folded[:chars] + " […cut]"
+
+
+def report(refusals, unconfirmed, unparsed, limit):
+    """The three classes, headline first.
+
+    The headline is one line and the stable half of this contract: a seam that
+    greps or pipes this command reads it, and the rows below are for the human
+    or the agent that then goes looking. Every class reaches it, including the
+    advisory one — a count printed only below the rows is a count nobody reads.
+    """
+    print(f"{len(refusals)} refused tool call(s), "
+          f"{len(unconfirmed)} unconfirmed tk-queue write(s), "
+          f"{len(unparsed)} command(s) not parsed")
+
+    for title, rows, render in (
+            ("refused", refusals,
+             lambda r: f"  {plain(r.stamp)[:19] or '?':19}  {plain(r.tool):12} "
+                       f"{clip(r.message, MESSAGE_CHARS)}\n"
+                       f"  {'':19}  {'':12} call: {clip(r.detail, MESSAGE_CHARS)}"),
+            ("unconfirmed tk-queue writes", unconfirmed,
+             lambda r: f"  {plain(r.stamp)[:19] or '?':19}  {plain(r.sub):12} "
+                       f"{plain(r.why)}\n"
+                       f"  {'':19}  {'':12} call: {clip(r.command, MESSAGE_CHARS)}"),
+            ("commands not parsed (advisory — most are heredocs that ran)",
+             unparsed,
+             lambda r: f"  {plain(r.stamp)[:19] or '?':19}  {plain(r.why)}\n"
+                       f"  {'':19}  call: {clip(r.command, MESSAGE_CHARS)}")):
+        if not rows:
+            continue
+        print(f"\n{title}:")
+        for row in rows[:limit]:
+            print(render(row))
+        if len(rows) > limit:
+            print(f"  … {len(rows) - limit} more, in the transcript")
+
+
+class Parser(argparse.ArgumentParser):
+    """Usage errors exit 64, not argparse's 2.
+
+    2 is this command's "there is no transcript to read". A mistyped flag
+    arriving at a seam as that message is the one confusion the exit codes exist
+    to prevent, and it is the same choice `tk-context` makes for the same reason.
+    """
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        sys.exit(EXIT_USAGE)
+
+
+def main(argv=None):
+    parser = Parser(
+        description="list what this session was refused, from its own transcript")
+    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT,
+                        help=f"rows per class before the tail is summarised "
+                             f"(default: {DEFAULT_LIMIT})")
+    parser.add_argument("--session", default=os.environ.get("CLAUDE_CODE_SESSION_ID"),
+                        help="session id (default: $CLAUDE_CODE_SESSION_ID)")
+    parser.add_argument("--transcript",
+                        help="read this jsonl instead of resolving the session id")
+    args = parser.parse_args(argv)
+    if args.limit < 1:
+        parser.error("--limit must be at least 1")
+
+    path = args.transcript
+    if not path:
+        if not args.session:
+            no_transcript("no CLAUDE_CODE_SESSION_ID in the environment")
+        path = find_transcript(args.session)
+
+    refusals, unconfirmed, unparsed = walk(path)
+    try:
+        report(refusals, unconfirmed, unparsed, args.limit)
+        sys.stdout.flush()            # the flush at exit is past every handler
+    except BrokenPipeError:
+        # A READER THAT STOPPED READING IS NOT A FAILED READING. The headline is
+        # the first line, so `| head -1` is the documented way to consume this
+        # command — and it closes the pipe on the second. Uncaught, that came
+        # back as exit 1 from the raise and exit 120 from the interpreter's own
+        # flush afterwards, which the Bash tool records as `is_error`: the very
+        # signal the exit code was flattened to 0 to stop manufacturing.
+        # `/dev/null` over fd 1 is what keeps the final flush quiet; closing the
+        # stream instead leaves the interpreter printing `Exception ignored`.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+    return EXIT_READ
+
+
+if __name__ == "__main__":
+    sys.exit(main())

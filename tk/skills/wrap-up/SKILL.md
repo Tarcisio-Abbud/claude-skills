@@ -11,10 +11,9 @@ Execute the steps in order; each ends on a checkable criterion, and every skip i
 
 Two disciplines run through every step. **Resolve the pending item HERE, with the context
 still warm** — a **gate** is what lets it leave the session unresolved instead: step 2's
-survival gates admit an item to the queue, step 5's versioning gate admits work to version
-control, and what passes neither is resolved now. And the close is a **fixed template**
-(step 6, `REPORT.md` beside this file): where a response-style preference disagrees with
-that structure, the template wins.
+survival gates and step 5's versioning gate, and what passes neither is resolved now. And
+the close is a **fixed template** (step 6, `REPORT.md` beside this file): where a
+response-style preference disagrees with that structure, the template wins.
 
 **Argument:** `afk` — the user is leaving now; see "The `afk` argument" at the end.
 **Site extensions:** read `~/.claude/tk/wrap-up.md` and `.claude/tk/wrap-up.md` (project
@@ -24,22 +23,20 @@ list. (A project's own `.claude/skills/wrap-up` overrides this skill entirely.)
 ## 1. Inventory the session's changes
 
 Fire the sweep as ONE parallel batch — `git fetch`, `git status`, `git diff --stat`,
-`git log --branches --not <default> --oneline` and, if `gh`/forge CLI exists, the open
-PRs — and print the inventory. The fetch comes first: every other signal reads this disk
-only, and a sibling session in another clone is a fact to know now, not a rejected push
-at the end of the gate. Add the **facts/decisions/learnings** from the conversation, not
-just code. The inventory drives the rest: no code change → step 4 skips the suite;
-nothing behaviour- or knowledge-changing → step 3 shrinks to nothing; the version-control
-actions feed step 5.
+`git log --branches --not <default> --oneline`, `tk-errors` (refusals, unconfirmed
+queue writes and commands it could not parse) and, if `gh`/forge CLI exists, the open
+PRs — and print the inventory. The fetch comes first: a sibling session in another
+clone is a fact to know now, not a rejected push at the end of the gate. Add the
+**facts/decisions/learnings** from the conversation, not just code.
 
 **Then the session findings** — term, triage ladder and unattended form:
 `../../reference/session-finding.md`. The inventory carries a section of every point the
-session RAISED and left unanswered; right after printing it, ONE batched
-`AskUserQuestion` closes it whole — each answer can still change memory, docs or the
-queue below, and a finding whose answer turns into work goes to step 2's survival gates.
+session RAISED and left unanswered; right after printing it, ONE batched `AskUserQuestion`
+closes it whole.
 **Done when:** the user saw the touched files/commits, branches/PRs and new
-decisions/facts, every session finding was answered, discarded or carried to step 2 as
-work, and each later step is marked run/skip.
+decisions/facts, every session finding, refusal, unconfirmed queue write and unparsed
+command was answered, discarded or carried to step 2 as work, and each later step is
+marked run/skip.
 
 ## 2. Update memory, and gate what survives into the queue
 
@@ -89,8 +86,7 @@ consolidated, and every system signal has an encoding proposed or discarded.
 Runs when the inventory shows changed behaviour or new knowledge. Make the documentation
 reflect the current implementation: `README`, the project's instruction file
 (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`), glossary (`CONTEXT.md`), `docs/` and ADRs — no
-command, count or path may stay stale. Site extensions add further targets — and this is
-where conversation-only understanding gets a written address, making the `/clear` cheap.
+command, count or path may stay stale. Site extensions add further targets.
 **Done when:** every changed behaviour is reflected in every documentation target — or
 nothing doc-relevant changed and that was said.
 
@@ -98,24 +94,22 @@ nothing doc-relevant changed and that was said.
 
 Runs when code changed. Run the project's test suite, detecting the runner from the
 manifest (`pytest`, `npm test`, `cargo test`, `go test ./...`, `make test`, …); with an
-end-to-end verification skill in the project and changed runtime behaviour, run it too —
-a green test doesn't prove the real flow works. A session closing a queue item also owes
-that item's **criterion**, re-run here on the final tree — the implementer's report is an
-input to that run, never a substitute. The rite, the three attempts and the evidence
-block belong to `/tk:verify` (`../verify/SKILL.md`), which writes the block ONCE; step 5
-displays that block rather than re-deriving it.
+end-to-end verification skill in the project and changed runtime behaviour, run it too. A
+session closing a queue item also owes that item's **criterion**, re-run here on the final
+tree — the implementer's report is an input to that run, never a substitute. The rite, the
+three attempts and the evidence block belong to `/tk:verify` (`../verify/SKILL.md`), which
+writes the block ONCE; step 5 displays that block rather than re-deriving it.
 **Done when:** the tests pass — or the failures are reported with the output, or the skip
 was stated — and every item closed by this session carries its evidence block.
 
 ## 5. The versioning gate
 
-Settle every version-control decision NOW — this gate is what makes the wrap-up a real
-close. From the inventory, list the pending actions per repo: uncommitted work, unpushed
-branches, PRs to open, PRs awaiting merge. **The gate's whole procedure is the
-`merge-gate` skill, `../merge-gate/SKILL.md` — read it whenever that list is
-non-empty**: the digest,
-its five verdicts of safe-to-merge, the triple check of the closing line, the action
-menu, stack order, and the accumulated lane's per-item form.
+Settle every version-control decision NOW. From the inventory, list the pending actions
+per repo: uncommitted work, unpushed branches, PRs to open, PRs awaiting merge. **The
+gate's whole procedure is the `merge-gate` skill, `../merge-gate/SKILL.md` — read it
+whenever that list is non-empty**: the digest, its five verdicts of safe-to-merge, the
+triple check of the closing line, the action menu, stack order, and the accumulated lane's
+per-item form.
 
 **What this session DELIVERED — an item it closed, carrying its evidence block — arrives
 here as an action, never as a new item**. Merging its own PR is one line of the list above,
@@ -130,7 +124,7 @@ that action, never as the item back open.
 ## 6. Close: the report, the handoff, and the next step
 
 **The report follows the template in `REPORT.md` beside this file — read it before
-writing the close.** It is written for a cold reader, and the structure is what travels.
+writing the close.**
 
 **The handoff** comes at two levels. The default is the pair that already exists: the
 queue item, in executable order, plus the opening sentence of the next session. Escalate
@@ -143,7 +137,7 @@ file, pointed at by every item in it. The file carries **CONCLUSIONS, never a re
 
 **The next step — ALWAYS close by recommending ONE path**, the why in 1–2 sentences, by
 where the understanding lives: written down, `/clear` is cheap; conversation-only,
-document it in step 3 or write the handoff file, leaving genuine nuance to `/compact`.
+document it in step 3 or write the handoff file.
 
 - **`/clear`** — the default when the wrap-up ended clean: state 100% externalized,
   nothing mid-flight, next task discrete. **Every PR this session opened is anchored** —
@@ -172,9 +166,8 @@ exception closes the package: the batched question over its parked DECISIONs
   on the queue's items leads, tree signals follow: another live session working this
   repo → leave the tree untouched and report it.
 - Steps 1–4 and 6 run as written, every menu turning into a queue entry: each unanswered
-  choice becomes a DECISION carrying `--deferred afk` — the flag for a decision nobody
-  could ask, against one nobody bothered to ask. A session finding takes the destinations
-  of `../kickoff/FINDINGS.md` instead.
+  choice becomes a DECISION carrying `--deferred afk`. A session finding takes the
+  destinations of `../kickoff/FINDINGS.md` instead.
 - Step 5 runs on `../merge-gate/SKILL.md`, *The strict form*: commit and push before any review —
   `afk` IS that authorization — the digest in the PR body, merge only under the hardened
   verdicts; whatever is not merged enters the queue as a DECISION with its digest
@@ -185,5 +178,4 @@ exception closes the package: the batched question over its parked DECISIONs
 **Done when:** the state is externalized and one of three holds — the work is committed,
 pushed, and every item ended merged under the strict form or at an open PR carrying its
 evidence block and digest; or the guard stopped the run with the tree untouched, and the
-report says so; or there was nothing to commit. Whatever was not merged sits in the queue
-as a DECISION, and no other external effect happened.
+report says so; or there was nothing to commit. No other external effect happened.

@@ -115,3 +115,43 @@ lines, no rule dropped and the lock untouched. `G:` cites
 **Note — no verdict:** G:213–220, the 101-word "Done when", was split into four sentences
 with its clauses intact. G:18–20, G:47–49, G:152–158 and G:190–194 were reworded around
 the cuts above.
+
+---
+
+# Pass 2 — 2026-09-16 (T410)
+
+The second pass over the same skill, keyed to the pre-pass tree at commit `89ed5d0`:
+`W2:` cites `git show 89ed5d0:tk/skills/wrap-up/SKILL.md` line numbers, `R2:` cites
+`git show 89ed5d0:tk/skills/wrap-up/REPORT.md`. Every verdict of this pass is a cut — it
+created no destination, so nothing below lives anywhere else. The report beside this file
+(`wrap-up-report.md`, *Pass 2*) carries the reasons; what follows is the text, verbatim,
+so one edit puts any of it back.
+
+## 7. DROP — whole sentences (verbatim)
+
+- W2:31–33 — "The inventory drives the rest: no code change → step 4 skips the suite;
+  nothing behaviour- or knowledge-changing → step 3 shrinks to nothing; the
+  version-control actions feed step 5."
+- W2:133 — "It is written for a cold reader, and the structure is what travels."
+- R2:12–13 — "An unattended run walks its items one at a time, each from zero knowledge
+  of the session."
+- R2:50–53 — "At an attended gate the user has already read those lines in the terminal,
+  before the menu, so this block repeats them where the report keeps them; an unattended
+  run's reader meets them here first."
+
+## 8. CLAUSE — clauses cut from sentences that stay
+
+| where | clause cut |
+|---|---|
+| W2:13–15 | "admit an item to the queue" and "admits work to version control" → "step 2's survival gates and step 5's versioning gate" |
+| W2:28–29 | "every other signal reads this disk only, and" — "The fetch comes first" and its sibling-session reason stay |
+| W2:37–38 | "each answer can still change memory, docs or the queue below, and" — the batched menu and its destination stay |
+| W2:92–93 | "— and this is where conversation-only understanding gets a written address, making the `/clear` cheap" — "Site extensions add further targets." stays |
+| W2:101–102 | "— a green test doesn't prove the real flow works" — the instruction to run the end-to-end skill stays |
+| W2:112–113 | "— this gate is what makes the wrap-up a real close" — "Settle every version-control decision NOW." stays |
+| W2:146 | ", leaving genuine nuance to `/compact`" — the two other branches of the sentence stay |
+| W2:175–177 | "— the flag for a decision nobody could ask, against one nobody bothered to ask" — `--deferred afk` stays prescribed |
+| W2:188–189 | "Whatever was not merged sits in the queue as a DECISION, and no other external effect happened." → "No other external effect happened." |
+
+**Note — no verdict:** three paragraphs (step 1's findings, step 4, step 5's opening) were
+re-wrapped at 90 columns after the cuts above; no word of them changed.
