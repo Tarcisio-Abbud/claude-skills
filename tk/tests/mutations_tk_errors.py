@@ -59,7 +59,10 @@ DIR_FLAG = "TheQueueInvariant.test_the_dir_option_before_the_subcommand_is_skipp
 QUALIFIED = "TheQueueInvariant.test_a_path_qualified_invocation_is_seen"
 TWO_CALLS = "TheQueueInvariant.test_two_invocations_in_one_command_are_counted_apart"
 NO_OP = "TheQueueInvariant.test_an_honest_no_op_counts_as_a_success_line"
-UNPARSED = "TheQueueInvariant.test_an_untokenizable_command_carrying_the_bin_is_unconfirmed"
+UNPARSED = "TheQueueInvariant.test_an_untokenizable_command_is_its_own_class_not_a_write"
+HEREDOC = "TheQueueInvariant.test_a_heredoc_body_is_data_and_not_a_command"
+COMMIT_MSG = "TheQueueInvariant.test_a_commit_message_naming_a_write_is_not_one"
+AFTER_BODY = "TheQueueInvariant.test_a_write_after_a_heredoc_is_still_seen"
 NOT_MINE = "TheQueueInvariant.test_an_untokenizable_command_without_the_bin_is_silent"
 UNSPACED = "TheQueueInvariant.test_an_unspaced_separator_still_starts_an_invocation"
 LATER_HELP = "TheQueueInvariant.test_a_later_help_does_not_suppress_an_earlier_write"
@@ -268,10 +271,34 @@ MUTATIONS = [
      "",
      [NOT_MINE], ERRORS),
 
-    ("a command the shell could not run is skipped rather than reported",
-     '        return [(sub, note) for sub in found] or [("?", note)]',
+    ("a command the reader could not parse is skipped rather than reported",
+     '        return [(UNPARSED, f"the command does not tokenize ({exc})")]',
      "        return []",
      [UNPARSED], ERRORS),
+
+    ("a heredoc body is read as command text, and its prose as an invocation",
+     "        tokens = tokenize(strip_heredocs(command))",
+     "        tokens = tokenize(command)",
+     [HEREDOC, COMMIT_MSG], ERRORS),
+
+    ("the heredoc terminator is ignored, so the rest of the command is eaten",
+     """            if line.strip() == awaiting[0]:
+                awaiting.pop(0)       # `<<-` allows the terminator to be indented
+            continue""",
+     "            continue",
+     [AFTER_BODY], ERRORS),
+
+    ("the regex fallback is back, and it reads the prose inside a heredoc",
+     '        return [(UNPARSED, f"the command does not tokenize ({exc})")]',
+     '''        found = [sub for sub in SUCCESS
+                 if re.search(rf"{re.escape(QUEUE_BIN)}[^;&|\\n]*?\\b{sub}\\b", command)]
+        return [(sub, f"does not tokenize ({exc})") for sub in found]''',
+     [UNPARSED], ERRORS),
+
+    ("the third class never reaches the headline, and nobody reads its count",
+     '          f"{len(unparsed)} command(s) not parsed")',
+     '          "")',
+     [UNPARSED, HEREDOC], ERRORS),
 
     ("the success line is matched anywhere in the output, quotes included",
      """    return sum(1 for line in text.splitlines()

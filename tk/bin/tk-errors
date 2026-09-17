@@ -8,7 +8,7 @@ turned away leaves no item, and the wrap-up reports a queue it believes it wrote
 Sibling of `tk-context`, and the same trick: the session's own jsonl holds the
 record, and `CLAUDE_CODE_SESSION_ID` names the file.
 
-TWO SIGNAL CLASSES, and they answer different questions.
+THREE SIGNAL CLASSES, and they answer different questions.
 
 1. REFUSED CALLS — every `tool_result` carrying `is_error: true`. That is the
    harness's own verdict, not a guess: a permission denial, a hook exiting 2, a
@@ -23,6 +23,15 @@ TWO SIGNAL CLASSES, and they answer different questions.
    ended). The queue is the one state whose loss is silent — the item simply is
    not there — so the invariant is checked rather than assumed.
 
+3. COMMANDS NOT PARSED — a command carrying the binary's name that `shlex`
+   refuses. Its own class, and advisory: what this reader knows about it is that
+   it could not read it. Almost all of them are heredocs the shell ran without
+   complaint — 128 of 135 rows over 254 transcripts, measured — because a
+   heredoc's body is prose and an apostrophe in it is an unbalanced quote to
+   `shlex`. Counting one as a write asserts an invocation nobody can show
+   happened; the earlier version of this file guessed with a regex and read the
+   English inside those heredocs as queue writes.
+
 WHAT A SUCCESS LINE IS. Each writing subcommand prints one, and this file pins
 its shape against `tk-queue`'s own `print` (`SUCCESS`, below). The pinning is
 what makes the count honest and also what makes it brittle: reword a line in
@@ -33,13 +42,11 @@ WHAT COUNTS AS AN INVOCATION. The command string is tokenized as the shell would
 (`shlex`, comments honoured), and a token whose basename is `tk-queue` names one,
 the subcommand being the first bare word after it — `--dir` and its value
 skipped, as the parser skips them. A mention inside quotes never matches: the
-shell keeps it in one token. A command `shlex` cannot tokenize is counted as an
-invocation and reported unconfirmed, which is right twice over — the shell did
-not run it either.
+shell keeps it in one token.
 
 NOT A GATE, A DIAGNOSIS. Every number here is a floor, never a total: a refusal
 the harness did not mark, and a write whose success line was reworded, are both
-invisible to it. So a clean run licenses nothing — it says these two classes are
+invisible to it. So a clean run licenses nothing — it says these classes are
 clean, and the reader at the close still owes the rest of the inventory.
 
 IT ALSO OVERCOUNTS, in one known shape: a write whose output was FILTERED. A
@@ -131,6 +138,14 @@ SEPARATORS = (";", "|", "||", "&", "&&")
 # a mismatch on every session that looked the flags up — measured, 3 of 9 rows on
 # the first real transcript this ran against.
 HELP_FLAGS = ("--help", "-h")
+# A here-document opener, quoted (`<<'EOF'`) or bare (`<< EOF`), `<<-` included.
+# `<<<` is a here-STRING and does not match: the character after `<<` is not a
+# word character there.
+HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)(?P<word>[A-Za-z_][\w.-]*)\1")
+# The subcommand slot of a command the tokenizer refused. Never a real one: what
+# it invoked cannot be known without a shell, and guessing is what class 3 exists
+# to stop.
+UNPARSED = "?"
 
 DEFAULT_LIMIT = 20                    # rows per class before the tail is summarised
 MESSAGE_CHARS = 160                   # of a refusal message; the whole is in the jsonl
@@ -150,6 +165,14 @@ class Unconfirmed(NamedTuple):
 
     stamp: str
     sub: str
+    command: str
+    why: str
+
+
+class Unparsed(NamedTuple):
+    """One command naming `tk-queue` that the tokenizer refused."""
+
+    stamp: str
     command: str
     why: str
 
@@ -240,6 +263,31 @@ def block_text(block):
     return ""
 
 
+def strip_heredocs(command):
+    """The command without the BODIES of its here-documents.
+
+    A heredoc body is data the shell hands to another program — a file being
+    written, a commit message, a briefing — and this house writes all three with
+    `tk-queue` invocations quoted inside them. Read as command text they are
+    invocations that never ran: on one real transcript the body of a `git commit
+    -F -` heredoc reported a `done` that was a line in the commit message.
+
+    The cost, stated rather than hidden: a command actually RUN from a heredoc
+    (`bash <<EOF`) is invisible to this reader. That is the floor this file
+    already declares, and it is the cheaper of the two errors — a missed row
+    sends nobody anywhere, and an invented one is why a report stops being read.
+    """
+    kept, awaiting = [], []
+    for line in command.split("\n"):
+        if awaiting:
+            if line.strip() == awaiting[0]:
+                awaiting.pop(0)       # `<<-` allows the terminator to be indented
+            continue
+        kept.append(line)
+        awaiting = [found.group("word") for found in HEREDOC_OPEN.finditer(line)]
+    return "\n".join(kept)
+
+
 def tokenize(command):
     """The command split as the shell splits it, punctuation and all.
 
@@ -263,9 +311,10 @@ def queue_writes(command):
     """The writing `tk-queue` subcommands this shell command invokes, in order.
 
     Returns a list of (subcommand, note) pairs, `note` being empty on a clean
-    reading. A command the tokenizer rejects yields one pair per subcommand name
-    a regex finds near the binary's own, noted as unparsed — the caller reports
-    those unconfirmed, because the shell did not run that command either.
+    reading. A command the tokenizer refuses yields ONE pair, in the `UNPARSED`
+    slot, which the caller reports as class 3. It does NOT yield a subcommand: a
+    regex over the raw text is how the earlier version guessed, and what it read
+    were the English words inside heredocs the shell had run fine.
     """
     if QUEUE_BIN not in command:
         # The cheap gate, and a correctness one: without it the tokenizer's
@@ -274,12 +323,9 @@ def queue_writes(command):
         # command exists to count.
         return []
     try:
-        tokens = tokenize(command)
+        tokens = tokenize(strip_heredocs(command))
     except ValueError as exc:
-        found = [sub for sub in SUCCESS
-                 if re.search(rf"{re.escape(QUEUE_BIN)}[^;&|\n]*?\b{sub}\b", command)]
-        note = f"the command does not tokenize ({exc})"
-        return [(sub, note) for sub in found] or [("?", note)]
+        return [(UNPARSED, f"the command does not tokenize ({exc})")]
 
     out = []
     for index, token in enumerate(tokens):
@@ -389,10 +435,10 @@ def walk(path):
     if not considered:
         no_transcript(f"{plain(path)} yielded no record of this session")
 
-    unconfirmed = []
+    unconfirmed, unparsed = [], []
     for stamp, sub, command, note, key in pending:
-        if note:
-            unconfirmed.append(Unconfirmed(stamp, sub, command, note))
+        if sub == UNPARSED:
+            unparsed.append(Unparsed(stamp, command, note))
             continue
         text = results.get(key)
         if text is None:
@@ -401,7 +447,7 @@ def walk(path):
         elif not success_count(text, sub):
             unconfirmed.append(Unconfirmed(stamp, sub, command,
                                            f"no `{sub}` success line in the output"))
-    return refusals, unconfirmed
+    return refusals, unconfirmed, unparsed
 
 
 def call_detail(payload):
@@ -430,15 +476,17 @@ def clip(text, chars):
     return folded if len(folded) <= chars else folded[:chars] + " […cut]"
 
 
-def report(refusals, unconfirmed, limit):
-    """The two classes, headline first.
+def report(refusals, unconfirmed, unparsed, limit):
+    """The three classes, headline first.
 
     The headline is one line and the stable half of this contract: a seam that
     greps or pipes this command reads it, and the rows below are for the human
-    or the agent that then goes looking.
+    or the agent that then goes looking. Every class reaches it, including the
+    advisory one — a count printed only below the rows is a count nobody reads.
     """
     print(f"{len(refusals)} refused tool call(s), "
-          f"{len(unconfirmed)} unconfirmed tk-queue write(s)")
+          f"{len(unconfirmed)} unconfirmed tk-queue write(s), "
+          f"{len(unparsed)} command(s) not parsed")
 
     for title, rows, render in (
             ("refused", refusals,
@@ -448,7 +496,11 @@ def report(refusals, unconfirmed, limit):
             ("unconfirmed tk-queue writes", unconfirmed,
              lambda r: f"  {plain(r.stamp)[:19] or '?':19}  {plain(r.sub):12} "
                        f"{plain(r.why)}\n"
-                       f"  {'':19}  {'':12} call: {clip(r.command, MESSAGE_CHARS)}")):
+                       f"  {'':19}  {'':12} call: {clip(r.command, MESSAGE_CHARS)}"),
+            ("commands not parsed (advisory — most are heredocs that ran)",
+             unparsed,
+             lambda r: f"  {plain(r.stamp)[:19] or '?':19}  {plain(r.why)}\n"
+                       f"  {'':19}  call: {clip(r.command, MESSAGE_CHARS)}")):
         if not rows:
             continue
         print(f"\n{title}:")
@@ -492,8 +544,8 @@ def main(argv=None):
             no_transcript("no CLAUDE_CODE_SESSION_ID in the environment")
         path = find_transcript(args.session)
 
-    refusals, unconfirmed = walk(path)
-    report(refusals, unconfirmed, args.limit)
+    refusals, unconfirmed, unparsed = walk(path)
+    report(refusals, unconfirmed, unparsed, args.limit)
     return EXIT_SIGNALS if (refusals or unconfirmed) else EXIT_CLEAN
 
 

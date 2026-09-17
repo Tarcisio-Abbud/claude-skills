@@ -125,11 +125,16 @@ class TranscriptFixture(unittest.TestCase):
         searched for anywhere in the output: a headline that drifted below the
         rows would still satisfy a loose `assertIn` and break every caller.
         """
-        headline = run.stdout.splitlines()[0]
+        return self.headline(run)[:2]
+
+    def headline(self, run):
+        """All THREE of the headline's numbers, refusals first."""
+        line = run.stdout.splitlines()[0]
         found = re.match(r"^(\d+) refused tool call\(s\), "
-                         r"(\d+) unconfirmed tk-queue write\(s\)$", headline)
+                         r"(\d+) unconfirmed tk-queue write\(s\), "
+                         r"(\d+) command\(s\) not parsed$", line)
         self.assertIsNotNone(found, run.stdout)
-        return int(found.group(1)), int(found.group(2))
+        return tuple(int(n) for n in found.groups())
 
 
 class TheRefusals(TranscriptFixture):
@@ -352,19 +357,52 @@ class TheQueueInvariant(TranscriptFixture):
                                   "T418 carries no claim — nothing to release")
         self.assertEqual(self.counts(run), (0, 0))
 
-    def test_an_untokenizable_command_carrying_the_bin_is_unconfirmed(self):
-        # The shell did not run it either, which is why it is reported rather
-        # than skipped as unreadable.
+    def test_an_untokenizable_command_is_its_own_class_not_a_write(self):
+        # What this reader knows about it is only that it could not read it.
+        # Counted as a write, it would assert a write nobody can show was
+        # invoked; counted nowhere, it would hide the command it could not read.
         run = self.transcript_for("tk-queue add 'unclosed", "")
-        self.assertEqual(self.counts(run), (0, 1))
+        self.assertEqual(self.headline(run), (0, 0, 1))
         self.assertIn("does not tokenize", run.stdout)
+
+    def test_a_heredoc_body_is_data_and_not_a_command(self):
+        # A heredoc carries a file, a commit message or a briefing, and this
+        # house writes all three with queue commands quoted inside them. Read as
+        # command text they are invocations that never ran — measured twice: 128
+        # of 135 unparsed rows over 254 transcripts were heredocs the shell ran
+        # fine, and a `done` row on a live transcript was a line in a commit
+        # message. The apostrophe below is what used to break the tokenizer.
+        run = self.transcript_for(
+            "cat <<'EOF' > brief.md\n"
+            "Run the tk-queue command yourself and add NO queue item — it's for\n"
+            "the orchestrator to write.\n"
+            "EOF",
+            "")
+        self.assertEqual(self.headline(run), (0, 0, 0))
+
+    def test_a_commit_message_naming_a_write_is_not_one(self):
+        run = self.transcript_for(
+            "git commit -F - <<'MSG'\n"
+            "T418: the close stops calling tk-queue done itself\n"
+            "MSG",
+            "[lane/x 1a2b3c] T418")
+        self.assertEqual(self.headline(run), (0, 0, 0))
+
+    def test_a_write_after_a_heredoc_is_still_seen(self):
+        # The terminator ends the body; what follows is command text again.
+        run = self.transcript_for(
+            "cat <<'EOF' > brief.md\nrun tk-queue done T1 yourself\nEOF\n"
+            "tk-queue edit T418 --effort S",
+            "")
+        self.assertEqual(self.headline(run), (0, 1, 0))
+        self.assertIn("edit", run.stdout)
 
     def test_an_untokenizable_command_without_the_bin_is_silent(self):
         # The regression this gate exists for: without it every unbalanced quote
-        # in the session was reported as a queue write, which is a wrong number
-        # in the one class this command exists to count.
+        # in the session was reported, which is a wrong number in the classes
+        # this command exists to count.
         run = self.transcript_for("echo 'unclosed", "")
-        self.assertEqual(self.counts(run), (0, 0))
+        self.assertEqual(self.headline(run), (0, 0, 0))
 
     def test_a_success_line_quoted_back_does_not_confirm_another_call(self):
         # The patterns are anchored at the label for this reason: briefings and
