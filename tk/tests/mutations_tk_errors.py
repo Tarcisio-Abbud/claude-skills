@@ -83,6 +83,7 @@ NEWLINE = "TheQueueInvariant.test_a_newline_between_two_calls_ends_the_first_one
 LATER_FLAG = ("TheQueueInvariant."
               "test_a_later_unrelated_flag_on_its_own_line_does_not_reach_back")
 BLANK_LINES = "TheQueueInvariant.test_two_blank_lines_separate_as_one_does"
+GLUED = "TheQueueInvariant.test_a_separator_glued_to_the_newline_still_separates"
 QUOTED_NEWLINE = ("TheQueueInvariant."
                   "test_a_newline_inside_the_items_own_text_is_not_a_boundary")
 COMMENT = "TheQueueInvariant.test_a_trailing_comment_swallows_the_newline_after_it"
@@ -246,11 +247,19 @@ MUTATIONS = [
      'SEPARATORS = (";", "|", "||", "&", "&&")',
      [LATER_FLAG, BLANK_LINES], ERRORS),
 
-    ("a run of newlines is not collapsed, so a blank line stops separating",
-     '''    return ["\\n" if token and not token.strip("\\n") else token
+    ("a run of punctuation is not collapsed, so a blank line stops separating",
+     '''    return ["\\n" if token and "\\n" in token and set(token) <= set(PUNCTUATION)
+            else token
             for token in lexer]           # `commenters` is already `#` by default''',
      "    return list(lexer)",
-     [BLANK_LINES], ERRORS),
+     [BLANK_LINES, GLUED], ERRORS),
+
+    ("only a run of PURE newline collapses, so `;\\n` stops separating",
+     '''    return ["\\n" if token and "\\n" in token and set(token) <= set(PUNCTUATION)
+            else token''',
+     '''    return ["\\n" if token and not token.strip("\\n")
+            else token''',
+     [GLUED], ERRORS),
 
     ("the command is split on newlines first, which cuts a quoted item in two",
      """    lexer = shlex.shlex(command, posix=True, punctuation_chars=PUNCTUATION)

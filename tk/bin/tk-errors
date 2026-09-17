@@ -339,7 +339,9 @@ def tokenize(command):
     whitespace: `<write>\ndf -h /` left the `-h` of an unrelated later command
     inside the write's segment, which suppressed the write. So `\n` is taken out
     of `whitespace` and put into `punctuation_chars`, where it earns a token of
-    its own and stays part of the word when it falls inside quotes.
+    its own and stays part of the word when it falls inside quotes. A token of
+    its own EXCEPT when another metacharacter sits against it — `;\n` lexes as
+    one run — which is what the collapse below is for.
 
     Raises `ValueError` on quoting it cannot close, exactly as `shlex.split`
     does; the caller reports that command as unparsed.
@@ -347,9 +349,15 @@ def tokenize(command):
     lexer = shlex.shlex(command, posix=True, punctuation_chars=PUNCTUATION)
     lexer.whitespace = " \t\r"            # `\n` is a separator here, not a space
     lexer.whitespace_split = True         # words, not the lexer's default atoms
-    # A run of newlines lexes as ONE token; collapsed so `SEPARATORS` can ask
-    # plain membership, since two blank lines separate two commands as one does.
-    return ["\n" if token and not token.strip("\n") else token
+    # A RUN of adjacent punctuation lexes as ONE token, so `;\n` and `&&\n` are
+    # single tokens belonging to no entry of `SEPARATORS` — and a separator that
+    # stops separating puts the `-h` of the NEXT command back inside this write's
+    # segment, which suppresses the write. Any run holding a newline IS a
+    # boundary, whatever else it holds, so it collapses to the one token
+    # `SEPARATORS` knows. That also covers `\n\n` (two blank lines separate as
+    # one does) and the subshell close `)\n`.
+    return ["\n" if token and "\n" in token and set(token) <= set(PUNCTUATION)
+            else token
             for token in lexer]           # `commenters` is already `#` by default
 
 

@@ -426,6 +426,24 @@ class TheQueueInvariant(TranscriptFixture):
             "tk-queue: the WIP cap is full")
         self.assertEqual(self.headline(run), (0, 1, 0))
 
+    def test_a_separator_glued_to_the_newline_still_separates(self):
+        # The regression the newline separator brought in, and the commonest
+        # shape of all: a multi-line Bash call ends its first line with `;` or
+        # `&&`. `shlex` emits a RUN of adjacent punctuation as ONE token, so
+        # `;\n` belonged to no entry of the separator list, the segment ran on
+        # and the `-h` of `df` suppressed a write that had really failed.
+        for label, command in (
+                (";\\n", "tk-queue add 'an item' --class CHORE;\ndf -h /workspace"),
+                (" ;\\n", "tk-queue add 'an item' --class CHORE ;\ndf -h /workspace"),
+                ("&&\\n", "tk-queue add 'an item' --class CHORE &&\ndf -h /workspace"),
+                ("|\\n", "tk-queue add 'an item' --class CHORE |\ndf -h /workspace"),
+                ("&\\n", "tk-queue add 'an item' --class CHORE &\ndf -h /workspace"),
+                (")\\n", "(tk-queue add 'an item' --class CHORE)\ndf -h /workspace")):
+            with self.subTest(separator=label):
+                run = self.transcript_for(command, "tk-queue: the WIP cap is full")
+                self.assertEqual(self.headline(run), (0, 1, 0))
+                self.assertIn("add", run.stdout)
+
     def test_a_newline_inside_the_items_own_text_is_not_a_boundary(self):
         # The other direction, as for `;`: an item's text may span lines, and
         # the quoted newline stays inside its token.
