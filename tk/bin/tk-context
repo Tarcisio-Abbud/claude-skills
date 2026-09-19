@@ -371,9 +371,11 @@ def effective_window(base):
 
 
 def print_window(base, base_source):
-    """The window and the threshold, on stderr, said as what they are.
+    """The window, the threshold and their directory, on stderr, said as what
+    they are.
 
-    Two lines and not one: a seam that reads the window without the threshold
+    The window on a line and the threshold on another: a seam that reads the
+    window without the threshold
     compares its tokens against the wrong number, and the difference is the
     whole buffer. A third line names the directory the project pair was
     resolved from and how it was chosen — the reading changes with that
