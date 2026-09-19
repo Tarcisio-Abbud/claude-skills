@@ -123,9 +123,9 @@ MUTATIONS = [
     (
         "extraction copies the whole export instead of the new members",
         "        for info in infos:\n"
-        "            base = os.path.basename(info.filename)",
+        "            base = rename.get(info.filename) or os.path.basename(info.filename)",
         "        for info in archive.infolist():\n"
-        "            base = os.path.basename(info.filename)",
+        "            base = rename.get(info.filename) or os.path.basename(info.filename)",
         ["test_the_attachments_are_extracted_beside_the_digest"],
     ),
     (
@@ -171,15 +171,136 @@ MUTATIONS = [
     ),
     (
         "a missing predecessor crashes instead of saying which flag names one",
-        '    if old_zip is None:\n        fail("no earlier export of this conversation in %s — pass --previous."',
-        '    if False:\n        fail("no earlier export of this conversation in %s — pass --previous."',
+        '        if old_zip is None:\n            fail("no earlier export of this conversation',
+        '        if False:\n            fail("no earlier export of this conversation',
         ["test_no_predecessor_is_refused_rather_than_guessed"],
     ),
     (
         "two unrelated exports are diffed rather than refused",
-        "    if delta.overlap < args.min_overlap and not args.force:",
+        "    if old_zip is not None and delta.overlap < args.min_overlap and not args.force:",
         "    if False:",
         ["test_an_unrelated_pair_is_refused"],
+    ),
+    (
+        "--first is ignored, so an export with no predecessor is refused anyway",
+        "    if args.first:\n        old_zip = None\n    else:",
+        "    if False:\n        old_zip = None\n    else:",
+        [
+            "test_a_first_export_is_read_whole_instead_of_refused",
+            "test_a_first_export_does_not_claim_a_previous_one",
+        ],
+    ),
+    (
+        "the refusal names no way to read an export that has no predecessor",
+        '            fail("no earlier export of this conversation in %s — pass --previous, or --first "\n'
+        "                 \"to read this export whole as the conversation's first reading.\"",
+        '            fail("no earlier export of this conversation in %s — pass --previous."',
+        ["test_the_refusal_offers_the_flag_that_reads_the_export_whole"],
+    ),
+    (
+        "the digest of a first export reports a previous export that does not exist",
+        '    if first:\n        add("- **Previous export:** none (`--first`).',
+        '    if False:\n        add("- **Previous export:** none (`--first`).',
+        ["test_a_first_export_does_not_claim_a_previous_one"],
+    ),
+    (
+        "a first export is titled as a delta, so the whole history reads as news",
+        '    add("# %s — %s" % ("The whole conversation" if first else "What is new",',
+        '    add("# %s — %s" % ("What is new" if first else "What is new",',
+        ["test_a_first_export_does_not_claim_a_previous_one"],
+    ),
+    (
+        "--first and --previous are both accepted, and one of them is silently ignored",
+        "    pair = diff.add_mutually_exclusive_group()",
+        "    pair = diff",
+        ["test_first_and_previous_contradict_each_other"],
+    ),
+    (
+        "a refused pair whose dates are spelled in two locales is not diagnosed",
+        "    if share(lambda m: (m.sender, body_of(m))) >= DIAGNOSIS_FLOOR:",
+        "    if False:",
+        ["test_a_locale_that_spells_dates_differently_is_named"],
+    ),
+    (
+        "a refused pair exported on two phones is not diagnosed",
+        "    if share(lambda m: (m.date, body_of(m))) >= DIAGNOSIS_FLOOR:",
+        "    if False:",
+        ["test_two_phones_spelling_the_senders_differently_are_named"],
+    ),
+    (
+        "a pair with nothing in common gets no answer at all",
+        '    return ("no message of the previous export survives in any form — not its date, not its "\n'
+        '            "sender, not its text. Either these are two different conversations, or they are "\n'
+        "            \"two members' exports of one group and the histories do not meet.\")",
+        '    return ""',
+        ["test_a_pair_with_nothing_in_common_says_exactly_that"],
+    ),
+    (
+        "an attachment with no extension reaches the disk without one",
+        '    rename = (stem.rstrip(".") or "attachment") + kind if ext in ("", ".") else None',
+        "    rename = None",
+        [
+            "test_an_attachment_with_no_extension_is_saved_as_what_its_bytes_say",
+            "test_the_legend_says_which_of_the_two_renamings_happened",
+        ],
+    ),
+    (
+        "a ZIP container is never opened, so a workbook is announced as an archive",
+        "        for prefix, zip_ext, zip_label in ZIP_MARKERS:",
+        "        for prefix, zip_ext, zip_label in ():",
+        ["test_an_extensionless_workbook_is_named_by_looking_inside_the_zip"],
+    ),
+    (
+        "a password-protected PDF passes as an ordinary one",
+        '    if b"/Encrypt" in data:',
+        "    if False:",
+        [
+            "test_a_password_protected_pdf_carries_the_command_that_opens_it",
+            "test_no_command_is_offered_for_a_file_that_was_not_extracted",
+        ],
+    ),
+    (
+        "what the bytes said about an attachment never reaches the digest",
+        '                "notes": probes[info.filename]["notes"] if info.filename in probes else [],',
+        '                "notes": [],',
+        ["test_a_password_protected_pdf_carries_the_command_that_opens_it"],
+    ),
+    (
+        "a scan is taken for a document with text, and reads as a blank one",
+        '    if b"/Font" in data or any(b"/Font" in chunk for chunk in inflated_streams(data)):\n'
+        "        return notes",
+        "    if True:\n        return notes",
+        ["test_a_scanned_pdf_is_flagged_as_needing_rendering"],
+    ),
+    (
+        "only the raw bytes are searched for a font, so a modern PDF is called a scan",
+        '    if b"/Font" in data or any(b"/Font" in chunk for chunk in inflated_streams(data)):',
+        '    if b"/Font" in data:',
+        ["test_a_text_layer_inside_an_object_stream_is_not_a_scan"],
+    ),
+    (
+        "two spellings of one kind of file count as a mismatch, and the section cries wolf",
+        "    return any(left in family and right in family for family in EXT_FAMILIES)",
+        "    return False",
+        ["test_an_ordinary_attachment_is_not_flagged_at_all"],
+    ),
+    (
+        "an extension the bytes contradict is passed over",
+        "    elif not same_family(ext, kind):",
+        "    elif False:",
+        ["test_an_extension_the_bytes_contradict_is_named"],
+    ),
+    (
+        "a command is printed for a file `--no-extract` never wrote",
+        '                if note.get("command") and extracted:',
+        '                if note.get("command"):',
+        ["test_no_command_is_offered_for_a_file_that_was_not_extracted"],
+    ),
+    (
+        "the legend blames a collision for every name that changed on disk",
+        '        reason = "extension" if os.path.splitext(announced)[1] in ("", ".") else "collision"',
+        '        reason = "collision"',
+        ["test_the_legend_says_which_of_the_two_renamings_happened"],
     ),
     (
         "only the English chat filename yields a title",
@@ -347,8 +468,8 @@ MUTATIONS = [
     ),
     (
         "a run that extracted nothing still says where it extracted to",
-        '        if context.get("extracted", True):\n            renamed',
-        '        if True:\n            renamed',
+        '        if context.get("extracted", True):\n            reasons',
+        '        if True:\n            reasons',
         ["test_no_extract_neither_claims_an_extraction_nor_points_at_one"],
     ),
     (

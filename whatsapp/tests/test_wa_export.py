@@ -72,6 +72,51 @@ TAIL = [
 CHAT = "Conversa do WhatsApp com Ana.txt"
 
 
+def pdf_with_text():
+    """A PDF whose page resources name a font: it has a text layer, raw in the bytes."""
+    return (b"%PDF-1.4\n1 0 obj\n<< /Type /Page /Resources << /Font << /F1 2 0 R >> >> >>\n"
+            b"endobj\n2 0 obj\n<< /Type /Font /BaseFont /Helvetica >>\nendobj\n"
+            b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def pdf_scanned():
+    """A photograph of a document: an image XObject and no font anywhere."""
+    return (b"%PDF-1.4\n1 0 obj\n<< /Type /Page /Resources << /XObject << /Im0 2 0 R >> >> "
+            b">>\nendobj\n2 0 obj\n<< /Subtype /Image /Filter /DCTDecode /Width 1200 >>\n"
+            b"stream\n\xff\xd8\xff\xe0 scan bytes\nendstream\nendobj\n"
+            b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def pdf_encrypted():
+    return (b"%PDF-1.6\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+            b"trailer\n<< /Encrypt 9 0 R /Root 1 0 R >>\n%%EOF\n")
+
+
+def pdf_objstm():
+    """A PDF written since 1.5: the font lives inside a Flate object stream, not in the
+    raw bytes. Every modern generator produces this, so a raw search alone calls an
+    ordinary document a scan."""
+    import zlib
+
+    inner = zlib.compress(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    return (b"%PDF-1.5\n1 0 obj\n<< /Type /ObjStm /Filter /FlateDecode >>\nstream\n"
+            + inner + b"\nendstream\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def xlsx_bytes():
+    """A real ZIP container holding the member that makes it a workbook."""
+    import io
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as inner:
+        inner.writestr("[Content_Types].xml", "<Types/>")
+        inner.writestr("xl/workbook.xml", "<workbook/>")
+    return buf.getvalue()
+
+
+JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 40
+
+
 class Fixture(unittest.TestCase):
     """A tempdir holding an old and a new export of one synthetic conversation."""
 
@@ -695,6 +740,198 @@ class PreviousExportTest(Fixture):
                      "--json", "--out", self.path("out"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(json.loads(result.stdout)["messages"]), 40)
+
+
+class FirstExportTest(Fixture):
+    """The conversation nobody has exported before.
+
+    Measured on the first real run of this skill: of nine exports, one had no predecessor at
+    all. The run refused it, and the conversation was read the way this script exists to
+    avoid — `unzip`, then the whole transcript by eye, with the attachments unattributed.
+    """
+
+    def test_a_first_export_is_read_whole_instead_of_refused(self):
+        new = make_export(self.path("solo.zip"), CHAT, BASE,
+                          [("segue-anexo.pdf", b"contract")])
+        result = run("diff", new, "--first", "--no-extract", "--json",
+                     "--out", self.path("out"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(len(payload["messages"]), 4)
+        self.assertIsNone(payload["previous"])
+        self.assertTrue(payload["first"])
+        self.assertEqual(payload["attachments"], ["segue-anexo.pdf"])
+
+    def test_the_refusal_offers_the_flag_that_reads_the_export_whole(self):
+        """A refusal that names no way forward is where the manual round started."""
+        new = make_export(self.path("solo.zip"), CHAT, BASE, [])
+        result = run("diff", new, "--no-extract", "--out", self.path("out"))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--first", result.stderr)
+
+    def test_a_first_export_does_not_claim_a_previous_one(self):
+        """The digest is read by somebody who did not run the command. Reading it as a delta
+        when it is the whole history makes every line look like news."""
+        new = make_export(self.path("solo.zip"), CHAT, BASE, [])
+        result = run("diff", new, "--first", "--out", self.path("out"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        digest = self.digest()
+        self.assertIn("# The whole conversation — Ana", digest)
+        self.assertIn("**Previous export:** none (`--first`)", digest)
+
+    def test_first_and_previous_contradict_each_other(self):
+        """Both together ask for two different runs, and picking one silently means the
+        reader gets a whole history where they asked for a delta, or the other way round."""
+        old, new = self.pair()
+        result = run("diff", new, "--previous", old, "--first", "--out", self.path("out"))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("not allowed with", result.stderr)
+
+
+class RefusedPairTest(Fixture):
+    """Why the two exports do not match, in the refusal itself.
+
+    The floor refuses correctly and says nothing about the cause, which leaves the reader
+    comparing two zips by eye. Both causes below were met on the first real run, and neither
+    is visible from outside the files.
+    """
+
+    def refusal(self, old_lines, new_lines):
+        old = make_export(self.path("a.zip"), CHAT, old_lines, [])
+        new = make_export(self.path("b.zip"), CHAT, new_lines, [])
+        result = run("diff", new, "--previous", old, "--no-extract", "--out", self.path("out"))
+        self.assertEqual(result.returncode, 2, result.stdout)
+        return result.stderr
+
+    def test_a_locale_that_spells_dates_differently_is_named(self):
+        """Two exports of one conversation saved on phones set to different locales spell
+        every date differently, so no message matches and a real pair is refused. `--force`
+        does not repair it: the delta would then be the whole history."""
+        stderr = self.refusal(
+            ["19/08/2026 09:%02d - Ana: mensagem %d" % (n, n) for n in range(20)],
+            ["8/19/26 09:%02d - Ana: mensagem %d" % (n, n) for n in range(20)],
+        )
+        self.assertIn("different DATES", stderr)
+        self.assertIn("locales", stderr)
+
+    def test_two_phones_spelling_the_senders_differently_are_named(self):
+        """One group exported from two phones: each spells the members from its own contact
+        book, so the same message carries a saved name on one side and a number on the
+        other. Nothing about the files says so."""
+        stderr = self.refusal(
+            ["01/08/2026 09:%02d - Ana Silva: mensagem %d" % (n, n) for n in range(20)],
+            ["01/08/2026 09:%02d - +55 11 99999-0000: mensagem %d" % (n, n)
+             for n in range(20)],
+        )
+        self.assertIn("different SENDER names", stderr)
+
+    def test_a_pair_with_nothing_in_common_says_exactly_that(self):
+        """The third answer is the honest one: no relaxed key finds the old export in the new
+        one, so the two are not one conversation and no flag makes them one."""
+        stderr = self.refusal(
+            ["01/01/2026 09:%02d - Ana: assunto antigo %d" % (n, n) for n in range(20)],
+            ["05/05/2026 11:%02d - Carla: outro assunto %d" % (n, n) for n in range(20)],
+        )
+        self.assertIn("survives in any form", stderr)
+
+
+class AttachmentProbeTest(Fixture):
+    """What the bytes say an attachment is, and what stands between it and its reader.
+
+    Three findings of the first real run live here. An attachment arrived as
+    `DOC-20260612-WA0000.` with no extension — one was a PDF and another a workbook, and only
+    the bytes said which. A utility bill was password-protected. Two tax forms were scans with
+    no text in them at all, which every text tool reports as an empty document rather than as
+    a failure.
+    """
+
+    def probe(self, announced, files, *extra):
+        lines = BASE + ["10/08/2026 08:%02d - Ana: ‎%s (arquivo anexado)" % (i, name)
+                        for i, name in enumerate(announced)]
+        new = make_export(self.path("export.zip"), CHAT, lines, files)
+        out = self.path("out")
+        result = run("diff", new, "--first", "--out", out, *extra)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return out
+
+    def test_an_attachment_with_no_extension_is_saved_as_what_its_bytes_say(self):
+        out = self.probe(["DOC-20260810-WA0000."],
+                         [("DOC-20260810-WA0000.", pdf_with_text())])
+        self.assertTrue(os.path.exists(
+            os.path.join(out, "attachments", "DOC-20260810-WA0000.pdf")))
+        digest = self.digest(out)
+        self.assertIn("saved as `DOC-20260810-WA0000.pdf`", digest)
+        self.assertIn("carries no extension", digest)
+
+    def test_an_extensionless_workbook_is_named_by_looking_inside_the_zip(self):
+        """A workbook and a Word document are both ZIP archives, and stopping at `PK` names
+        neither. The member list says which one it is."""
+        out = self.probe(["DOC-20260810-WA0001."],
+                         [("DOC-20260810-WA0001.", xlsx_bytes())])
+        self.assertTrue(os.path.exists(
+            os.path.join(out, "attachments", "DOC-20260810-WA0001.xlsx")))
+        self.assertIn("Excel workbook", self.digest(out))
+
+    def test_a_password_protected_pdf_carries_the_command_that_opens_it(self):
+        out = self.probe(["fatura-luz.pdf"], [("fatura-luz.pdf", pdf_encrypted())])
+        digest = self.digest(out)
+        self.assertIn("password-protected", digest)
+        self.assertIn("pdftotext -upw <password>", digest)
+        self.assertIn(os.path.join(out, "attachments", "fatura-luz.pdf"), digest)
+
+    def test_a_scanned_pdf_is_flagged_as_needing_rendering(self):
+        """A scan returns EMPTY from every text tool instead of failing, so the reader
+        concludes the document is blank rather than that it needs a different tool."""
+        out = self.probe(["darf.pdf"], [("darf.pdf", pdf_scanned())])
+        digest = self.digest(out)
+        self.assertIn("no text layer", digest)
+        self.assertIn("pdftoppm -r 150 -png", digest)
+
+    def test_a_text_layer_inside_an_object_stream_is_not_a_scan(self):
+        """Every PDF written since version 1.5 packs its object dictionaries into compressed
+        streams, so the `/Font` that proves a text layer is not in the raw bytes. A raw search
+        alone announces the most ordinary modern PDF as a scan."""
+        out = self.probe(["extrato.pdf"], [("extrato.pdf", pdf_objstm())])
+        self.assertNotIn("no text layer", self.digest(out))
+
+    def test_an_ordinary_attachment_is_not_flagged_at_all(self):
+        """The section has to stay quiet on the ordinary export, or it is noise nobody reads
+        a third time — including on a name spelled `.jpeg` where the bytes say `.jpg`."""
+        out = self.probe(
+            ["contrato.pdf", "foto.jpeg", "planilha.xlsx"],
+            [("contrato.pdf", pdf_with_text()), ("foto.jpeg", JPEG),
+             ("planilha.xlsx", xlsx_bytes())],
+        )
+        digest = self.digest(out)
+        self.assertNotIn("## Attachments that need a step", digest)
+        self.assertNotIn("saved as", digest)
+
+    def test_an_extension_the_bytes_contradict_is_named(self):
+        """The extension is the sender's word for what the file is. When the bytes disagree,
+        the reader opens the wrong tool and reads a failure as a corrupt document."""
+        out = self.probe(["comprovante.pdf"], [("comprovante.pdf", JPEG)])
+        digest = self.digest(out)
+        self.assertIn("is named `.pdf` and its bytes are JPEG image", digest)
+
+    def test_no_command_is_offered_for_a_file_that_was_not_extracted(self):
+        """`--no-extract` writes no file, and a command naming a path that does not exist
+        fails in a way that reads as the PDF being broken."""
+        out = self.probe(["fatura-luz.pdf"], [("fatura-luz.pdf", pdf_encrypted())],
+                         "--no-extract")
+        digest = self.digest(out)
+        self.assertIn("password-protected", digest)
+        self.assertNotIn("pdftotext", digest)
+        self.assertIn("No command is offered", digest)
+
+    def test_the_legend_says_which_of_the_two_renamings_happened(self):
+        """A collision and a repaired extension both put a file on disk under another name,
+        and they ask for opposite reactions: one says the announced name is now ambiguous,
+        the other says only the spelling changed."""
+        out = self.probe(["DOC-20260810-WA0000."],
+                         [("DOC-20260810-WA0000.", pdf_with_text())])
+        digest = self.digest(out)
+        self.assertIn("arrived with no extension", digest)
+        self.assertNotIn("collided with another member", digest)
 
 
 class UnitTest(unittest.TestCase):

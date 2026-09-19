@@ -7,7 +7,7 @@ arrived since the last export. This script hands over the delta — the new mess
 attachments extracted into a dated directory, and the ready-to-paste command that folds
 the transcripts of the new voice notes back into the digest.
 
-    wa_export.py diff NEW.zip [--previous OLD.zip] [--out DIR]
+    wa_export.py diff NEW.zip [--previous OLD.zip | --first] [--out DIR]
     wa_export.py transcripts DIR
 
 Stdlib only. Run it with any Python 3.8+; the transcription step is a separate tool.
@@ -15,6 +15,7 @@ Stdlib only. Run it with any Python 3.8+; the transcription step is a separate t
 import argparse
 import datetime
 import difflib
+import io
 import json
 import os
 import re
@@ -22,6 +23,7 @@ import shlex
 import sys
 import unicodedata
 import zipfile
+import zlib
 
 AUDIO_EXTS = (".opus", ".ogg", ".m4a", ".mp3", ".wav", ".aac", ".flac", ".amr")
 
@@ -359,6 +361,43 @@ def align(old_messages, new_messages):
     return Delta(added, changed, removed, matched, len(new_messages), len(old_messages))
 
 
+# The share of the OLD export that has to reappear under a relaxed key before that key's
+# story is told as the reason. Below it the relaxed key explains no more than the strict one.
+DIAGNOSIS_FLOOR = 0.5
+
+
+def diagnose_pair(old_messages, new_messages):
+    """Why two exports that should be one conversation share no message.
+
+    The refusal alone sends the reader back to a file manager to compare two zips by eye.
+    Both causes measured on the first real run are invisible there and obvious here: two
+    phones set to different LOCALES spell every date differently, and two phones of one group
+    spell the SENDERS differently, each from its own contact book. Neither is fixed by
+    `--force`, which is what makes naming the cause worth the lines.
+    """
+    if not old_messages or not new_messages:
+        return None
+
+    def body_of(message):
+        return " ".join(message.body.split())
+
+    def share(key_of):
+        wanted = {key_of(m) for m in new_messages}
+        return sum(1 for m in old_messages if key_of(m) in wanted) / len(old_messages)
+
+    if share(lambda m: (m.sender, body_of(m))) >= DIAGNOSIS_FLOOR:
+        return ("the same messages are there under different DATES — two phones set to "
+                "different locales (`8/19/26` against `19/08/2026`). Export both sides from "
+                "ONE phone; --force would report the whole history as new.")
+    if share(lambda m: (m.date, body_of(m))) >= DIAGNOSIS_FLOOR:
+        return ("the same messages are there under different SENDER names — two exports of "
+                "one group taken on two phones, each spelling the members from its own "
+                "contact book. Diff two exports taken on the SAME phone.")
+    return ("no message of the previous export survives in any form — not its date, not its "
+            "sender, not its text. Either these are two different conversations, or they are "
+            "two members' exports of one group and the histories do not meet.")
+
+
 def diff_attachments(old_index, new_index):
     """(added, modified, dropped) across the two exports.
 
@@ -414,6 +453,184 @@ def is_audio(name):
     return name.lower().endswith(AUDIO_EXTS)
 
 
+# --- What an attachment really is, and what stands between it and a reader ----------------
+#
+# Three of these cost a manual round on the first real run of this skill: an attachment
+# arrived as `DOC-20260612-WA0000.` with no extension (one was a PDF, another an xlsx, and
+# only the bytes said which), a utility bill was password-protected, and two tax forms were
+# scans with no text in them at all. Each is invisible in the digest and obvious the moment
+# somebody double-clicks the file — which is the wrong moment, because by then the reader is
+# in a file manager rather than in the delta.
+
+# Leading bytes → (extension, what to call it). ZIP is the ambiguous one and is refined by
+# looking inside; the rest identify themselves.
+MAGIC = (
+    (b"%PDF-", ".pdf", "PDF"),
+    (b"\x89PNG\r\n\x1a\n", ".png", "PNG image"),
+    (b"\xff\xd8\xff", ".jpg", "JPEG image"),
+    (b"GIF8", ".gif", "GIF image"),
+    (b"OggS", ".ogg", "Ogg audio"),
+    (b"ID3", ".mp3", "MP3 audio"),
+    (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", ".doc", "old Office document"),
+    (b"{\\rtf", ".rtf", "RTF document"),
+    (b"PK\x03\x04", ".zip", "ZIP archive"),
+)
+
+# What a ZIP container holds, and therefore which Office document it is.
+ZIP_MARKERS = (("xl/", ".xlsx", "Excel workbook"),
+               ("word/", ".docx", "Word document"),
+               ("ppt/", ".pptx", "PowerPoint deck"))
+
+# Extensions that are the same kind of file written two ways. A name inside its own family is
+# not a mismatch worth a line: `.jpeg` against `.jpg`, or an `.xlsx` seen as the ZIP it is.
+EXT_FAMILIES = (
+    frozenset((".jpg", ".jpeg")),
+    frozenset((".ogg", ".oga", ".opus")),
+    frozenset((".mp4", ".m4a", ".mov", ".3gp")),
+    frozenset((".zip", ".xlsx", ".docx", ".pptx", ".odt", ".ods")),
+)
+
+# A member larger than this is not read to be probed. Nothing in a WhatsApp export comes
+# close; the ceiling is there so a hand-built zip cannot make this script read a gigabyte
+# into memory to answer a question about its first eight bytes.
+PROBE_LIMIT = 16 * 1024 * 1024
+
+
+def sniff_bytes(data):
+    """(extension, label) the CONTENT says, or (None, None) for bytes this table cannot name.
+
+    The extension a name carries is the sender's word for what the file is, and WhatsApp
+    strips it often enough that the word goes missing. The bytes do not go missing.
+    """
+    for magic, ext, label in MAGIC:
+        if not data.startswith(magic):
+            continue
+        if ext != ".zip":
+            return ext, label
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as inner:
+                names = inner.namelist()
+        except (zipfile.BadZipFile, OSError):
+            return ext, label
+        for prefix, zip_ext, zip_label in ZIP_MARKERS:
+            if any(name.startswith(prefix) for name in names):
+                return zip_ext, zip_label
+        return ext, label
+    if data[4:8] == b"ftyp":
+        return ".mp4", "MP4 video"
+    return None, None
+
+
+def same_family(left, right):
+    """Whether two extensions name the same kind of file."""
+    if left == right:
+        return True
+    return any(left in family and right in family for family in EXT_FAMILIES)
+
+
+def inflated_streams(data, budget=4 * 1024 * 1024):
+    """Every `stream ... endstream` block of a PDF that zlib can inflate.
+
+    A PDF written since version 1.5 packs its object dictionaries into compressed object
+    streams, so the `/Font` that proves a text layer is not in the raw bytes at all. Inflating
+    is what keeps a perfectly ordinary modern PDF from being announced as a scan.
+    """
+    spent = 0
+    for match in re.finditer(rb"stream\r?\n", data):
+        if spent >= budget:
+            return
+        end = data.find(b"endstream", match.end())
+        if end < 0:
+            continue
+        try:
+            chunk = zlib.decompressobj().decompress(data[match.end():end], budget - spent)
+        except zlib.error:
+            continue
+        if chunk:
+            spent += len(chunk)
+            yield chunk
+
+
+def pdf_notes(data):
+    """What a reader will hit when opening this PDF, as notes, or [] for an ordinary one.
+
+    Two states are worth a line and the third is worth silence. Password-protected: no reader
+    opens it, and the password is usually spelled out in the conversation itself. No text
+    layer at all: it is a photograph of a document, and every text tool returns empty rather
+    than failing, so the reader concludes the document is blank.
+    """
+    notes = []
+    if b"/Encrypt" in data:
+        notes.append({
+            "text": "password-protected — no text tool opens it without the password, and "
+                    "the conversation is usually where the password is said (a utility bill "
+                    "uses the first digits of the account holder's tax id)",
+            "command": "pdftotext -upw <password> {path} -",
+        })
+        # An encrypted PDF's own resources are encrypted too, so the text-layer question
+        # below cannot be answered about it: every marker it would read is ciphertext.
+        return notes
+    if b"/Font" in data or any(b"/Font" in chunk for chunk in inflated_streams(data)):
+        return notes
+    notes.append({
+        "text": "no text layer — it is a scan, and every text tool returns EMPTY rather than "
+                "failing, which reads as a blank document. Render it and read the images",
+        "command": "pdftoppm -r 150 -png {path} {stem}",
+    })
+    return notes
+
+
+def probe_member(archive, info, announced):
+    """What this attachment is, and the notes its reader needs. None when nothing to say.
+
+    `announced` is the name the chat gave it, which is what carries (or lacks) an extension.
+    """
+    if info.file_size > PROBE_LIMIT:
+        return None
+    try:
+        with archive.open(info) as handle:
+            data = handle.read(PROBE_LIMIT)
+    except (zipfile.BadZipFile, OSError, RuntimeError):
+        return None
+    kind, label = sniff_bytes(data)
+    if kind is None:
+        return None
+    notes = []
+    stem, ext = os.path.splitext(plain_name(announced))
+    ext = ext.casefold()
+    if ext in ("", "."):
+        # Renamed on disk, and the digest says so: a file with no extension opens in nothing,
+        # and the reader has no way to guess which of two namesakes is the spreadsheet.
+        notes.append({
+            "text": "carries no extension — the bytes say %s, and it is saved with `%s` on it"
+                    % (label, kind),
+            "command": None,
+        })
+    elif not same_family(ext, kind):
+        notes.append({
+            "text": "is named `%s` and its bytes are %s — open it as %s, whatever the name says"
+                    % (ext, label, label),
+            "command": None,
+        })
+    if kind == ".pdf":
+        notes.extend(pdf_notes(data))
+    rename = (stem.rstrip(".") or "attachment") + kind if ext in ("", ".") else None
+    return {"kind": kind, "label": label, "notes": notes, "rename": rename}
+
+
+def probe_new_files(zip_path, infos):
+    """`{member name: probe}` over the attachments this export adds."""
+    probes = {}
+    if not infos:
+        return probes
+    with zipfile.ZipFile(zip_path) as archive:
+        for info in infos:
+            probe = probe_member(archive, info, info.filename)
+            if probe and probe["notes"]:
+                probes[info.filename] = probe
+    return probes
+
+
 def find_previous(new_zip, title, new_count, directory=None):
     """The latest earlier export of this conversation sitting beside the new one.
 
@@ -446,7 +663,7 @@ def find_previous(new_zip, title, new_count, directory=None):
     return max(candidates)[1]
 
 
-def extract(zip_path, infos, dest):
+def extract(zip_path, infos, dest, rename=None):
     """Copy the named members out of the export, flattened into one directory.
 
     Returns (written, collisions). Flattening is what makes two members collide: a zip can
@@ -454,16 +671,20 @@ def extract(zip_path, infos, dest):
     on disk with the other's content and nothing said. The second one is written under a
     `~2` name and the collision is REPORTED, because a reader who opens the wrong PDF and
     concludes from it has no way of noticing.
+
+    `rename` maps a member to the basename it should land under, which is how an attachment
+    the chat named without an extension reaches the disk with the one its bytes earned.
     """
     if not infos:
         return [], []
+    rename = rename or {}
     os.makedirs(dest, exist_ok=True)
     written = []
     collisions = []
     taken = {}
     with zipfile.ZipFile(zip_path) as archive:
         for info in infos:
-            base = os.path.basename(info.filename)
+            base = rename.get(info.filename) or os.path.basename(info.filename)
             target = os.path.join(dest, base)
             if base in taken or os.path.exists(target):
                 collisions.append((info.filename, taken.get(base)))
@@ -497,12 +718,20 @@ def render_digest(context):
     """
     out = []
     add = out.append
-    add("# What is new — %s" % context["title"])
+    first = context.get("first")
+    add("# %s — %s" % ("The whole conversation" if first else "What is new",
+                       context["title"]))
     add("")
     add("- **New export:** `%s` — %d messages, %d attachments"
         % (os.path.basename(context["new_zip"]), context["new_total"], context["new_files"]))
-    add("- **Previous export:** `%s` — %d messages, %d attachments"
-        % (os.path.basename(context["old_zip"]), context["old_total"], context["old_files"]))
+    if first:
+        add("- **Previous export:** none (`--first`). Everything below is the WHOLE "
+            "conversation, not a delta: there is nothing to compare it against, so the "
+            "anomaly checks that catch a wrong pair are silent here.")
+    else:
+        add("- **Previous export:** `%s` — %d messages, %d attachments"
+            % (os.path.basename(context["old_zip"]), context["old_total"],
+               context["old_files"]))
     if context["added"]:
         add("- **New:** %d messages (%s of `%s`) · %d attachments, %d voice notes"
             % (len(context["added"]), describe_runs(context["line_runs"]),
@@ -559,19 +788,46 @@ def render_digest(context):
                    entry["sender"] or "—", entry["when"] or "—"))
         add("")
         if context.get("extracted", True):
-            renamed = any(e.get("on_disk") and e["on_disk"] != os.path.basename(e["name"])
-                          for e in context["added_files"])
+            reasons = renamed_reasons(context["added_files"])
+            renamed = bool(reasons)
             add("Extracted into `%s`." % context["attachments_dir"])
             if renamed:
                 add("")
-                add("A row reading *saved as* collided with another member of the zip: two "
-                    "files travel under one name, and the one on disk is the second.")
+                add("A row reading *saved as* is on disk under another name: %s."
+                    % "; ".join(reasons))
         else:
             add("**Not extracted** (`--no-extract`): every file above is still inside the "
                 "zip, and no `attachments/` directory was written.")
     else:
         add("_None._")
     add("")
+
+    flagged = [entry for entry in context["added_files"] if entry.get("notes")]
+    if flagged:
+        add(PROBE_HEADING)
+        add("")
+        add("Each of these opens in nothing, or opens EMPTY — which reads as a document with "
+            "nothing in it, rather than as a document that needs a step first. The step is "
+            "under the file.")
+        add("")
+        extracted = context.get("extracted", True)
+        for entry in flagged:
+            shown = entry.get("on_disk") or os.path.basename(entry["name"])
+            path = os.path.join(context["attachments_dir"], shown)
+            add("- **`%s`**" % shown)
+            for note in entry["notes"]:
+                add("  - %s." % note["text"])
+                if note.get("command") and extracted:
+                    add("")
+                    add("        %s" % note["command"].format(
+                        path=shlex.quote(path),
+                        stem=shlex.quote(os.path.splitext(path)[0])))
+                    add("")
+        if not extracted:
+            add("")
+            add("No command is offered: `--no-extract` wrote no file to run one on. Re-run "
+                "`diff` without it.")
+        add("")
 
     if context["modified_files"]:
         add("## Attachments whose CONTENT changed")
@@ -625,6 +881,33 @@ def render_digest(context):
     return "\n".join(out) + "\n"
 
 
+RENAME_REASONS = {
+    "collision": "it collided with another member of the zip, and the one on disk is the "
+                 "SECOND of the two",
+    "extension": "it arrived with no extension and is saved under the one its bytes earned",
+}
+
+
+def renamed_reasons(entries):
+    """Why a row of the table says *saved as*, in the order the reasons are explained.
+
+    Two different facts put a file on disk under another name, and they call for opposite
+    reactions: a collision means the announced name is now ambiguous and the reader must
+    open the one named here, while a repaired extension means nothing about the file changed
+    but the name it opens under. One legend covering both says neither.
+    """
+    found = []
+    for entry in entries:
+        on_disk = entry.get("on_disk")
+        announced = os.path.basename(entry["name"])
+        if not on_disk or on_disk == announced:
+            continue
+        reason = "extension" if os.path.splitext(announced)[1] in ("", ".") else "collision"
+        if reason not in found:
+            found.append(reason)
+    return [RENAME_REASONS[reason] for reason in found]
+
+
 def describe_runs(runs):
     """`lines 923–972` for one block, and every block when the new messages are not one.
 
@@ -664,11 +947,12 @@ def one_line(text):
 
 
 TRANSCRIPT_HEADING = "## New voice notes"
+PROBE_HEADING = "## Attachments that need a step before reading"
 
 # Bumped whenever `context.json` gains or loses a key `render_digest` indexes directly.
 # `transcripts` refuses a directory written by any other version rather than failing on
 # the missing key halfway through re-rendering the digest.
-CONTEXT_SCHEMA = 1
+CONTEXT_SCHEMA = 2
 
 
 def cmd_diff(args):
@@ -681,24 +965,33 @@ def cmd_diff(args):
              "script reads. Every line of it would be reported as unaccounted."
              % (os.path.basename(new_zip), chat_member))
 
-    old_zip = args.previous or find_previous(new_zip, title, len(new_messages))
-    if old_zip is None:
-        fail("no earlier export of this conversation in %s — pass --previous."
-             % os.path.dirname(os.path.abspath(new_zip)))
-    old_member, old_text = read_chat(old_zip)
-    old_messages = parse_messages(old_text)
+    if args.first:
+        old_zip = None
+    else:
+        old_zip = args.previous or find_previous(new_zip, title, len(new_messages))
+        if old_zip is None:
+            fail("no earlier export of this conversation in %s — pass --previous, or --first "
+                 "to read this export whole as the conversation's first reading."
+                 % os.path.dirname(os.path.abspath(new_zip)))
+    old_messages = []
+    if old_zip is not None:
+        _old_member, old_text = read_chat(old_zip)
+        old_messages = parse_messages(old_text)
 
     delta = align(old_messages, new_messages)
-    if delta.overlap < args.min_overlap and not args.force:
+    if old_zip is not None and delta.overlap < args.min_overlap and not args.force:
         fail("only %.0f%% of %s survives into the new export — the two do not look like the "
-             "same conversation. Name the right one with --previous, or --force to diff "
-             "them anyway." % (delta.overlap * 100, os.path.basename(old_zip)))
+             "same conversation. Name the right one with --previous, --force to diff them "
+             "anyway, or --first to read the new export whole.\n  why: %s"
+             % (delta.overlap * 100, os.path.basename(old_zip),
+                diagnose_pair(old_messages, new_messages)))
 
-    old_index = attachment_index(old_zip)
+    old_index = attachment_index(old_zip) if old_zip is not None else {}
     new_index = attachment_index(new_zip)
     added_infos, modified_infos, dropped_infos = diff_attachments(old_index, new_index)
     added_files = [(info, owning_message(info, new_messages)) for info in added_infos]
     added_audio = [info for info in added_infos if is_audio(info.filename)]
+    probes = probe_new_files(new_zip, added_infos)
 
     out_dir = args.out or default_out_dir(new_zip)
     guard_out_dir(out_dir, args.overwrite)
@@ -712,7 +1005,10 @@ def cmd_diff(args):
                 target = os.path.join(attachments_dir, entry)
                 if os.path.isfile(target):
                     os.unlink(target)
-        written, collisions = extract(new_zip, added_infos, attachments_dir)
+        written, collisions = extract(new_zip, added_infos, attachments_dir,
+                                      rename={name: probe["rename"]
+                                              for name, probe in probes.items()
+                                              if probe["rename"]})
         on_disk = [os.path.basename(path) for path in written]
 
     tally = {
@@ -731,6 +1027,7 @@ def cmd_diff(args):
         "title": title,
         "new_zip": new_zip,
         "old_zip": old_zip,
+        "first": old_zip is None,
         "chat_member": chat_member,
         "new_total": len(new_messages),
         "old_total": len(old_messages),
@@ -749,6 +1046,8 @@ def cmd_diff(args):
                 # The name ON DISK, which a collision changes: `extract` writes the second
                 # `x.pdf` as `x~2.pdf`. The reader opens this one, not the announced name.
                 "on_disk": on_disk[i] if i < len(on_disk) else None,
+                # What the bytes say the file is, and what stands between it and a reader.
+                "notes": probes[info.filename]["notes"] if info.filename in probes else [],
             }
             for i, (info, owner) in enumerate(added_files)
         ],
@@ -784,8 +1083,11 @@ def cmd_diff(args):
             {
                 "title": title,
                 "previous": old_zip,
+                "first": old_zip is None,
                 "messages": [m.as_dict() for m in delta.added],
                 "attachments": [i.filename for i in added_infos],
+                "needs_a_step": {name: [note["text"] for note in probe["notes"]]
+                                 for name, probe in probes.items()},
                 "modified": [i.filename for i in modified_infos],
                 "audio": [i.filename for i in added_audio],
                 "anomalies": {
@@ -802,9 +1104,13 @@ def cmd_diff(args):
         )
         sys.stdout.write("\n")
     else:
-        print("previous:  %s" % os.path.basename(old_zip))
+        print("previous:  %s" % (os.path.basename(old_zip) if old_zip
+                                 else "none (--first): the whole conversation, not a delta"))
         print("new:       %d messages, %d attachments (%d voice notes)"
               % (len(delta.added), len(added_infos), len(added_audio)))
+        if probes:
+            print("a step first: %d attachment(s) do not just open — see `%s` in the digest"
+                  % (len(probes), PROBE_HEADING))
         if modified_infos:
             print("changed:   %d attachments kept their name" % len(modified_infos))
         if delta.message_anomalies or dropped_infos:
@@ -1016,8 +1322,11 @@ def build_parser():
 
     diff = sub.add_parser("diff", help="what the new export carries that the previous one did not")
     diff.add_argument("new", metavar="NEW.zip")
-    diff.add_argument("--previous", metavar="OLD.zip",
+    pair = diff.add_mutually_exclusive_group()
+    pair.add_argument("--previous", metavar="OLD.zip",
                       help="previous export; by default the latest earlier one of the same conversation beside it")
+    pair.add_argument("--first", action="store_true",
+                      help="no previous export exists: read this one whole, as the conversation's first reading")
     diff.add_argument("--out", metavar="DIR", help="where to write the digest and the new attachments")
     diff.add_argument("--no-extract", action="store_true",
                       help="digest only, leaving the attachments inside the zip")
