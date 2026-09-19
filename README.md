@@ -148,6 +148,15 @@ export only ever grows, anything but a tail of inserts is **surfaced as an anoma
 than absorbed — that, plus an overlap floor that refuses a pair of exports which is not the
 same conversation, is what stops a wrong pair reading as a clean delta.
 
+A first run over nine real exports left five things to the person running it, and the script
+now carries all five. A conversation with no earlier export is read whole with `--first`
+instead of refused. A refused pair says **why** — the same messages under different dates
+(two phone locales), under different sender names (two phones of one group), or nothing in
+common at all. And every new attachment is probed: one with no extension is saved under the
+one its bytes earn, a password-protected PDF and a scan with no text layer are flagged with
+the command that opens them, since both otherwise read as an empty document rather than as
+one that needs a step first.
+
 ## Site extensions
 
 The skills are generic and standalone. Site-specific integrations — a wiki to update at

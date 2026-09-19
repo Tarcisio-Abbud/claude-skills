@@ -1,6 +1,6 @@
 ---
 name: export-delta
-description: Read a WhatsApp export (.zip) by its DELTA against the previous export — only what arrived since, voice notes transcribed. Use when a chat export has to be processed, when a conversation is the evidence for a payment or a decision, or when a second export of a conversation already read arrives.
+description: Read a WhatsApp export (.zip) by its DELTA against the previous export — only what arrived since, voice notes transcribed, attachments that need a step before they open flagged with it. Use when a chat export has to be processed, when a conversation is the evidence for a payment or a decision, when a second export of a conversation already read arrives, or when a conversation is exported for the first time.
 ---
 
 # Read a WhatsApp export by its delta
@@ -35,15 +35,18 @@ replaces it, `--out` writes elsewhere.
 
 ## The four steps
 
-1. **Diff.** Run the command above. It prints what it found and where it wrote it.
+1. **Diff.** Run the command above. It prints what it found and where it wrote it. When the
+   conversation has never been exported before, add `--first`: the run then reads the export
+   whole, through the same digest, rather than refusing for want of a predecessor.
 2. **Transcribe, when it reports voice notes.** Point `asr:transcribe-audio` at the
    `attachments/` directory it names. In a working conversation the voice note is where *who is
    who* lives — a supplier's real name behind a payment, the identity a bank statement
    spells as somebody else.
 3. **Fold the transcripts back**, so one file carries the whole delta:
    `wa_export.py transcripts <the delta directory>`.
-4. **Read `delta.md`.** Done when `## New voice notes` names no pending transcription and
-   every new attachment has been opened or ruled out.
+4. **Read `delta.md`.** Done when `## New voice notes` names no pending transcription, and
+   every new attachment has been opened or ruled out — each one listed under `## Attachments
+   that need a step before reading` counts as open only once its step has run.
 
 ## What the digest tells you, and what it does not
 
@@ -59,9 +62,17 @@ attachments the previous export had. `nothing` means every line and every file i
 Anything else is a document somebody is waiting for, or a sender the delta cannot name. Read
 it BEFORE the delta: it says how much of the delta to believe.
 
-**A row reading *saved as* collided with another member of the zip.** Two files travel
-under one name, and the one on disk is the second. Open the name the row gives after
-*saved as*, never the announced one.
+**A row reading *saved as* is on disk under another name.** Open the name the row gives after
+*saved as*, never the announced one. The legend under the table says which of the two causes
+it was: two files travelling under one name, where the one on disk is the second, or an
+attachment that arrived with no extension and was saved under the one its bytes earned.
+
+**A file under `## Attachments that need a step before reading` does not simply open.** It is
+password-protected, or a scan with no text in it, or named as something its bytes contradict.
+The section carries the step and the command, file by file. Run it before concluding that an
+attachment is blank, broken or empty — a scan returns EMPTY from every text tool rather than
+failing, which reads exactly like a document with nothing in it. When the file is protected,
+the password is usually somewhere in the conversation itself.
 
 **A file under `## Attachments whose CONTENT changed` was read before under that name.**
 Same name, different bytes: whatever was concluded from the old one is unproven.
@@ -99,14 +110,19 @@ surprising digest reads as expected behaviour rather than a bug.
 
 The two exports must look like one conversation, measured as the share of the OLD export the
 new one still carries — an export only grows, so the question is containment. Below
-`--min-overlap` (0.5 by default) the run refuses rather than diff two unrelated zips;
-`--force` diffs them anyway. Measuring the other direction — the share of the NEW export that
-is old — refuses a real pair whose conversation exploded between exports.
+`--min-overlap` (0.5 by default) the run refuses rather than diff two unrelated zips.
+Measuring the other direction — the share of the NEW export that is old — refuses a real pair
+whose conversation exploded between exports.
 
-**A refusal is not always a wrong pair.** Two exports of one conversation saved under
-different phone locales spell every date differently (`8/19/26` against `19/08/2026`), so no
-message matches and the run refuses a pair that is real. The refusal is the safe direction —
-the delta would otherwise be the whole history — and the fix is to export both sides again
-from one locale, not `--force`. Two exports can also share a title and be different
-conversations: same contact, two threads. The message the run prints names the file it
-refused; check that file before overriding it.
+**A refusal is not always a wrong pair, and the refusal says which it is.** It names the file
+it refused and, under `why:`, one of three causes. Act on the one it names:
+
+- **Different dates, same messages** — two phones set to different locales, spelling
+  `8/19/26` against `19/08/2026`. Export both sides again from one phone.
+- **Different sender names, same messages** — two phones of one group, each spelling the
+  members from its own contact book. Diff two exports taken on the same phone.
+- **Nothing in common** — two different conversations, or two members whose histories never
+  meet. Find the real predecessor, or read the new export whole with `--first`.
+
+`--force` is for none of the three: it diffs them anyway, and the delta is then the whole
+history under a heading that says it is new.
