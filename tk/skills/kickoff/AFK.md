@@ -166,12 +166,12 @@ verbatim through `args`, and the lane contract above reaches it as a path. Pass 
 itself: a run asked to compose it returned the JSON inside a string field, and every key parsed
 as absent.
 
-Concurrent runs count against `max-local-subagents`, the site key the generated block already
-carries — the RAM axis, not the quota one; `WINDOW.md`'s "The tick" names `max-local-opus` as
-the second axis and why the two axes are not one number. Where the harness's own cap —
-`min(16, nproc - 2)` — is the smaller of the two, the difference stays UNUSED: a second
-workflow beside the first is the option to weigh, never Agent runs whose return lands in this
-session's context, which is what the vehicle exists to keep out.
+`WINDOW.md`'s "The tick" owns the quota axis, `max-local-opus`; concurrent runs count against
+`max-local-subagents`, the RAM axis. **Read it before each local dispatch:**
+`../../bin/tk-ram` prints what the cgroup fits now, `LEDGER.md` takes that line, and
+exit 2 falls back on the site key. Where the harness's own cap — `min(16, nproc - 2)` — is
+smaller, the difference stays UNUSED: weigh a second workflow beside the first, never Agent
+runs whose return lands in this session's context.
 
 **The script stops dispatching at the first `null` and hands back what it holds.** A `null` is
 the wall or a skip, never one of the three attempts `../verify/SKILL.md` counts, and a graph

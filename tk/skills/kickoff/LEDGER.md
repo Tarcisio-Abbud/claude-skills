@@ -34,7 +34,12 @@ One line per event, appended, never edited once written. Seven fields, pipe-sepa
   `tk-contract` what that run was handed.
 - **`<model>`** — model and effort as DISPATCHED, `opus/high`, not the role's default. The
   default is in the policy file; what a run actually got is only here.
-- **`<event>`** — what was dispatched or observed, in one clause.
+- **`<event>`** — what was dispatched or observed, in one clause. A LOCAL dispatch carries,
+  beside that clause, the line `../../bin/tk-ram` printed for it — the RAM fit read at the
+  moment of the dispatch, pasted whole — or, where the bin refused, that it refused and that
+  `max-local-subagents` was used instead. It is never folded into `<quota>`: RAM and quota
+  are different axes, a package with room in one can be out of the other, and a reader who
+  finds one number where two belong cannot tell which sensor said what.
 - **`<result>`** — what came back: the pull request number, the branch and the commits
   pushed, the reason it died, or `-` while it is still running. A line written at dispatch
   and a line written at return are two lines, each with its own hour.

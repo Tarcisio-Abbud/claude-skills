@@ -337,6 +337,21 @@ tk/
                                   dispatch. The 5h window alone — no rate was ever measured
                                   for the weekly one, and it says so on stderr. Exit 1 nothing
                                   was recorded, 2 no number, 64 bad usage
+  bin/tk-ram                      how many local subagents this container's cgroup can hold
+                                  NOW — the other ceiling the tick reads, and the RAM axis
+                                  where `tk-quota` is the quota one. It divides `memory.max`,
+                                  less a 0.5 GiB reserve and less `anon` + `memory.swap.current`,
+                                  by the 0.74 GiB an agent was measured to cost, and prints
+                                  the fit clamped to [1, 3]. `anon` and not `memory.current`:
+                                  the latter counts reclaimable page cache and charges the
+                                  package for file cache it would get back. The clamp is the
+                                  half no measurement passed — 3 is the untested top, and 0
+                                  is a verdict this sensor does not give. The harness's own
+                                  low-memory warning is blind here: it reads `/proc/meminfo`,
+                                  which inside a container is the HOST's. `--cgroup DIR` for
+                                  a process in a sub-cgroup, which is also how the suite runs
+                                  it. Exit 2 no number — and then `max-local-subagents` is
+                                  the fallback — 64 bad usage
   tests/test_tk_queue.py          regression suite for tk-queue (stdlib only)
   tests/test_tk_contract.py       regression suite for the generator
   tests/test_tk_roster.py         regression suite for the sweep and the two list keys
@@ -352,6 +367,15 @@ tk/
                                   the suite's own reader of it, the rest on the bin
   tests/test_tk_quota.py          regression suite for the quota reading, and the doc
                                   conformance of the wall that calls it
+  tests/test_tk_ram.py            regression suite for the RAM fit, over fixture cgroup
+                                  directories — never `/sys/fs/cgroup`, whose numbers move
+                                  with whatever the machine is doing — plus the doc
+                                  conformance of the three files that call it
+  tests/mutations_tk_ram.py       its mutations — every operand of the division removed in
+                                  turn, the clamp stripped at both ends, and ten on the
+                                  prose, since a reading nobody is told to take is a bin
+                                  nobody runs, and a clamp the budget reads as a fit
+                                  dispatches into a full container
   tests/mutations_compact_hooks.py
                                   their mutations — the mark hook's silence, its event
                                   line's seven fields, and the pointer hook's guard and
@@ -484,17 +508,20 @@ rule through `python3 tk/tests/mutations_tk_contract.py`, the commit guard throu
 `python3 tk/tests/mutations_window_wall.py`, and the two closure bins through
 `python3 tk/tests/mutations_closure.py`, `tk-context` through
 `python3 tk/tests/mutations_tk_context.py`, `tk-quota` through
-`python3 tk/tests/mutations_tk_quota.py`, and the two compaction hooks through
+`python3 tk/tests/mutations_tk_quota.py`, `tk-ram` through
+`python3 tk/tests/mutations_tk_ram.py`, and the two compaction hooks through
 `python3 tk/tests/mutations_compact_hooks.py`. The harnesses are separate files sharing
-one shape; the oldest differs only in naming its test module inline. FOUR of them mutate
+one shape; the oldest differs only in naming its test module inline. FIVE of them mutate
 more than a bin: the manifests one mutates DATA only — its subject is the repository's
 own state, and `marketplace.json` sits at the repo root, outside the `tk/` the runner
 copies — the wall one mutates PROSE alongside the bin, an instruction removed from a
 skill file being exactly the defect its suite exists to catch, and the `tk-context` one
 mutates prose, the bin AND its own TEST FILE, the last being the only way to prove a
 reader that lives in the suite: its statusline check must let the prose SAY the number is
-not there while refusing an instruction to go and read it there — and the `tk-quota` one
-mutates the wall's prose, since a command the wall does not name is a command nobody runs.
+not there while refusing an instruction to go and read it there — the `tk-quota` one
+mutates the wall's prose, since a command the wall does not name is a command nobody runs,
+and the `tk-ram` one mutates three skill files, because the reading it proves is worth
+nothing unless a dispatch is told to take it and the ledger is told to keep it.
 
 Every one of those anchors is a literal substring of its source, and it has to match
 exactly once. `python3 tk/tests/anchor_check.py` asks that of every harness in the
