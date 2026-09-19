@@ -16,12 +16,18 @@ the container and fail on a laptop. `--cgroup DIR` exists for the caller whose
 process sits in a sub-cgroup; it is what lets this file build the two states the
 item's criterion names and read them back.
 
-THE TWO FIXTURES THE CRITERION NAMES are `NINE_SESSIONS` and `EMPTY`, and their
-`anon` figures are MEASURED, not invented. The afk package of 2026-09-19 sampled
-`memory.stat` every 20s in this container: `anon` stood at 0.63 GiB with two
-`claude` processes alive and 1.03 GiB with three, so a live session costs about
-0.34 GiB of anonymous memory and the floor under them all is small. Nine of them
-is 3.06 GiB, and an empty container is the floor alone.
+THE TWO FIXTURES THE CRITERION NAMES are `NINE_SESSIONS` and `EMPTY`, and only
+one of the two is measured. The afk package of 2026-09-19 sampled `memory.stat`
+every 20s in this container: across 125 samples with two `claude` processes
+alive, `anon` averaged 0.62 GiB — about 0.31 GiB per live session, which agrees
+with those two processes' own RSS, 424 and 333 MiB. Nine of them is 2.79 GiB.
+
+THE EMPTY CONTAINER WAS NEVER SAMPLED — every sample has at least two sessions
+in it, because a sampler needs a session to start it. So that fixture's `anon` is
+an assumption, and the test does not rest on it: it asserts 3 across the whole
+range an empty container could be in, up to the 1.28 GiB where the arithmetic
+itself would stop saying 3. A single invented number would have proved the
+number, not the behaviour.
 
 WHY NO TEST ASSERTS THE REAL CONTAINER'S FIT. It moves with every session that
 opens, which is the whole reason the bin exists. What IS reproducible is the
@@ -45,10 +51,12 @@ GIB = 1024 ** 3
 FOUR_GIB = 4 * GIB
 
 # Measured on this container, 2026-09-19 — see the banner.
-PER_SESSION = 0.34 * GIB
-BASELINE = 0.05 * GIB
-NINE_SESSIONS = BASELINE + 9 * PER_SESSION
-EMPTY = BASELINE
+PER_SESSION = 0.31 * GIB
+NINE_SESSIONS = 9 * PER_SESSION
+# Not measured: the range an empty container's `anon` can be in, up to the point
+# where the arithmetic stops saying 3 on its own.
+EMPTY_RANGE = (0.05 * GIB, 0.5 * GIB, 1.0 * GIB)
+EMPTY = EMPTY_RANGE[0]
 
 ESCAPE = "\x1b]0;pwned\x07"
 
@@ -109,14 +117,19 @@ class RamFixture(unittest.TestCase):
 class TheFit(RamFixture):
 
     def test_an_empty_container_fits_three(self):
-        """Half the item's criterion. The raw quotient here is 4.66, and the
-        answer is 3 because the clamp says so — which is the point of asserting
-        it: the ceiling is the part no measurement passed."""
-        fit, _ = self.fit(anon=EMPTY)
-        self.assertEqual(fit, 3)
+        """Half the item's criterion, asserted over a RANGE rather than a point.
+        Nobody sampled an empty container — a sampler needs a session — so a
+        single `anon` here would be an invented number the test then proved. The
+        range is what the criterion actually claims: at 0.05 GiB the raw
+        quotient is 4.66 and the clamp gives 3, at 1.00 GiB the arithmetic gives
+        3 on its own, and the answer does not move in between."""
+        for anon in EMPTY_RANGE:
+            with self.subTest(anon=anon):
+                fit, _ = self.fit(anon=anon)
+                self.assertEqual(fit, 3)
 
     def test_nine_live_sessions_fit_no_more_than_two(self):
-        """The other half. Nine sessions hold 3.06 GiB of the 4 GiB ceiling, so
+        """The other half. Nine sessions hold 2.79 GiB of the 4 GiB ceiling, so
         what is left after the reserve does not pay for one agent — the bin says
         1, and the assertion is the criterion's own `<= 2`, since a later
         recalibration of the per-agent cost may move it between 1 and 2 without
