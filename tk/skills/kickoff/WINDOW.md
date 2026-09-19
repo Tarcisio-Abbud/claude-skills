@@ -426,10 +426,10 @@ Three pieces, and the tick is the first:
    fallback MARKED as a default and exits 0. Exit 2 still means one thing, no token number
    in the transcript, which is what *Generations* spends as its licence to judge.
    **The project settings come from the SESSION's directory**, the first `cwd` its
-   transcript records, so the tick reads the same window from a worktree as from the
-   project root; the flag prints that directory beside the number, and says when it fell
-   back to the caller's. Run from a worktree before this was so, the tick missed the
-   project pair holding 300,000 and reported the 1,000,000 default (17/09, T421).
+   transcript records. So the tick reads the same window from a worktree as from the
+   project root, and the flag names that directory beside the number. Run from a worktree
+   before this was so, the tick missed the project pair holding 300,000 and reported the
+   1,000,000 default (17/09, T421).
 2. **At the compact**: the `PreCompact` hook, matcher `auto`, running
    `../../bin/tk-compact-mark`. It blocks nothing, decides nothing and runs no skill: it
    appends one ledger line, with the hour read and the quota field the bin printed. A
