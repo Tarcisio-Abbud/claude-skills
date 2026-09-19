@@ -54,6 +54,13 @@ def usage_line(session_ok=True, stamp="2026-09-03T12:00:00.000Z", **counts):
     return json.dumps(record)
 
 
+def cwd_line(directory, stamp="2026-09-17T09:00:00.000Z"):
+    """One entry carrying the session's directory, as the transcript writes it:
+    `cwd` sits on the record, beside the message and not inside it."""
+    return json.dumps({"type": "user", "timestamp": stamp, "cwd": directory,
+                       "message": {"role": "user", "content": "hi"}})
+
+
 def boundary_line(post=10340, stamp="2026-09-03T13:00:00.000Z"):
     """A compaction boundary, copied from a real transcript's shape: no `usage`
     anywhere in it, and the emptied window in `compactMetadata.postTokens`."""
@@ -87,7 +94,7 @@ class TranscriptFixture(unittest.TestCase):
         with open(self.transcript, "w") as fh:
             fh.write("\n".join(lines) + "\n")
 
-    def run_it(self, *args, session=SESSION, env=None):
+    def run_it(self, *args, session=SESSION, env=None, cwd=None):
         override = env or {}
         env = dict(os.environ, HOME=self.home.name)
         env.pop("CLAUDE_CODE_SESSION_ID", None)
@@ -99,7 +106,7 @@ class TranscriptFixture(unittest.TestCase):
             env["CLAUDE_CODE_SESSION_ID"] = session
         return subprocess.run([sys.executable, TK_CONTEXT, *args],
                               capture_output=True, text=True, env=env,
-                              cwd=self.home.name)
+                              cwd=cwd or self.home.name)
 
 
 class TheNumber(TranscriptFixture):
@@ -560,6 +567,138 @@ class TheProseThatCallsIt(unittest.TestCase):
         # file — the assertion was green with the whole licence deleted.
         window = re.sub(r"\s+", " ", self.read("WINDOW.md"))
         self.assertRegex(window, r"no number.{0,400}?names it as judgement")
+
+
+class TheDirectoryTheProjectPairComesFrom(TranscriptFixture):
+    """Whose `.claude/settings*.json` the window is read from.
+
+    THE DEFECT, measured 2026-09-17 (T421). The tick ran `--window` from a
+    worktree, `/workspace/projects/.worktrees/...`. The project pair carrying
+    `autoCompactWindow: 300000` lives at `/workspace/projects`, the directory
+    the session was opened in; resolved against the caller's own directory it
+    was not there, the reading fell through to the 1,000,000 default, and the
+    seam compared its tokens against a threshold 700,000 too high while the
+    harness went on compacting at 280,000. The failure is silent in both
+    directions: nothing was unreadable, and the number printed looked fine.
+
+    The session's directory is its transcript's first recorded `cwd`. Every
+    case below runs from a DIFFERENT directory, because a run from the session's
+    own directory cannot tell the two resolutions apart — which is exactly why
+    this went unseen for as long as every caller happened to be the session.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.bin = load_tk_context()
+        # Neither name is a prefix of the other: with `workspace` and
+        # `workspace-worktrees-T425`, an `assertIn` of the session's directory
+        # passed over the worktree's, and the mutation that never resolves the
+        # session directory at all survived. Measured.
+        self.session_root = os.path.join(self.home.name, "project")
+        self.worktree = os.path.join(self.home.name, "worktree")
+        for path in (self.session_root, self.worktree):
+            os.makedirs(os.path.join(path, ".claude"), exist_ok=True)
+
+    def write_window(self, directory, value):
+        """The project pair's later file, under some directory or other."""
+        os.makedirs(os.path.join(directory, ".claude"), exist_ok=True)
+        with open(os.path.join(directory, ".claude", "settings.local.json"), "w") as fh:
+            json.dump({"autoCompactWindow": value}, fh)
+
+    def run_from_worktree(self, *lines, cwd=None):
+        """`--window`, called from somewhere that is not the session."""
+        self.write(*(lines or (cwd_line(self.session_root),
+                               usage_line(cache_read_input_tokens=8000))))
+        return self.run_it("--window", "--transcript", self.transcript,
+                           cwd=cwd or self.worktree)
+
+    def test_the_session_directory_and_not_the_callers_decides_the_window(self):
+        # The criterion of the item, in the fixture: the tick runs from the
+        # worktree, the session sits in the project, and the window read is the
+        # project's 300,000.
+        self.write_window(self.session_root, 300000)
+        run = self.run_from_worktree()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("300000", run.stderr)
+        self.assertIn(str(300000 - self.bin.SUMMARY_BUFFER), run.stderr)
+        self.assertNotIn("DEFAULT", run.stderr,
+                         "the session's own project settings were missed, and the "
+                         "harness's default was reported as the window")
+
+    def test_a_settings_pair_in_the_callers_directory_does_not_win(self):
+        # The sharper half: with a pair on BOTH sides, a reader resolving from
+        # its own directory still prints a number, and the number is wrong.
+        self.write_window(self.session_root, 300000)
+        self.write_window(self.worktree, 500000)
+        run = self.run_from_worktree()
+        self.assertIn("300000", run.stderr)
+        self.assertNotIn("500000", run.stderr)
+        self.assertNotIn(str(500000 - self.bin.SUMMARY_BUFFER), run.stderr)
+
+    def test_the_first_recorded_directory_wins_over_one_the_session_moved_to(self):
+        # `cwd` travels with what the session is DOING — measured on this host,
+        # one transcript carries three directories — while the harness resolved
+        # the settings once, when the session opened. The last record is the
+        # tempting one and it is the worktree the session wandered into.
+        self.write_window(self.session_root, 300000)
+        self.write_window(self.worktree, 500000)
+        run = self.run_from_worktree(cwd_line(self.session_root),
+                                     usage_line(cache_read_input_tokens=8000),
+                                     cwd_line(self.worktree))
+        self.assertIn("300000", run.stderr)
+        self.assertNotIn("500000", run.stderr)
+
+    def test_the_directory_and_where_it_came_from_are_both_printed(self):
+        # The reading changes with this directory, so a reader who cannot see
+        # which one was used cannot judge the number beside it.
+        self.write_window(self.session_root, 300000)
+        run = self.run_from_worktree()
+        # One assertion over the whole clause: the directory and its provenance
+        # asserted apart both pass on the fallback line, which names a directory
+        # and the word `transcript` as well.
+        self.assertIn(f"read from {self.session_root} "
+                      "(the session's own directory", run.stderr)
+
+    def test_a_transcript_recording_no_directory_falls_back_and_says_so(self):
+        # A transcript with no `cwd` anywhere: the caller's directory is all
+        # there is, and an unannounced guess is the defect walking back in.
+        self.write_window(self.worktree, 300000)
+        run = self.run_from_worktree(usage_line(cache_read_input_tokens=8000))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("300000", run.stderr)
+        self.assertIn("CALLER", run.stderr,
+                      "the fallback to the caller's directory is reported as "
+                      "though the transcript had named it")
+
+    def test_the_user_file_is_absolute_and_is_still_read(self):
+        # `~/.claude/settings.json` belongs to no project: joined to the
+        # session's directory it vanishes, and the one file every host has stops
+        # being read at all.
+        with open(os.path.join(self.home.name, ".claude", "settings.json"), "w") as fh:
+            json.dump({"autoCompactWindow": 300000}, fh)
+        run = self.run_from_worktree()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("300000", run.stderr)
+        self.assertNotIn("DEFAULT", run.stderr)
+
+    def test_a_directory_carrying_an_escape_is_printed_flat(self):
+        # Same guard as the session id and the boundary timestamp, on a value
+        # that arrived later: this one is a directory NAME, which is the shape
+        # the sibling incident in this house actually carried.
+        self.write(cwd_line("/tmp/\x1b]0;pwned\x07"),
+                   usage_line(cache_read_input_tokens=8000))
+        run = self.run_it("--window", "--transcript", self.transcript,
+                          cwd=self.worktree)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertNotIn("\x1b", run.stderr)
+
+    def test_without_the_flag_the_directory_is_not_resolved_or_printed(self):
+        # The bare invocation every other seam runs is untouched by all of this.
+        self.write(cwd_line(self.session_root),
+                   usage_line(cache_read_input_tokens=8000))
+        run = self.run_it("--transcript", self.transcript, cwd=self.worktree)
+        self.assertEqual(run.stdout.strip(), "8000 tokens in context")
+        self.assertEqual(run.stderr.strip(), "")
 
 
 class TheSiblingSeam(TranscriptFixture):

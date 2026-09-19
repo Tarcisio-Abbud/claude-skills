@@ -301,7 +301,12 @@ tk/
                                   var `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then
                                   `autoCompactWindow` from the merged settings, then the
                                   harness default marked as one — and the threshold under
-                                  it. Exit 2 no number, 64 bad usage: a mistyped flag may
+                                  it. The project half of those settings is read from the
+                                  SESSION's own directory, the first `cwd` its transcript
+                                  records, and never from the directory the command was
+                                  called in; a third line names that directory and says
+                                  whether it came from the transcript or from the caller.
+                                  Exit 2 no number, 64 bad usage: a mistyped flag may
                                   not read as the licence to use judgement, and neither may
                                   an unconfigured window
   bin/tk-compact-mark             the `PreCompact` hook: appends ONE event line, in
