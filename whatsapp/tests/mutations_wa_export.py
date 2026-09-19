@@ -216,6 +216,13 @@ MUTATIONS = [
         ["test_first_and_previous_contradict_each_other"],
     ),
     (
+        "a pair one of whose exports is not a transcript is refused with `why: None`",
+        '        return ("one of the two exports parses to no message at all, so nothing in it "\n'
+        '                "vouches for the pair — that file is probably not a transcript.")',
+        "        return None",
+        ["test_an_empty_predecessor_confirms_nothing"],
+    ),
+    (
         "a refused pair whose dates are spelled in two locales is not diagnosed",
         "    if share(lambda m: (m.sender, body_of(m))) >= DIAGNOSIS_FLOOR:",
         "    if False:",

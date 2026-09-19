@@ -730,6 +730,7 @@ class PreviousExportTest(Fixture):
         result = run("diff", new, "--previous", old, "--no-extract", "--out", self.path("out"))
         self.assertEqual(result.returncode, 2)
         self.assertIn("same conversation", result.stderr)
+        self.assertIn("probably not a transcript", result.stderr)
 
     def test_force_diffs_an_unrelated_pair_anyway(self):
         old = make_export(self.path("a.zip"), CHAT,

@@ -376,7 +376,8 @@ def diagnose_pair(old_messages, new_messages):
     `--force`, which is what makes naming the cause worth the lines.
     """
     if not old_messages or not new_messages:
-        return None
+        return ("one of the two exports parses to no message at all, so nothing in it "
+                "vouches for the pair — that file is probably not a transcript.")
 
     def body_of(message):
         return " ".join(message.body.split())
