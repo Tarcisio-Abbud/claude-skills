@@ -346,14 +346,14 @@ measured it.
   recalibrates `max-local-subagents` against the same ledger; this file names it and does not
   duplicate it.
   **The RAM axis is READ at each fire, and the site key is what it falls back to.**
-  `../../bin/tk-ram` takes this container's own cgroup — `memory.max`, less a reserve, less
-  `anon` and `memory.swap.current` — divides by the 0.74 GiB an agent was measured to cost,
-  and prints the fit, clamped to `[1, 3]`. A fire dispatches no more LOCAL runs than that
+  `../../bin/tk-ram` reads this container's own cgroup — `memory.max`, less a reserve, less
+  `anon` and `memory.swap.current` — divides that by the 0.74 GiB an agent was measured to
+  cost, and prints the fit, clamped to `[1, 3]`. A fire dispatches no more LOCAL runs than that
   line allows, whatever the site key holds: the key is one moment's occupancy written down,
   and the occupancy is what moves between packages — nine live sessions and an empty
   container read the same 2 otherwise, and one of the two readings OOMs. The line it printed
-  goes in the ledger (`LEDGER.md`, the `<event>` field) so that a later reader can tell a
-  reading from a default. Where the bin refuses — exit 2 — `max-local-subagents` is the
+  goes in the package ledger's `<event>` field, so that a later reader can tell a reading
+  from a default. Where the bin refuses — exit 2 — `max-local-subagents` is the
   number and the ledger line says the reading failed. **The harness's own low-memory warning
   does not cover this**: 2.1.274 reads `/proc/meminfo`, which inside a container is the
   HOST's, and is blind to the cgroup that actually kills the run.

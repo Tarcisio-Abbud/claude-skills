@@ -269,8 +269,17 @@ class WhatIsDisclosedRatherThanRefused(RamFixture):
     def test_a_cgroup_given_on_the_flag_is_not_checked_against_proc(self):
         """The check answers "is the DEFAULT the right directory". A caller who
         named one has already answered it, and warning there would train the
-        reader to ignore the line that matters."""
+        reader to ignore the line that matters.
+
+        `SELF_CGROUP` is pointed at a NESTED reading here on purpose: left at
+        the real one, which reads `0::/` in this container, the check returns
+        quietly for its own reason and the test passes whether or not the flag
+        is honoured."""
         module = load_bin()
+        path = os.path.join(self.tmp.name, "self-cgroup")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("0::/system.slice/docker-abc.scope\n")
+        module.SELF_CGROUP = path
         captured = []
         module.note = captured.append
         module.own_cgroup_check("/elsewhere")

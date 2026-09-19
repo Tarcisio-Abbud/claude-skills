@@ -85,6 +85,8 @@ FIT_CEILING = 3                       # the top no measurement passed
 
 SITE_KEY = "max-local-subagents"
 
+BOM = "\ufeff"                  # a byte-order mark glued to a key; `str.strip()` leaves it
+
 
 class Parser(argparse.ArgumentParser):
     """Usage errors exit 64, not argparse's 2 — which is "no number" here."""
@@ -137,7 +139,7 @@ def read_text(path, missing_ok=False):
 
 def byte_count(text, path):
     """The single byte count a cgroup file holds, refusing anything else."""
-    value = text.strip().lstrip("﻿").strip()
+    value = text.strip().lstrip(BOM).strip()
     if not value.isdigit():
         no_number(f"{plain(path)} holds {plain(value)!r}, which is not a byte count")
     return int(value)
@@ -146,7 +148,7 @@ def byte_count(text, path):
 def memory_max(directory):
     """This cgroup's ceiling in bytes, refusing `max` — there is nothing to divide."""
     path = os.path.join(directory, "memory.max")
-    value = read_text(path).strip().lstrip("﻿").strip()
+    value = read_text(path).strip().lstrip(BOM).strip()
     if value == "max":
         no_number(f"{plain(path)} says `max`: this cgroup has no memory ceiling, "
                   "so there is nothing to divide")
@@ -163,7 +165,7 @@ def anon_bytes(directory):
     path = os.path.join(directory, "memory.stat")
     for line in read_text(path).splitlines():
         key, _, value = line.strip().partition(" ")
-        if key.lstrip("﻿") == "anon":
+        if key.lstrip(BOM) == "anon":
             return byte_count(value, path)
     no_number(f"{plain(path)} has no `anon` line — is this cgroup v2?")
 
