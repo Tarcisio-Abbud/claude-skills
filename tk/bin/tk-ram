@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""tk-ram — how many local subagents this container's cgroup can still hold.
+
+WHY IT EXISTS: the local ceiling was a CONSTANT. `max-local-subagents` in
+`~/.claude/tk/env` is 2, and the 2026-09-08 measurement behind it is sound — but
+it is a snapshot of one moment's occupancy, and the occupancy is what moves. A
+package that opens with nine live sessions in the container and one that opens
+with none read the same 2, and one of the two readings is wrong in the direction
+that OOMs.
+
+WHAT THE HARNESS'S OWN WARNING SEES INSTEAD: Claude Code 2.1.274 warns on low
+memory from `/proc/meminfo`, which inside a container is the HOST's, not the
+cgroup's. On this machine `free -h` reports the ZimaOS host's RAM while the
+container runs under `memory.max = 4 GiB`. The warning is therefore blind to the
+only ceiling that can kill a run here, and a package cannot wait for it.
+
+THE NUMBER IS `anon + swap`, NOT `memory.current`. `memory.current` counts page
+cache, which the kernel reclaims under pressure; read as residency it charges the
+package for file cache it would get back for free, and refuses dispatches that
+would have fit. `~/.claude/tk/env` names this as the first of the two
+reservations its own calibration left open, and this is where it is settled:
+`anon` from `memory.stat` is what an agent actually holds, and `memory.swap.current`
+is the part of it that was pushed out — counted, because a swapped agent is an
+agent whose memory still has to be paid back.
+
+THE ARITHMETIC, and where every constant came from — all three from the
+measurement recorded in `~/.claude/tk/env` under `max-local-subagents`, 780
+samples at 20s under a real afk package on 2026-09-08:
+
+    fit = floor((memory.max - RESERVE - anon - swap) / PER_AGENT)
+
+- `PER_AGENT` = 0.74 GiB: (3.12 - 1.64)/2, the peak over the idle baseline
+  across two concurrent Opus agents. It is a CEILING per agent, not a mean —
+  it absorbs the orchestrator's own active work as well.
+- `RESERVE` = 0.5 GiB: the headroom the same calibration kept off the top.
+- The clamp `[1, 3]` is the part no measurement passed, and it is a clamp
+  precisely because of that. The env file's second open reservation is the split
+  of that 0.74 GiB between the orchestrator and the agent, "é ele que decide se 3
+  caberia" — so 3 is the top this bin will print, and an empty container that
+  divides out to 4 or 5 still gets 3. At the other end the bin never prints 0:
+  "dispatch nothing" is the quota floor's verdict and the wall's, both of which
+  read other sensors, and a RAM reading that returns 0 would silently take that
+  decision from them. A raw fit at or below zero is DISCLOSED on stderr instead,
+  so a caller that wants to stop there can.
+
+WHAT IT DOES NOT SEE: a ceiling on an ANCESTOR cgroup — it reads the one
+directory it is pointed at — and the difference between an agent and anything
+else holding anonymous memory. It answers "how much room is there", never "who
+took it".
+
+WHICH DIRECTORY IS THE RIGHT ONE. The default is `/sys/fs/cgroup`, which inside
+its own cgroup namespace IS the container's own cgroup: `/proc/self/cgroup` reads
+`0::/` here. Where it reads anything else, this process sits in a sub-cgroup, the
+default directory is somebody else's, and the bin says so on stderr rather than
+printing a number quietly taken from the wrong file. `--cgroup DIR` is then the
+answer, and it is also how the suite runs this without a container.
+
+WHEN IT REFUSES, the caller falls back on `max-local-subagents` from the site
+file and says in the package ledger that the reading failed. A refusal is not a
+reason to guess a number here: the site key is a measured one.
+
+Usage:  tk-ram [--cgroup DIR]
+Exit:   0 a number was printed · 2 no number · 64 bad usage
+"""
+
+import argparse
+import math
+import os
+import re
+import sys
+
+EXIT_OK = 0
+EXIT_NO_NUMBER = 2
+EXIT_USAGE = 64                       # sysexits.h EX_USAGE; argparse's own 2 collides
+
+CGROUP = "/sys/fs/cgroup"
+SELF_CGROUP = "/proc/self/cgroup"
+OWN_CGROUP = "0::/"                   # what SELF_CGROUP reads in its own namespace
+
+GIB = 1024 ** 3
+RESERVE = 0.5 * GIB                   # headroom kept off memory.max
+PER_AGENT = 0.74 * GIB                # ceiling per agent, not a mean; see the banner
+FIT_FLOOR = 1                         # never 0: that verdict belongs to the quota floor
+FIT_CEILING = 3                       # the top no measurement passed
+
+SITE_KEY = "max-local-subagents"
+
+
+class Parser(argparse.ArgumentParser):
+    """Usage errors exit 64, not argparse's 2 — which is "no number" here."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        sys.exit(EXIT_USAGE)
+
+
+def plain(value):
+    """A value from outside this process, safe to print to a terminal."""
+    return re.sub(r"[\x00-\x1f\x7f]", "?", str(value))
+
+
+def no_number(msg):
+    """Stop with code 2, and say what the caller owes instead of the number."""
+    print(f"tk-ram: {msg}", file=sys.stderr)
+    print(f"tk-ram: no number — fall back on `{SITE_KEY}` in ~/.claude/tk/env "
+          "and say in the package ledger that the reading failed", file=sys.stderr)
+    sys.exit(EXIT_NO_NUMBER)
+
+
+def note(msg):
+    """Disclose something the caller should know, without refusing the number."""
+    print(f"tk-ram: {msg}", file=sys.stderr)
+
+
+def read_text(path, missing_ok=False):
+    """The file's text, or None where `missing_ok` and it is not there.
+
+    GUARDING THE PARSE IS NOT GUARDING THE OPEN. Under `/sys/fs/cgroup` a name
+    can be a directory, and under a `--cgroup` fixture it can be a FIFO — which
+    does not raise, it BLOCKS, and the command stops with nothing on screen. So
+    the regular-file question is asked before the open, and the open itself is
+    `utf-8-sig`, with `OSError` and `UnicodeDecodeError` caught beside it.
+    """
+    if not os.path.exists(path):
+        if missing_ok:
+            return None
+        no_number(f"{plain(path)} is not there — is this a cgroup v2 directory?")
+    if not os.path.isfile(path):
+        no_number(f"{plain(path)} is not a regular file")
+    try:
+        with open(path, encoding="utf-8-sig") as handle:
+            return handle.read()
+    except (OSError, UnicodeDecodeError) as exc:
+        no_number(f"cannot read {plain(path)}: {plain(exc)}")
+
+
+def byte_count(text, path):
+    """The single byte count a cgroup file holds, refusing anything else."""
+    value = text.strip().lstrip("﻿").strip()
+    if not value.isdigit():
+        no_number(f"{plain(path)} holds {plain(value)!r}, which is not a byte count")
+    return int(value)
+
+
+def memory_max(directory):
+    """This cgroup's ceiling in bytes, refusing `max` — there is nothing to divide."""
+    path = os.path.join(directory, "memory.max")
+    value = read_text(path).strip().lstrip("﻿").strip()
+    if value == "max":
+        no_number(f"{plain(path)} says `max`: this cgroup has no memory ceiling, "
+                  "so there is nothing to divide")
+    return byte_count(value, path)
+
+
+def anon_bytes(directory):
+    """The `anon` line of `memory.stat` — the resident half of the reading.
+
+    Located by its KEY and never by its position: `memory.stat` grows keys
+    between kernel versions, and a reader keyed on line 1 reports whatever the
+    kernel put there, as a number, in the direction that authorises dispatches.
+    """
+    path = os.path.join(directory, "memory.stat")
+    for line in read_text(path).splitlines():
+        key, _, value = line.strip().partition(" ")
+        if key.lstrip("﻿") == "anon":
+            return byte_count(value, path)
+    no_number(f"{plain(path)} has no `anon` line — is this cgroup v2?")
+
+
+def swap_bytes(directory):
+    """`memory.swap.current`, or 0 where the swap controller is off.
+
+    Absent is DISCLOSED, not refused: a cgroup v2 built without the swap
+    controller has no such file, this site measured swap at 0 throughout, and
+    refusing here would cost the number over a zero.
+    """
+    path = os.path.join(directory, "memory.swap.current")
+    text = read_text(path, missing_ok=True)
+    if text is None:
+        note(f"{plain(path)} is absent (swap controller off) — counted as 0")
+        return 0
+    return byte_count(text, path)
+
+
+def own_cgroup_check(directory):
+    """Say so when the default directory is not this process's own cgroup."""
+    if directory != CGROUP:
+        return
+    text = read_text(SELF_CGROUP, missing_ok=True)
+    if text is None or text.strip() == OWN_CGROUP:
+        return
+    note(f"{plain(SELF_CGROUP)} reads {plain(text.strip())}, not {OWN_CGROUP} — "
+         f"{CGROUP} is not this process's own cgroup; pass --cgroup DIR")
+
+
+def gib(value):
+    return f"{value / GIB:.2f} GiB"
+
+
+def report(ceiling, anon, swap):
+    """The fit and the line that carries it. One line, pasted whole.
+
+    Every number that went into the division is named, because the ledger line
+    this lands on is read months later by somebody who cannot re-run the
+    reading: a bare `2` there is indistinguishable from a guess, and the clamp
+    makes `2` reachable from arithmetic that never got near it.
+    """
+    free = ceiling - RESERVE - anon - swap
+    raw = free / PER_AGENT
+    fit = math.floor(raw)
+    clamped = min(FIT_CEILING, max(FIT_FLOOR, fit))
+    line = (f"tk-ram: {clamped} agents fit now ({gib(ceiling)} max, {gib(anon)} anon, "
+            f"{gib(swap)} swap, {gib(RESERVE)} reserve, {gib(PER_AGENT)} per agent "
+            f"-> {raw:.2f}")
+    if fit > FIT_CEILING:
+        line += f", capped at {FIT_CEILING}"
+    elif fit < FIT_FLOOR:
+        line += f", raised to {FIT_FLOOR}"
+    return line + ")", fit
+
+
+def main(argv=None):
+    parser = Parser(description="how many local subagents this cgroup can hold now")
+    parser.add_argument("--cgroup", default=CGROUP,
+                        help=f"the cgroup v2 directory to read (default {CGROUP})")
+    args = parser.parse_args(argv)
+
+    directory = args.cgroup
+    if not os.path.isdir(directory):
+        no_number(f"{plain(directory)} is not a directory")
+    own_cgroup_check(directory)
+
+    line, fit = report(memory_max(directory), anon_bytes(directory),
+                       swap_bytes(directory))
+    print(line)
+    if fit < FIT_FLOOR:
+        note(f"the raw fit was {fit} — the floor of {FIT_FLOOR} is a clamp and not a "
+             "measurement that one agent fits; dispatching nothing is a verdict this "
+             "bin does not give")
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())
