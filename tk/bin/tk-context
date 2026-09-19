@@ -70,9 +70,20 @@ shipped binary on 2026-09-09 (2.1.266): the resolver takes the environment
 first and the settings key second, both bounded to 100,000-1,000,000 tokens,
 and the threshold is `window - min(max output tokens, 20,000)`.
 
+WHOSE `.claude/settings*.json` THE PROJECT PAIR IS. The session's, read from the
+directory the session was OPENED in — the first `cwd` its transcript records —
+and never the directory this command happens to be run from. The two part the
+moment a seam calls from a worktree: measured 2026-09-17 (T421), a tick run from
+`/workspace/projects/.worktrees/...` found no project pair at all and reported
+the 1,000,000 default, while the harness went on compacting that session at the
+300,000 its project settings carried. A window overstated by 700,000 is a
+handoff that never fires. So `--window` names the directory it resolved, and
+says whether that came from the transcript or from the caller.
+
 WHY A CHANNEL OF ITS OWN, and not one wider line. The bare invocation is read
 by seams that compare or pipe it, so stdout stays `<n> tokens in context` and
-nothing else; the window and the threshold go to stderr, as `--curve` does.
+nothing else; the window, the threshold and the directory the project pair came
+from go to stderr, as `--curve` does.
 
 NO KEY IS NOT "NO NUMBER". Exit 2 means one thing here — the transcript holds
 no token count — and `WINDOW.md` spends it as a licence to decide by judgement.
@@ -124,14 +135,15 @@ WINDOW_DEFAULT = 1_000_000
 SUMMARY_BUFFER = 20_000
 
 # Where the merged settings live, in the order the harness merges them: the later
-# file wins. The project pair is resolved from the CWD, and the harness resolves
-# it from the directory the session was opened in — the two agree while the caller
-# runs this from that directory, and the tick of `WINDOW.md` does. Read from
-# anywhere else, the user file is still seen and the project pair is missed, which
-# understates nothing: an unreadable key falls through to the default and says so.
-SETTINGS_FILES = ("~/.claude/settings.json",
-                  ".claude/settings.json",
-                  ".claude/settings.local.json")
+# file wins. The user file is absolute; the project pair is relative, and what it
+# is relative TO is the SESSION's own directory — the `cwd` its transcript records
+# — never the directory this command was called from. The two part the moment the
+# call comes from a worktree: measured 2026-09-17, the tick ran from
+# `/workspace/projects/.worktrees/...`, missed the project pair holding 300,000
+# and reported the 1,000,000 default, while the harness went on compacting the
+# session at the project's own window.
+USER_SETTINGS = "~/.claude/settings.json"
+PROJECT_SETTINGS = (".claude/settings.json", ".claude/settings.local.json")
 
 
 class Occupancy(NamedTuple):
@@ -264,7 +276,47 @@ def occupancies(path):
     return out
 
 
-def settings_value():
+def session_dir(path):
+    """The directory the session was OPENED in, as its transcript records it.
+
+    The FIRST record carrying a `cwd`, never the last. The field travels with
+    what the session is DOING — it moves into a worktree, a subdirectory, a
+    sibling repo, and back — while the harness resolved the project settings
+    once, when the session opened. Measured over the 443 transcripts on this
+    host, 2026-09-19: every one carries a `cwd`, and the first one matches the
+    name of the project directory the file sits in, which is that same opening
+    directory with its separators encoded.
+
+    None when nothing in the file says: the caller then falls back to its own
+    directory and SAYS it did, because an unannounced fallback is the defect
+    this function exists to close.
+    """
+    try:
+        with open(path, errors="replace") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    record = None
+                cwd = record.get("cwd") if isinstance(record, dict) else None
+                if isinstance(cwd, str) and cwd:
+                    return cwd
+    except OSError:
+        return None
+    return None
+
+
+def settings_files(base):
+    """Every file of the merge, oldest precedence first, as paths.
+
+    `base` is the session's own directory. The user file ignores it; the project
+    pair is nothing but that directory plus a name.
+    """
+    return [os.path.expanduser(USER_SETTINGS)] + [os.path.join(base, name)
+                                                  for name in PROJECT_SETTINGS]
+
+
+def settings_value(base):
     """`autoCompactWindow` from the merged settings, and the file it came from.
 
     Guarding the parse is not guarding the open: a settings path can be a
@@ -274,8 +326,7 @@ def settings_value():
     can read must not take down the number the caller actually asked for.
     """
     found = (None, None)
-    for name in SETTINGS_FILES:
-        path = os.path.expanduser(name)
+    for path in settings_files(base):
         if not os.path.isfile(path):
             continue
         try:
@@ -288,7 +339,7 @@ def settings_value():
     return found
 
 
-def effective_window():
+def effective_window(base):
     """(tokens, where it came from, whether it was configured at all).
 
     The order is the harness's: the environment variable beats the key, the key
@@ -307,7 +358,7 @@ def effective_window():
         if asked is not None and WINDOW_FLOOR <= asked <= WINDOW_CEILING:
             return asked, f"the environment ({WINDOW_ENV})", True
 
-    value, path = settings_value()
+    value, path = settings_value(base)
     if isinstance(value, bool):
         value = None                  # `isinstance(True, int)` is true in Python
     if isinstance(value, int) and WINDOW_FLOOR <= value <= WINDOW_CEILING:
@@ -319,14 +370,17 @@ def effective_window():
     return WINDOW_DEFAULT, "the harness DEFAULT", False
 
 
-def print_window():
+def print_window(base, base_source):
     """The window and the threshold, on stderr, said as what they are.
 
     Two lines and not one: a seam that reads the window without the threshold
     compares its tokens against the wrong number, and the difference is the
-    whole buffer.
+    whole buffer. A third line names the directory the project pair was
+    resolved from and how it was chosen — the reading changes with that
+    directory, and a reader who cannot see which one was used cannot tell a
+    window read from the session's settings from the harness's default.
     """
-    window, source, configured = effective_window()
+    window, source, configured = effective_window(base)
     said = f"window {window} tokens, from {source}"
     if not configured:
         said += (f" — no {WINDOW_ENV} and no readable `{WINDOW_KEY}`; `auto` "
@@ -335,6 +389,8 @@ def print_window():
     print(f"tk-context: the harness compacts above {window - SUMMARY_BUFFER} "
           f"tokens (window less {SUMMARY_BUFFER} of summary buffer)",
           file=sys.stderr)
+    print(f"tk-context: project settings read from {plain(base)} "
+          f"({base_source})", file=sys.stderr)
 
 
 def print_curve(points):
@@ -406,7 +462,16 @@ def main(argv=None):
         print(f"tk-context: read from the compaction at {plain(last.stamp)[:19]}, "
               "not from an API response", file=sys.stderr)
     if args.window:
-        print_window()
+        # The window belongs to the SESSION, so its project settings are read
+        # from the session's own directory and not from wherever this command
+        # was called. The fallback is the caller's directory, and it is named
+        # as such: it is a guess, and the guess is what was wrong before.
+        base = session_dir(path)
+        base_source = "the session's own directory, from the transcript"
+        if base is None:
+            base = os.getcwd()
+            base_source = "the CALLER's directory — the transcript records none"
+        print_window(base, base_source)
     if args.curve:
         print_curve(points)
     return EXIT_OK

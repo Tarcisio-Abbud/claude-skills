@@ -90,6 +90,23 @@ W_AUTO = ("TheWindowChannel."
 W_DIR = "TheWindowChannel.test_a_settings_path_that_is_a_directory_costs_the_caller_nothing"
 W_HALF = "TheWindowChannel.test_a_half_written_settings_file_costs_the_caller_nothing"
 
+D_SESSION = ("TheDirectoryTheProjectPairComesFrom."
+             "test_the_session_directory_and_not_the_callers_decides_the_window")
+D_CALLER = ("TheDirectoryTheProjectPairComesFrom."
+            "test_a_settings_pair_in_the_callers_directory_does_not_win")
+D_FIRST = ("TheDirectoryTheProjectPairComesFrom."
+           "test_the_first_recorded_directory_wins_over_one_the_session_moved_to")
+D_PRINTED = ("TheDirectoryTheProjectPairComesFrom."
+             "test_the_directory_and_where_it_came_from_are_both_printed")
+D_FALLBACK = ("TheDirectoryTheProjectPairComesFrom."
+              "test_a_transcript_recording_no_directory_falls_back_and_says_so")
+D_USER_FILE = ("TheDirectoryTheProjectPairComesFrom."
+               "test_the_user_file_is_absolute_and_is_still_read")
+D_FLAT_DIR = ("TheDirectoryTheProjectPairComesFrom."
+              "test_a_directory_carrying_an_escape_is_printed_flat")
+D_BARE = ("TheDirectoryTheProjectPairComesFrom."
+          "test_without_the_flag_the_directory_is_not_resolved_or_printed")
+
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
     # -- the number itself ---------------------------------------------------
@@ -297,10 +314,8 @@ from the statusline at that seam""",
      [W_CHANNEL], CONTEXT),
 
     ("the window prints whether or not it was asked for",
-     """    if args.window:
-        print_window()""",
-     """    if True:
-        print_window()""",
+     "        print_window(base, base_source)",
+     "    print_window(os.getcwd(), 'the CALLER')  # noqa",
      [W_OFF], CONTEXT),
 
     ("--window rescues a run that has no number, and the licence is lost",
@@ -311,7 +326,7 @@ from the statusline at that seam""",
      [W_NO_TOKEN], CONTEXT),
 
     ("the settings key is never read, so the harness's own window is invisible",
-     "    value, path = settings_value()",
+     "    value, path = settings_value(base)",
      "    value, path = None, None",
      [W_KEY], CONTEXT),
 
@@ -334,6 +349,58 @@ from the statusline at that seam""",
      "    if isinstance(value, int) and WINDOW_FLOOR <= value <= WINDOW_CEILING:",
      "    if isinstance(value, int):",
      [W_BOUNDS], CONTEXT),
+
+    # -- which directory the project pair is read from -----------------------
+    #
+    # The shipped defect is the first entry: the pair resolved against whatever
+    # directory the command was called from. It stayed invisible while every
+    # caller ran from the session's own directory, and cost 700,000 tokens of
+    # reported window the first time a tick ran from a worktree (T421).
+    ("the project pair is resolved from the CALLER's directory — the shipped defect",
+     "    return [os.path.expanduser(USER_SETTINGS)] + [os.path.join(base, name)\n"
+     "                                                  for name in PROJECT_SETTINGS]",
+     "    return [os.path.expanduser(USER_SETTINGS)] + list(PROJECT_SETTINGS)",
+     [D_SESSION, D_CALLER], CONTEXT),
+
+    ("the session's directory is never resolved, and the caller's stands in for it",
+     "        base = session_dir(path)",
+     "        base = None",
+     [D_SESSION, D_CALLER, D_PRINTED], CONTEXT),
+
+    ("the LAST recorded directory wins — the worktree the session wandered into",
+     """        with open(path, errors="replace") as handle:
+            for line in handle:""",
+     """        with open(path, errors="replace") as handle:
+            for line in reversed(handle.readlines()):""",
+     [D_FIRST], CONTEXT),
+
+    ("the user file is joined to the session directory, so the one file every host has vanishes",
+     "    return [os.path.expanduser(USER_SETTINGS)] + [os.path.join(base, name)",
+     "    return [os.path.join(base, USER_SETTINGS)] + [os.path.join(base, name)",
+     [D_USER_FILE], CONTEXT),
+
+    ("the directory the pair came from is never printed, so the number cannot be judged",
+     """    print(f"tk-context: project settings read from {plain(base)} "
+          f"({base_source})", file=sys.stderr)""",
+     "    pass",
+     [D_PRINTED, D_FALLBACK], CONTEXT),
+
+    ("the fallback to the caller's directory is reported as the session's own",
+     '            base_source = "the CALLER\'s directory — the transcript records none"',
+     "            pass",
+     [D_FALLBACK], CONTEXT),
+
+    ("a directory name read from the transcript reaches the terminal unstripped",
+     'print(f"tk-context: project settings read from {plain(base)} "',
+     'print(f"tk-context: project settings read from {base} "',
+     [D_FLAT_DIR], CONTEXT),
+
+    ("the directory is resolved and printed without the flag, on every bare reading",
+     """    if args.window:
+        # The window belongs to the SESSION, so its project settings are read""",
+     """    if True:
+        # The window belongs to the SESSION, so its project settings are read""",
+     [D_BARE], CONTEXT),
 
     ("the settings reader is unguarded, so a path nobody can read kills the reading",
      """        if not os.path.isfile(path):
