@@ -166,8 +166,8 @@ verbatim through `args`, and the lane contract above reaches it as a path. Pass 
 itself: a run asked to compose it returned the JSON inside a string field, and every key parsed
 as absent.
 
-Concurrent runs count against `max-local-subagents`, the RAM axis; `WINDOW.md`'s "The tick"
-owns the quota axis, `max-local-opus`. **Read it before each local dispatch:**
+`WINDOW.md`'s "The tick" owns the quota axis, `max-local-opus`; concurrent runs count against
+`max-local-subagents`, the RAM axis. **Read it before each local dispatch:**
 `../../bin/tk-ram` prints what the cgroup fits now, `LEDGER.md` takes that line, and
 exit 2 falls back on the site key. Where the harness's own cap — `min(16, nproc - 2)` — is
 smaller, the difference stays UNUSED: weigh a second workflow beside the first, never Agent

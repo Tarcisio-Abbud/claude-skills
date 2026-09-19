@@ -23,11 +23,18 @@ and the wall give and this sensor does not. Two more strip the WORDS that say a
 clamp fired: a clamped number that does not announce itself is indistinguishable
 from arithmetic, and the ledger keeps it for months.
 
-SEVEN ENTRIES MUTATE PROSE, in `skills/kickoff/AFK.md`, `WINDOW.md` and
+TEN ENTRIES MUTATE PROSE, in `skills/kickoff/AFK.md`, `WINDOW.md` and
 `LEDGER.md`. A reading nobody is told to take is a bin nobody runs, and a reading
 taken once per package is the constant this whole item replaced. The LEDGER pair
 guards the other end: a reading that is taken and then folded into `<quota>` is
 lost as a reading, and the next package starts from the site key again.
+
+THREE OF THE TEN GUARD THE BUDGET'S READING OF THE NUMBER, which is where the
+clamp turns back into the defect. The bin never prints 0, so a saturated
+container prints 1 with the clamp on stderr alone; a budget that reads the digit
+and stops dispatches one more agent into a container with nothing left. The
+third holds the fit to what a fire ADDS — `anon` already counts the runs in
+flight, so read as a live-at-once cap the same line authorises them twice.
 """
 
 import os
@@ -54,6 +61,7 @@ BY_KEY = "TheFit.test_the_anon_line_is_found_by_its_key_and_not_by_its_position"
 
 UNLIMITED = "WhenThereIsNoNumber.test_an_unlimited_cgroup_is_refused"
 NOT_BYTES = "WhenThereIsNoNumber.test_a_memory_max_that_is_not_a_byte_count_is_refused"
+NOT_INT = "WhenThereIsNoNumber.test_a_digit_int_cannot_convert_is_refused_and_not_raised"
 NO_ANON = "WhenThereIsNoNumber.test_a_memory_stat_with_no_anon_line_is_refused"
 NO_DIR = "WhenThereIsNoNumber.test_a_cgroup_directory_that_is_not_there_is_refused"
 NO_FILES = "WhenThereIsNoNumber.test_a_cgroup_directory_missing_its_files_is_refused"
@@ -70,6 +78,8 @@ USAGE = "Usage.test_an_unknown_flag_exits_sixty_four"
 VEHICLE = "TheProseThatCallsIt.test_the_vehicle_reads_the_axis_before_each_local_dispatch"
 TICK = "TheProseThatCallsIt.test_the_tick_says_the_site_key_is_the_fallback_and_not_the_reading"
 MEMINFO = "TheProseThatCallsIt.test_the_tick_says_the_harness_warning_does_not_cover_this"
+FLOOR_PROSE = "TheProseThatCallsIt.test_the_tick_says_a_printed_one_may_be_the_floor_and_not_a_fit"
+ADDS = "TheProseThatCallsIt.test_the_tick_says_the_fit_bounds_what_the_fire_adds"
 LEDGER_LINE = "TheProseThatCallsIt.test_the_ledger_takes_the_reading_on_the_dispatch_line"
 
 FREE = "    free = ceiling - RESERVE - anon - swap"
@@ -143,8 +153,12 @@ MUTATIONS = [
      [UNLIMITED], RAM),
 
     ("a cgroup file holding words is parsed anyway",
-     "    if not value.isdigit():", "    if False:",
+     "    if not value.isdecimal():", "    if False:",
      [NOT_BYTES], RAM),
+
+    ("the guard is `isdigit`, so a digit `int()` refuses dies with a traceback",
+     "    if not value.isdecimal():", "    if not value.isdigit():",
+     [NOT_INT], RAM),
 
     ("a memory.stat with no anon line is read as an empty container",
      '    no_number(f"{plain(path)} has no `anon` line — is this cgroup v2?")',
@@ -224,6 +238,21 @@ MUTATIONS = [
      "blind to the cgroup that actually kills the run.",
      "the harness warns on low memory before it matters.",
      [MEMINFO], WINDOW),
+
+    ("the budget reads the printed 1 as a fit, so the floor dispatches into a full container",
+     "**A printed `1` may be the floor and not a fit.**",
+     "The number it prints is the fit.",
+     [FLOOR_PROSE], WINDOW),
+
+    ("the budget names the clamp and never says what the fire owes when it fires",
+     "the fire dispatches nothing local and the ledger line\n  carries that stderr line",
+     "the fire may still dispatch one and the ledger line\n  carries that stderr line",
+     [FLOOR_PROSE], WINDOW),
+
+    ("the fit reads as how many may be alive at once, not as the room left",
+     "the fit bounds what this fire ADDS, never what may be\n  alive at once",
+     "the fit is how many may be\n  alive at once",
+     [ADDS], WINDOW),
 
     ("the ledger admits no reading, so it is taken and then lost",
      "the line `../../bin/tk-ram` printed for it",

@@ -215,6 +215,15 @@ class WhenThereIsNoNumber(RamFixture):
         run = self.refused(max_text="four gigabytes\n")
         self.assertIn("not a byte count", run.stderr)
 
+    def test_a_digit_int_cannot_convert_is_refused_and_not_raised(self):
+        """`str.isdigit()` is true of `²`, and `int("²")` then raises. A guard
+        written on `isdigit` lets that value past and the command dies with a
+        traceback and exit 1 — which is neither the number nor the exit 2 the
+        caller's fallback hangs on, so the fire reads an unknown code."""
+        run = self.refused(max_text="²\n")
+        self.assertIn("not a byte count", run.stderr)
+        self.assertNotIn("Traceback", run.stderr)
+
     def test_a_memory_stat_with_no_anon_line_is_refused(self):
         run = self.refused(stat="file 12\nkernel 34\n")
         self.assertIn("no `anon` line", run.stderr)
@@ -349,6 +358,30 @@ class TheProseThatCallsIt(unittest.TestCase):
         body = self.read("WINDOW.md")
         self.assertIn("/proc/meminfo", body)
         self.assertIn("blind to the cgroup", body)
+
+    def test_the_tick_says_a_printed_one_may_be_the_floor_and_not_a_fit(self):
+        """The bin never prints 0 — that verdict belongs to the quota floor and
+        the wall — so a saturated container still reads `1`, and the clamp is
+        disclosed on stderr and nowhere else. A budget told only to dispatch no
+        more than the line allows then puts one more agent into a container with
+        nothing left: the OOM this item exists to prevent, arriving through the
+        floor."""
+        body = self.read("WINDOW.md")
+        self.assertIn("may be the floor and not a fit", body,
+                      "the budget reads the printed 1 as a measurement, and the "
+                      "clamp lives on a stderr line nobody is told to read")
+        self.assertIn("the fire dispatches nothing local", body,
+                      "the budget names the clamp without saying what the fire "
+                      "owes when the clamp is what printed the number")
+
+    def test_the_tick_says_the_fit_bounds_what_the_fire_adds(self):
+        """`anon` already holds the running agents' memory, so the fit is the
+        room LEFT. Read instead as how many may be alive at once it is a
+        different number, and the two differ by exactly the runs in flight."""
+        self.assertIn("the fit bounds what this fire ADDS", self.read("WINDOW.md"),
+                      "the budget does not say whether the fit is a total or a "
+                      "remainder, and a fire with runs in flight tops them up "
+                      "to a number that already counted them")
 
     def test_the_ledger_takes_the_reading_on_the_dispatch_line(self):
         body = self.read("LEDGER.md")

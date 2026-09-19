@@ -372,9 +372,10 @@ tk/
                                   with whatever the machine is doing — plus the doc
                                   conformance of the three files that call it
   tests/mutations_tk_ram.py       its mutations — every operand of the division removed in
-                                  turn, the clamp stripped at both ends, and seven on the
+                                  turn, the clamp stripped at both ends, and ten on the
                                   prose, since a reading nobody is told to take is a bin
-                                  nobody runs
+                                  nobody runs, and a clamp the budget reads as a fit
+                                  dispatches into a full container
   tests/mutations_compact_hooks.py
                                   their mutations — the mark hook's silence, its event
                                   line's seven fields, and the pointer hook's guard and

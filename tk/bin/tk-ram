@@ -138,9 +138,15 @@ def read_text(path, missing_ok=False):
 
 
 def byte_count(text, path):
-    """The single byte count a cgroup file holds, refusing anything else."""
+    """The single byte count a cgroup file holds, refusing anything else.
+
+    `isdecimal` and NOT `isdigit`: the latter is true of `²` and of the other
+    numeric characters `int()` then refuses, so the command would die with a
+    traceback and exit 1 — neither the number nor the exit 2 the caller was
+    told to fall back from.
+    """
     value = text.strip().lstrip(BOM).strip()
-    if not value.isdigit():
+    if not value.isdecimal():
         no_number(f"{plain(path)} holds {plain(value)!r}, which is not a byte count")
     return int(value)
 

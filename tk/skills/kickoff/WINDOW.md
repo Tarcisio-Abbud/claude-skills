@@ -351,9 +351,13 @@ measured it.
   cost, and prints the fit, clamped to `[1, 3]`. A fire dispatches no more LOCAL runs than that
   line allows, whatever the site key holds: the key is one moment's occupancy written down,
   and the occupancy is what moves between packages — nine live sessions and an empty
-  container read the same 2 otherwise, and one of the two readings OOMs. The line it printed
-  goes in the package ledger's `<event>` field, so that a later reader can tell a reading
-  from a default. Where the bin refuses — exit 2 — `max-local-subagents` is the
+  container read the same 2 otherwise, and one of the two readings OOMs. The running agents'
+  memory is already in `anon`, so the fit bounds what this fire ADDS, never what may be
+  alive at once. **A printed `1` may be the floor and not a fit.** The bin never prints 0 —
+  dispatching nothing is the quota floor's verdict and the wall's — so where its stderr says
+  the raw fit was at or below zero, the fire dispatches nothing local and the ledger line
+  carries that stderr line beside the number. The line it printed goes in the package
+  ledger's `<event>` field, so that a later reader can tell a reading from a default. Where the bin refuses — exit 2 — `max-local-subagents` is the
   number and the ledger line says the reading failed. **The harness's own low-memory warning
   does not cover this**: 2.1.274 reads `/proc/meminfo`, which inside a container is the
   HOST's, and is blind to the cgroup that actually kills the run.
