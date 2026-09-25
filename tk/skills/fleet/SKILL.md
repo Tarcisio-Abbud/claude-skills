@@ -254,11 +254,12 @@ fleet's own:
 **The quota wall is the FLEET's, not one project's.** Quota is one window across every run on
 this machine. A run returning a quota failure is reporting a fact about the fleet.
 
-- **On a 5-hour wall, stop dispatching new projects and keep the tick.** At the reset it resumes
-  the runs the wall stopped (`../kickoff/WINDOW.md`, *Who meets the wall on the main thread is
+- **On a 5-hour wall, stop dispatching new projects and keep the tick.** After the reset it
+  resumes the killed runs (`../kickoff/WINDOW.md`, *Who meets the wall on the main thread is
   the tick*), and the refill goes on from there.
-- **Close only on the weekly wall or the 80% weekly ceiling above**, by step 6, naming the reset
-  time the error carried, and delete the tick as *The tick* disarms it.
+- **On a quota failure, close only on the weekly wall or the weekly ceiling above**, by step 6,
+  naming the reset time the error carried. The weekly wall deletes the tick
+  (`../kickoff/WINDOW.md`, *The tick*).
 
 Each project run still carries `../kickoff/WINDOW.md` for itself, at `--budget 1` — its own
 handoff, its claims, its pushed tree. The fleet writes none of those. It stops sending work,

@@ -1,9 +1,11 @@
 # The package ledger: one line per event, and the lane restart
 
-`RESUME.md` beside this file resumes a GENERATION of the orchestrator; the recipe here resumes
+`RESUME.md` beside this file resumes a GENERATION of the orchestrator; the recipe here restarts
 one LANE, inside a generation that is still alive. The two are read at different moments and
 one is not a fallback for the other: a generation that died reads `RESUME.md` first, and the
-lane restart below is what it then runs per dead lane.
+lane restart below is what it then runs per killed lane. A live generation resumes a killed
+lane by `SendMessage` first, and restarts it only where that finds no agent or no work
+(`WINDOW.md`, *Who meets the wall on the main thread is the tick*).
 
 Read from `WINDOW.md` beside this file, by the ORCHESTRATOR. What lives here is the FORMAT and
 the recipe. The ledger itself is a file of the run's own outbox, one per package, and nothing
@@ -102,13 +104,15 @@ The `state` cell takes one of four, in the order a lane passes through them:
 4. **verdict** — the review reported. The word is the colour `REVIEW-CONTRACT.md` beside this
    file assigns, and this table takes it from there rather than minting one of its own.
 
-A lane whose run died has no fifth state: it goes back to **alive** when the restart below is
-dispatched, and the death is an event line, where its hour and its quota reading are.
+A lane whose run was killed has no fifth state: it goes back to **alive** when `SendMessage`
+resumes it, or when the restart below is dispatched, and the kill is an event line, where its
+hour and its quota reading are.
 
 ## The lane restart
 
-The prompt that resumes one dead lane. It reconstructs nothing: what the lane did is on the
-remote, and why it stopped is in the ledger. Fill the slots and paste it.
+The prompt that restarts one killed lane that `SendMessage` could not resume. It reconstructs
+nothing: what the lane did is on the remote, and why it stopped is in the ledger. Fill the
+slots and paste it.
 
 ```
 RESUME.md resumes the orchestrator's GENERATION; this resumes one LANE of a live generation.

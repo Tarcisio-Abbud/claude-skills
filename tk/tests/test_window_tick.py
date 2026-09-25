@@ -340,7 +340,7 @@ class TheWaitingState(DocTest):
                       "the crons are the motor of the spend, and nothing here "
                       "turns them off")
         self.assertIn("the hour read from `date`", body)
-        self.assertIn("the command that turns the tick back on, ready to paste", body,
+        self.assertIn("Re-arming is a `CronCreate` the session makes itself", body,
                       "a state with no exit is a package that ends here")
 
     def test_goal_check_has_two_exits_and_the_three_rejection_rule(self):
