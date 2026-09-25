@@ -1,0 +1,8 @@
+{
+  "name": "contrato",
+  "version": "1.0.0",
+  "description": "Reviews a Brazilian contract along ten method lenses plus a critic, verifies only the altas a single lens raised, and writes one report: ranked findings with ready-to-paste wording, at most ten questions for a lawyer, and a negotiation table. A second invocation applies the chosen findings to the text under a word budget. Works both ways: a draft we wrote, or one we received.",
+  "author": {
+    "name": "Tarcisio-Abbud"
+  }
+}

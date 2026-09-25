@@ -1,0 +1,884 @@
+#!/usr/bin/env python3
+"""Mutation harness for `tk-contract` — puts each defect back; every test must fall.
+
+Run: python3 tk/tests/mutations_tk_contract.py
+
+A test that passes with its defect restored guards nothing, and reading the test
+cannot tell you which it is. So each entry below restores one defect in a COPY
+of `tk/`, runs only the tests named for it, and requires each of them to fail.
+A mutation that SURVIVES is a hole in the suite, not a pass.
+
+WHY THIS IS A SECOND FILE, beside `mutations.py`. That harness is the same idea
+and predates this one, but its runner names its test module inline
+(`test_tk_queue.<class>`) and its entries live in one hardcoded list, so there
+is no seam a sibling suite can enter through. Appending here would have meant
+editing a file another slice is holding. The runner below therefore takes the
+test module and the entry list as ARGUMENTS — which is the seam the two files
+need to become one, whenever someone unifies them: `mutations.py` can import
+`run` from here and pass its own list, and nothing about its entries changes.
+
+An entry is `(label, old, new, [tests that must fail])`, plus an optional 5th
+element naming the source file the anchor lives in, relative to `tk/` (default
+`bin/tk-contract`) — the same shape the older harness grew for `bin/tk_site.py`.
+
+The anchor is a plain SUBSTRING and it must match EXACTLY ONCE: zero matches
+means the code moved out from under the entry, more than one means the mutation
+is not the one described. Both are reported as UNRUNNABLE and fail the run —
+an anchor that quietly stopped matching is a test nobody is proving any more.
+
+Some entries below mutate THIS file, which puts a trap in the way: a short
+anchor also matches inside its own entry literal, and the count check calls it
+UNRUNNABLE. An anchor spanning a line break escapes it, because a `\n` written
+in an entry is two characters in the file and never a newline.
+
+TWO HOLES A 100% SCORE CANNOT SHOW, both reported beside the score. UNPROVED
+names a test no entry mutates. UNREACHED names a SOURCE LINE that no test input
+executes at all — measured by running the baseline under a probe (see
+`reach_tracer.py`) and subtracting what ran from what can run. A guard nobody
+reaches is invisible to `87/87 killed`, because the score counts the mutants
+somebody wrote. UNREACHED reports and does not fail the run; `exit_code` says
+why.
+
+WHAT THESE CHECKS DO NOT CATCH, so that a clean run is not read for more than
+it says. A mutation whose damage is collateral — one that breaks the module
+outright — kills whatever test it names, related or not; only reading the entry
+tells you whether the anchor has anything to do with the test beside it. And
+the score answers "did the named test fall", never "is this test worth having":
+a mutation and a test can agree with each other and both miss the behaviour
+that matters.
+"""
+
+import dis
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import textwrap
+import types
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+TK_DIR = os.path.normpath(os.path.join(HERE, os.pardir))
+DEFAULT_SRC = os.path.join("bin", "tk-contract")
+TEST_MODULE = "test_tk_contract"
+
+MUTATIONS = [
+    # --- the fleet divisor, and the two ceilings ---------------------------
+    ("the fleet divisor is read and then ignored",
+     'f"so this run\'s share is at most {local // fleet} at a time.")',
+     'f"so this run\'s share is at most {local} at a time.")',
+     ["TestFleetDivisor.test_the_fleet_divides_the_local_ceiling"]),
+
+    ("a share that rounds to none is rounded up to one instead",
+     "    elif local // fleet == 0:", "    elif False:",
+     ["TestFleetDivisor.test_a_fleet_wider_than_the_ceiling_dispatches_none"]),
+
+    ("the fleet divides the cloud ceiling too",
+     'lines.append(f"- Cloud subagents: at most {cloud} at a time. The fleet divisor never "',
+     'lines.append(f"- Cloud subagents: at most {cloud // (fleet or 1)} at a time. '
+     'The fleet divisor never "',
+     ["TestFleetDivisor.test_the_fleet_does_not_divide_the_cloud_ceiling"]),
+
+    ("--fleet accepts a fleet of none",
+     "    if int(raw) < 1:", "    if int(raw) < 0:",
+     ["TestFleetDivisor.test_a_fleet_that_is_not_a_positive_whole_number_is_refused"]),
+
+    ("--fleet accepts what is not a whole number",
+     '    if not re.fullmatch(r"[0-9]+", raw):', "    if False:",
+     ["TestFleetDivisor.test_a_fleet_that_is_not_a_positive_whole_number_is_refused"]),
+
+    ("an absent local ceiling gets a default the bin invented",
+     "    local = site.ceilings.get(LOCAL_KEY)", "    local = site.ceilings.get(LOCAL_KEY, 3)",
+     ["TestCeilings.test_an_absent_ceiling_is_stated_absent_never_invented"]),
+
+    ("an absent cloud ceiling gets a default the bin invented",
+     "    cloud = site.ceilings.get(CLOUD_KEY)", "    cloud = site.ceilings.get(CLOUD_KEY, 4)",
+     ["TestCeilings.test_an_absent_ceiling_is_stated_absent_never_invented"]),
+
+    # --- the QUOTA ceiling: its own key, its own axis ----------------------
+    # RAM and quota are measured against different things, and the block that
+    # states only the first authorises the run that spends the window.
+    ("an absent Opus ceiling gets a default the bin invented",
+     "    opus = site.ceilings.get(OPUS_KEY)", "    opus = site.ceilings.get(OPUS_KEY, 4)",
+     ["TestCeilings.test_an_absent_opus_ceiling_is_stated_absent_never_invented"]),
+
+    ("the Opus ceiling is the RAM ceiling under another name",
+     'OPUS_KEY = "max-local-opus"', 'OPUS_KEY = "max-local-subagents"',
+     ["TestCeilings.test_the_opus_ceiling_is_read_from_the_file_and_named",
+      "TestCeilings.test_the_opus_ceiling_is_not_the_local_one_under_another_name",
+      "TestCeilings.test_the_fleet_divides_the_opus_ceiling"]),
+
+    ("the fleet does not divide the Opus ceiling, so each member reads the whole one",
+     "    if fleet is None:", "    if True:",
+     ["TestCeilings.test_the_fleet_divides_the_opus_ceiling",
+      "TestCeilings.test_a_fleet_wider_than_the_opus_ceiling_dispatches_none"]),
+
+    ("an empty Opus share is stated as a share instead of as none",
+     "    elif opus // fleet == 0:", "    elif False:",
+     ["TestCeilings.test_a_fleet_wider_than_the_opus_ceiling_dispatches_none"]),
+
+    ("the Opus ceiling is said to bound this machine only, so the cloud reads as free",
+     'return [f"- Opus subagents, in EITHER venue: {share} This is the QUOTA axis and not the "',
+     'return [f"- Opus subagents: {share} This is the QUOTA axis and not the "',
+     ["TestCeilings.test_the_opus_ceiling_spans_both_venues"]),
+
+    # the site file's own half: an unknown key is IGNORED by design, so a key
+    # dropped from the tuple does not fail the file — it unsets the ceiling in
+    # silence and a malformed value stops being refused at all
+    ("the Opus key leaves the site file's tuple, so its value reads as an unknown key",
+     'CEILINGS = ("max-local-subagents", "max-local-opus", "max-cloud-subagents",\n'
+     '            "max-open-items", "max-open-items-per-queue")',
+     'CEILINGS = ("max-local-subagents", "max-cloud-subagents",\n'
+     '            "max-open-items", "max-open-items-per-queue")',
+     ["TestCeilings.test_the_opus_ceiling_is_read_from_the_file_and_named",
+      "TestCeilings.test_a_malformed_opus_ceiling_is_refused_and_never_ignored"],
+     "bin/tk_site.py"),
+
+    ("the local ceiling is a literal in the bin instead of the file's value",
+     'lines.append(f"- Local subagents: at most {local} at a time. No fleet divisor was "',
+     'lines.append(f"- Local subagents: at most 6 at a time. No fleet divisor was "',
+     ["TestCeilings.test_the_ceilings_are_read_from_the_file_not_from_the_bin"]),
+
+    ("this machine's identity is a literal in the bin",
+     'f"   remote sandbox would not share. You were dispatched from `{site.identity}`.",',
+     '"   remote sandbox would not share. You were dispatched from `alpha`.",',
+     ["TestCeilings.test_the_identity_in_the_block_comes_from_the_file"]),
+
+    # --- the site file: absent is not the same as defective ----------------
+    ("a missing site file is reported as a defective one",
+     "    if site is None:", "    if False:",
+     ["TestCeilings.test_no_site_file_asks_for_one_and_shows_the_format"]),
+
+    ("a defective site file is reported as a missing one",
+     "    except tk_site.SiteError as e:\n        fail(str(e))",
+     "    except tk_site.SiteError as e:\n        fail(tk_site.missing_file_message())",
+     ["TestCeilings.test_a_defective_site_file_names_the_defect_instead"]),
+
+    # --- the role table is the single source -------------------------------
+    ("the row is a copy the bin carries",
+     "    for row in roles:\n        if row.role == name:\n            return row",
+     "    for row in roles:\n        if row.role == name:\n"
+     '            return Role(name, "parent", "session", "local", row.note)',
+     ["TestRoleTable.test_the_row_is_read_from_the_table"]),
+
+    ("a role absent from the table gets a silent default",
+     '    raise PolicyError(\n'
+     '        f"the role table declares no role {name!r}. It carries: "',
+     "    return roles[0]\n"
+     '    raise PolicyError(\n'
+     '        f"the role table declares no role {name!r}. It carries: "',
+     ["TestRoleTable.test_an_unknown_role_is_refused_with_the_roles_that_exist"]),
+
+    ("a schema this parser cannot read is parsed anyway",
+     "            if m.group(1) != SCHEMA:", "            if False:",
+     ["TestRoleTable.test_a_schema_it_cannot_read_fails_loud"]),
+
+    ("a value outside the closed vocabulary is accepted",
+     "            if value not in allowed:", "            if False:",
+     ["TestRoleTable.test_a_value_outside_the_vocabulary_is_a_defect_not_a_default"]),
+
+    ("the header is not checked, so a reordered column swaps two values",
+     "    if tuple(header) != COLUMNS:", "    if False:",
+     ["TestRoleTable.test_a_reordered_header_is_refused"]),
+
+    ("the alignment row is not checked, so a table missing it loses its first role",
+     "    if len(align) != len(COLUMNS) or not all(ALIGN_RE.match(c) for c in align):",
+     "    if False:",
+     ["TestRoleTable.test_a_missing_alignment_row_is_refused_not_skipped"]),
+
+    ("a row short of a cell is read anyway",
+     "        if len(cells) != len(COLUMNS):", "        if False:",
+     ["TestRoleTable.test_a_row_short_of_a_cell_is_refused"]),
+
+    ("a row with no role cell is kept",
+     "        if not row.role:", "        if False:",
+     ["TestRoleTable.test_an_empty_role_cell_is_refused"]),
+
+    ("a duplicate role is accepted and the first one wins silently",
+     "        if row.role in seen:", "        if False:",
+     ["TestRoleTable.test_a_duplicate_role_is_refused"]),
+
+    ("an empty note passes as a deliberate silence",
+     "        if not row.note:", "        if False:",
+     ["TestRoleTable.test_an_empty_note_is_refused"]),
+
+    ("the note is parsed instead of emitted verbatim",
+     'f"Note: {row.note}",', 'f"Note: {row.note.split(chr(8212))[0].strip()}",',
+     ["TestRoleTable.test_the_note_is_emitted_verbatim"]),
+
+    ("the markers stop bounding the table, so a draft row in the prose is a role",
+     '    rows = [(n + 1, lines[n]) for n in range(start + 1, end) '
+     'if lines[n].lstrip().startswith("|")]',
+     '    rows = [(n + 1, lines[n]) for n in range(0, len(lines)) '
+     'if lines[n].lstrip().startswith("|")]',
+     ["TestRoleTable.test_a_row_outside_the_markers_is_not_a_role"]),
+
+    ("a table that never closes is read to the end of the file",
+     "    if end is None:", "    if False:",
+     ["TestRoleTable.test_a_table_that_never_closes_is_refused"]),
+
+    ("a file with no table at all is parsed anyway",
+     "    if start is None:", "    if False:",
+     ["TestRoleTable.test_no_table_at_all_is_refused"]),
+
+    ("a misspelt marker is reported as no table at all",
+     "if OPEN_LOOSE in text else \"\")", "if False else \"\")",
+     ["TestRoleTable.test_a_misspelt_marker_says_so_instead_of_just_not_finding_it"]),
+
+    ("a table with a header and nothing else is read past its rows",
+     "    if len(rows) < 3:", "    if False:",
+     ["TestRoleTable.test_a_table_with_no_role_in_it_is_refused"]),
+
+    ("an unreadable table comes back as a traceback instead of a diagnosis",
+     "    except OSError as e:\n        fail(f\"the role table {args.policy} cannot be read",
+     "    except ZeroDivisionError as e:\n        fail(f\"the role table {args.policy} "
+     "cannot be read",
+     ["TestRoleTable.test_a_table_that_cannot_be_read_is_refused_not_defaulted"]),
+
+    ("a table that is not UTF-8 comes back as a traceback",
+     "    except UnicodeDecodeError as e:\n        fail(f\"the role table {args.policy} "
+     "is not valid UTF-8",
+     "    except ZeroDivisionError as e:\n        fail(f\"the role table {args.policy} "
+     "is not valid UTF-8",
+     ["TestRoleTable.test_a_table_that_is_not_utf8_is_refused"]),
+
+    ("--fleet gains a default, so a run without one no longer gets the whole ceiling",
+     '    p.add_argument("--fleet", type=fleet_size, default=None,',
+     '    p.add_argument("--fleet", type=fleet_size, default=2,',
+     ["TestFleetDivisor.test_without_a_fleet_the_whole_ceiling_is_this_run_s"]),
+
+    ("the whole-ceiling branch stops saying the ceiling is undivided",
+     '"given, so the whole ceiling belongs to this run.")', '"given.")',
+     ["TestFleetDivisor.test_without_a_fleet_the_whole_ceiling_is_this_run_s"]),
+
+    ("a table path that does not exist is reported as a defective file",
+     "    if not os.path.exists(args.policy):", "    if False:",
+     ["TestRoleTable.test_a_table_that_is_not_there_is_refused_not_defaulted"]),
+
+    ("the plain-file guard goes, and a table that is a pipe HANGS the run",
+     "    if not os.path.isfile(args.policy):", "    if False:",
+     ["TestRoleTable.test_a_table_that_is_not_a_plain_file_is_refused",
+      "TestRoleTable.test_a_table_that_is_a_pipe_does_not_hang"]),
+
+    ("a byte order mark on the opening marker hides the whole table",
+     '            text = f.read().replace("\\ufeff", "")', "            text = f.read()",
+     ["TestRoleTable.test_a_byte_order_mark_does_not_hide_the_table",
+      "TestRoleTable.test_a_byte_order_mark_at_byte_zero_of_the_table_changes_nothing"]),
+
+    # the half `utf-8-sig` would have missed, and which the comment beside the
+    # strip in the bin ASSERTS without anything proving it: it removes exactly
+    # one BOM, at the very start, so the second one — on the marker — survives.
+    # The byte-zero case above is deliberately NOT named here: with a single BOM
+    # at the head this mutant is the fix, and naming it would claim a proof this
+    # run cannot make
+    ("only the FIRST leading byte order mark is stripped out of the table",
+     '            text = f.read().replace("\\ufeff", "")',
+     '            text = f.read().replace("\\ufeff", "", 1)',
+     ["TestRoleTable.test_a_byte_order_mark_does_not_hide_the_table"]),
+
+    # the OTHER reader this bin depends on, and a second file for this harness:
+    # the site file is opened by `tk_site.load`, whose strip carries the BOM off
+    # byte 0 before `parse` splits the line on `=`. Its own suite reaches it
+    # through `tk-queue`; nothing reached it through this bin until now
+    ("the site file's byte order mark is glued to `identity`, which reads as absent",
+     '            text = f.read().replace("﻿", "")', "            text = f.read()",
+     ["TestCeilings.test_a_byte_order_mark_at_byte_zero_of_the_site_file_changes_nothing"],
+     os.path.join("bin", "tk_site.py")),
+
+    ("the default table is looked for somewhere it is not",
+     '    os.path.join(BIN_DIR, os.pardir, "reference", "subagent-policy.md"))',
+     '    os.path.join(BIN_DIR, os.pardir, "references", "subagent-policy.md"))',
+     ["TestRoleTable.test_the_default_table_is_the_one_beside_the_bin"]),
+
+    # --- the `pr` cell, and the closing line it decides --------------------
+    ("the closing line is decided by the role's NAME instead of its `pr` cell",
+     '    if row.pr != "opens":',
+     '    if row.role != "implementer":',
+     ["TestRoleTable.test_the_pr_cell_decides_the_closing_line_not_the_role_s_name"]),
+
+    ("an unreadable `pr` value falls back to `no line` instead of failing",
+     '    ("pr", ("opens", "none")),\n',
+     '',
+     ["TestRoleTable.test_a_pr_value_outside_the_vocabulary_is_a_defect_not_a_default"]),
+
+    ("the closing line names no repo, so it aims at the PR's own",
+     '        "    Fixes <owner>/<repo>#<n>",',
+     '        "    Fixes #<n>",',
+     ["TestBlockContent.test_it_demands_the_closing_line_of_a_role_that_opens_a_pr"]),
+
+    ("every role is handed the closing line, PR-opening or not",
+     '    if row.pr != "opens":\n        return []',
+     '    if False:\n        return []',
+     ["TestBlockContent.test_a_role_that_opens_no_pr_is_told_nothing_about_one"]),
+
+    # --- the `checkpoint` cell, and the invariant it decides ---------------
+    ("the invariant is decided by the role's NAME instead of its `checkpoint` cell",
+     '    if row.checkpoint != "required":',
+     '    if row.role != "implementer":',
+     ["TestRoleTable.test_the_checkpoint_cell_decides_the_section_not_the_role_s_name"]),
+
+    ("an unreadable `checkpoint` value falls back to `no section` instead of failing",
+     '    ("checkpoint", ("required", "none")),\n',
+     '',
+     ["TestRoleTable."
+      "test_a_checkpoint_value_outside_the_vocabulary_is_a_defect_not_a_default"]),
+
+    ("every role is handed the invariant, committing or not",
+     '    if row.checkpoint != "required":\n        return []',
+     '    if False:\n        return []',
+     ["TestBlockContent.test_a_role_that_commits_nothing_is_told_nothing_about_checkpoints"]),
+
+    ("the invariant asks for a commit and forgets the push",
+     '        "Commit and push at every seam of your work — a north star reached, a suite '
+     'green, a",',
+     '        "Commit at every seam of your work — a north star reached, a suite green, a",',
+     ["TestBlockContent.test_it_states_the_checkpoint_invariant_for_a_role_that_commits"]),
+
+    ("the invariant lets the checkpoint land on the default branch",
+     '        "Push to your own branch, never to the default one.",',
+     '        "Push often.",',
+     ["TestBlockContent.test_it_states_the_checkpoint_invariant_for_a_role_that_commits"]),
+
+    ("the invariant arrives as hygiene, with the measurement behind it dropped",
+     '        "The quota wall is what collects on this. On 2026-08-18 it landed mid-dispatch '
+     'and",',
+     '        "The quota wall is what collects on this. It has landed mid-dispatch before and",',
+     ["TestBlockContent.test_it_states_the_checkpoint_invariant_for_a_role_that_commits"]),
+
+    ("the invariant states the rule and not what breaking it costs",
+     '        "**Work you did not push did not happen.** The orchestrator verifies by '
+     'artefact: it",\n'
+     '        "reads the tree and the diff, never your account of them, so a confident return '
+     'over",',
+     '        "**Push when you can.** The orchestrator is downstream of you:",\n'
+     '        "so a confident return over",',
+     ["TestBlockContent.test_the_checkpoint_invariant_says_what_uncommitted_work_costs"]),
+
+    ("the owner-less reference is left to the reader's judgement",
+     '        "**A reference with no owner half closes nothing across repositories.** The queue",',
+     '        "**A reference with no owner half is usually fine.** The queue",',
+     ["TestBlockContent.test_it_refuses_the_owner_less_reference_instead_of_guessing"]),
+
+    ("the block promises a presence check, so a present line reads as a passing one",
+     '        "before it offers the merge — that the line is there, that its number is the ticket",\n'
+     '        "the item names, and that the PR targets its own repository\'s default branch, which",',
+     '        "before it offers the merge, and a PR that arrives without it stops there.",\n'
+     '        "",',
+     ["TestBlockContent.test_it_names_the_three_things_the_gate_will_check"]),
+
+    # --- determinism, and the four rules the block exists to carry ---------
+    ("the block stops being byte-stable between two identical runs",
+     'lines.append("- Quota is ONE window across both venues. A cloud run buys RAM, '
+     'not quota, "',
+     'lines.append(f"- Quota is ONE window across both venues ({os.getpid()}). '
+     'A cloud run buys RAM, not quota, "',
+     ["TestDeterminism.test_same_input_gives_the_same_bytes"]),
+
+    ("the cwd leaks into the block",
+     '        f"- the site file `{site.path}` — this machine, and its ceilings;",',
+     '        f"- the site file `{site.path}` in {os.getcwd()} — this machine, '
+     'and its ceilings;",',
+     ["TestDeterminism.test_the_cwd_does_not_leak_into_the_block"]),
+
+    ("the block stops saying that an empty return is a failure",
+     '        "An EMPTY return is a failure that reads as success: '
+     'the orchestrator gets no error",',
+     '        "Return when the work is done.",',
+     ["TestBlockContent.test_it_says_an_empty_return_is_a_failure"]),
+
+    ("the block asks where you ran instead of for a venue signature",
+     '        "2. **Your venue signature.** The working directory you resolved, '
+     'plus a marker the",',
+     '        "2. **Where you ran.** Say roughly where you ran, plus a marker the",',
+     ["TestBlockContent.test_it_demands_the_venue_signature_and_says_who_reads_it"]),
+
+    ("the block asks for a summary — the word the package flow reserves "
+     "for what must NOT be believed",
+     '        "1. **The work.** The artifact, the paths you touched, the finding, '
+     'the verdict —",',
+     '        "1. **The work.** A summary of the artifact, the paths, the finding, '
+     'the verdict —",',
+     ["TestBlockContent.test_it_never_calls_the_return_a_summary"]),
+
+    ("the measured reading rule degrades into generic advice",
+     '        "- **~85k went to reading source files raw.** A file above ~500 lines '
+     'that you are",',
+     '        "- **Read only what you need.** A file that you are",',
+     ["TestBlockContent.test_it_carries_the_two_measured_reading_rules"]),
+
+    # --- the pointer to the rules, and the file it points at ---------------
+    ("the block stops naming the rules file and gestures at it instead",
+     '        f"Before you write a file, a proof, or prose another agent reads: '
+     '`{RULES_FILE}`.",',
+     '        "Before you write a file, a proof, or prose another agent reads the reference.",',
+     ["TestBlockContent.test_it_points_at_the_rules_earlier_slices_paid_for"]),
+
+    # the block names this file at every dispatch; renaming its heading is the
+    # cheapest stand-in for the file drifting out from under the pointer
+    ("the pointed-at rules lose the heading the pointer promises",
+     "# Rules earlier slices paid for",
+     "# Slice rules",
+     ["TestBlockContent.test_the_rules_the_block_points_at_are_actually_there"],
+     os.path.join("reference", "slice-rules.md")),
+
+    ("the deviation line loses this role's own default",
+     '        f"    {row.role}: {row.model}→<what actually ran> — reason",',
+     '        "    <role>: <default>→<what actually ran> — reason",',
+     ["TestBlockContent.test_it_asks_for_the_deviation_log_in_the_policy_s_format"]),
+
+    ("the block loses the markers that let a consumer replace it",
+     '        f"<!-- tk:contract schema=1 role={row.role} -->",',
+     '        f"## contract for {row.role}",',
+     ["TestBlockContent.test_the_block_is_delimited_so_it_can_be_replaced"]),
+
+    # --- and the harness itself, which nothing else was checking -----------
+    ("the test classes go back to being a hand-kept list",
+     '    return tuple(name for name, obj in vars(module_obj).items()\n'
+     '                 if isinstance(obj, type) and issubclass(obj, unittest.TestCase)\n'
+     '                 and any(a.startswith("test_") for a in dir(obj)))',
+     '    return ("TestDeterminism", "TestFleetDivisor", "TestCeilings", "TestRoleTable",\n'
+     '            "TestBlockContent")',
+     ["TestHarness.test_the_test_classes_are_derived_not_listed"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the orphan check reports nothing, whatever the entries say",
+     '                missing.append(f"{cls_name}.{attr}")\n    return sorted(missing)',
+     '                missing.append(f"{cls_name}.{attr}")\n    return []',
+     ["TestHarness.test_a_test_that_no_entry_names_is_reported"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("an entry naming a test that does not exist passes the reverse check",
+     "            cls = getattr(module_obj, cls_name, None)\n"
+     "            if cls is None or (attr and not hasattr(cls, attr)):",
+     "            cls = getattr(module_obj, cls_name, None)\n            if False:",
+     ["TestHarness.test_an_entry_naming_a_test_that_does_not_exist_is_reported"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    # --- the reach probe: every way it measures NOTHING and says so quietly -
+    # Each of these leaves a run that still prints a score and still exits 0,
+    # while the line it exists to find is reported as covered or not at all.
+    ("the denominator stops at the top-level code object, so a function's body "
+     "counts as no line at all",
+     "        lines.update(line for _, line in dis.findlinestarts(current) if line)\n"
+     "        stack.extend(k for k in current.co_consts if isinstance(k, types.CodeType))",
+     "        lines.update(line for _, line in dis.findlinestarts(current) if line)\n"
+     "        stack.extend([])",
+     ["TestHarness.test_the_lines_a_source_can_run_are_the_lines_the_compiler_emits"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("a file the interpreter never runs is measured anyway — a JSON object "
+     "parses as a Python expression, so compiling is not the test",
+     "            if not is_python(os.path.join(tk_dir, rel)):\n"
+     "                continue",
+     "            if False:\n                continue",
+     ["TestHarness.test_only_the_python_sources_an_entry_mutates_are_measured"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the probe is asked to measure itself, and stands unmeasured in every run",
+     "        if os.path.basename(rel) == TRACER:\n            continue",
+     "        if False:\n            continue",
+     ["TestHarness.test_only_the_python_sources_an_entry_mutates_are_measured"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the default source is measured even where no entry mutates it",
+     '    """\n'
+     "    rels = {entry[4] if len(entry) > 4 else default_src for entry in mutations}",
+     '    """\n'
+     "    rels = {default_src} | {entry[4] if len(entry) > 4 else default_src\n"
+     "                            for entry in mutations}",
+     ["TestHarness.test_only_the_python_sources_an_entry_mutates_are_measured"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("a file the probe recorded nothing for is passed over in silence, so a "
+     "probe that reached no child reads as a suite with nothing to report",
+     "        if rel not in seen:\n            unmeasured.append(rel)\n            continue",
+     "        if rel not in seen:\n            continue",
+     ["TestHarness.test_the_probe_records_which_lines_a_child_process_ran"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the probe never travels to the child, because its directory is left off "
+     "PYTHONPATH",
+     '    env = dict(os.environ)\n'
+     '    env["PYTHONPATH"] = probe_dir + (os.pathsep + inherited if inherited else "")',
+     '    env = dict(os.environ)\n    env["PYTHONPATH"] = inherited or ""',
+     ["TestHarness.test_the_probe_records_which_lines_a_child_process_ran"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the child records what it ran and never writes it down",
+     "    atexit.register(_dump)", "    pass",
+     ["TestHarness.test_the_probe_records_which_lines_a_child_process_ran"],
+     os.path.join("tests", "reach_tracer.py")),
+
+    ("the watched files are matched from the front, so an absolute path in a "
+     "copied tree matches nothing",
+     "    if name.endswith(_WATCH):", "    if name.startswith(_WATCH):",
+     ["TestHarness.test_the_probe_records_which_lines_a_child_process_ran"],
+     os.path.join("tests", "reach_tracer.py")),
+
+    ("sixty loose line numbers are printed one by one",
+     "    for number in numbers:\n        if start is None or number != prev + 1:",
+     "    for number in numbers:\n        if True:",
+     ["TestHarness.test_the_unreached_lines_are_collapsed_into_ranges"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("the unreached lines are counted and never printed",
+     '            width=88, subsequent_indent=" " * 11))\n'
+     "    for rel, (missing, total) in sorted(cold.items()):",
+     '            width=88, subsequent_indent=" " * 11))\n'
+     "    for rel, (missing, total) in sorted({}.items()):",
+     ["TestHarness.test_the_reach_report_names_the_file_the_count_and_the_module"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("a thousand cold lines are printed in full, and the report becomes the "
+     "wall above every run that nobody reads",
+     "        tall = len(detail.splitlines())\n"
+     "        if tall <= DETAIL_LINES or os.environ.get(REACH_FULL):",
+     "        tall = len(detail.splitlines())\n        if True:",
+     ["TestHarness.test_a_listing_too_tall_to_read_is_held_back_behind_a_switch"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+
+    ("a run with a survivor in it exits 0",
+     '    """\n    return 1 if survived or unrunnable or orphans else 0',
+     '    """\n    return 0',
+     ["TestHarness.test_an_unreached_line_reports_without_failing_the_run"],
+     os.path.join("tests", "mutations_tk_contract.py")),
+]
+
+
+def run_suite(tk_dir, module, names, env=None):
+    """The named tests, run from the (possibly mutated) tree's own tests dir.
+
+    `env` is the reach probe's, and only the baseline run is given one: a
+    mutant is asked whether a test falls, never which lines it touched."""
+    tests = os.path.join(tk_dir, "tests")
+    argv = [sys.executable, "-m", "unittest", "-v"] + [f"{module}.{n}" for n in names]
+    return subprocess.run(argv, cwd=tests, capture_output=True, text=True, env=env)
+
+
+def load_module(module, tk_dir):
+    sys.path.insert(0, os.path.join(tk_dir, "tests"))
+    return __import__(module)
+
+
+def test_classes(module_obj):
+    """Every TestCase in the module that actually holds tests — DERIVED, never
+    listed by hand. A hand-kept list is a list someone forgets, and a class left
+    out of it disappears from the baseline AND from the check below at the same
+    time: the two things that would have noticed both stop looking, in silence.
+    Deriving costs one function and removes the whole failure mode."""
+    return tuple(name for name, obj in vars(module_obj).items()
+                 if isinstance(obj, type) and issubclass(obj, unittest.TestCase)
+                 and any(a.startswith("test_") for a in dir(obj)))
+
+
+def unproved(mutations, module_obj):
+    """Tests that no entry names — the hole a green score cannot show you.
+
+    A run reports `N/N killed` and means it: N is the number of mutants SOMEONE
+    WROTE. A guard whose test nobody mutated is invisible to that number, and
+    the suite reads as fully proved while one test is protecting nothing. So the
+    tests are enumerated from the module itself and checked against the entries,
+    rather than trusted to be in sync."""
+    named = {name for entry in mutations for name in entry[3]}
+    missing = []
+    for cls_name in test_classes(module_obj):
+        for attr in dir(getattr(module_obj, cls_name)):
+            if attr.startswith("test_") and f"{cls_name}.{attr}" not in named:
+                missing.append(f"{cls_name}.{attr}")
+    return sorted(missing)
+
+
+def misnamed(mutations, module_obj):
+    """Entries naming a test that does not exist — the check above run BACKWARDS.
+
+    It is not symmetry for its own sake: unittest answers a name it cannot load
+    with a non-zero exit, and this runner reads non-zero as "the test failed",
+    so a typo in an entry is reported as a mutant KILLED. That is worse than an
+    uncovered guard — it is a guard that reports itself covered."""
+    bad = []
+    for entry in mutations:
+        for name in entry[3]:
+            cls_name, _, attr = name.partition(".")
+            # an empty `attr` is an entry naming a whole CLASS, which unittest
+            # loads as readily as one method — older entries do name classes,
+            # and reading those as typos would report a working entry as broken
+            cls = getattr(module_obj, cls_name, None)
+            if cls is None or (attr and not hasattr(cls, attr)):
+                bad.append(f"{entry[0]} -> {name}")
+    return sorted(bad)
+
+
+REACH_FILES = "TK_REACH_FILES"
+REACH_DIR = "TK_REACH_DIR"
+TRACER = "reach_tracer.py"
+REACH_FULL = "TK_REACH_FULL"
+DETAIL_LINES = 3
+
+
+def executable_lines(path):
+    """The lines of a source file that CAN run — the denominator of reach.
+
+    `dis.findlinestarts`, walked over the module's code object and every code
+    object nested in it, is the stdlib's own answer to the question: blank
+    lines, comments, continuation lines and the body of a docstring are not in
+    it. Walking the nesting is the whole of it — the top-level code object
+    lists a `def` line and nothing inside the function, and a denominator that
+    stopped there would call a suite complete for never entering one.
+    """
+    with open(path, encoding="utf-8") as handle:
+        code = compile(handle.read(), path, "exec")
+    lines, stack = set(), [code]
+    while stack:
+        current = stack.pop()
+        lines.update(line for _, line in dis.findlinestarts(current) if line)
+        stack.extend(k for k in current.co_consts if isinstance(k, types.CodeType))
+    return lines
+
+
+def is_python(path):
+    """Python by extension, or by a shebang naming it — the bins have no `.py`."""
+    if path.endswith(".py"):
+        return True
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        first = handle.readline()
+    return first.startswith("#!") and "python" in first
+
+
+def reach_sources(mutations, tk_dir, default_src):
+    """The files to measure: the ones the ENTRIES mutate, that Python runs.
+
+    Not `default_src` on its own. A suite whose every entry names its own
+    source never touches the default — several here pass no `default_src` at
+    all and mutate only files of their own — and measuring it would report a
+    file the suite never opens as wholly unreached.
+
+    A `rel` is kept only if it is Python the interpreter runs: entries also
+    anchor in a JSON manifest and in shell, and a file the interpreter never
+    executes has no line for the probe to see. The test is the extension or a
+    `python` shebang, NOT whether the file compiles — the bins here carry no
+    extension, and a JSON object happens to parse as a Python expression, so
+    compiling alone would keep every manifest and report it wholly cold.
+    """
+    rels = {entry[4] if len(entry) > 4 else default_src for entry in mutations}
+    kept = []
+    for rel in sorted(rels):
+        # the probe cannot measure itself: Python does not trace the frames of
+        # a trace function, and the module body runs before `settrace` anyway,
+        # so the tracer would stand in every report as permanently unmeasured
+        if os.path.basename(rel) == TRACER:
+            continue
+        try:
+            if not is_python(os.path.join(tk_dir, rel)):
+                continue
+            executable_lines(os.path.join(tk_dir, rel))
+        except (OSError, SyntaxError, ValueError):
+            continue
+        kept.append(rel)
+    return tuple(kept)
+
+
+def reach_env(probe_dir, rels):
+    """Install the probe and return `(env, out_dir)` for the baseline run.
+
+    See `reach_tracer.py` for how the probe reaches a child process. The cost
+    of that mechanism is that our copy shadows any other `sitecustomize` on the
+    path — Debian ships one that installs a crash hook this repo does not use —
+    for the length of the one run that carries this environment.
+    """
+    out_dir = os.path.join(probe_dir, "records")
+    os.makedirs(out_dir, exist_ok=True)
+    shutil.copyfile(os.path.join(HERE, "reach_tracer.py"),
+                    os.path.join(probe_dir, "sitecustomize.py"))
+    inherited = os.environ.get("PYTHONPATH")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = probe_dir + (os.pathsep + inherited if inherited else "")
+    env[REACH_FILES] = os.pathsep.join(os.sep + rel for rel in rels)
+    env[REACH_DIR] = out_dir
+    return env, out_dir
+
+
+def reach_report(out_dir, tk_dir, rels):
+    """What the probe saw, as `({rel: (unreached lines, total)}, [unmeasured])`.
+
+    A file with NO record of its own is reported apart, as unmeasured, rather
+    than as every one of its lines unreached. The two are indistinguishable
+    from here — a suite that never runs the file and a probe that never reached
+    the child both leave nothing behind — and printing several hundred lines on
+    the second reading would bury the handful of real ones under a wall nobody
+    reads twice.
+    """
+    seen = {}
+    for name in sorted(os.listdir(out_dir)):
+        with open(os.path.join(out_dir, name), encoding="utf-8") as handle:
+            for record in handle:
+                fields = record.split()
+                if not fields:
+                    continue
+                for rel in rels:
+                    if fields[0].endswith(os.sep + rel):
+                        seen.setdefault(rel, set()).update(int(n) for n in fields[1:])
+    cold, unmeasured = {}, []
+    for rel in rels:
+        if rel not in seen:
+            unmeasured.append(rel)
+            continue
+        runnable = executable_lines(os.path.join(tk_dir, rel))
+        missing = sorted(runnable - seen[rel])
+        if missing:
+            cold[rel] = (missing, len(runnable))
+    return cold, unmeasured
+
+
+def line_ranges(numbers):
+    """`[1, 2, 3, 7]` -> `"1-3, 7"`. Sixty loose numbers are not read."""
+    out, start, prev = [], None, None
+    for number in numbers:
+        if start is None or number != prev + 1:
+            if start is not None:
+                out.append(str(start) if start == prev else f"{start}-{prev}")
+            start = number
+        prev = number
+    if start is not None:
+        out.append(str(start) if start == prev else f"{start}-{prev}")
+    return ", ".join(out)
+
+
+def report_reach(cold, unmeasured, module):
+    """Print the reach block. It returns nothing on purpose — see `exit_code`.
+
+    The module is named on every line because the scope is this suite and not
+    the repository: a line of a shared source that only a SIBLING module
+    exercises is unreached here, and it is, for a mutant of that line runs only
+    the tests named in this file's entries.
+
+    That is also why a long listing is HELD BACK. One suite here reaches a
+    third of `bin/tk-queue`, whose other tests live in another module, and
+    printing its thousand cold lines puts forty lines of numbers above every
+    run — the wall that gets a report ignored, and with it the six real lines
+    the suite next door reports. The count stays; `TK_REACH_FULL=1` prints the
+    rest."""
+    for rel in unmeasured:
+        print(textwrap.fill(
+            f"UNMEASURED {rel} — the probe recorded no line of this file; either "
+            f"{module} never runs it, or the probe never reached the child",
+            width=88, subsequent_indent=" " * 11))
+    for rel, (missing, total) in sorted(cold.items()):
+        print(f"UNREACHED  {rel} — {len(missing)} of {total} line(s) "
+              f"no test in {module} reaches")
+        detail = textwrap.fill(line_ranges(missing), width=88,
+                               initial_indent=" " * 11, subsequent_indent=" " * 11)
+        tall = len(detail.splitlines())
+        if tall <= DETAIL_LINES or os.environ.get(REACH_FULL):
+            print(detail)
+        else:
+            print(f"{' ' * 11}held back: {tall} lines of numbers. "
+                  f"Set {REACH_FULL}=1 to print them")
+    if cold or unmeasured:
+        print()
+
+
+def exit_code(survived, unrunnable, orphans):
+    """What makes a run RED, in one place so that it can be read in one place.
+
+    Unreached lines are deliberately absent. Every suite here has them today —
+    an error branch no fixture provokes, a guard against a machine state the
+    tests do not build — so failing on them would turn all ten red at once, and
+    a check that is red on arrival is a check somebody turns off. It reports;
+    the reader decides which line is worth a test.
+    """
+    return 1 if survived or unrunnable or orphans else 0
+
+
+def run(mutations=MUTATIONS, module=TEST_MODULE, tk_dir=TK_DIR,
+        default_src=DEFAULT_SRC):
+    """Replay every mutation. Returns the process exit code.
+
+    The arguments are the seam: another suite passes its own list, its own test
+    module and its own default source, and reuses everything below unchanged."""
+    module_obj = load_module(module, tk_dir)
+    wrong = misnamed(mutations, module_obj)
+    for line in wrong:
+        print(f"MISNAMED   {line} — no such test; unittest would fail to load it, "
+              "and this runner would read that as the mutant dying")
+    if wrong:
+        return 1
+    # the baseline runs every test once anyway, so it is where reach is
+    # measured: the probe costs the run no second pass over the suite
+    rels = reach_sources(mutations, tk_dir, default_src)
+    probe_dir = tempfile.mkdtemp(prefix="tk-reach.")
+    try:
+        env, out_dir = reach_env(probe_dir, rels) if rels else (None, None)
+        baseline = run_suite(tk_dir, module, list(test_classes(module_obj)), env=env)
+        if baseline.returncode != 0:
+            print("BASELINE IS RED — fix the suite before mutating it\n")
+            print(baseline.stderr[-4000:])
+            return 1
+        cold, unmeasured = reach_report(out_dir, tk_dir, rels) if rels else ({}, [])
+    finally:
+        shutil.rmtree(probe_dir, ignore_errors=True)
+    print(f"baseline green ({module})\n")
+    report_reach(cold, unmeasured, module)
+
+    orphans = unproved(mutations, module_obj)
+    for name in orphans:
+        print(f"UNPROVED   {name} — no mutation entry names this test")
+    if orphans:
+        print()
+
+    sources = {}
+    for entry in mutations:
+        rel = entry[4] if len(entry) > 4 else default_src
+        if rel not in sources:
+            with open(os.path.join(tk_dir, rel), encoding="utf-8") as f:
+                sources[rel] = f.read()
+
+    survived, unrunnable = [], []
+    for entry in mutations:
+        label, old, new, names = entry[:4]
+        rel = entry[4] if len(entry) > 4 else default_src
+        src = sources[rel]
+        if src.count(old) != 1:
+            unrunnable.append(f"{label} (anchor matched {src.count(old)}x, not once)")
+            print(f"UNRUNNABLE {label}\n           anchor matched {src.count(old)}x, not once")
+            continue
+        tmp = tempfile.mkdtemp(prefix="tk-contract-mutation.")
+        try:
+            dst = os.path.join(tmp, "tk")
+            # NOT the bytecode: copytree preserves mtime, so a copied
+            # __pycache__ can still validate against the copied source and
+            # Python imports the PRE-mutation bytecode — a mutant reported as
+            # surviving that was in truth never applied. Measured on the older
+            # harness; it costs one argument to never meet again
+            shutil.copytree(tk_dir, dst, ignore=shutil.ignore_patterns("__pycache__"))
+            # A `rel` may climb out of `tk/` — the manifests suite mutates
+            # `../.claude-plugin/marketplace.json`, which is a repo-root file the
+            # copytree above never reached. Its directory has to exist in the copy
+            # before the write, or the mutant dies of FileNotFoundError and the
+            # runner reads that as the suite noticing.
+            target = os.path.join(dst, rel)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
+                f.write(src.replace(old, new, 1))
+            # one test at a time: a batch that goes red says nothing about
+            # WHICH of the named tests noticed, and a mutation is only proved
+            # by the test that claims to prove it
+            alive = [n for n in names if run_suite(dst, module, [n]).returncode == 0]
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        if alive:
+            survived.append(f"{label} — survived: {', '.join(alive)}")
+            print(f"SURVIVED   {label}\n           still green: {', '.join(alive)}")
+        else:
+            print(f"killed     {label}")
+
+    print(f"\n{len(mutations) - len(survived) - len(unrunnable)}/{len(mutations)} killed"
+          f", {len(orphans)} test(s) no entry proves"
+          f", {sum(len(m) for m, _ in cold.values())} source line(s) no test reaches")
+    for line in survived + unrunnable + [f"UNPROVED {n}" for n in orphans]:
+        print(f"  ! {line}")
+    return exit_code(survived, unrunnable, orphans)
+
+
+if __name__ == "__main__":
+    sys.exit(run())

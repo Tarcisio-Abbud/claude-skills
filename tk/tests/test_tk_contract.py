@@ -1,0 +1,827 @@
+#!/usr/bin/env python3
+"""Regression suite for `tk-contract` (../bin/tk-contract).
+
+Run: python3 -m unittest discover -s tk/tests   (stdlib only, no deps)
+
+Every test here is proved by MUTATION: the defect is put back in the source and
+the test must fail. A test that still passes with the defect restored guards
+nothing. `mutations_tk_contract.py` in this directory replays each mutation
+mechanically.
+
+The suite drives the real script as a subprocess against throwaway fixtures. It
+writes its own role table rather than asserting against the repo's, so that
+adding a role to `reference/subagent-policy.md` — an ordinary edit — never turns
+red here; the one test that does read the real file asserts only that the
+default path finds it.
+
+The roster in the fixtures is INVENTED (`alpha`, `bravo`, `charlie-2`). This
+repo is written as if public and the site file is the one place a deployment's
+proper names live, which is exactly why they are not in it.
+"""
+
+import contextlib
+import io
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "bin", "tk-contract")
+POLICY = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                      "reference", "subagent-policy.md")
+RULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                     "reference", "slice-rules.md")
+
+SITE = """identity = alpha
+environments = alpha, bravo, charlie-2
+max-local-subagents = 6
+max-local-opus = 3
+max-cloud-subagents = 4
+"""
+
+TABLE = """Prose above the table, which the parser must not read — including a
+row left behind by an earlier draft:
+
+| ghost | parent | high | cloud | Outside the markers, and therefore not a role. |
+
+<!-- tk:roles schema=3 -->
+| role | model | effort | venue | pr | checkpoint | note |
+|---|---|---|---|---|---|---|
+| implementer | parent | session | local | opens | required | Downgradable to sonnet on a mechanical ticket. |
+| explore | haiku | session | local | none | none | — |
+| research | sonnet | session | cloud | none | none | Rises to parent when the question turns on judgement. |
+<!-- /tk:roles -->
+
+Prose below it, likewise. | Even a stray pipe. |
+"""
+
+
+class ContractTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="tk-contract-test.")
+        # HOME is redirected for EVERY test, not only the ones that write a site
+        # file: `~/.claude/tk/env` is a real file on a real machine, and a suite
+        # that reads it answers differently depending on whose machine runs it.
+        # Hermetic by default; a test that wants a roster calls self.site()
+        self.home = os.path.join(self.dir, "home")
+        os.makedirs(self.home)
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.site(SITE)
+        self.table(TABLE)
+
+    def site(self, text):
+        d = os.path.join(self.home, ".claude", "tk")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "env"), "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def unsite(self):
+        os.remove(os.path.join(self.home, ".claude", "tk", "env"))
+
+    def table(self, text):
+        self.policy = os.path.join(self.dir, "policy.md")
+        with open(self.policy, "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def run_tk(self, *argv, cwd=None, policy=True, timeout=None):
+        env = dict(os.environ, HOME=self.home)
+        args = list(argv) + (["--policy", self.policy] if policy else [])
+        return subprocess.run([sys.executable, BIN, *args], capture_output=True,
+                              text=True, cwd=cwd or self.dir, env=env, timeout=timeout)
+
+    def block(self, *argv, **kw):
+        r = self.run_tk(*argv, **kw)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+
+# --- determinism -----------------------------------------------------------
+
+class TestDeterminism(ContractTest):
+    """"Same input, same block, byte for byte" is the acceptance criterion the
+    whole design answers to: a block that drifts between two runs cannot be
+    diffed, and a reviewer cannot tell a real change from noise."""
+
+    def test_same_input_gives_the_same_bytes(self):
+        first = self.block("--role", "implementer", "--fleet", "3")
+        second = self.block("--role", "implementer", "--fleet", "3")
+        self.assertEqual(first, second)
+
+    def test_the_cwd_does_not_leak_into_the_block(self):
+        here = self.block("--role", "explore")
+        elsewhere = self.block("--role", "explore", cwd=os.path.dirname(self.dir))
+        self.assertEqual(here, elsewhere)
+
+
+# --- the fleet divisor -----------------------------------------------------
+
+class TestFleetDivisor(ContractTest):
+    """The ceiling is per MACHINE and the runs sharing it are not. Without a
+    divisor each of three orchestrators reads the whole ceiling and the machine
+    holds three times what it can."""
+
+    def test_the_fleet_divides_the_local_ceiling(self):
+        out = self.block("--role", "implementer", "--fleet", "3")
+        self.assertIn("the ceiling is 6 and the fleet is 3, so this run's share is at "
+                      "most 2 at a time", out)
+
+    def test_without_a_fleet_the_whole_ceiling_is_this_run_s(self):
+        # Read against the whole block, `whole ceiling` is also the Opus line's
+        # phrase, and this assertion passed over a Local line that had lost it.
+        # The unit is the LINE the claim is about.
+        out = self.block("--role", "implementer")
+        local = [l for l in out.splitlines() if "Local subagents" in l][0]
+        self.assertIn("Local subagents: at most 6 at a time", local)
+        self.assertIn("whole ceiling", local)
+
+    def test_a_fleet_wider_than_the_ceiling_dispatches_none(self):
+        self.site(SITE.replace("max-local-subagents = 6", "max-local-subagents = 2"))
+        out = self.block("--role", "implementer", "--fleet", "5")
+        self.assertIn("Dispatch NO local subagents", out)
+        # rounding an empty share up to 1 is the ceiling not existing: five
+        # members of the fleet each holding "just one" is five at once
+        self.assertNotIn("share is at most", out)
+
+    def test_the_fleet_does_not_divide_the_cloud_ceiling(self):
+        out = self.block("--role", "research", "--fleet", "4")
+        self.assertIn("Cloud subagents: at most 4 at a time", out)
+
+    def test_a_fleet_that_is_not_a_positive_whole_number_is_refused(self):
+        for junk in ("x", "0", "-1", "2.5", "", "３"):
+            with self.subTest(junk=junk):
+                r = self.run_tk("--role", "implementer", "--fleet", junk)
+                self.assertEqual(r.returncode, 2, f"{junk!r} was accepted")
+                self.assertIn("invalid fleet:", r.stderr)
+
+
+# --- the ceilings come from the site file, or are stated as absent ---------
+
+class TestCeilings(ContractTest):
+    def test_an_absent_ceiling_is_stated_absent_never_invented(self):
+        self.site("identity = alpha\nenvironments = alpha, bravo\n")
+        out = self.block("--role", "implementer", "--fleet", "3")
+        self.assertIn("declares no `max-local-subagents`", out)
+        self.assertIn("declares no `max-cloud-subagents`", out)
+        self.assertIn("Do not invent one", out)
+        # the real test: no number anywhere in the ceilings section. A default
+        # baked into the bin is the fork the criterion forbids
+        ceilings = out.split("### Ceilings")[1].split("###")[0]
+        self.assertNotRegex(ceilings, r"at most \d")
+
+    def test_the_ceilings_are_read_from_the_file_not_from_the_bin(self):
+        self.site(SITE.replace("= 6", "= 9").replace("= 4", "= 7"))
+        out = self.block("--role", "implementer")
+        self.assertIn("Local subagents: at most 9 at a time", out)
+        self.assertIn("Cloud subagents: at most 7 at a time", out)
+
+    def test_the_opus_ceiling_is_read_from_the_file_and_named(self):
+        # The QUOTA ceiling has to reach the block by NAME. A block that states
+        # a number without saying which key holds it sends the next reader to
+        # recalibrate it in prose, which is the fork the site file prevents.
+        out = self.block("--role", "implementer")
+        self.assertIn("Opus subagents", out)
+        self.assertIn("at most 3 at a time", out)
+        self.assertIn("max-local-opus", out)
+
+    def test_the_opus_ceiling_is_not_the_local_one_under_another_name(self):
+        # The two are different axes: RAM against quota. Read from the same key,
+        # the block would authorise six Opus agents on a machine whose measured
+        # Opus ceiling is three, which is the configuration the budget forbids.
+        out = self.block("--role", "implementer")
+        ceilings = out.split("### Ceilings")[1].split("###")[0]
+        opus = [l for l in ceilings.splitlines() if "Opus subagents" in l]
+        self.assertEqual(len(opus), 1, ceilings)
+        self.assertIn("at most 3 at a time", opus[0])
+        self.assertNotIn("at most 6", opus[0])
+
+    def test_the_opus_ceiling_spans_both_venues(self):
+        # Quota is the account's, not the machine's, so a run moved to the cloud
+        # still spends under this ceiling. A block silent on that reads as if
+        # the cloud were free of it.
+        out = self.block("--role", "implementer")
+        opus = [l for l in out.splitlines() if "Opus subagents" in l][0]
+        self.assertIn("EITHER venue", opus)
+        self.assertIn("does not free a slot", opus)
+
+    def test_an_absent_opus_ceiling_is_stated_absent_never_invented(self):
+        self.site("identity = alpha\nenvironments = alpha, bravo\n")
+        out = self.block("--role", "implementer")
+        self.assertIn("declares no `max-local-opus`", out)
+        opus = [l for l in out.splitlines() if "Opus subagents" in l][0]
+        self.assertNotRegex(opus, r"\d")
+
+    def test_the_fleet_divides_the_opus_ceiling(self):
+        # Stronger than for RAM: RAM is this machine's and quota is the
+        # account's, so three orchestrators each reading the whole number put
+        # three times the ceiling into one 5-hour window.
+        out = self.block("--role", "implementer", "--fleet", "3")
+        opus = [l for l in out.splitlines() if "Opus subagents" in l][0]
+        self.assertIn("the ceiling is 3 and the fleet is 3, so this run's share is at "
+                      "most 1 at a time", opus)
+
+    def test_a_fleet_wider_than_the_opus_ceiling_dispatches_none(self):
+        out = self.block("--role", "implementer", "--fleet", "5")
+        opus = [l for l in out.splitlines() if "Opus subagents" in l][0]
+        self.assertIn("Dispatch NO Opus subagents", opus)
+        self.assertNotIn("share is at most", opus)
+
+    def test_a_malformed_opus_ceiling_is_refused_and_never_ignored(self):
+        # The site file ignores an UNKNOWN key by design, so a key that is read
+        # has to be validated: read as unknown, `max-local-opus = four` would
+        # silently unset the ceiling and the block would state none.
+        for junk in ("four", "0", "-1", "2.5", ""):
+            with self.subTest(junk=junk):
+                self.site(SITE.replace("max-local-opus = 3", f"max-local-opus = {junk}"))
+                r = self.run_tk("--role", "implementer")
+                self.assertNotEqual(r.returncode, 0, f"{junk!r} was accepted")
+                self.assertIn("max-local-opus", r.stderr)
+
+    def test_no_site_file_asks_for_one_and_shows_the_format(self):
+        self.unsite()
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("does not exist", r.stderr)
+        self.assertIn("identity = ", r.stderr)
+
+    def test_a_defective_site_file_names_the_defect_instead(self):
+        self.site("identity = alpha\nidentity = bravo\nenvironments = alpha, bravo\n")
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("duplicate key", r.stderr)
+        # "create the file like this" about a file that plainly exists sends the
+        # reader looking for something that is already there
+        self.assertNotIn("does not exist", r.stderr)
+
+    def test_the_identity_in_the_block_comes_from_the_file(self):
+        self.site(SITE.replace("identity = alpha", "identity = charlie-2"))
+        self.assertIn("dispatched from `charlie-2`", self.block("--role", "implementer"))
+
+    def test_a_byte_order_mark_at_byte_zero_of_the_site_file_changes_nothing(self):
+        """`~/.claude/tk/env` is hand-written, and an editor that writes a BOM
+        puts one at byte 0. This reader anchors on no circumflex — `tk_site.parse`
+        splits every line on `=` — so the line still parses and no error names it.
+        What the BOM changes is the KEY: it becomes `<BOM>identity`, which is not
+        `identity`, so a required key reads as ABSENT while sitting in plain view
+        on line 1. `str.strip()` does not remove U+FEFF (it is not whitespace),
+        so nothing downstream undoes it.
+
+        The assertion is byte identity of the whole block, which is what the
+        criterion asks: both renders use the same site path and the same
+        `--policy`, so any difference is the BOM's."""
+        clean = self.block("--role", "implementer", "--fleet", "3")
+        self.site("\ufeff" + SITE)
+        self.assertEqual(self.block("--role", "implementer", "--fleet", "3"), clean)
+
+
+# --- the role table is the single source ----------------------------------
+
+class TestRoleTable(ContractTest):
+    """The criterion the bin is measured against: not one cell of the table
+    copied into it — "just the implementer default" included."""
+
+    def test_the_row_is_read_from_the_table(self):
+        self.table(TABLE.replace("| implementer | parent | session | local |",
+                                 "| implementer | haiku | high | cloud |"))
+        out = self.block("--role", "implementer")
+        self.assertIn("| implementer | haiku | high | cloud |", out)
+        self.assertNotIn("| implementer | parent | session | local |", out)
+
+    def test_the_note_is_emitted_verbatim(self):
+        note = "Rises to `parent` — never below it, and log the rise."
+        self.table(TABLE.replace("| — |", f"| {note} |"))
+        self.assertIn(f"Note: {note}", self.block("--role", "explore"))
+
+    def test_the_pr_cell_decides_the_closing_line_not_the_role_s_name(self):
+        # the whole point of the cell. A bin that hardcoded "implementer opens a
+        # PR" passes every other test in this file and fails only this one: mark
+        # the implementer `none` and the section must go, mark another role
+        # `opens` and it must appear under THAT role
+        self.table(TABLE.replace("| implementer | parent | session | local | opens |",
+                                 "| implementer | parent | session | local | none |"))
+        self.assertNotIn("Fixes <owner>/<repo>#<n>", self.block("--role", "implementer"))
+
+        self.table(TABLE.replace("| explore | haiku | session | local | none |",
+                                 "| explore | haiku | session | local | opens |"))
+        self.assertIn("Fixes <owner>/<repo>#<n>", self.block("--role", "explore"))
+
+    def test_the_checkpoint_cell_decides_the_section_not_the_role_s_name(self):
+        # same criterion as the `pr` cell above, for the same reason: a bin that
+        # hardcoded "the implementer commits" passes every other test here. Mark
+        # the implementer `none` and the section must go; mark another role
+        # `required` and it must appear under THAT role
+        self.table(TABLE.replace("| implementer | parent | session | local | opens | required |",
+                                 "| implementer | parent | session | local | opens | none |"))
+        self.assertNotIn("checkpoint invariant", self.block("--role", "implementer"))
+
+        self.table(TABLE.replace("| explore | haiku | session | local | none | none |",
+                                 "| explore | haiku | session | local | none | required |"))
+        self.assertIn("checkpoint invariant", self.block("--role", "explore"))
+
+    def test_a_checkpoint_value_outside_the_vocabulary_is_a_defect_not_a_default(self):
+        # the dangerous default is "not `required`, so no section": a typo would
+        # then silently strip the invariant from the one role that commits, and
+        # the quota wall is what collects on it
+        self.table(TABLE.replace("| implementer | parent | session | local | opens | required |",
+                                 "| implementer | parent | session | local | opens | sometimes |"))
+        r = self.run_tk("--role", "implementer")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("'sometimes'", r.stderr)
+        self.assertIn("closed vocabulary", r.stderr)
+        self.assertEqual(r.stdout, "")
+
+    def test_a_pr_value_outside_the_vocabulary_is_a_defect_not_a_default(self):
+        # the dangerous default is "not `opens`, so no line": a typo would then
+        # silently strip the closing line from the role that needs it
+        self.table(TABLE.replace("| implementer | parent | session | local | opens |",
+                                 "| implementer | parent | session | local | maybe |"))
+        r = self.run_tk("--role", "implementer")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("'maybe'", r.stderr)
+        self.assertIn("closed vocabulary", r.stderr)
+        self.assertEqual(r.stdout, "")
+
+    def test_an_unknown_role_is_refused_with_the_roles_that_exist(self):
+        r = self.run_tk("--role", "implementor")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("declares no role 'implementor'", r.stderr)
+        self.assertIn("implementer, explore, research", r.stderr)
+        self.assertIn("NO default", r.stderr)
+
+    def test_a_schema_it_cannot_read_fails_loud(self):
+        self.table(TABLE.replace("schema=3", "schema=4"))
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("schema=4", r.stderr)
+        self.assertNotIn("| implementer |", r.stdout)
+
+    def test_a_value_outside_the_vocabulary_is_a_defect_not_a_default(self):
+        good = "| implementer | parent | session | local |"
+        for bad_row, bad in ((good.replace("parent", "gpt"), "gpt"),
+                             (good.replace("session", "medium"), "medium"),
+                             (good.replace("local", "remote"), "remote")):
+            with self.subTest(bad=bad):
+                self.table(TABLE.replace(good, bad_row))
+                r = self.run_tk("--role", "implementer")
+                self.assertEqual(r.returncode, 1, f"{bad!r} was accepted")
+                self.assertIn(repr(bad), r.stderr)
+                self.assertIn("closed vocabulary", r.stderr)
+                self.assertEqual(r.stdout, "")
+
+    def test_a_table_that_never_closes_is_refused(self):
+        self.table(TABLE.replace("<!-- /tk:roles -->", ""))
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("never closes", r.stderr)
+
+    def test_no_table_at_all_is_refused(self):
+        self.table("Just prose, no markers.\n")
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("no role table", r.stderr)
+
+    def test_a_misspelt_marker_says_so_instead_of_just_not_finding_it(self):
+        # "no role table" about a file whose table is right there, one character
+        # off, sends the reader looking for the wrong thing
+        self.table(TABLE.replace("<!-- tk:roles schema=3 -->", "<!-- tk:roles -->"))
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("probably misspelt", r.stderr)
+
+    def test_a_table_with_no_role_in_it_is_refused(self):
+        self.table("<!-- tk:roles schema=3 -->\n"
+                   "| role | model | effort | venue | pr | checkpoint | note |\n"
+                   "|---|---|---|---|---|---|---|\n"
+                   "<!-- /tk:roles -->\n")
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("at least three", r.stderr)
+
+    def test_a_table_that_is_not_there_is_refused_not_defaulted(self):
+        r = self.run_tk("--role", "implementer", "--policy",
+                        os.path.join(self.dir, "nowhere.md"), policy=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("does not exist", r.stderr)
+        self.assertNotIn("not a plain file", r.stderr)
+
+    @unittest.skipUnless(os.path.isfile("/proc/self/mem"), "no /proc on this platform")
+    def test_a_table_that_cannot_be_read_is_refused_not_defaulted(self):
+        # a plain file that exists and still fails on read. It is exotic on
+        # purpose: after the two guards above, only the read itself can fail,
+        # and the branch that catches it needs an input a test can produce
+        r = self.run_tk("--role", "implementer", "--policy", "/proc/self/mem", policy=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("cannot be read", r.stderr)
+        self.assertIn("no copy of those values here", r.stderr)
+
+    def test_a_table_that_is_not_a_plain_file_is_refused(self):
+        os.remove(self.policy)
+        os.makedirs(self.policy)
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not a plain file", r.stderr)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "no FIFOs on this platform")
+    def test_a_table_that_is_a_pipe_does_not_hang(self):
+        # the reason the guard above is an isfile() check and not an except:
+        # open() on a FIFO with no writer BLOCKS. A run that hangs with no
+        # output is worse than any traceback, and a timeout is the only way a
+        # test can tell the difference
+        os.remove(self.policy)
+        os.mkfifo(self.policy)
+        r = self.run_tk("--role", "implementer", timeout=20)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not a plain file", r.stderr)
+
+    def test_a_byte_order_mark_does_not_hide_the_table(self):
+        # an editor that writes one glues it onto the opening marker, and the
+        # table becomes unfindable while sitting in plain view
+        self.table("\ufeff" + TABLE.replace("<!-- tk:roles", "\ufeff<!-- tk:roles"))
+        self.assertIn("| implementer |", self.block("--role", "implementer"))
+
+    def test_a_byte_order_mark_at_byte_zero_of_the_table_changes_nothing(self):
+        """The placement the sibling case above does not isolate: one BOM, at
+        byte 0, and nowhere else.
+
+        This reader anchors on no circumflex either. `OPEN_RE.match` runs on the
+        line already `strip()`ped, and `str.strip()` leaves U+FEFF, so a BOM
+        glued to the opening marker makes `.match` miss and `start` stays None.
+        The diagnosis is then confidently WRONG: `tk:roles` is still in the text,
+        so the hint fires and calls the marker "probably misspelt" — about a
+        marker spelt exactly right.
+
+        The fixture opens ON the marker, and that is load-bearing. The repo's own
+        table carries prose above it, where a BOM at byte 0 is harmless and this
+        test would pass with the fix removed."""
+        bare = "<!-- tk:roles" + TABLE.split("<!-- tk:roles", 1)[1]
+        self.table(bare)
+        clean = self.block("--role", "implementer")
+        self.table("\ufeff" + bare)
+        self.assertEqual(self.block("--role", "implementer"), clean)
+
+    def test_a_table_that_is_not_utf8_is_refused(self):
+        with open(self.policy, "wb") as f:
+            f.write(TABLE.encode("utf-8").replace(b"Prose", b"Pr\xffse"))
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not valid UTF-8", r.stderr)
+
+    def test_a_reordered_header_is_refused(self):
+        self.table(TABLE.replace("| role | model | effort | venue | pr | checkpoint | note |",
+                                 "| role | effort | model | venue | pr | checkpoint | note |"))
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("BY POSITION", r.stderr)
+
+    def test_a_missing_alignment_row_is_refused_not_skipped(self):
+        # the row is skipped BY POSITION, so without it the FIRST role is the
+        # one that disappears — silently, and only for whoever asked for it
+        self.table(TABLE.replace("|---|---|---|---|---|---|---|\n", ""))
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("alignment row", r.stderr)
+
+    def test_a_row_short_of_a_cell_is_refused(self):
+        self.table(TABLE.replace("| explore | haiku | session | local | none | none | — |",
+                                 "| explore | haiku | local | none | none | — |"))
+        r = self.run_tk("--role", "implementer")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("cells, not 7", r.stderr)
+
+    def test_a_duplicate_role_is_refused(self):
+        self.table(TABLE.replace("| research | sonnet | session | cloud |",
+                                 "| explore | sonnet | session | cloud |"))
+        r = self.run_tk("--role", "explore")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("duplicate role 'explore'", r.stderr)
+
+    def test_an_empty_note_is_refused(self):
+        self.table(TABLE.replace("| explore | haiku | session | local | none | none | — |",
+                                 "| explore | haiku | session | local | none | none |  |"))
+        r = self.run_tk("--role", "explore")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("empty `note`", r.stderr)
+
+    def test_a_row_outside_the_markers_is_not_a_role(self):
+        # the markers are the table's boundary, not decoration: a draft row in
+        # the prose above is exactly the row nobody remembers deleting
+        r = self.run_tk("--role", "ghost")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("declares no role 'ghost'", r.stderr)
+        self.assertNotIn("ghost", r.stderr.split("It carries:")[1])
+
+    def test_an_empty_role_cell_is_refused(self):
+        self.table(TABLE.replace("| explore | haiku | session | local | none | none | — |",
+                                 "|  | haiku | session | local | none | none | — |"))
+        r = self.run_tk("--role", "explore")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("empty `role` cell", r.stderr)
+
+    def test_the_default_table_is_the_one_beside_the_bin(self):
+        r = self.run_tk("--role", "implementer", policy=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("| implementer |", r.stdout)
+        self.assertIn(os.path.basename(POLICY), r.stdout)
+
+
+# --- what the block has to say --------------------------------------------
+
+class TestBlockContent(ContractTest):
+    """The four things the block exists to carry. Each was a rule that lived in
+    prose in a handoff prompt, was read, and did not hold."""
+
+    def test_it_demands_the_venue_signature_and_says_who_reads_it(self):
+        out = self.block("--role", "research")
+        self.assertIn("venue signature", out)
+        self.assertIn("degrading SILENTLY to local", out)
+        self.assertIn("counts against the LOCAL ceiling", out)
+
+    def test_it_says_an_empty_return_is_a_failure(self):
+        out = self.block("--role", "research")
+        self.assertIn("EMPTY return is a failure", out)
+
+    def test_it_never_calls_the_return_a_summary(self):
+        # the word is taken: "verify by artifact, not by summary" is what the
+        # package flow says about an agent's self-report, and a block that asks
+        # for a "summary" asks for the thing that document says not to believe
+        self.assertNotIn("summary", self.block("--role", "implementer").lower())
+
+    def test_it_carries_the_two_measured_reading_rules(self):
+        out = self.block("--role", "implementer")
+        self.assertIn("~85k", out)
+        self.assertIn("~100k", out)
+        self.assertIn("372k", out)
+        self.assertIn("~500 lines", out)
+        # the counterweight: without it the rule reads as "do not open files"
+        self.assertIn("Neither rule touches the file you are actually EDITING", out)
+
+    def test_it_demands_the_closing_line_of_a_role_that_opens_a_pr(self):
+        out = self.block("--role", "implementer")
+        self.assertIn("### Closing the ticket", out)
+        self.assertIn("Fixes <owner>/<repo>#<n>", out)
+        # the keyword is worth nothing without the repo: a bare `Fixes #<n>`
+        # aims at the PR's OWN repo, which is not where the ticket lives
+        self.assertIn("spelt out even when it is not", out)
+        # and the reason, so the line survives a reader who thinks it decorative
+        self.assertIn("the MERGE closes the ticket", out)
+
+    def test_it_refuses_the_owner_less_reference_instead_of_guessing(self):
+        # the queue writes a ticket as `<repo>#<n>`, no owner. Pasted in that
+        # shape the keyword closes an unrelated issue of the PR's own repo, or
+        # nothing — and reconstructing the owner is the guess that closes the
+        # wrong ticket mechanically. The block has to say BOTH halves: what goes
+        # wrong, and that the answer is to omit the line rather than invent one
+        out = self.block("--role", "implementer")
+        self.assertIn("closes nothing across repositories", out)
+        self.assertIn("open the PR without", out)
+        self.assertIn("Do NOT reconstruct the owner", out)
+
+    def test_it_names_the_three_things_the_gate_will_check(self):
+        # a block promising only "the gate checks for it" leaves the run
+        # believing a present line is a passing one
+        out = self.block("--role", "implementer")
+        self.assertIn("that its number is the ticket", out)
+        self.assertIn("default branch", out)
+
+    def test_a_role_that_opens_no_pr_is_told_nothing_about_one(self):
+        # an instruction the reader cannot act on is what teaches them to skim
+        for role in ("explore", "research"):
+            with self.subTest(role=role):
+                out = self.block("--role", role)
+                self.assertNotIn("Closing the ticket", out)
+                self.assertNotIn("Fixes", out)
+
+    def test_it_states_the_checkpoint_invariant_for_a_role_that_commits(self):
+        out = self.block("--role", "implementer")
+        self.assertIn("### The checkpoint invariant", out)
+        # the instruction itself, asserted whole. `push` alone is vacuous here —
+        # the word appears three times in the section, so a block that dropped
+        # the push from the instruction still carried it
+        self.assertIn("Commit and push at every seam", out)
+        # a commit on the default branch is not a checkpoint, it is the accident
+        self.assertIn("never to the default one", out)
+        # and the measurement that makes it a rule rather than hygiene
+        self.assertIn("2026-08-18", out)
+
+    def test_the_checkpoint_invariant_says_what_uncommitted_work_costs(self):
+        # without the consequence the rule reads as tidiness and gets deferred
+        # to the end of the run — which is exactly where the wall lands
+        out = self.block("--role", "implementer")
+        self.assertIn("did not happen", out)
+        # the orchestrator verifies by artefact, so an uncommitted tree cannot
+        # be rescued by a confident return
+        self.assertIn("reads the tree", out)
+
+    def test_a_role_that_commits_nothing_is_told_nothing_about_checkpoints(self):
+        # an instruction the reader cannot act on is what teaches them to skim
+        for role in ("explore", "research"):
+            with self.subTest(role=role):
+                out = self.block("--role", role)
+                self.assertNotIn("checkpoint invariant", out)
+
+    def test_it_points_at_the_rules_earlier_slices_paid_for(self):
+        out = self.block("--role", "implementer")
+        self.assertIn("slice-rules.md", out)
+        self.assertIn("Rules earlier slices paid for", out)
+
+    def test_the_rules_the_block_points_at_are_actually_there(self):
+        # a pointer aimed at a file that is not there sends the reader to
+        # silence, and the block would go on naming it at every dispatch. This
+        # is the one test besides the policy-path one that reads the real repo
+        self.assertTrue(os.path.isfile(RULES), RULES)
+        with io.open(RULES, encoding="utf-8") as fh:
+            self.assertIn("# Rules earlier slices paid for", fh.read())
+
+    def test_it_asks_for_the_deviation_log_in_the_policy_s_format(self):
+        out = self.block("--role", "explore")
+        self.assertIn("explore: haiku→<what actually ran> — reason", out)
+        self.assertIn("deviation log", out.lower())
+
+    def test_the_block_is_delimited_so_it_can_be_replaced(self):
+        out = self.block("--role", "explore")
+        self.assertTrue(out.startswith("<!-- tk:contract schema=1 role=explore -->"))
+        self.assertTrue(out.rstrip("\n").endswith("<!-- /tk:contract -->"))
+
+
+# --- the harness that proves the tests above -------------------------------
+
+class TestHarness(unittest.TestCase):
+    """The mutation harness is the thing that says this suite protects anything,
+    and nothing was checking IT. Each test here is a way that harness could go
+    on reporting a clean score over a suite with a hole in it."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import mutations_tk_contract
+        self.h = mutations_tk_contract
+        self.mod = sys.modules[__name__]
+
+    def test_the_test_classes_are_derived_not_listed(self):
+        # a class left out of a hand-kept list drops out of the baseline and out
+        # of the orphan check at once — both watchers blind, no output
+        found = self.h.test_classes(self.mod)
+        for name in ("TestDeterminism", "TestFleetDivisor", "TestCeilings",
+                     "TestRoleTable", "TestBlockContent", "TestHarness"):
+            self.assertIn(name, found)
+        self.assertNotIn("ContractTest", found)   # a base class holds no tests
+
+    def test_a_test_that_no_entry_names_is_reported(self):
+        self.assertEqual(self.h.unproved(self.h.MUTATIONS, self.mod), [])
+        orphans = self.h.unproved([], self.mod)
+        self.assertIn("TestFleetDivisor.test_the_fleet_divides_the_local_ceiling", orphans)
+
+    def test_an_entry_naming_a_test_that_does_not_exist_is_reported(self):
+        # unittest answers an unloadable name with a non-zero exit, and the
+        # runner reads non-zero as "the mutant died" — a typo would report
+        # itself as coverage
+        self.assertEqual(self.h.misnamed(self.h.MUTATIONS, self.mod), [])
+        bad = self.h.misnamed([("typo", "a", "b", ["TestRoleTable.test_no_such_thing"])],
+                              self.mod)
+        self.assertEqual(bad, ["typo -> TestRoleTable.test_no_such_thing"])
+        gone = self.h.misnamed([("gone", "a", "b", ["TestVanished.test_x"])], self.mod)
+        self.assertEqual(gone, ["gone -> TestVanished.test_x"])
+
+    # --- the other hole: a SOURCE LINE no test input reaches ---------------
+    # `unproved` above answers "which test does no entry mutate". These answer
+    # "which line does no test run at all" — the guard that is invisible at
+    # 100% killed, because the score counts the mutants somebody wrote.
+
+    # line 6 is the one no call reaches; lines 2, 3, 8 and 9 can never run
+    PROBE = ("import sys\n"                     # 1
+             "\n"                               # 2
+             "\n"                               # 3
+             "def guard(flag):\n"               # 4
+             "    if flag:\n"                   # 5
+             "        return 'cold'\n"          # 6
+             "    return 'warm'\n"              # 7
+             "\n"                               # 8
+             "\n"                               # 9
+             "sys.stdout.write(guard(False))\n")  # 10
+
+    def tree(self):
+        """A throwaway `tk/`, shaped like the real one: Python with and without
+        an extension, beside the two kinds of file an entry also anchors in."""
+        root = tempfile.mkdtemp(prefix="tk-reach-test.")
+        self.addCleanup(shutil.rmtree, root, True)
+        os.makedirs(os.path.join(root, "bin"))
+        os.makedirs(os.path.join(root, "data"))
+        os.makedirs(os.path.join(root, "tests"))
+        for rel, body in (("bin/probe.py", self.PROBE),
+                          ("bin/other.py", "x = 1\n"),
+                          ("bin/tool", "#!/usr/bin/env python3\nx = 1\n"),
+                          ("bin/shell.sh", "#!/bin/sh\necho hi\n"),
+                          ("tests/reach_tracer.py", "x = 1\n"),
+                          ("data/thing.json", '{"not": "python"}\n')):
+            with open(os.path.join(root, rel), "w", encoding="utf-8") as f:
+                f.write(body)
+        return root
+
+    def test_the_lines_a_source_can_run_are_the_lines_the_compiler_emits(self):
+        # the walk into NESTED code objects is the whole of it: the top-level
+        # object lists the `def` and nothing inside the function, so a
+        # denominator that stopped there calls a suite complete for never
+        # entering one
+        root = self.tree()
+        lines = self.h.executable_lines(os.path.join(root, "bin", "probe.py"))
+        self.assertEqual(sorted(lines), [1, 4, 5, 6, 7, 10])
+
+    def test_only_the_python_sources_an_entry_mutates_are_measured(self):
+        root = self.tree()
+        entries = [("a", "x", "y", [], os.path.join("bin", "probe.py")),
+                   ("b", "x", "y", [], os.path.join("data", "thing.json")),
+                   ("c", "x", "y", [], os.path.join("bin", "shell.sh")),
+                   ("d", "x", "y", [], os.path.join("bin", "tool")),
+                   ("e", "x", "y", [], os.path.join("tests", "reach_tracer.py")),
+                   ("f", "x", "y", [])]
+        # the manifest and the shell script are dropped — the interpreter never
+        # runs either, so neither has a line to reach — while `bin/tool` is kept
+        # on its shebang, which is the shape every bin in this repo has; the
+        # default is measured because entry `f` mutates it. The tracer is
+        # dropped too: Python does not trace a trace function, so measuring it
+        # would print one permanently unmeasured file under every run.
+        self.assertEqual(self.h.reach_sources(entries, root, "bin/other.py"),
+                         ("bin/other.py", os.path.join("bin", "probe.py"),
+                          os.path.join("bin", "tool")))
+        # every entry naming its own source, the default is a file this suite
+        # never opens, and reporting it would call it wholly unreached
+        self.assertEqual(self.h.reach_sources(entries[:1], root, "bin/other.py"),
+                         (os.path.join("bin", "probe.py"),))
+
+    def test_the_probe_records_which_lines_a_child_process_ran(self):
+        # the probe travels by PYTHONPATH into a child interpreter and writes
+        # what it saw on the way out; each half is a way it can measure NOTHING
+        # while reporting every line of a live file as cold
+        root = self.tree()
+        rel = os.path.join("bin", "probe.py")
+        probe_dir = tempfile.mkdtemp(prefix="tk-reach-probe.")
+        self.addCleanup(shutil.rmtree, probe_dir, True)
+        env, out_dir = self.h.reach_env(probe_dir, (rel,))
+        ran = subprocess.run([sys.executable, os.path.join(root, rel)],
+                             capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(ran.stdout, "warm")
+        cold, unmeasured = self.h.reach_report(out_dir, root, (rel,))
+        self.assertEqual(unmeasured, [])
+        self.assertEqual(cold, {rel: ([6], 6)})
+
+        # nothing recorded at all is NOT "every line is cold": a suite that
+        # never runs the file and a probe that never reached the child leave
+        # the same empty directory behind, and only one of them is a finding
+        empty = tempfile.mkdtemp(prefix="tk-reach-empty.")
+        self.addCleanup(shutil.rmtree, empty, True)
+        cold, unmeasured = self.h.reach_report(empty, root, (rel,))
+        self.assertEqual((cold, unmeasured), ({}, [rel]))
+
+    def test_the_unreached_lines_are_collapsed_into_ranges(self):
+        self.assertEqual(self.h.line_ranges([1, 2, 3, 7, 9, 10]), "1-3, 7, 9-10")
+        self.assertEqual(self.h.line_ranges([5]), "5")
+        self.assertEqual(self.h.line_ranges([]), "")
+
+    def test_the_reach_report_names_the_file_the_count_and_the_module(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.h.report_reach({"bin/probe.py": ([6, 7, 8], 12)},
+                                ["bin/other.py"], "test_probe")
+        # read with the wrapping flattened: what is asserted is the wording,
+        # and where a long line breaks is the terminal's business
+        printed = " ".join(out.getvalue().split())
+        self.assertIn("UNREACHED bin/probe.py — 3 of 12 line(s) "
+                      "no test in test_probe reaches 6-8", printed)
+        # the module is named because the scope is one suite, not the repo
+        self.assertIn("UNMEASURED bin/other.py — the probe recorded no line of "
+                      "this file; either test_probe never runs it", printed)
+
+    def test_a_listing_too_tall_to_read_is_held_back_behind_a_switch(self):
+        # one suite here reaches a third of a 1900-line bin whose other tests
+        # live in another module, and forty lines of numbers above every run
+        # bury the six real lines the suite next door reports
+        many = {"bin/big.py": (list(range(100, 700, 2)), 1914)}
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.h.report_reach(many, [], "test_probe")
+        printed = " ".join(out.getvalue().split())
+        self.assertIn("300 of 1914 line(s)", printed)      # the count stays
+        self.assertIn("held back", printed)
+        self.assertNotIn("100, 102", printed)
+
+        os.environ[self.h.REACH_FULL] = "1"
+        self.addCleanup(os.environ.pop, self.h.REACH_FULL, None)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.h.report_reach(many, [], "test_probe")
+        printed = " ".join(out.getvalue().split())
+        self.assertIn("100, 102", printed)
+        self.assertNotIn("held back", printed)
+
+    def test_an_unreached_line_reports_without_failing_the_run(self):
+        # every suite here has unreached lines today, so a run that went red on
+        # them would be red on arrival — and a check that is red on arrival is
+        # a check somebody turns off
+        self.assertEqual(self.h.exit_code([], [], []), 0)
+        self.assertEqual(self.h.exit_code(["survived"], [], []), 1)
+        self.assertEqual(self.h.exit_code([], ["unrunnable"], []), 1)
+        self.assertEqual(self.h.exit_code([], [], ["orphan"]), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

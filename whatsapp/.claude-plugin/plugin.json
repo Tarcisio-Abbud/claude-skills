@@ -1,0 +1,8 @@
+{
+  "name": "whatsapp",
+  "version": "1.0.0",
+  "description": "Reads a WhatsApp conversation export by its DELTA against the previous export: the messages and attachments that arrived since, extracted beside the zip, with the new voice notes handed to a local transcriber and folded back into one readable digest. Absorbs what the format does to an unsuspecting diff — the clock that drifts between exports, the suffix a repeated filename gains — and refuses a pair of exports that is not the same conversation.",
+  "author": {
+    "name": "Tarcisio-Abbud"
+  }
+}

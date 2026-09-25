@@ -1,0 +1,73 @@
+# Allowlist: only own-authored content is versioned.
+# Third-party skills (matt-pocock via `npx skills`, etc.) live in this same
+# directory and stay out of version control.
+/*
+!/.gitignore
+!/README.md
+!/.claude-plugin
+!/tk
+!/plugin-drift
+!/asr
+!/whatsapp
+!/contrato
+!/githooks
+!/bin
+
+# Agent config, versioned so that `git worktree add` materialises it (README, "Layout").
+# The four rules run in order: reopen docs/, close what sits directly inside it, reopen
+# agents/, close that too — then name the three files `/setup-matt-pocock-skills` writes.
+# Naming them rather than opening the directory is what keeps the next file dropped there
+# from reaching a PUBLIC repo on its own.
+!/docs
+/docs/*
+!/docs/agents
+/docs/agents/*
+!/docs/agents/issue-tracker.md
+!/docs/agents/triage-labels.md
+!/docs/agents/domain.md
+
+# Pruning baselines and the script that lays them out (T185). Named file by file
+# for the reason the block above is: a pruning report on a PRIVATE skill must not
+# reach this PUBLIC repo, and an open `!/docs/prune` would let `git add -A` carry
+# one in. The gitignore is the first line here, the pre-commit guard the second.
+!/docs/prune
+/docs/prune/*
+!/docs/prune/baseline.py
+!/docs/prune/baseline-2026-08-27.md
+!/docs/prune/baseline-2026-09-01.md
+!/docs/prune/baseline-2026-09-23.md
+!/docs/prune/lock.py
+!/docs/prune/dispatch.md
+!/docs/prune/dispatch-report.md
+!/docs/prune/verify.md
+!/docs/prune/verify-report.md
+!/docs/prune/review.md
+!/docs/prune/review-report.md
+!/docs/prune/docs-audit.md
+!/docs/prune/docs-audit-report.md
+!/docs/prune/kickoff.md
+!/docs/prune/kickoff-report.md
+!/docs/prune/wrap-up.md
+!/docs/prune/wrap-up-report.md
+!/docs/prune/second-opinion.md
+!/docs/prune/second-opinion-report.md
+!/docs/prune/fleet.md
+!/docs/prune/fleet-report.md
+
+# The hookify stop rule that this repo's own sessions run under, versioned for the same
+# reason `docs/agents/` is (README, "Layout"): `git worktree add` materialises tracked files
+# only, so an unversioned copy leaves every worktree of this repo with no guard at all.
+# Named file by file for the same reason as the blocks above: `.claude/*.local.md` is where
+# a LOCAL rule lands, and an open `!/.claude` would let one carrying private values reach
+# this PUBLIC repo.
+!/.claude
+/.claude/*
+!/.claude/hookify.code-review-before-done.local.md
+
+# Python bytecode from the test suites
+__pycache__/
+*.pyc
+
+# pytest's own cache dir (tk/tests/) — named explicitly so this .gitignore,
+# not the .gitignore pytest writes inside the dir, is the one that ignores it
+.pytest_cache/

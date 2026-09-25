@@ -1,0 +1,8 @@
+{
+  "name": "asr",
+  "version": "1.0.0",
+  "description": "Local CPU speech-to-text for any project: turns voice notes, recordings and WhatsApp exports into text with Parakeet TDT 0.6B v3, falling back to faster-whisper for the languages Parakeet does not cover. Nothing leaves the machine.",
+  "author": {
+    "name": "Tarcisio-Abbud"
+  }
+}

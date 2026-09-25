@@ -1,0 +1,297 @@
+#!/bin/sh
+# Refuses a commit that would publish one of the values configuring this clone. Why the
+# clone's own values live in git config: README, "Layout, and the authoring machine".
+#
+# THREE SOURCES OF NEEDLES, all local to this clone: the values of `tk.tracker` and
+# `tk.ghConfigDir`, and each line of the file whose path `tk.privateValuesFile` holds. The
+# file carries what no config value spells — the names of the private projects on the
+# authoring machine — and is generated there, outside every repo. Its needles are matched
+# exactly like the config values: every surface below, case, separators, encoding, wrapped
+# lines. The three cases of that key are decided where the file is read, further down.
+#
+# Install it as BOTH hooks — the install lines are in `docs/agents/issue-tracker.md`.
+# git passes the message file as $1 to `commit-msg` and nothing to `pre-commit`, which is
+# how one script covers staged content and the commit message without being told which
+# hook it is running as.
+#
+# WHAT IT DOES NOT COVER, measured rather than assumed. `git cherry-pick` and `git rebase`
+# invoke neither hook, so a commit made with `--no-verify` reaches the public remote through
+# either of them unexamined; closing that needs a `pre-push` hook, which this file is not.
+# It reads only what a commit ADDS — a value already tracked stays where it is — and PR
+# titles and bodies travel through `gh`, never through git. Tag names are not read. Encoding
+# is followed two levels deep (`%2F`, `%252F`) and no further. A needle shorter than
+# six letters and digits keeps its own separators outside the branch name, and every
+# match is a substring match, so a real coincidence takes `--no-verify`.
+
+message_file=$1
+
+# --- the surfaces a value can reach the remote through -------------------------------
+#
+# `--text` and `grep -a`: without them a staged binary is summarised as "Binary files ...
+# differ", and grep answers a NUL-carrying stream with "binary file matches" instead of the
+# lines. Context lines are kept out twice over — `--unified=0` stops git emitting them, and
+# the `^\+` filter would drop them anyway — so no mutation can falsify either half alone;
+# the harness removes both at once and says so. Stripping the marker is what lets a wrapped
+# value be rejoined further down.
+added_lines() {
+  git diff --cached --text --unified=0 |
+    grep -a -E '^\+' | grep -a -v -E '^\+\+\+ ' | sed 's/^+//'
+}
+
+# A pure rename adds no line at all, so the path it moves the file TO has to be read
+# separately. `ACR` — added, copied, renamed — leaves modified files out, which is what keeps
+# an already-tracked leaky path from being re-reported on every edit near it.
+new_paths() {
+  git diff --cached --name-only --diff-filter=ACR
+}
+
+message_text() {
+  if [ -n "$message_file" ]; then
+    cat "$message_file"
+  fi
+}
+
+# A branch name is pushed and public exactly like a path is. Detached HEAD has no name, and
+# that is not an error here.
+branch_name() {
+  git symbolic-ref --quiet --short HEAD 2>/dev/null || true
+}
+
+# A branch rarely carries the value's punctuation intact — the idiom is to transliterate the
+# separators, and `leak/Owner-repo` publishes the identity as surely as `leak/Owner/repo`.
+# Folding `/` and `_` to `-` was not enough: a dot is not either of them, and a name that
+# drops the separators altogether (`leakOwnerrepo`) still spells the identity. So every
+# character that is not a letter or a digit is REMOVED, on both sides, which collapses all of
+# those to one comparison.
+fold_separators() {
+  LC_ALL=C tr -dc 'A-Za-z0-9'
+}
+
+# The other surfaces fold too, line by line, but only for a needle of FOLD_MIN letters and
+# digits or more. The list of names is shared with the `gh` publish guard of the authoring
+# machine, which compares it exactly so, at the same length: a name listed as `Acme-Widgets`
+# is the same name in prose as `Acme Widgets` or `AcmeWidgets`, and matching it raw let those
+# spellings through. Below the threshold an alphanumeric run occurs by accident — `ab cd` in
+# ordinary prose — so a short needle keeps its separators. The newline is kept, so the line
+# numbers a remedy prints still point into the real diff.
+FOLD_MIN=6
+fold_lines() {
+  LC_ALL=C tr -dc 'A-Za-z0-9\n'
+}
+
+# The added lines of ONE file, joined, so a value the author wrapped across two lines is one
+# string again. Per file and never across the diff: joining the whole diff concatenated the
+# last line of one file to the first line of the next, and since git orders files
+# alphabetically, the FILENAME decided whether two innocent lines collided at the seam.
+# Each row is `<path>\tjoined`, so the refusal can name the file; the tab cannot occur inside
+# a value, so no match can span it. `\r` goes early — a CRLF file would otherwise wrap every
+# line in a carriage return and defeat the join.
+joined_per_file() {
+  git diff --cached --text --unified=0 | awk '
+    /^\+\+\+ / { if (path != "") print path "\t" buf; path = substr($0, 7); buf = ""; next }
+    /^\+/      { l = substr($0, 2); sub(/\r$/, "", l); buf = buf l; next }
+    END        { if (path != "") print path "\t" buf }
+  '
+}
+
+# One place for the match flags, so every reading answers to the same rule: `-a` for a stream
+# carrying NUL bytes, `-F` because a slug is a literal and not a pattern, `-i` because a
+# GitHub slug is case-insensitive and a re-cased copy publishes the same identity.
+contains() {
+  grep -a -q -i -F -- "$1"
+}
+
+# The third source of needles: a FILE, one name per line, whose path is the value of
+# `tk.privateValuesFile`. It exists for the names that are not this clone's own config — the
+# private projects of the machine the clone lives on — and it lives OUTSIDE the repo, because
+# the list of what must not be published cannot itself be published. `--path` expands `~`.
+FILE_KEY=tk.privateValuesFile
+
+# One needle per line. A `#` comment is dropped here, and so are a byte-order mark — on ANY
+# line, since two exports joined carry a second one mid-file — a carriage return and the
+# whitespace around a name; the blank line that leaves is dropped by the loop, like an unset
+# key. `LC_ALL=C` makes the mark three bytes.
+file_needles() {
+  LC_ALL=C awk '{ gsub(/\357\273\277/, ""); sub(/\r$/, ""); gsub(/^[ \t]+|[ \t]+$/, "")
+    if (substr($0, 1, 1) != "#") print }' "$1"
+}
+
+# SET BUT UNREADABLE REFUSES, and that is a decision. The key is a promise that these names
+# are guarded; a file gone missing — a failed export, a moved home — would otherwise turn the
+# guard off in silence, on the very commits the promise was made for, and a warning on the
+# stderr of a commit that went through is read by nobody. `-f` also refuses a directory and a
+# FIFO, which would block the read rather than fail it. Unset or empty protects nothing more,
+# exactly as before; an EMPTY file is a list with nothing on it, and is accepted.
+needles_file=$(git config --path "$FILE_KEY" 2>/dev/null)
+file_rows=""
+if [ -n "$needles_file" ]; then
+  if [ ! -f "$needles_file" ] || [ ! -r "$needles_file" ] ||
+    ! file_rows=$(file_needles "$needles_file"); then
+    printf '%s\n' "This repo is PUBLIC, and the list of private names it must refuse cannot be read:" >&2
+    printf '%s\n' "  git config $FILE_KEY names '$needles_file', which is not a readable file." >&2
+    printf '%s\n' "  Regenerate that file, or stop the promise with: git config --unset $FILE_KEY" >&2
+    exit 1
+  fi
+fi
+
+# EACH SURFACE IS READ ONCE, raw and folded, into a scratch directory, and every needle greps
+# those files. Rerunning `git diff` per needle and per surface made the cost grow with the
+# list of names, several seconds a commit once that list is the machine's projects.
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/private-values.XXXXXX") || {
+  printf '%s\n' "private-values: cannot create a scratch directory, so nothing was checked" >&2
+  exit 1
+}
+trap 'rm -rf "$scratch"' EXIT
+trap 'exit 1' HUP INT TERM
+for surface in added_lines new_paths message_text; do
+  $surface >"$scratch/$surface.cat"
+  fold_lines <"$scratch/$surface.cat" >"$scratch/$surface.fold_lines"
+done
+branch_name | fold_separators >"$scratch/branch_name"
+joined_per_file >"$scratch/joined"
+
+found=0
+
+# One `<key>\t<value>` row per needle, read on fd 3 so that nothing in the body can eat the
+# rows through stdin. A value is one line; the rows of the file all carry `$FILE_KEY`.
+while IFS='	' read -r key value <&3; do
+  # An unset key protects nothing, and an empty needle would match every commit.
+  if [ -z "$value" ]; then
+    continue
+  fi
+
+  # The same value wearing a URL's clothes, once and twice over. Both read back as the same
+  # identity; `%25` is what a second pass does to the `%` of the first. A spelling equal to
+  # the value — a name with no `/` — is not searched twice.
+  set -- "$value"
+  for encoded in "$(printf '%s' "$value" | sed 's|/|%2F|g')" \
+    "$(printf '%s' "$value" | sed 's|/|%252F|g')"; do
+    [ "$encoded" = "$value" ] || set -- "$@" "$encoded"
+  done
+
+  hit_surface=""
+  hit_path=""
+  hit_folded=""
+  for needle in "$@"; do
+    # `look` is what is searched and `squash` what the surface goes through first: folded for
+    # a needle long enough (see `fold_lines`), raw below that.
+    look=$(printf '%s' "$needle" | fold_separators)
+    if [ "${#look}" -ge "$FOLD_MIN" ]; then
+      squash=fold_lines
+    else
+      look=$needle
+      squash=cat
+    fi
+    for surface in added_lines new_paths message_text; do
+      if contains "$look" <"$scratch/$surface.$squash"; then
+        hit_surface=$surface
+        # Only the folded text spells it: a search for the listed spelling finds nothing, so
+        # the remedy has to search the folded text, as the match did.
+        if [ "$squash" = fold_lines ] && ! contains "$needle" <"$scratch/$surface.cat"; then
+          hit_folded=$look
+        fi
+        break
+      fi
+    done
+    if [ -n "$hit_surface" ]; then
+      break
+    fi
+    if contains "$(printf '%s' "$needle" | fold_separators)" <"$scratch/branch_name"; then
+      hit_surface=branch_name
+      break
+    fi
+    # The match is asked of the CONTENT field alone. Grepping the whole row would let the
+    # `<path>` prefix answer for it, and a file already living under a leaky path would be
+    # re-reported on every edit — the false positive `--diff-filter=ACR` exists to prevent.
+    row=$(NEEDLE="$look" SQUASH="$squash" LC_ALL=C awk -F'\t' '
+      { c = $2; if (ENVIRON["SQUASH"] == "fold_lines") gsub(/[^A-Za-z0-9]/, "", c) }
+      index(tolower(c), tolower(ENVIRON["NEEDLE"])) { print; exit }' "$scratch/joined")
+    if [ -n "$row" ]; then
+      hit_surface=joined
+      hit_path=${row%%	*}
+      break
+    fi
+  done
+
+  if [ -z "$hit_surface" ]; then
+    continue
+  fi
+
+  if [ "$found" -eq 0 ]; then
+    echo "This repo is PUBLIC and the commit carries a private value." >&2
+    found=1
+  fi
+
+  # A config value is named by its key and repaired by looking the key up, so the refusal
+  # never has to print it. A name from the file has no lookup to offer: it is printed, quoted
+  # for the shell — the refusal is read on this machine, and a remedy that cannot say what to
+  # search for does not run. printf throughout, because this shell's echo would expand a
+  # backslash inside a name and hand the reader a command that is not the one that was meant.
+  if [ "$key" = "$FILE_KEY" ]; then
+    quoted="'$(printf '%s' "$value" | sed "s/'/'\\\\''/g")'"
+    what="the name $quoted, listed in the file that git config $FILE_KEY names"
+    lookup=$quoted
+    replacement="a placeholder that does not spell it, such as <project-a>"
+  else
+    what="the value of: git config $key"
+    lookup="\"\$(git config $key)\""
+    replacement="\$(git config $key)"
+  fi
+  squash_cmd=""
+  if [ -n "$hit_folded" ]; then
+    what="$what, spelled with other separators"
+    squash_cmd=" | LC_ALL=C tr -dc 'A-Za-z0-9\\n'"
+    if [ "$key" = "$FILE_KEY" ]; then
+      lookup="'$hit_folded'"
+    else
+      lookup="\"\$(git config $key | LC_ALL=C tr -dc 'A-Za-z0-9')\""
+    fi
+  fi
+
+  case $hit_surface in
+    added_lines)
+      printf '%s\n' "  - $what — in a line this commit adds" >&2
+      printf '%s\n' "    see it:     git diff --cached --text -U0$squash_cmd | grep -n -i -F -- $lookup" >&2
+      printf '%s\n' "    replace by: $replacement" >&2
+      ;;
+    new_paths)
+      printf '%s\n' "  - $what — in a PATH this commit introduces" >&2
+      printf '%s\n' "    see it:     git diff --cached --name-only --diff-filter=ACR" >&2
+      printf '%s\n' "    rename the file; its content is not the problem" >&2
+      ;;
+    message_text)
+      printf '%s\n' "  - $what — in the commit message" >&2
+      printf '%s\n' "    rewrite the message; describe the change on its own terms" >&2
+      ;;
+    branch_name)
+      printf '%s\n' "  - $what — in the BRANCH NAME, which is pushed too" >&2
+      printf '%s\n' "    see it:     git symbolic-ref --short HEAD" >&2
+      printf '%s\n' "    rename it:  git branch -m <a name that does not spell it>" >&2
+      ;;
+    joined)
+      printf '%s\n' "  - $what — only once consecutive added lines of" >&2
+      printf '%s\n' "    $hit_path are joined. Two readings fit, and they want opposite repairs:" >&2
+      printf '%s\n' "      * the value really is wrapped there — put it on one line, then replace" >&2
+      printf '%s\n' "        it by: $replacement" >&2
+      printf '%s\n' "      * two unrelated lines merely meet at its seam — nothing is published," >&2
+      printf '%s\n' "        and this refusal is a false positive; commit with --no-verify" >&2
+      printf '%s\n' "    see it:     git diff --cached --text -U0 -- '$hit_path' | grep -a -E '^\\+' | grep -a -v -E '^\\+\\+\\+ ' | sed 's/^+//'" >&2
+      ;;
+  esac
+done 3<<EOF
+tk.tracker	$(git config tk.tracker 2>/dev/null)
+tk.ghConfigDir	$(git config tk.ghConfigDir 2>/dev/null)
+$(printf '%s\n' "$file_rows" | sed "s/^/$FILE_KEY	/")
+EOF
+
+if [ "$found" -eq 0 ]; then
+  exit 0
+fi
+
+cat >&2 <<'END'
+
+Fix what is named above, then commit again. Case, `%2F`/`%252F` encoding and a value wrapped
+across two lines do not evade this check. Publishing on purpose takes `git commit --no-verify`
+— which is also what `cherry-pick` and `rebase` do implicitly.
+END
+exit 1

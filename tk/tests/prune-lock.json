@@ -1,0 +1,299 @@
+{
+  "generated": "2026-09-23",
+  "baseline": "docs/prune/baseline-2026-09-23.md",
+  "generator": "docs/prune/lock.py",
+  "slack": 0.1,
+  "ceilings": {
+    "mean_sentence_words": 22,
+    "max_sentence_words": 25,
+    "sentences_over_30": 4,
+    "description_words": 30,
+    "inline_evidence": 0,
+    "terms_defined_in_sibling": 0
+  },
+  "files": {
+    "tk/skills/dispatch/SKILL.md": {
+      "role": "pruned",
+      "report": "dispatch-report.md",
+      "lines": 60,
+      "body_words": 541,
+      "over": []
+    },
+    "tk/skills/docs-audit/SKILL.md": {
+      "role": "pruned",
+      "report": "docs-audit-report.md",
+      "lines": 95,
+      "body_words": 867,
+      "over": []
+    },
+    "tk/skills/fleet/SKILL.md": {
+      "role": "pruned",
+      "report": "fleet-report.md",
+      "lines": 428,
+      "body_words": 4163,
+      "over": []
+    },
+    "tk/skills/kickoff/SKILL.md": {
+      "role": "pruned",
+      "report": "kickoff-report.md",
+      "lines": 133,
+      "body_words": 1216,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/skills/kickoff/AFK.md": {
+      "role": "pruned",
+      "report": "kickoff-report.md",
+      "lines": 354,
+      "body_words": 3775,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/skills/kickoff/WINDOW.md": {
+      "role": "pruned",
+      "report": "kickoff-report.md",
+      "lines": 533,
+      "body_words": 6069,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30",
+        "inline_evidence"
+      ]
+    },
+    "tk/skills/review/SKILL.md": {
+      "role": "pruned",
+      "report": "review-report.md",
+      "lines": 137,
+      "body_words": 1226,
+      "over": []
+    },
+    "tk/skills/second-opinion/SKILL.md": {
+      "role": "pruned",
+      "report": "second-opinion-report.md",
+      "lines": 52,
+      "body_words": 463,
+      "over": [
+        "max_sentence_words"
+      ]
+    },
+    "tk/skills/verify/SKILL.md": {
+      "role": "pruned",
+      "report": "verify-report.md",
+      "lines": 125,
+      "body_words": 1019,
+      "over": []
+    },
+    "tk/skills/wrap-up/SKILL.md": {
+      "role": "pruned",
+      "report": "wrap-up-report.md",
+      "lines": 181,
+      "body_words": 1735,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/skills/dispatch/LOOP.md": {
+      "role": "moved",
+      "report": "dispatch-report.md",
+      "lines": 16,
+      "body_words": 70,
+      "over": []
+    },
+    "tk/skills/review/BRIEF.md": {
+      "role": "moved",
+      "report": "review-report.md",
+      "lines": 32,
+      "body_words": 90,
+      "over": []
+    },
+    "tk/skills/verify/HANDOFF.md": {
+      "role": "moved",
+      "report": "verify-report.md",
+      "lines": 18,
+      "body_words": 179,
+      "over": []
+    },
+    "tk/skills/merge-gate/SKILL.md": {
+      "role": "moved",
+      "report": "wrap-up-report.md",
+      "lines": 194,
+      "body_words": 2122,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/skills/wrap-up/REPORT.md": {
+      "role": "moved",
+      "report": "wrap-up-report.md",
+      "lines": 96,
+      "body_words": 751,
+      "over": [
+        "mean_sentence_words",
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/reference/queue.md": {
+      "role": "moved",
+      "report": "kickoff-report.md",
+      "lines": 124,
+      "body_words": 1228,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/reference/session-finding.md": {
+      "role": "moved",
+      "report": "kickoff-report.md",
+      "lines": 48,
+      "body_words": 474,
+      "over": [
+        "max_sentence_words"
+      ]
+    },
+    "tk/skills/kickoff/RESUME.md": {
+      "role": "moved",
+      "report": "kickoff-report.md",
+      "lines": 69,
+      "body_words": 734,
+      "over": [
+        "mean_sentence_words",
+        "max_sentence_words",
+        "sentences_over_30"
+      ]
+    },
+    "tk/skills/kickoff/AUDIT.md": {
+      "role": "moved",
+      "report": "kickoff-report.md",
+      "lines": 69,
+      "body_words": 677,
+      "over": [
+        "mean_sentence_words",
+        "max_sentence_words",
+        "sentences_over_30",
+        "inline_evidence"
+      ]
+    },
+    "tk/skills/kickoff/FINDINGS.md": {
+      "role": "guarded",
+      "lines": 75,
+      "body_words": 806,
+      "over": [
+        "max_sentence_words",
+        "inline_evidence"
+      ]
+    },
+    "tk/skills/kickoff/HYGIENE.md": {
+      "role": "guarded",
+      "lines": 115,
+      "body_words": 1130,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30",
+        "inline_evidence"
+      ]
+    },
+    "tk/skills/kickoff/LANE-CONTRACT.md": {
+      "role": "guarded",
+      "lines": 130,
+      "body_words": 1056,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30",
+        "inline_evidence"
+      ]
+    },
+    "tk/skills/kickoff/LEDGER.md": {
+      "role": "guarded",
+      "lines": 134,
+      "body_words": 1230,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30",
+        "inline_evidence"
+      ]
+    },
+    "tk/skills/kickoff/REVIEW-CONTRACT.md": {
+      "role": "guarded",
+      "lines": 110,
+      "body_words": 1089,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30",
+        "inline_evidence"
+      ]
+    },
+    "tk/skills/kickoff/ROOT-CAUSE.md": {
+      "role": "guarded",
+      "lines": 132,
+      "body_words": 1338,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30",
+        "inline_evidence"
+      ]
+    },
+    "tk/skills/kickoff/STALE.md": {
+      "role": "guarded",
+      "lines": 41,
+      "body_words": 305,
+      "over": [
+        "max_sentence_words",
+        "inline_evidence"
+      ]
+    },
+    "tk/skills/kickoff/UNION.md": {
+      "role": "guarded",
+      "lines": 57,
+      "body_words": 501,
+      "over": [
+        "max_sentence_words"
+      ]
+    },
+    "tk/skills/merge-gate/DIGEST.md": {
+      "role": "guarded",
+      "lines": 76,
+      "body_words": 626,
+      "over": [
+        "max_sentence_words"
+      ]
+    },
+    "tk/reference/subagent-policy.md": {
+      "role": "guarded",
+      "lines": 193,
+      "body_words": 2358,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30",
+        "inline_evidence"
+      ]
+    },
+    "tk/reference/slice-rules.md": {
+      "role": "guarded",
+      "lines": 138,
+      "body_words": 1485,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ],
+      "locked": "2026-09-23"
+    },
+    "tk/reference/vista.md": {
+      "role": "guarded",
+      "lines": 203,
+      "body_words": 2338,
+      "over": [
+        "max_sentence_words",
+        "sentences_over_30"
+      ],
+      "locked": "2026-09-23"
+    }
+  }
+}

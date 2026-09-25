@@ -1,0 +1,38 @@
+{
+  "name": "claude-skills",
+  "owner": {
+    "name": "Tarcisio-Abbud"
+  },
+  "plugins": [
+    {
+      "name": "tk",
+      "displayName": "tk — session & engineering flow",
+      "source": "./tk",
+      "description": "Own-authored session-flow skills: /tk:kickoff opens a session from the canonical next-steps queue — every item triaged, every DECISION briefed, then dispatched (afk/pack build the unattended package), /tk:wrap-up closes it on a fixed template and settles every commit/push/merge in one versioning gate, /tk:dispatch routes a task to the mechanism that runs it unattended, /tk:docs-audit audits every doc against the code, /tk:merge-gate settles a pull request on the digest and the five verdicts of safe-to-merge, /tk:verify runs the item's acceptance criterion as the gate of the delivery, /tk:review puts one lens over a committed slice, /tk:fleet runs every project's package on this machine at once and closes on one consolidated HTML vista, /tk:second-opinion gets a fresh Fable subagent's verdict on the current discussion, /tk:prune prunes a skill against the writing-for-agents ruler."
+    },
+    {
+      "name": "asr",
+      "displayName": "asr — local speech-to-text",
+      "source": "./asr",
+      "description": "Transcribes audio Read cannot decode (voice notes, recordings, WhatsApp exports) locally on CPU, so nothing leaves the machine. Parakeet TDT 0.6B v3 by default, faster-whisper as the fallback for the languages Parakeet lacks; resumable batches, and a chunked pipeline that survives a small box."
+    },
+    {
+      "name": "plugin-drift",
+      "displayName": "plugin-drift — plugin drift checker",
+      "source": "./plugin-drift",
+      "description": "Read-only drift report across every installed Claude Code plugin, in every marketplace known to this machine: refreshes each catalog, compares installed content against it (commit for git-pinned plugins, file hashes for plugins packaged in the marketplace repo), and pulls changelog highlights for drifted git-pinned plugins. Never applies an update."
+    },
+    {
+      "name": "whatsapp",
+      "displayName": "whatsapp — read an export by its delta",
+      "source": "./whatsapp",
+      "description": "A WhatsApp export carries the whole conversation every time. This one reads the DELTA against the previous export — new messages with their line numbers, new attachments extracted beside the zip, new voice notes routed to `asr:transcribe-audio` and folded back into one digest. The clock that drifts between exports and the suffix a repeated filename gains are absorbed; a pair that is not the same conversation is refused rather than diffed."
+    },
+    {
+      "name": "contrato",
+      "displayName": "contrato — contract review by lenses",
+      "source": "./contrato",
+      "description": "/contrato:revisao-contrato reviews a Brazilian contract, ours or received, along ten method lenses plus a critic, sends only single-lens altas to one refuter, and writes one report with ready-to-paste wording, at most ten lawyer questions and a negotiation table; a second invocation applies the chosen findings under a word budget. Plan mode prints the agent count and spawns nothing."
+    }
+  ]
+}

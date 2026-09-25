@@ -1,0 +1,355 @@
+#!/usr/bin/env python3
+"""plugin-drift-check — read-only drift report for installed Claude Code plugins.
+
+Compares ~/.claude/plugins/installed_plugins.json against the marketplace.json
+of every marketplace in ~/.claude/plugins/known_marketplaces.json, per plugin:
+
+  git-pinned plugin (catalog source is an object with "sha")
+      -> installed gitCommitSha vs catalog source.sha. Any mismatch is drift,
+         even when both sides show the same semver (mattpocock-skills is the
+         canonical false negative: 1.2.0 on both sides, different commits).
+         Covers all three git-pinned source shapes seen in the wild: "url"
+         (a "url" key), "github" (a "repo" shorthand, no full url) and
+         "git-subdir" (a monorepo "path" plus "url" -- the changelog mode
+         scopes its log to that path so it doesn't list sibling plugins'
+         commits from the same repo).
+
+  packaged-in-marketplace-repo plugin (catalog source is a string path)
+      -> gitCommitSha is the marketplace repo's commit at install time, not a
+         per-plugin identifier, so it proves nothing here. Instead every file
+         under <marketplace_repo>/<source_path> must exist and match, byte for
+         byte, at the installed installPath. Direction matters: extra files
+         that exist only in installPath (.in_use, __pycache__, ...) are
+         runtime noise and are ignored by construction.
+
+By default each marketplace clone is `git pull`ed first (skip with --no-pull);
+the working tree must already be clean, or that marketplace is skipped with a
+warning rather than pulled over local changes -- and a skipped pull is shown
+in that marketplace's header line, since every row under it is then judged
+against whatever catalog snapshot is already on disk, not necessarily current.
+
+This script only reads and reports. It never edits installed_plugins.json,
+never runs `claude plugin install`, never touches a plugin cache directory.
+Applying an update is still `claude plugin disable <name>` then
+`claude plugin install <name>` (or the Desktop app's /plugin dialog where the
+CLI binary is unavailable) -- see reference-claude-plugin-updates in memory
+for why `update` alone does not converge.
+
+Every network call (git pull/fetch) runs with a timeout and with prompting
+disabled, so an unreachable or deleted upstream fails fast instead of hanging
+on an invisible credential prompt.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+PLUGINS_ROOT = os.path.expanduser("~/.claude/plugins")
+INSTALLED_PATH = os.path.join(PLUGINS_ROOT, "installed_plugins.json")
+MARKETPLACES_PATH = os.path.join(PLUGINS_ROOT, "known_marketplaces.json")
+LOCAL_GIT_TIMEOUT = 15   # status/log/cat-file/merge-base against a local clone
+NETWORK_GIT_TIMEOUT = 60  # pull/fetch against a remote
+
+
+def load_json(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def git(*args, cwd, timeout=LOCAL_GIT_TIMEOUT):
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    try:
+        return subprocess.run(
+            ["git", "-c", "safe.directory=*", *args],
+            cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, 124, stdout="", stderr=f"timed out after {timeout}s")
+
+
+def pull_marketplace(name, install_location):
+    status = git("status", "--porcelain", cwd=install_location)
+    if status.returncode != 0:
+        return f"skipped ({status.stderr.strip() or 'git status failed'})"
+    if status.stdout.strip():
+        return "skipped (local changes in marketplace clone -- not pulling over them)"
+    pull = git("pull", "--ff-only", cwd=install_location, timeout=NETWORK_GIT_TIMEOUT)
+    if pull.returncode != 0:
+        return f"skipped (pull failed: {pull.stderr.strip()})"
+    return "pulled"
+
+
+def find_marketplace_json(install_location):
+    candidate = os.path.join(install_location, ".claude-plugin", "marketplace.json")
+    if os.path.isfile(candidate):
+        return candidate
+    return None
+
+
+def file_hash(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def dirs_match(catalog_dir, installed_dir):
+    """One-direction comparison: every file under catalog_dir must exist and
+    match at installed_dir. Files that exist only under installed_dir are
+    runtime noise and are not checked."""
+    mismatches = []
+    for root, _dirs, files in os.walk(catalog_dir):
+        rel_root = os.path.relpath(root, catalog_dir)
+        for fname in files:
+            rel_path = os.path.normpath(os.path.join(rel_root, fname))
+            src = os.path.join(catalog_dir, rel_path)
+            dst = os.path.join(installed_dir, rel_path)
+            if not os.path.isfile(dst):
+                mismatches.append(f"missing: {rel_path}")
+                continue
+            if file_hash(src) != file_hash(dst):
+                mismatches.append(f"changed: {rel_path}")
+    return mismatches
+
+
+def resolve_repo_url(source):
+    """The catalog spells a git-pinned plugin's upstream three different ways:
+    {"source": "url", "url": ...}, {"source": "github", "repo": "org/name"}
+    (no full url), or {"source": "git-subdir", "url": ..., "path": ...} for a
+    plugin living in a subdirectory of a monorepo. Returns None, not a raise,
+    when the shape is one this script doesn't recognize -- callers report that
+    plainly instead of crashing on a KeyError."""
+    if source.get("url"):
+        return source["url"]
+    if source.get("repo"):
+        return f"https://github.com/{source['repo']}.git"
+    return None
+
+
+def upstream_highlights(source):
+    """Best-effort commit log between the installed and catalog commit in the
+    plugin's own upstream repo (not the marketplace repo). The installed sha
+    recorded in installed_plugins.json is sometimes the MARKETPLACE's own
+    commit rather than this plugin's -- when that's the case it won't resolve
+    here at all, and this says so instead of guessing. For a monorepo
+    ("git-subdir") entry, the log is scoped to source["path"] so it doesn't
+    surface commits from sibling plugins sharing the same repo."""
+    url = resolve_repo_url(source)
+    if not url:
+        return f"changelog unavailable (unrecognized source shape: {source!r})"
+
+    old_sha = source.get("_installed_sha")
+    new_sha = source["sha"]
+    path = source.get("path")  # only set for git-subdir sources
+
+    tmp = tempfile.mkdtemp(prefix="plugin-drift-")
+    try:
+        init = git("init", "--bare", "-q", cwd=tmp)
+        if init.returncode != 0:
+            return f"changelog unavailable ({init.stderr.strip()})"
+
+        fetch_args = ["fetch", "--quiet", url]
+        fetch_args += [str(old_sha), new_sha] if old_sha else [new_sha]
+        fetch = git(*fetch_args, cwd=tmp, timeout=NETWORK_GIT_TIMEOUT)
+        if fetch.returncode != 0:
+            fetch = git("fetch", "--quiet", url, "+refs/heads/*:refs/remotes/origin/*",
+                         cwd=tmp, timeout=NETWORK_GIT_TIMEOUT)
+        if fetch.returncode != 0:
+            return f"changelog unavailable (fetch failed -- offline, or {str(old_sha)[:12] if old_sha else '?'} unreachable)"
+
+        has_old = old_sha and git("cat-file", "-e", str(old_sha), cwd=tmp).returncode == 0
+        has_new = git("cat-file", "-e", new_sha, cwd=tmp).returncode == 0
+        if not has_new:
+            return "changelog unavailable (target commit not found upstream)"
+
+        log_path_args = ["--", path] if path else []
+        if not has_old:
+            log = git("log", "--oneline", "-15", new_sha, *log_path_args, cwd=tmp)
+            return ("installed commit not found in this repo's history (likely not this "
+                    "plugin's own commit -- reinstall to resync); most recent upstream commits:\n"
+                    + log.stdout.strip())
+
+        is_ancestor = git("merge-base", "--is-ancestor", str(old_sha), new_sha, cwd=tmp).returncode == 0
+        if not is_ancestor:
+            return f"installed commit {old_sha[:12]} has diverged from catalog {new_sha[:12]} (not a simple fast-forward) -- can't produce a linear changelog"
+
+        log = git("log", "--oneline", f"{old_sha}..{new_sha}", *log_path_args, cwd=tmp)
+        subjects = log.stdout.strip()
+        return subjects if subjects else "no commits between installed and catalog (identical tree, different sha metadata)"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def index_catalog_plugins(marketplace_json_path):
+    data = load_json(marketplace_json_path)
+    entries = data.get("plugins", [])
+    return {entry["name"]: entry for entry in entries if "name" in entry}
+
+
+def check_one_entry(installed, source):
+    """Drift verdict for a single installed_plugins.json scope entry against
+    one catalog source. Returns (status, detail)."""
+    if isinstance(source, dict) and source.get("sha"):
+        catalog_sha = source["sha"]
+        installed_sha = installed.get("gitCommitSha")
+        if installed_sha == catalog_sha:
+            return ("up to date", f"commit {installed_sha[:12]}")
+        return ("DRIFT", f"installed {str(installed_sha)[:12]} vs catalog {catalog_sha[:12]}")
+
+    if isinstance(source, str):
+        return None  # caller handles the packaged-in-repo case (needs repo root)
+
+    return ("unknown", "catalog entry has no recognizable source")
+
+
+def check_plugin(installed_entries, catalog_entry, marketplace_repo_root):
+    # installed_plugins.json keys are "<name>@<marketplace>"; installed_entries
+    # is the list of scope entries for that key (usually one, "user" scope,
+    # but a plugin can be installed at both user and project scope at once --
+    # every entry is checked, and the worst status wins).
+    if not installed_entries:
+        return None  # not installed -- nothing to check
+    source = catalog_entry.get("source")
+
+    if isinstance(source, str):
+        repo_root = os.path.realpath(marketplace_repo_root)
+        catalog_dir = os.path.realpath(os.path.join(marketplace_repo_root, source))
+        if os.path.commonpath([repo_root, catalog_dir]) != repo_root:
+            return ("unknown", f"catalog source escapes the marketplace repo root: {source}")
+        if not os.path.isdir(catalog_dir):
+            return ("unknown", f"catalog path not found: {catalog_dir}")
+
+        results = []
+        for installed in installed_entries:
+            install_dir = installed.get("installPath")
+            if not install_dir or not os.path.isdir(install_dir):
+                results.append(("DRIFT", f"installPath missing or not found: {install_dir}"))
+                continue
+            mismatches = dirs_match(catalog_dir, install_dir)
+            if not mismatches:
+                results.append(("up to date", "files match catalog"))
+                continue
+            shown = ", ".join(mismatches[:3])
+            more = f" (+{len(mismatches) - 3} more)" if len(mismatches) > 3 else ""
+            results.append(("DRIFT", f"{shown}{more}"))
+    else:
+        results = [check_one_entry(installed, source) or ("unknown", "catalog entry has no recognizable source")
+                   for installed in installed_entries]
+
+    drifted = [r for r in results if r[0] == "DRIFT"]
+    return drifted[0] if drifted else results[0]
+
+
+def find_catalog_entry(marketplaces, key):
+    plugin_name, _, mkt_name = key.partition("@")
+    mkt_info = marketplaces.get(mkt_name)
+    if not mkt_info:
+        return None, None, f"Unknown marketplace: {mkt_name}"
+    marketplace_json_path = find_marketplace_json(mkt_info.get("installLocation", ""))
+    if not marketplace_json_path:
+        return None, None, f"No catalog found for marketplace: {mkt_name}"
+    catalog = index_catalog_plugins(marketplace_json_path)
+    entry = catalog.get(plugin_name)
+    if not entry:
+        return None, None, f"{plugin_name} not found in {mkt_name}'s catalog"
+    return entry, mkt_info, None
+
+
+def run_changelog(key, installed, marketplaces):
+    catalog_entry, _mkt_info, error = find_catalog_entry(marketplaces, key)
+    installed_entries = installed.get(key)
+    if error or not installed_entries:
+        print(error or f"{key}: not found in installed_plugins.json")
+        return 2
+    source = catalog_entry.get("source")
+    if not (isinstance(source, dict) and source.get("sha")):
+        print(f"{key}: not a git-pinned plugin (packaged in the marketplace repo) -- changelog mode doesn't apply, use the file-diff report instead")
+        return 2
+    old_sha = installed_entries[0].get("gitCommitSha")
+    new_sha = source["sha"]
+    print(f"{key}: {str(old_sha)[:12] if old_sha else '?'} -> {new_sha[:12]}\n")
+    print(upstream_highlights({**source, "_installed_sha": old_sha}))
+    return 0
+
+
+def run_report(installed, marketplaces, no_pull):
+    rows = []
+    for mkt_name, mkt_info in marketplaces.items():
+        install_location = mkt_info.get("installLocation")
+        if not install_location or not os.path.isdir(install_location):
+            print(f"== {mkt_name}: install location not found, skipping ==")
+            continue
+
+        pull_result = "not pulled (--no-pull)" if no_pull else pull_marketplace(mkt_name, install_location)
+        stale_flag = " [STALE CATALOG]" if pull_result.startswith("skipped") else ""
+        print(f"== {mkt_name} ({pull_result}){stale_flag} ==")
+
+        marketplace_json_path = find_marketplace_json(install_location)
+        if not marketplace_json_path:
+            print(f"  no .claude-plugin/marketplace.json found under {install_location}")
+            continue
+
+        try:
+            catalog = index_catalog_plugins(marketplace_json_path)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"  could not read catalog: {e}")
+            continue
+
+        for plugin_name, catalog_entry in catalog.items():
+            key = f"{plugin_name}@{mkt_name}"
+            if key not in installed:
+                continue
+            try:
+                result = check_plugin(installed[key], catalog_entry, install_location)
+            except Exception as e:
+                result = ("unknown", f"check failed: {e}")
+            if result is None:
+                continue
+            status, detail = result
+            if stale_flag:
+                detail += " (catalog not refreshed this run)"
+            rows.append((key, status, detail))
+
+    if not rows:
+        print("\nNo installed plugins matched a known marketplace catalog.")
+        return 0
+
+    print()
+    width = max(len(r[0]) for r in rows) + 2
+    for key, status, detail in sorted(rows, key=lambda r: (r[1] != "DRIFT", r[0])):
+        print(f"{key:<{width}} {status:<12} {detail}")
+
+    drifted = [r for r in rows if r[1] == "DRIFT"]
+    print(f"\n{len(drifted)} of {len(rows)} installed plugin(s) drifted from their catalog.")
+    return 1 if drifted else 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--no-pull", action="store_true",
+                         help="skip git pull on marketplace clones; compare against whatever is on disk")
+    parser.add_argument("--changelog", metavar="NAME@MARKETPLACE",
+                         help="for one git-pinned plugin, best-effort commit log between the installed and catalog commit, instead of the full report")
+    args = parser.parse_args()
+
+    if not os.path.isfile(INSTALLED_PATH) or not os.path.isfile(MARKETPLACES_PATH):
+        print("No plugin installation found under ~/.claude/plugins -- nothing to check.")
+        return 0
+
+    installed = load_json(INSTALLED_PATH).get("plugins", {})
+    marketplaces = load_json(MARKETPLACES_PATH)
+
+    if args.changelog:
+        return run_changelog(args.changelog, installed, marketplaces)
+
+    return run_report(installed, marketplaces, args.no_pull)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,388 @@
+#!/usr/bin/env python3
+"""Mutation harness for the `tk-hygiene` suite — puts each defect back.
+
+Run: python3 tk/tests/mutations_hygiene.py
+
+Same contract as its siblings: each entry restores one defect in a COPY of
+`tk/`, runs only the tests named for it, and requires each of them to fail. A
+mutation that SURVIVES is a hole in the suite, not a pass.
+
+This file holds entries only. The runner is `mutations_tk_contract.run`, which
+takes the test module, the entry list and the default source as arguments — the
+seam that file's docstring describes. It also enumerates the suite and reports
+any test NO entry names (UNPROVED), which is the half a score of N/N cannot
+show: N counts the mutants someone wrote.
+
+WHAT A GREEN SCORE HERE DOES NOT SAY. The prune's idempotence is STRUCTURAL —
+the prune is a delete, so a second run finds no candidate — and no single-line
+mutation of the source turns the second run into a different one. Its test is
+named by the guard mutations instead, because what it can be falsified on is the
+outcome it pins after the FIRST run. A green score does not mean idempotence was
+attacked; it means the guards that produce it were.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mutations_tk_contract import run      # noqa: E402  (path above enables it)
+
+HYGIENE = os.path.join("bin", "tk-hygiene")
+
+# (label, old, new, [tests that must fail], source relative to tk/)
+MUTATIONS = [
+    # --- the prune guards, one entry each ---------------------------------
+    # THE guard for the spec's "a branch without an upstream is NEVER pruned":
+    # with it gone, a no-upstream branch reaches the commit count, comes back 0
+    # and is deleted. That is the mutation the rule was unfalsifiable without
+    ("T128 hygiene the upstream guard is dropped, so a local-only branch is deleted",
+     '    if track != "[gone]":', "    if False:",
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned",
+      "TestIdempotence.test_a_second_run_prunes_nothing_and_answers_the_same"], HYGIENE),
+
+    ("T128 hygiene a branch with no upstream is described as one whose upstream lives",
+     '        return ("no upstream: nothing ever said it was merged" if not upstream',
+     '        return ("no upstream: nothing ever said it was merged" if upstream',
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned"], HYGIENE),
+
+    ("T128 hygiene the gone check is inverted, so a live upstream is the prunable one",
+     '    if track != "[gone]":', '    if track == "[gone]":',
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned",
+      "TestIdempotence.test_a_second_run_prunes_nothing_and_answers_the_same"], HYGIENE),
+
+    ("T128 hygiene commits of its own no longer hold a branch back",
+     '    if count != "0":', "    if False:",
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned",
+      "TestIdempotence.test_a_second_run_prunes_nothing_and_answers_the_same"], HYGIENE),
+
+    ("T128 hygiene the range is reversed, so the default's commits are counted instead",
+     'f"{default}..{name}"', 'f"{name}..{default}"',
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned"], HYGIENE),
+
+    ("T128 hygiene the reason a branch is held back is computed and then ignored",
+     "        if reason is not None:", "        if False:",
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned",
+      "TestIdempotence.test_a_second_run_prunes_nothing_and_answers_the_same"], HYGIENE),
+
+    ("T128 hygiene without a default branch the comparison is made anyway",
+     '    if default is None:\n        return [("kept", name, "no default branch '
+     'to measure against")\n                for name, u, t in rows',
+     '    if False:\n        return [("kept", name, "no default branch '
+     'to measure against")\n                for name, u, t in rows',
+     ["TestPrune.test_without_a_default_branch_to_measure_against_nothing_is_pruned"],
+     HYGIENE),
+
+    ("T128 hygiene git refusing to delete a checked-out branch is reported as a prune",
+     '        if code != 0:\n            out.append(("kept", name, '
+     'first_line(err, code, "git branch -D")))',
+     '        if False:\n            out.append(("kept", name, '
+     'first_line(err, code, "git branch -D")))',
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_a_branch_checked_out_in_the_repositorys_own_tree_is_kept"],
+     HYGIENE),
+
+    # --- the linked worktree standing on a prunable branch -----------------
+    ("T420 hygiene the worktree is never looked for, so the branch stays under it",
+     "        tree, held = holding_worktree(repo, name)",
+     "        tree, held = None, None",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_a_linked_worktree_is_removed_and_then_the_branch_is_deleted"],
+     HYGIENE),
+
+    ("T420 hygiene the removal is forced, so unsaved work in the worktree is deleted",
+     '            code, _, err = git(repo, "worktree", "remove", tree)',
+     '            code, _, err = git(repo, "worktree", "remove", "--force", tree)',
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_a_worktree_carrying_unsaved_work_is_kept_rather_than_forced"],
+     HYGIENE),
+
+    ("T420 hygiene the MAIN working tree is a candidate for removal like any other",
+     "    for record in rows[1:]:", "    for record in rows:",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_a_branch_checked_out_in_the_repositorys_own_tree_is_kept"],
+     HYGIENE),
+
+    # --- the ground this run is standing on --------------------------------
+    ("T420 hygiene the run removes the directory it is standing in",
+     "        if any(under(ground, path) for ground in standing_on()):",
+     "        if False:",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_the_directory_the_run_was_fired_from_is_never_removed",
+      "TestTheWorktreeStandingOnTheBranch."
+      "test_the_worktree_this_bin_is_installed_in_is_never_removed"],
+     HYGIENE),
+
+    ("T420 hygiene the session's own directory is not one of the grounds",
+     "        grounds.append(os.getcwd())", "        grounds.append(own_tree())",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_the_directory_the_run_was_fired_from_is_never_removed"],
+     HYGIENE),
+
+    ("T420 hygiene the tree this bin is installed in is not one of the grounds",
+     "    grounds = [own_tree()]", "    grounds = []",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_the_worktree_this_bin_is_installed_in_is_never_removed"],
+     HYGIENE),
+
+    ("T420 hygiene a directory INSIDE the worktree is not read as standing in it",
+     "    return child == parent or child.startswith(parent + os.sep)",
+     "    return child == parent",
+     ["TestTheWorktreeStandingOnTheBranch."
+      "test_the_directory_the_run_was_fired_from_is_never_removed"],
+     HYGIENE),
+
+    # --- --dry-run ----------------------------------------------------------
+    ("T420 hygiene --dry-run is parsed and the local branch is deleted anyway",
+     '        if dry_run:\n            # the same verdict as the run that acts',
+     '        if False:\n            # the same verdict as the run that acts',
+     ["TestDryRun.test_nothing_is_pruned_and_the_verdicts_are_the_same",
+      "TestDryRun.test_the_worktree_is_left_standing"], HYGIENE),
+
+    ("T420 hygiene --dry-run is parsed and the remote branch is deleted anyway",
+     '        if dry_run:\n            out.append(("would-delete", name,',
+     '        if False:\n            out.append(("would-delete", name,',
+     ["TestDryRun.test_the_remote_branch_is_left_where_it_was"], HYGIENE),
+
+    ("T420 hygiene the dry run never asks whether the worktree would come away",
+     "            blocked = removal_blocked(tree) if tree else None",
+     "            blocked = None",
+     ["TestDryRun."
+      "test_a_worktree_carrying_unsaved_work_is_kept_by_the_dry_run_too"],
+     HYGIENE),
+
+    ("T420 hygiene unsaved work in the worktree reads as a tree that would come away",
+     '    if out:\n        return "it contains modified',
+     '    if not out:\n        return "it contains modified',
+     ["TestDryRun."
+      "test_a_worktree_carrying_unsaved_work_is_kept_by_the_dry_run_too"],
+     HYGIENE),
+
+    ("T420 hygiene the flag never reaches the local step",
+     "        rows = prune(repo, dry_run=args.dry_run)", "        rows = prune(repo)",
+     ["TestDryRun.test_nothing_is_pruned_and_the_verdicts_are_the_same"], HYGIENE),
+
+    ("T420 hygiene the flag never reaches the remote step",
+     "            rows = prune_remote(repo, dry_run=args.dry_run)",
+     "            rows = prune_remote(repo)",
+     ["TestDryRun.test_the_remote_branch_is_left_where_it_was"], HYGIENE),
+
+    # --- the content test, for what a squash or a rebase rewrote -----------
+    ("T281 hygiene a branch that fails the ancestry test is never asked about its content",
+     "        held = unmerged_content(repo, name, default)",
+     '        held = "commits of its own"',
+     ["TestPrunedByContent."
+      "test_a_squash_merged_branch_is_pruned_though_no_commit_of_it_is_an_ancestor"],
+     HYGIENE),
+
+    ("T281 hygiene the merge is compared with the BRANCH's tree instead of the default's",
+     'f"{default}^{{tree}}"', 'f"{name}^{{tree}}"',
+     ["TestPrunedByContent."
+      "test_a_squash_merged_branch_is_pruned_though_no_commit_of_it_is_an_ancestor"],
+     HYGIENE),
+
+    ("T281 hygiene a merge that CONFLICTED is read as an answer about content",
+     '    if code != 0:\n        conflict = next(',
+     '    if False:\n        conflict = next(',
+     ["TestPrunedByContent.test_a_branch_that_does_not_merge_into_the_default_is_kept"],
+     HYGIENE),
+
+    ("T281 hygiene a merge that could not be ATTEMPTED is reported as a conflict",
+     "        if conflict:", "        if True:",
+     ["TestPrunedByContent."
+      "test_a_merge_that_could_not_run_is_not_reported_as_a_conflict"],
+     HYGIENE),
+
+    ("T281 hygiene content the default does not have no longer holds a branch back",
+     "    if out.splitlines()[0] != tree:", "    if False:",
+     ["TestPrune.test_only_the_merged_gone_branch_is_pruned",
+      "TestTheRepositoryThisBinLivesIn.test_the_branches_of_that_clone_are_pruned_like_any_other"],
+     HYGIENE),
+
+    # --- the second source of repositories ---------------------------------
+    ("T210 hygiene the roster is the only source, so a clone with no queue is unreachable",
+     "    repos = repos_of([path for _, path in swept] + [own_tree()])",
+     "    repos = repos_of([path for _, path in swept])",
+     ["TestTheRepositoryThisBinLivesIn.test_a_clone_with_no_queue_is_audited_when_the_bin_lives_in_it",
+      "TestTheRepositoryThisBinLivesIn.test_the_branches_of_that_clone_are_pruned_like_any_other"],
+     HYGIENE),
+
+    # --- the remote side, and the three guards on an irreversible delete ---
+    ("T342 hygiene every remote branch is a per-ticket one, the lane's own included",
+     "        if PER_TICKET_RE.match(name):", "        if name:",
+     ["TestRemoteResidue.test_the_lane_s_own_branch_is_never_a_candidate"], HYGIENE),
+
+    ("T342 hygiene a remote that moved since the last fetch is acted on anyway",
+     "        if live != sha:", "        if False:",
+     ["TestRemoteResidue.test_a_branch_the_remote_moved_since_the_last_fetch_is_not_touched"],
+     HYGIENE),
+
+    ("T342 hygiene the remote branch is deleted without asking where its work is",
+     "        held = unmerged_content(repo, sha, default)", "        held = None",
+     ["TestRemoteResidue.test_a_per_ticket_branch_still_carrying_its_work_survives"],
+     HYGIENE),
+
+    ("T342 hygiene the remote step never runs, so the orphan stays where it was",
+     "    if not args.no_remote:", "    if False:",
+     ["TestRemoteResidue."
+      "test_a_per_ticket_branch_already_in_the_default_is_deleted_from_the_remote"],
+     HYGIENE),
+
+    ("T342 hygiene --no-remote is parsed and then ignored",
+     "    if not args.no_remote:", "    if True:",
+     ["TestRemoteResidue.test_the_remote_step_can_be_switched_off"], HYGIENE),
+
+    # --- what the report is allowed to say ---------------------------------
+    ("T128 hygiene the default branch is reported as residue like any other",
+     '    if default is not None and default.rsplit("/", 1)[-1] == name:',
+     "    if False:",
+     ["TestPrune.test_the_default_branch_is_never_reported_as_residue"], HYGIENE),
+
+    ("T128 hygiene every branch is a candidate, alive upstream included",
+     '    return track == "[gone]" or not upstream', "    return True",
+     ["TestPrune.test_a_branch_whose_upstream_is_alive_is_left_alone_and_unreported"],
+     HYGIENE),
+
+    # --- the audit and its exit codes --------------------------------------
+    ("T128 hygiene a repo whose box is off still exits 0",
+     "    if RED in values:\n        return EXIT_FINDING",
+     "    if RED in values:\n        return EXIT_OK",
+     ["TestForgeAudit.test_a_repo_with_the_box_off_is_red_in_the_literal_and_exits_1",
+      "TestForgeAudit.test_a_red_repo_outranks_an_unknown_one_in_the_exit_code"], HYGIENE),
+
+    ("T128 hygiene a repo that could not be audited still exits 0",
+     "    if UNKNOWN in values:\n        return EXIT_UNAUDITED",
+     "    if UNKNOWN in values:\n        return EXIT_OK",
+     ["TestForgeAudit.test_a_forge_that_answers_an_error_is_unknown_and_exits_3",
+      "TestForgeAudit.test_a_forge_answering_neither_true_nor_false_is_unknown"], HYGIENE),
+
+    ("T128 hygiene a repo with no GitHub remote counts as one the audit failed to reach",
+     "answers.append((path, None, NO_FORGE,", "answers.append((path, None, UNKNOWN,",
+     ["TestForgeAudit.test_a_repo_with_no_github_remote_is_not_a_failed_audit"], HYGIENE),
+
+    ("T128 hygiene a forge that answered an error is read as green",
+     "        return UNKNOWN, why", "        return GREEN, why",
+     ["TestForgeAudit.test_a_forge_that_answers_an_error_is_unknown_and_exits_3"], HYGIENE),
+
+    ("T128 hygiene whatever the forge answered is passed through as the setting",
+     '    return UNKNOWN, f"gh answered {answer!r}, which is neither true nor false"',
+     '    return answer, ""',
+     ["TestForgeAudit.test_a_forge_answering_neither_true_nor_false_is_unknown"], HYGIENE),
+
+    ("T128 hygiene the report names a repo by its slug, tracker clone included",
+     '        line = label(value).ljust(width) + f"  {path}"',
+     '        line = label(value).ljust(width) + f"  {_slug or path}"',
+     ["TestTheReportNamesRepositoriesByPath.test_the_slug_never_reaches_the_report"],
+     HYGIENE),
+
+    # --- reading the remote ------------------------------------------------
+    ("T128 hygiene the scp-like ssh remote no longer names a repo",
+     "         [:/]                            # ':' in the scp-like form, '/' in a URL",
+     "         /                               # ':' in the scp-like form, '/' in a URL",
+     ["TestForgeAudit.test_the_slug_is_read_from_an_ssh_remote_too"], HYGIENE),
+
+    ("T128 hygiene any host is audited as though it were GitHub",
+     "         github\\.com                     # this bin audits GitHub and says so",
+     "         [a-z.]+                         # this bin audits GitHub and says so",
+     ["TestForgeAudit.test_a_repo_hosted_elsewhere_is_not_reported_as_a_github_repo"],
+     HYGIENE),
+
+    ("T128 hygiene the .git suffix is carried into the slug",
+     "         (?:\\.git)?/?$",
+     "         /?$",
+     ["TestForgeAudit.test_a_repo_with_the_box_on_is_green_in_the_literal_and_exits_0"],
+     HYGIENE),
+
+    # --- one repo, however many trees --------------------------------------
+    ("T128 hygiene a worktree counts as a second repository",
+     "        if key in seen:\n            continue",
+     "        if False:\n            continue",
+     ["TestOneRepoPerBranchSet.test_a_worktree_is_not_a_second_repository"], HYGIENE),
+
+    ("T128 hygiene the forge is asked once per repository instead of once per slug",
+     "        if slug not in cache:", "        if True:",
+     ["TestNoNetwork.test_one_slug_is_asked_of_the_forge_once"], HYGIENE),
+
+    ("T128 hygiene the forge CLI is resolved somewhere other than PATH",
+     '        p = subprocess.run(("gh", *args),',
+     '        p = subprocess.run(("/nonexistent/gh", *args),',
+     ["TestNoNetwork.test_the_forge_cli_is_resolved_through_path_so_the_fake_is_reached"],
+     HYGIENE),
+
+    # --- the python/bash polyglot guard at the top of the bin ---------------
+    # Four tests stood here with no entry naming them, which the runner reports
+    # as UNPROVED and exits 1 over — so the acceptance criterion "the mutation
+    # harness is green" could not be met by any change to the prune. The guard
+    # is falsifiable in four independent ways, one per test.
+    ("T420 hygiene the shell guard lets the interpreter through instead of exiting",
+     'exit 64\n":"""', 'exit 0\n":"""',
+     ["BashGuardTest.test_bash_invocation_exits_nonzero_with_a_clear_message",
+      "BashGuardTest.test_sh_invocation_exits_nonzero_with_a_clear_message"], HYGIENE),
+
+    ("T420 hygiene the shell guard exits without saying which interpreter to use",
+     'echo "tk-hygiene: run it with python3 or directly, not via bash" >&2',
+     'echo "tk-hygiene: no" >&2',
+     ["BashGuardTest.test_bash_invocation_exits_nonzero_with_a_clear_message",
+      "BashGuardTest.test_sh_invocation_exits_nonzero_with_a_clear_message"], HYGIENE),
+
+    # the polyglot's python half: `":"` is a string literal shell runs as `:`,
+    # so the guard still works under bash and sh — and python now meets `echo`
+    # on the next line as a syntax error, which is the half this test holds
+    ("T420 hygiene the guard is shell-only, so python cannot parse the file at all",
+     '""":"', '":"',
+     ["BashGuardTest.test_python3_help_is_unaffected_by_the_guard"], HYGIENE),
+
+    ("T420 hygiene __doc__ is left to the guard's own text",
+     '__doc__ = """tk-hygiene —', '_guard_text = """tk-hygiene —',
+     ["BashGuardTest.test_module_doc_is_the_real_docstring_not_the_guard_text"],
+     HYGIENE),
+
+    # --- the finished parents ---------------------------------------------
+    ("T451 hygiene an issue with no sub-issue counts as a finished parent",
+     "        if total > 0 and closed == total:", "        if closed == total:",
+     ["TestFinishedParents.test_only_the_parent_whose_sub_issues_all_closed_is_named"],
+     HYGIENE),
+
+    ("T451 hygiene a parent with a child still open is named",
+     "        if total > 0 and closed == total:", "        if total > 0:",
+     ["TestFinishedParents.test_only_the_parent_whose_sub_issues_all_closed_is_named"],
+     HYGIENE),
+
+    ("T451 hygiene the block heading prints with nothing under it",
+     "    if not rows:\n        return\n    print(\"\\n## finished parents",
+     "    if False:\n        return\n    print(\"\\n## finished parents",
+     ["TestFinishedParents.test_the_block_is_silent_when_no_parent_is_finished"],
+     HYGIENE),
+
+    ("T451 hygiene a forge that could not answer is read as no parent",
+     "        if err is not None:\n            out.append((path, [(\"not read\", err)]))",
+     "        if False:\n            out.append((path, [(\"not read\", err)]))",
+     ["TestFinishedParents.test_a_forge_that_could_not_answer_is_named_not_silent"],
+     HYGIENE),
+
+    ("T451 hygiene an answer of the wrong shape is skipped as no parent",
+     '            return None, f"gh answered {line!r}, not number, closed and total"',
+     "            continue",
+     ["TestFinishedParents.test_an_answer_of_the_wrong_shape_is_not_read_as_no_parent"],
+     HYGIENE),
+
+    ("T451 hygiene the finished parents are asked once per repository, not per slug",
+     "        if slug is None or slug in asked:", "        if slug is None:",
+     ["TestNoNetwork.test_one_slug_is_asked_for_its_finished_parents_once"], HYGIENE),
+
+    # --- the slug kept out of a forge error's detail ------------------------
+    ("T451 hygiene gh's error reaches the report with the slug it echoed",
+     '        return None, re.sub(re.escape(slug), "<repo>", why, flags=re.IGNORECASE)',
+     "        return None, why",
+     ["TestForgeAudit.test_a_forge_that_answers_an_error_is_unknown_and_exits_3",
+      "TestFinishedParents."
+      "test_a_forge_error_naming_the_repository_does_not_leak_the_slug"], HYGIENE),
+
+    ("T451 hygiene the slug is redacted only in the case the remote spells it",
+     '"<repo>", why, flags=re.IGNORECASE)', '"<repo>", why)',
+     ["TestFinishedParents."
+      "test_a_forge_error_naming_the_repository_does_not_leak_the_slug"], HYGIENE),
+]
+
+
+if __name__ == "__main__":
+    sys.exit(run(MUTATIONS, "test_tk_hygiene", default_src=HYGIENE))
