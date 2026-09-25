@@ -164,7 +164,8 @@ it. `W` is the fleet's own quantity, and the fleet does two things with it:
 ## 4. Dispatch, and refill without a barrier
 
 Each project run is dispatched as a **background subagent**, cwd at the project's directory, on
-the `fleet-orchestrator` row.
+the `fleet-orchestrator` row. **Arm the tick before the turn that dispatches the first project
+run ends** — `../kickoff/WINDOW.md`, *The tick*.
 
 **The prompt names the skill's file, never the command.** `../kickoff/SKILL.md` carries
 `disable-model-invocation: true`. `../dispatch/SKILL.md` owns why the file route works where the
@@ -232,7 +233,7 @@ spend before it stops sending work.
 **Above the ceiling, stop dispatching and close.** The runs in flight keep running: they have
 already spent what they spent, and killing one buys none of it back. The close is step 6's,
 naming the ceiling, the reading that crossed it, and the projects that never entered. This is a
-fourth stop condition, beside step 1's two and the wall.
+fourth stop condition, beside step 1's two and the weekly wall.
 
 **A stale reading is a floor, and a floor forbids where it can never authorise.** `tk-quota`
 marks its own age, `(read 58m ago)` on the line. What that age makes the percentage is
@@ -251,14 +252,17 @@ fleet's own:
 ### The quota wall
 
 **The quota wall is the FLEET's, not one project's.** Quota is one window across every run on
-this machine. A run returning a quota failure is reporting a fact about the fleet. On the
-first such return, **stop dispatching**: the runs in flight are already dead, and an unsent one
-would die too. Then close on what has returned, by step 6, naming the reset time the error
-carried.
+this machine. A run returning a quota failure is reporting a fact about the fleet.
+
+- **On a 5-hour wall, stop dispatching new projects and keep the tick.** At the reset it resumes
+  the runs the wall stopped (`../kickoff/WINDOW.md`, *Who meets the wall on the main thread is
+  the tick*), and the refill goes on from there.
+- **Close only on the weekly wall or the 80% weekly ceiling above**, by step 6, naming the reset
+  time the error carried, and delete the tick as *The tick* disarms it.
 
 Each project run still carries `../kickoff/WINDOW.md` for itself, at `--budget 1` — its own
-handoff, its claims, its pushed tree. The fleet writes none of those. It stops sending work and
-reports.
+handoff, its claims, its pushed tree. The fleet writes none of those. It stops sending work,
+and reports at the close.
 
 ### The texts a run returns are born at the close
 
@@ -313,13 +317,13 @@ With no barrier there is no end of wave to anchor on. The **textual report** is 
 checkpointed **each time a project run returns**. That project's section is appended to it, on
 disk, before the next dispatch goes out. The vista of step 6 is written once, at the close, from
 that file. Checkpointing the page instead would rewrite five blocks per return, to protect prose
-that a plain append protects. A fleet cut off by the quota wall leaves the textual report
+that a plain append protects. A fleet cut off by the weekly wall leaves the textual report
 covering every project that finished. The ones still in flight are named as such.
 
 **Done when:**
 
 - every dispatchable project has been dispatched or is queued behind a slot, unless the quota
-  ceiling or the wall stopped the fleet first;
+  ceiling or the weekly wall stopped the fleet first;
 - a quota reading was taken before each dispatch, and each one's age is on record;
 - every in-flight run carries a generated block, an absolute load path, that load's flags, its
   own working directory, the foreground-suite order and the order to write its texts into the
@@ -338,9 +342,10 @@ that the run came back empty, and what the report says about the project is buil
 artefacts below instead.
 
 **The quota wall is the one exception**, because it is not that project's failure. It is the
-machine's window, and step 4 stops the fleet on it. So the fleet's stop conditions are four.
-Step 1 owns two, a rotten site file and an empty roster. Step 4 owns the quota ceiling and the
-wall: the ceiling before the window is spent, the wall once it is.
+machine's window: step 4 pauses the fleet on a 5-hour wall and stops it on the weekly one. So
+the fleet's stop conditions are four. Step 1 owns two, a rotten site file and an empty roster.
+Step 4 owns the quota ceiling and the wall: the ceiling before the week is spent, the weekly
+wall once it is.
 
 **The fleet never repairs a project run's work.** It holds no context on that project's items,
 its criteria or its tree. Judging the repair from here is the partial-context verdict the

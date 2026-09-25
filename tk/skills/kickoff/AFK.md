@@ -181,6 +181,8 @@ exit 2 falls back on the site key. Where the harness's own cap — `min(16, npro
 smaller, the difference stays UNUSED: weigh a second workflow beside the first, never Agent
 runs whose return lands in this session's context.
 
+**Arm the tick before the turn that dispatches the first run ends** — `WINDOW.md`, *The tick*.
+
 **The script stops dispatching at the first `null` and hands back what it holds.** A `null` is
 the wall or a skip, never one of the three attempts `../verify/SKILL.md` counts. The launch is
 a seam of its own: `WINDOW.md` refreshes the handoff right after it, and reads the quota
