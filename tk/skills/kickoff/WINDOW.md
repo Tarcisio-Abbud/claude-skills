@@ -58,8 +58,9 @@ runs. What covers that shape is the handoff the last seam already wrote, which i
 
 On the first quota failure, in this order:
 
-1. **Stop dispatching.** The runs in flight are already dead; the ones not yet sent stay
-   unsent.
+1. **Stop dispatching.** The runs in flight are already killed, and the ones not yet sent stay
+   unsent. Under the Agent-tool fallback, the tick resumes the killed runs after a 5-hour reset
+   (*Who meets the wall on the main thread is the tick*).
 2. **Refresh one handoff** — `tk-queue handoff "<id>" --dir "<queue dir>" --objective "..."
    --state "..." --blockers "..."`, in the form `../verify/SKILL.md` prescribes (*Three
    attempts, then the queue*), **then run the `edit` it prints** (same file, *The item
@@ -78,8 +79,9 @@ On the first quota failure, in this order:
    - the reset time the error named;
    - the claims this package holds;
    - **the review still owed** — the slice, its base and the lens's angle, for a lens the wall
-     killed before it reported; a lens that did not report is re-fired whole. A slice whose
-     lens never ran waits implemented, unreviewed and unmerged, and says so;
+     killed before it reported. That lens is resumed first (*Who meets the wall on the main
+     thread is the tick*), and re-fired whole only where no agent answers or it shows no work.
+     A slice whose lens never ran waits implemented, unreviewed and unmerged, and says so;
    - **the large files already read, and the verdict on each.** A successor that knows a
      source is 1,500 lines and what it holds takes it distilled from a subagent; one that
      knows only "we were at 200k" reads it again at full price;
@@ -105,7 +107,10 @@ On the first quota failure, in this order:
    already held. **Which handoff that is follows the shape** — the path this step reported, or,
    where the turn ended before this step ran, the one the last seam wrote. Where it does not
    wake, the state is on disk and the next kickoff finishes the package. Plan for the second
-   (*Auto-continue is a fail-safe, never a plan*).
+   (*Auto-continue is a fail-safe, never a plan*). On a 5-hour wall, the tick's first fire after
+   the reset resumes the runs (step 1) and the package continues. Auto-continue and the next
+   kickoff cover a lost tick; the next kickoff alone covers the weekly wall, which deletes the
+   tick (*The tick*).
 
 **Done when:** the tree is pushed, one handoff carries the eight contents of step 3 — and, where
 the package holds an accumulated lane, the five contents the section below names for it — the
@@ -141,8 +146,8 @@ additions are four more paragraphs inside it.
   which fixes are committed and pushed. The tail (`AFK.md` step 5, *The lane's tail*) is a merge of
   `origin/main`, one review over the accumulated diff, then the suite and every lane criterion; a
   successor told only that the tail had started re-runs all three. What the review returned is the
-  fifth content above read at lane scope, so a review that never reported is re-fired whole here
-  too.
+  fifth content above read at lane scope, so a review that never reported is resumed first and
+  re-fired whole only as that content says, here too.
 - **The claims** — the fourth of the eight above, written exactly as they are there and gaining
   nothing on this lane. What they gain is a second reader: they are what tells the successor that
   the branch it finds on the remote belongs to its own package rather than to a sibling, which no
@@ -187,22 +192,23 @@ needs no number.
 ## Auto-continue is a fail-safe, never a plan
 
 Claude Code can resume a session at the usage limit's reset (`/config`, "Continue automatically
-at usage limit"). It is **timer-driven**: the armed state carries a fire time of the reset plus
-a jitter, polled every 30 seconds. It fired **87 seconds after the reset** with nobody at the
-keyboard and no key pressed.
+at usage limit"). It is **timer-driven**: the scheduled resumption carries a fire time of the
+reset plus a jitter, polled every 30 seconds. It fired **87 seconds after the reset** with
+nobody at the keyboard and no key pressed.
 
-**Only a real rejection arms it** — the window spent to 100% by work in flight, mid-turn. So an
-orchestrator that reads `../../bin/tk-quota`, sees one of *The tick*'s floors and stops clean
-arms nothing at all, and the two disciplines do not compose: the floors keep a package off the
-wall, and this fail-safe exists for the package that reached it anyway.
+**Only a real rejection schedules it** — the window spent to 100% by work in flight, mid-turn.
+So an orchestrator that reads `../../bin/tk-quota`, sees one of *The tick*'s floors and stops
+clean schedules nothing at all, and the two disciplines do not compose: the floors keep a
+package off the wall, and this fail-safe exists for the package that reached it anyway.
 
 **Plan the package as though it will not fire.** Four limits switch it off, and from inside the
 session nothing says which of them holds:
 
 - a horizon of 24 hours, which leaves the WEEKLY window out entirely, so that window keeps the
   procedure the rest of this file gives;
-- an exhausted cap, after repeated re-arms;
-- a poll gap wide enough to leave the armed state stale, which asks for a keypress instead;
+- an exhausted cap, after repeated resumptions;
+- a poll gap wide enough to leave the scheduled resumption stale, which asks for a keypress
+  instead;
 - cancellation by a background handoff, a relaunch, a process exit, `escape` or `ctrl-c`.
 
 Whether the harness warns a session that it will NOT resume is unmeasured: plan without that
@@ -210,11 +216,17 @@ warning.
 
 **Who meets the wall on the main thread is the tick.** A workflow in flight has a quota wait of
 its own and re-runs its parked agents after the reset, so the wall does not come back to the
-script as a `null`; it is the tick's own turn that takes the rejection. **The Agent-tool
-fallback re-runs nothing** (`AFK.md` step 3, *The vehicle*): a run the wall killed there stays
-dead, and the orchestrator re-dispatches it. Ticks that queued while
+script as a `null`; it is the tick's own turn that takes the rejection. Ticks that queued while
 the window was spent arrive together at the resumption, so a resumed turn opens holding several
 tick prompts and runs ONE tick over them all.
+
+**Under the Agent-tool fallback** (`AFK.md` step 3, *The vehicle*), **the tick resumes what the
+wall killed**, which keeps its context and its uncommitted worktree edits. At each fire where
+`tk-quota` reads the 5-hour window live and with room — not refused, not spent — send ONE
+`SendMessage` to every dispatched agent that has neither handed back nor is running.
+`ListAgents` rows name the agents this session spawned, by kind, with no run state; the task
+notifications say which handed back. Re-dispatch whole only where no agent answers, or its
+worktree shows no work.
 
 **The marker a resumed session reads is structural, never the prose.** The resumption arrives
 as a `user` line carrying `origin.kind: "auto-continuation"`, and the harness ships three
@@ -333,13 +345,45 @@ leave an orphan claim every later package refuses. Under the threshold the seam 
 ## The tick, and what one fire may dispatch
 
 *The wall* above is an arrival to be ready for. This section is what keeps it from arriving.
-The mechanism is a **tick**: a scheduled fire, every ~47 minutes on the package it was
-measured on, that reads the quota, asks who is still alive, dispatches whatever the budget
-below allows, checks the claims, and writes one line of the package ledger.
+The mechanism is a **tick**: a recurring scheduled fire, hourly (the package it was measured
+on fired every ~47 minutes), that reads the quota, asks who is still alive, dispatches whatever
+the budget below allows, checks the claims, and writes one line of the package ledger.
 
 **The tick is periodic and never aimed at the reset.** The resets observed across that
 package were 15:20, 20:30, 01:40 and 06:50 — five hours from the window's own first request,
 not a fixed grid — and a cron written at 22:20 for a fixed hour missed every one of them.
+
+**The tick is armed by work in flight, and deleted by its absence.** Every tick prompt opens
+with the marker `tk-tick`, and a turn finds the tick by `CronList` and that marker.
+
+- **Arm.** An unattended orchestrator running on the session's main thread — an afk package, a
+  fleet — arms the tick before the turn that first puts background work in flight ends. Where
+  `CronList` shows no marked job, run `CronCreate` with `cron: "7 * * * *"` (hourly, off the
+  minute) and `recurring: true`; the tool takes nothing else. A recurring job auto-expires
+  after some days, so a package that outlives it re-arms at its next seam. A successor
+  generation re-arms on open when its handoff names work in flight. An attended session arms
+  nothing.
+- **A project run a fleet dispatched arms nothing.** A cron created inside a subagent fires only
+  into it and is dropped when it ends. The fleet's tick resumes the project run by
+  `SendMessage`; the resumed run resumes its own agents the same way (`ListAgents` lists only
+  agents you spawned).
+- **Its prompt is self-contained**, since a fire opens with no file in view. At arm time,
+  resolve its paths to ABSOLUTE, as `../fleet/SKILL.md` §4 item 2 does: `tk-quota`,
+  `tk-context`, and this file by section. After the marker it runs, in order: `tk-quota`; the
+  resume rule (*Who meets the wall on the main thread is the tick*); the floors and the claims
+  check (*The tick, and what one fire may dispatch*); `tk-context --window` (*The scheduled
+  context refresh*); one ledger line.
+- **Nothing in flight** is three empty answers: no dispatched agent running or awaiting
+  resumption (`ListAgents`, the task notifications), no workflow running (its status, by the
+  handoff's run id), and no claim held by a dispatched run (the claims check).
+- **Delete the tick** when a fire or a turn finds nothing in flight — the package or the fleet
+  closed, `ESPERANDO-HUMANO` below — and on a WEEKLY wall once the handoff is written: a reset
+  days away is not waited on by firing. Run `CronList`, match the marker, and `CronDelete` that
+  id. Then write one ledger line and end the turn.
+- **Recurring, never a chain of one-shots.** A one-shot whose own turn the wall rejects never
+  reaches its re-arm, while a recurring cron's fires queue through the wall and arrive together
+  at the resumption.
+- **Cost.** An idle fire costs about one turn (*An idle tick costs ONE turn*, below).
 
 Four numbers bound what a fire may dispatch. Each is calibrable, and each carries what
 measured it.
@@ -379,9 +423,10 @@ measured it.
   before its first commit delivered nothing and refuted nothing, and the item pays for it
   anyway (*The wall*).
 - **No review is dispatched below 35%.** Measured twice in one package: a wall killed a
-  review with BOTH axes already answered, and the triage — the expensive half — does not
-  survive, ~150k tokens thrown away each time. Where a package refuses that floor, the
-  alternative is a review that commits its raw findings to a file before it triages.
+  review with BOTH axes already answered, and re-fired whole, the triage — the expensive half —
+  was lost, ~150k tokens thrown away each time. A review resumed by `SendMessage` keeps its
+  context (*Who meets the wall on the main thread is the tick*). Where a package refuses that
+  floor, the alternative is a review that commits its raw findings to a file before it triages.
 - **A review is 25 to 45 minutes**, measured over that same package, which is what makes it
   the thing that fits a short slot where a lane does not fit. The hour before a reset is a
   review's hour and not an idle one.
@@ -509,19 +554,20 @@ the list of what only the human does:
 
 - the OK to merge a pull request;
 - a command that has to run on the host, outside this container;
-- an edit to live configuration — `~/.claude/settings.json`, the site file, a cron.
+- an edit to live configuration — `~/.claude/settings.json`, the site file, a system cron
+  entry, never the tick.
 
-**Entering the state, the orchestrator cancels its own crons** (`CronDelete`) and writes the
-line with the hour read from `date`, as every ledger line is. The same line carries the
-command that turns the tick back on, ready to paste: the human runs it when they return, or
-the session revives on their message and re-arms the crons itself.
+**Entering the state deletes the tick** (*The tick*): nothing is left in flight, so the
+orchestrator deletes it (`CronDelete`) and writes the line with the hour read from `date`, as
+every ledger line is. Re-arming is a `CronCreate` the session makes itself when it revives on
+the human's message.
 
 **A goal-check hook does not live with a goal that reserves the merge to the human.** Such a
 goal is unsatisfiable by construction, and the hook rejects the end of every turn. Two exits,
-and a package takes one of them before arming such a hook: the goal declared to it EXCLUDES
-what is the human's ("until the pull requests are reviewed and open"), or the hook is switched
-off when the ledger enters this state. **The same rejection three times running is the signal to
-stop, not to insist.**
+and a package takes one of them before switching on such a hook: the goal declared to it
+EXCLUDES what is the human's ("until the pull requests are reviewed and open"), or the hook is
+switched off when the ledger enters this state. **The same rejection three times running is the
+signal to stop, not to insist.**
 
 **An idle tick costs ONE turn.** Anything above that in a session with nothing to do is a
 defect of the harness and not a budget, and `../../bin/tk-context` and `../../bin/tk-quota`
@@ -529,5 +575,7 @@ are what make it visible — turns per hour with no change of state.
 
 What it costs where nobody writes this down was measured on the night of 06-07/09: **247 model
 turns and 95.1M tokens of cache read in eight hours, with no useful work**, the 5-hour window
-going 0→10% and the weekly 86→87%. One idle turn re-reads the whole window as cache — ~385k
-there — so at that size doing nothing costs more than a whole Sonnet lane every three turns.
+going 0→10% and the weekly 86→87%. That burn came mostly from the goal-check Stop hook above
+rejecting every turn end; an idle tick fire costs about one turn. One idle turn re-reads the
+whole window as cache — ~385k there — so at that size doing nothing costs more than a whole
+Sonnet lane every three turns.
