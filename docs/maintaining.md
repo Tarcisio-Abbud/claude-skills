@@ -383,8 +383,8 @@ Being the live directory cuts both ways: a checked-out branch changes behaviour 
 returning to `main` puts the old `tk-queue` back. A fix is only in force once merged.
 
 All five plugin directories load this way, as `<name>@skills-dir`. A marketplace install of
-the same name takes precedence and shadows the live copy, so an edit to that plugin reaches
-no session until the install is removed; `claude plugin list` names each shadowed copy.
+the same name shadows the live copy. While that install exists, an edit to the plugin reaches
+no session. `claude plugin list` names each shadowed copy.
 
 ## Why `docs/agents/` and `.claude/` are versioned
 
@@ -486,6 +486,6 @@ every Claude Code session ~200 words of description. The last tree that carries 
 `3de11df`; `git checkout 3de11df -- tk-cowork` restores it, together with its entry in
 `.claude-plugin/marketplace.json` and its line in `.gitignore`.
 
-Since the 2026-09-25 rebirth, `3de11df` is not in this repository's history: it survives only
-in the pre-rebirth archive, outside this repo, so the `git checkout` line above fails on a
-fresh clone.
+Since the 2026-09-25 rebirth, `3de11df` is no longer in this repository's history. It survives
+only in the pre-rebirth archive, outside this repo. On a fresh clone the `git checkout` line
+above fails.

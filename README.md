@@ -14,9 +14,13 @@ claude plugin install contrato@claude-skills
 claude plugin install plugin-drift@claude-skills
 ```
 
-Install only the plugins you want, then restart Claude Code. To update, run
-`claude plugin marketplace update claude-skills`, then `claude plugin update <plugin>@claude-skills`,
-and restart.
+Install only the plugins you want. Restart Claude Code afterwards.
+
+To update:
+
+1. `claude plugin marketplace update claude-skills`
+2. `claude plugin update <plugin>@claude-skills`
+3. Restart Claude Code.
 
 What each plugin needs on the machine:
 
