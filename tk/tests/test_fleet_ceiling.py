@@ -36,8 +36,8 @@ slice non-empty as it is taken, and `test_every_section_the_checks_cut_on_is_the
 refuses the whole file's silence.
 
 WHAT IS NOT PROVED HERE. That any fleet run obeys the rules, that 80% is the right
-ceiling, or that the hook will ever learn `fleet` — that last one is T045 in the
-`.ambiente` queue, a file this repository does not own.
+ceiling, or that the hook really admits a `/tk:fleet` line — the hook is a file this
+repository does not own.
 """
 
 import os
@@ -232,11 +232,12 @@ class TheTextsTheRunsReturn(DocTest):
             "AskUserQuestion", "in the item's own words",
         ), "the menu is gone, and an item is written before a human has seen it")
 
-    def test_the_unattended_blocker_is_named_and_not_implemented(self):
+    def test_the_unattended_birth_goes_through_the_hook(self):
         self.assertCarries(self.body(), (
-            "`kickoff` and `wrap-up`, not `fleet`", "T045", "`.ambiente` queue",
-        ), "the reason an unattended fleet births nothing is unnamed, so the next "
-           "session rediscovers it or implements the hook from here")
+            "reads a `/tk:fleet` line, at any argument",
+            "still births its texts at the close",
+        ), "the section says an unattended fleet births nothing, so its texts stop "
+           "at the report although the hook admits their birth")
 
     def test_the_done_that_collects_the_briefing_is_measured_not_assumed(self):
         # Measured 2026-09-14 in a throwaway queue: writing the texts into the

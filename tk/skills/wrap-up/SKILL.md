@@ -18,7 +18,7 @@ response-style preference disagrees with that structure, the template wins.
 **Argument:** `afk` — the user is leaving now; see "The `afk` argument" at the end.
 **Site extensions:** read `~/.claude/tk/wrap-up.md` and `.claude/tk/wrap-up.md` (project
 root) if they exist — documentation targets, flow recommendations, the afk merge's repo
-list. (A project's own `.claude/skills/wrap-up` overrides this skill entirely.)
+list.
 
 ## 1. Inventory the session's changes
 
@@ -135,7 +135,7 @@ items. That file is written and removed only by `tk-queue handoff "<id>" --dir "
 `../verify/SKILL.md`, *The item points at the briefing*), and a campaign gets ONE handoff
 file, pointed at by every item in it. The file carries **CONCLUSIONS, never a reading list**.
 
-**The next step — ALWAYS close by recommending ONE path**, the why in 1–2 sentences, by
+**The next step — close by recommending ONE path**, the why in 1–2 sentences, by
 where the understanding lives: written down, `/clear` is cheap; conversation-only,
 document it in step 3 or write the handoff file.
 
