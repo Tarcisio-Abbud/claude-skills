@@ -228,6 +228,10 @@ the item it closes, so a head-item handoff dies at the first close. Before each 
 item that now closes last.
 
 A lane holding its own pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file.
+**Pick the reviewer's model from the diff before dispatching it.** Read
+`git diff origin/main...origin/spec/<m>-<slug>` against the `cold-reviewer` row of
+`../../reference/subagent-policy.md`. That row says when the diff puts the reviewer on sonnet,
+and a downgrade costs its deviation line.
 
 A lane item is verified BEFORE it reaches the shared branch — one cycle per item, in order —
 while the orchestrator runs stages 1–5 itself. Stages 1–5 may run inside the workflow as one
