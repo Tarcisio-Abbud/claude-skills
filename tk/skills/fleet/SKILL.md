@@ -167,6 +167,10 @@ Each project run is dispatched as a **background subagent**, cwd at the project'
 the `fleet-orchestrator` row. **Arm the tick before the turn that dispatches the first project
 run ends** — `../kickoff/WINDOW.md`, *The tick*.
 
+**Stamp the fleet's start at the first dispatch.** Run `date -u +%Y-%m-%d-%H%M` once, and open
+the textual report with its output. Step 6 names the vista from that line, and a fleet resumed
+after a wall reads it there rather than taking a new stamp.
+
 **The prompt names the skill's file, never the command.** `../kickoff/SKILL.md` carries
 `disable-model-invocation: true`. `../dispatch/SKILL.md` owns why the file route works where the
 command does not, under *Mechanism boundaries*.
@@ -376,10 +380,9 @@ not fork those readings.
 
 Three things belong to the fleet and to no other reader of that file:
 
-- **The `<package>` slot of `vista.md`'s filename takes `fleet`**, so the file is
-  `<outbox>/vista-fleet-<YYYY-MM-DD>.html`. That file fills the slot from an anchor item or a
-  first item, and a fleet run has neither. A fleet run is one run over many queues, and
-  `vista.md` carries this case itself, so the two do not fork.
+- **The file is `vista.md`'s fleet name**, `<outbox>/vista-fleet-<load>-<YYYY-MM-DD>-<HHMM>.html`.
+  `vista.md` owns that shape, so the two do not fork. This step fills it: `<load>` is this
+  run's argument, and the rest is the start stamp at the head of the textual report.
 - **Keep `vista.md`'s grouping, and name the project on every card.** Block 2 groups by
   OUTCOME, and that is not this step's to change. What many queues at once add is the ambiguity
   of a bare item id, which the card's own text resolves by naming its project.
