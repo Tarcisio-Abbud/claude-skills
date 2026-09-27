@@ -9,7 +9,7 @@ Each shard reruns the baseline (~130 s alone) and then ~1.3 s per named test.
 N=4 was chosen from those two numbers and measured on 2026-09-23, on a loaded
 4-CPU machine: 608 entries, shards of 231-263 s, summing to the whole run's
 caught count. Each shard prints its wall time; when one nears 500 s, raise
-SHARDS and the `/4` in this docstring and in the README. The list-wide checks
+SHARDS and the `/4` in this docstring and in docs/maintaining.md. The list-wide checks
 (UNPROVED tests and the KNOWN_* ratchets) run in shard 1 only, over the whole
 list.
 

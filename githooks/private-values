@@ -1,6 +1,6 @@
 #!/bin/sh
 # Refuses a commit that would publish one of the values configuring this clone. Why the
-# clone's own values live in git config: README, "Layout, and the authoring machine".
+# clone's own values live in git config: docs/maintaining.md, "Public repo, private values".
 #
 # THREE SOURCES OF NEEDLES, all local to this clone: the values of `tk.tracker` and
 # `tk.ghConfigDir`, and each line of the file whose path `tk.privateValuesFile` holds. The

@@ -33,7 +33,7 @@ WHAT THIS DOES NOT COVER, deliberately:
 
   - **Wording.** A description naming every skill and describing each one wrongly passes.
     Membership is verifiable; prose is a reader's judgement.
-  - **`README.md`**, which advertises the same nine skills in a table and was edited by
+  - **`README.md`**, which advertises the same ten skills in a table and was edited by
     both #48 and #49. It is a third surface with a third format, and it is unguarded.
   - **The sibling plugins** in `marketplace.json` (`asr`, `plugin-drift`, `whatsapp`, `contrato`).
     They do not share this convention — `asr` and `plugin-drift` never name their single

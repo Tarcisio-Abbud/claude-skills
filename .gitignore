@@ -13,7 +13,8 @@
 !/githooks
 !/bin
 
-# Agent config, versioned so that `git worktree add` materialises it (README, "Layout").
+# Agent config, versioned so that `git worktree add` materialises it
+# (docs/maintaining.md, "Why `docs/agents/` and `.claude/` are versioned").
 # The four rules run in order: reopen docs/, close what sits directly inside it, reopen
 # agents/, close that too — then name the three files `/setup-matt-pocock-skills` writes.
 # Naming them rather than opening the directory is what keeps the next file dropped there
@@ -25,6 +26,12 @@
 !/docs/agents/issue-tracker.md
 !/docs/agents/triage-labels.md
 !/docs/agents/domain.md
+
+# What moved out of the README (tk in depth, plugin design notes, maintaining this repo),
+# named file by file for the same reason as the block above.
+!/docs/tk.md
+!/docs/plugins.md
+!/docs/maintaining.md
 
 # Pruning baselines and the script that lays them out (T185). Named file by file
 # for the reason the block above is: a pruning report on a PRIVATE skill must not
@@ -55,7 +62,7 @@
 !/docs/prune/fleet-report.md
 
 # The hookify stop rule that this repo's own sessions run under, versioned for the same
-# reason `docs/agents/` is (README, "Layout"): `git worktree add` materialises tracked files
+# reason `docs/agents/` is (docs/maintaining.md): `git worktree add` materialises tracked files
 # only, so an unversioned copy leaves every worktree of this repo with no guard at all.
 # Named file by file for the same reason as the blocks above: `.claude/*.local.md` is where
 # a LOCAL rule lands, and an open `!/.claude` would let one carrying private values reach
