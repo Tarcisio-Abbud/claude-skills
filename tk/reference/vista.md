@@ -50,8 +50,15 @@ The outbox is where it goes, by default and without asking: the machine's **outb
 directory it exports to the user, and the file is `<outbox>/vista-<package>-<YYYY-MM-DD>.html`.
 A package has no id of its own, so `<package>` is the name the session already calls it by — the
 anchor item's id (`T139`) for a package built around one, otherwise its first item's id, and the
-campaign's name where the user gave it one. A **fleet run** has neither anchor nor first item —
-it is one run over many queues — so its slot takes the literal `fleet`.
+campaign's name where the user gave it one.
+
+A **fleet run** has neither anchor nor first item, and two fleets can run on one date. Its file
+is `<outbox>/vista-fleet-<load>-<YYYY-MM-DD>-<HHMM>.html`. `<load>` is the fleet's argument
+(`afk`, `docs-audit`), so fleets of two loads differ by it. The date and `<HHMM>` are the fleet's
+**start stamp**, in the machine's local time. Two fleets of one load, started in different
+minutes, therefore differ by it. A fleet fired at night keeps the date the user started it on,
+which a UTC stamp would move to the next day. `../skills/fleet/SKILL.md` says when the stamp is
+taken.
 
 Two places name that directory, and the reader takes the first that answers — the machine's own
 instruction file (`CLAUDE.md`/`AGENTS.md`, which normally states where deliverables go), then

@@ -167,6 +167,12 @@ Each project run is dispatched as a **background subagent**, cwd at the project'
 the `fleet-orchestrator` row. **Arm the tick before the turn that dispatches the first project
 run ends** — `../kickoff/WINDOW.md`, *The tick*.
 
+**Stamp the fleet's start as step 4 begins, before its first quota reading.** Run
+`date +%Y-%m-%d-%H%M` once. Write its output into the textual report as a line of its own,
+`Start stamp: <output>`. Step 6 names the vista from that line, even when the quota ceiling
+stops the fleet before any dispatch. A fleet resumed after a wall reads the line back and never
+takes a new stamp.
+
 **The prompt names the skill's file, never the command.** `../kickoff/SKILL.md` carries
 `disable-model-invocation: true`. `../dispatch/SKILL.md` owns why the file route works where the
 command does not, under *Mechanism boundaries*.
@@ -329,6 +335,7 @@ covering every project that finished. The ones still in flight are named as such
 - every in-flight run carries a generated block, an absolute load path, that load's flags, its
   own working directory, the foreground-suite order and the order to write its texts into the
   package handoff;
+- the textual report carries one `Start stamp:` line, taken once;
 - the textual report on disk covers every run that has returned.
 
 ## 5. A project fails alone
@@ -365,8 +372,8 @@ them for each returned run, in that run's project.
 
 ## 6. The consolidated vista
 
-The close has two artefacts. The **textual report** is the close itself. Step 4 has been
-appending to it since the first return, on the template in `../wrap-up/REPORT.md`. That template
+The close has two artefacts. The **textual report** is the close itself. Steps 1 and 2 began
+it, and step 4 has appended a section at every return, on the template in `../wrap-up/REPORT.md`. That template
 is also where block 1's five counts come from. Its companion is the vista, whose coinage and whole
 contract are `../../reference/vista.md`. That file carries the five blocks, the closed outcome
 vocabulary, the outbox it lands in, the gate `tk-vista-check` and that gate's four states.
@@ -376,10 +383,9 @@ not fork those readings.
 
 Three things belong to the fleet and to no other reader of that file:
 
-- **The `<package>` slot of `vista.md`'s filename takes `fleet`**, so the file is
-  `<outbox>/vista-fleet-<YYYY-MM-DD>.html`. That file fills the slot from an anchor item or a
-  first item, and a fleet run has neither. A fleet run is one run over many queues, and
-  `vista.md` carries this case itself, so the two do not fork.
+- **The file is `vista.md`'s fleet name**, `<outbox>/vista-fleet-<load>-<YYYY-MM-DD>-<HHMM>.html`.
+  `vista.md` owns that shape, so the two do not fork. This step fills it: `<load>` is this
+  run's argument, and the rest is the textual report's `Start stamp:` line.
 - **Keep `vista.md`'s grouping, and name the project on every card.** Block 2 groups by
   OUTCOME, and that is not this step's to change. What many queues at once add is the ambiguity
   of a bare item id, which the card's own text resolves by naming its project.
