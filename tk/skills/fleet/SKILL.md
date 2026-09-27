@@ -288,8 +288,10 @@ because the address is explicit, not because the fleet changed directory. One `A
 carries every project's texts together, in the item's own words, on `FINDINGS.md`'s three labels.
 
 **Unattended, the hook lets the birth through.** It admits an `add` in an unattended session
-when the user's last typed turn opened one. It reads a `/tk:fleet` line, at any argument, as
-opening one. So a fleet nobody watched still births its texts at the close, by the command above.
+when the user's last decisive typed turn opened an unattended package. It reads a `/tk:fleet`
+line, at any argument, as opening one. So a fleet nobody watched still births its texts at the
+close, by the `tk-queue add --dir` block above. The menu still goes out, and the `add` does not
+wait on its answer. The user first sees those words in the menu and the report.
 
 **A `done` collects the briefing of the item it closes.** That is why item 6 of the prompt says
 the PACKAGE handoff. Run against `tk-queue` in a throwaway queue: `done T001` printed

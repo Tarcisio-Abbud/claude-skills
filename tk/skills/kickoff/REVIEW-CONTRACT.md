@@ -10,8 +10,9 @@ colour. `AFK.md` step 5 reaches this file for a lane that opened its own pull re
 
 1. This file, then `LANE-CONTRACT.md` — the rules the implementer worked under bind the
    reviewer's fixes too. The role the dispatch pins is `cold-reviewer`, and its contract block
-   is `tk-contract --role cold-reviewer`: local, and it therefore spends one of the machine's
-   concurrent Opus slots (`../../reference/subagent-policy.md`).
+   is `tk-contract --role cold-reviewer`: local, and on opus it therefore spends one of the
+   machine's concurrent Opus slots (`../../reference/subagent-policy.md`, which also says when
+   the role runs on sonnet).
 2. `<items file>`, the full text of the lane's items, and `<brief file>` where a
    `/tk:second-opinion once` verdict decided a design: there the brief, not the item's
    statement, is what the lane was asked to build.
