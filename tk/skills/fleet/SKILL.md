@@ -287,11 +287,11 @@ The fleet's cwd is its own, and `tk-queue` resolves the queue from the cwd. So a
 because the address is explicit, not because the fleet changed directory. One `AskUserQuestion`
 carries every project's texts together, in the item's own words, on `FINDINGS.md`'s three labels.
 
-**Unattended, the birth waits on a named blocker.** The hook admits an `add` in an unattended
-session only when the user's last typed turn opened one. The commands it knows as opening one
-are `kickoff` and `wrap-up`, not `fleet`. So a fleet nobody watched births nothing, and its texts
-stay where the runs wrote them. The blocker is **T045 in the `.ambiente` queue**; this file names
-it and implements nothing of it.
+**Unattended, the hook lets the birth through.** It admits an `add` in an unattended session
+when the user's last decisive typed turn opened an unattended package. It reads a `/tk:fleet`
+line, at any argument, as opening one. So a fleet nobody watched still births its texts at the
+close, by the `tk-queue add --dir` block above. The menu still goes out, and the `add` does not
+wait on its answer. The user first sees those words in the menu and the report.
 
 **A `done` collects the briefing of the item it closes.** That is why item 6 of the prompt says
 the PACKAGE handoff. Run against `tk-queue` in a throwaway queue: `done T001` printed

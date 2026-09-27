@@ -13,8 +13,7 @@ order; each ends on a checkable criterion.
 switch to `AFK.md` beside this file. `--budget N` (default 1) rides with either, read in `WINDOW.md`.
 
 **Site extensions:** read `~/.claude/tk/kickoff.md` and `.claude/tk/kickoff.md` (project
-root) if they exist — they add site-specific agenda sources and dispatch commands. (A
-project's own `.claude/skills/kickoff` overrides this skill entirely.)
+root) if they exist — they add site-specific agenda sources and dispatch commands.
 
 **A session opening on a package handoff takes `AFK.md` ahead of this file's step 1** — a
 briefing whose `--state` names a package in flight has paid for steps 1–3 already. Enter at
