@@ -339,8 +339,16 @@ def fail(msg):
     sys.exit(f"tk-queue: {msg}")
 
 
-def memory_dir(explicit):
+def memory_dir(args):
     """This queue's directory: `--dir`, or the one the cwd encodes to.
+
+    The ONE place that decides whether that directory may be created. Only the
+    cwd-derived default is ever created, and only by a WRITE command (any
+    command outside READERS), before `queue_lock` needs it: on a fresh install
+    no queue dir exists yet, and the first write is what gives the project its
+    queue. A READ command on a missing default creates nothing and reads it as
+    an empty queue (`read_queue`). An explicit `--dir` is never created, on a
+    read or a write: a mistyped path must fail, not grow a stray queue.
 
     The encoding is `tk_site.project_slug`, not a regex of its own. It was one
     here and one there, and the roster runs the SAME rule BACKWARDS — it walks
@@ -349,13 +357,35 @@ def memory_dir(explicit):
     this", and the day they disagree the disagreement is silent: a queue the
     roster counts under one name and this command writes under another.
     """
-    if explicit:
-        d = os.path.abspath(os.path.expanduser(explicit))
+    if args.dir:
+        d = os.path.abspath(os.path.expanduser(args.dir))
     else:
         d = os.path.join(PROJECTS_ROOT, tk_site.project_slug(os.getcwd()), "memory")
+        if args.cmd not in READERS:
+            try:
+                os.makedirs(d, exist_ok=True)
+            except OSError as e:
+                fail(f"cannot create queue dir {d}: {e}")
+        elif not os.path.exists(d):
+            return d
     if not os.path.isdir(d):
         fail(f"memory dir not found: {d}\n(use --dir, or run from the project's directory)")
     return d
+
+
+def read_queue(memdir):
+    """`next-steps.md`'s text, for the readers of one queue (`list`, `pack`).
+
+    A missing `memdir` here can only be the cwd-derived default that no write
+    has created yet — `memory_dir` refuses a missing `--dir` — and a queue
+    nobody ever wrote to is an EMPTY queue, not an error.
+    """
+    content = read(os.path.join(memdir, "next-steps.md"))
+    if content is None:
+        if not os.path.exists(memdir):
+            return ""
+        fail("next-steps.md not found in " + memdir)
+    return content
 
 
 def read(path):
@@ -2946,10 +2976,8 @@ def age_cell(days):
 # --- commands -------------------------------------------------------------
 
 def cmd_list(args):
-    memdir = memory_dir(args.dir)
-    content = read(os.path.join(memdir, "next-steps.md"))
-    if content is None:
-        fail("next-steps.md not found in " + memdir)
+    memdir = memory_dir(args)
+    content = read_queue(memdir)
     opens = [text for kind, text in split_blocks(content) if kind == "item-open"]
     ids = [item_id(t) for t in opens]
     # the ID, not the spelling: T001 and T0001 are one number and two rows, and a
@@ -3823,10 +3851,8 @@ def cmd_pack(args):
     # item, so the ticket the caller called a second time to take OUT would be
     # dispatched — the blindness back, wearing a typo
     blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))
-    memdir = memory_dir(args.dir)
-    content = read(os.path.join(memdir, "next-steps.md"))
-    if content is None:
-        fail("next-steps.md not found in " + memdir)
+    memdir = memory_dir(args)
+    content = read_queue(memdir)
     identity = pack_identity()
     # ONE pass over the queue, in its order, then the lane. The lane is the only
     # rule here that is not about the item alone — it needs to know which spec
@@ -4304,7 +4330,7 @@ def check_wip(site, memdir):
 
 
 def cmd_add(args):
-    memdir = memory_dir(args.dir)
+    memdir = memory_dir(args)
     if args.classe not in CLASSES:
         fail(f"--class must be one of {', '.join(CLASSES)}")
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
@@ -4671,7 +4697,7 @@ def handoff_collect(memdir, after, ids, dry_run=False):
 
 
 def cmd_handoff(args):
-    memdir = memory_dir(args.dir)
+    memdir = memory_dir(args)
     # an item that is not open cannot be handed off: the briefing would be an
     # orphan the moment it was written, and no close would ever collect it
     content, block, start = find_open_item(memdir, args.id)
@@ -4733,7 +4759,7 @@ def finish_close(memdir, content, block, start, iid):
 
 
 def close_item(args, marker, outcome, marker_flag):
-    memdir = memory_dir(args.dir)
+    memdir = memory_dir(args)
     content, block, start = find_open_item(memdir, args.id)
     # the paragraphs below the item's block that are its own leave with it, to the
     # log and out of the queue — both halves, on both routes below (attached_prose)
@@ -4889,7 +4915,7 @@ def splice(content, block, start, new):
 
 
 def cmd_edit(args):
-    memdir = memory_dir(args.dir)
+    memdir = memory_dir(args)
     content, block, start = find_open_item(memdir, args.id)
     label = item_label(block)
     ensure_single_line(text=args.text, effort=args.effort, risk=args.risk,
@@ -5188,7 +5214,7 @@ def cmd_claim(args):
     tells a live claim from one a dead session left behind — a claim that renews
     itself on every attempt never looks stale.
     """
-    memdir = memory_dir(args.dir)
+    memdir = memory_dir(args)
     validate_owner(args.owner)
     content, block, start = find_open_item(memdir, args.id)
     label = item_label(block)
@@ -5230,7 +5256,7 @@ def cmd_release(args):
     nothing goes silently unreachable. What keeps a wrongful release visible is the
     report below, which names WHOSE claim was dropped.
     """
-    memdir = memory_dir(args.dir)
+    memdir = memory_dir(args)
     content, block, start = find_open_item(memdir, args.id)
     label = item_label(block)
     # No host check here, and the asymmetry is the point: WRITING a claim needs a
@@ -5264,7 +5290,7 @@ def cmd_bump(args):
     paragraphs it carries below it (attached_prose): moved alone, the block left
     them under whatever item sat above it.
     """
-    memdir = memory_dir(args.dir)
+    memdir = memory_dir(args)
     content, block, start = find_open_item(memdir, args.id)
     label = item_label(block)
     path = os.path.join(memdir, "next-steps.md")
@@ -5297,7 +5323,7 @@ def cmd_report(args):
             if os.path.exists(os.path.join(d, "done-log.md"))
         )
         if args.all
-        else [memory_dir(args.dir)]
+        else [memory_dir(args)]
     )
     entry = re.compile("^" + LOG_LINE + r".*(?:\n  .*)*", re.M)
     for d in dirs:
@@ -5937,7 +5963,7 @@ def group_by_reason(pairs):
 
 
 def cmd_migrate(args):
-    memdir = memory_dir(args.dir)
+    memdir = memory_dir(args)
     # ONE gate for every write this command makes through `write_atomic` — the
     # queue and the done-log. The flag is read HERE, once, and both call sites
     # below say `save(...)` without asking again: a `--dry-run` that tested the
@@ -6361,7 +6387,7 @@ def main():
     # `report` is the ONE command with no single dir to name: it sweeps every
     # project's queue under PROJECTS_ROOT by construction, so there is no
     # inference for it to expose and no dir of its own to resolve.
-    memdir = None if args.cmd == "report" else memory_dir(args.dir)
+    memdir = None if args.cmd == "report" else memory_dir(args)
     if memdir is not None:
         print(f"tk-queue: queue: {memdir}", file=sys.stderr)
     if args.cmd not in READERS:

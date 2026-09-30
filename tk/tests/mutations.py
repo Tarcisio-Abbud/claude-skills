@@ -454,18 +454,50 @@ MUTATIONS = [
       "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
 
     ("T215 the readers of one queue go back to naming nothing",
-     '    memdir = None if args.cmd == "report" else memory_dir(args.dir)',
-     "    memdir = None if args.cmd in READERS else memory_dir(args.dir)",
+     '    memdir = None if args.cmd == "report" else memory_dir(args)',
+     "    memdir = None if args.cmd in READERS else memory_dir(args)",
      ["TestTargetQueueAnnounced."
       "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
 
     # over-trigger direction: `report` sweeps every project's queue, so a single
     # dir named on it is a queue it does not read
     ("T215 report announces one queue out of the many it sweeps",
-     '    memdir = None if args.cmd == "report" else memory_dir(args.dir)',
-     "    memdir = memory_dir(args.dir)",
+     '    memdir = None if args.cmd == "report" else memory_dir(args)',
+     "    memdir = memory_dir(args)",
      ["TestTargetQueueAnnounced."
       "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
+
+    # --- T503: which queue dir a command may create -------------------------
+    ("T503 a write command no longer creates the missing default dir",
+     "        if args.cmd not in READERS:\n            try:\n                os.makedirs(",
+     "        if False:\n            try:\n                os.makedirs(",
+     ["TestQueueDirCreation.test_a_write_command_creates_the_missing_default_dir"]),
+
+    ("T503 a read command creates the default dir too",
+     "        if args.cmd not in READERS:\n            try:\n                os.makedirs(",
+     "        if True:\n            try:\n                os.makedirs(",
+     ["TestQueueDirCreation."
+      "test_a_read_command_on_the_missing_default_dir_reports_empty_and_creates_nothing"]),
+
+    ("T503 a never-written default queue fails the readers again",
+     '        if not os.path.exists(memdir):\n            return ""',
+     '        if False:\n            return ""',
+     ["TestQueueDirCreation."
+      "test_a_read_command_on_the_missing_default_dir_reports_empty_and_creates_nothing"]),
+
+    ("T503 an explicit --dir is created like the default",
+     "        d = os.path.abspath(os.path.expanduser(args.dir))\n",
+     "        d = os.path.abspath(os.path.expanduser(args.dir))\n"
+     "        os.makedirs(d, exist_ok=True)\n",
+     ["TestQueueDirCreation."
+      "test_an_explicit_missing_dir_fails_on_read_and_write_and_creates_nothing"]),
+
+    # a subcommand the argv tables do not list is a write command the creation
+    # test never runs
+    ("T503 a subcommand arrives that the creation tables do not list",
+     '    b = sub.add_parser("bump", parents=[common],',
+     '    b = sub.add_parser("bump-top", parents=[common],',
+     ["TestQueueDirCreation.test_the_argv_tables_cover_every_subcommand"]),
     # --- review#2: the real field is the one in the CHAIN ------------------
 
     ("review#2 the real field is the LAST marker in the block again (note eaten)",

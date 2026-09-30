@@ -1371,6 +1371,107 @@ class TestTargetQueueAnnounced(QueueTest):
         self.assertNotIn(f"queue: {self.mem}", r.stderr)
 
 
+# --- T503: which queue dir a command may create ------------------------------
+
+def _load_tk_site():
+    spec = importlib.util.spec_from_file_location(
+        "tk_site", os.path.join(os.path.dirname(TK), "tk_site.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# One valid argv per WRITE command, so argparse lets each one reach the queue dir.
+# The set of keys is checked against the script's own subcommand list, so a new
+# write command cannot slip past this test unlisted.
+WRITE_ARGV = {
+    "add": ("add", "primeiro item", "--class", "AUTONOMOUS", "--effort", "S",
+            "--criterion", "A: x"),
+    "done": ("done", "T001", "--how", "PR #1"),
+    "cancel": ("cancel", "T001", "--why", "obsoleto"),
+    "edit": ("edit", "T001", "--text", "outro texto"),
+    "claim": ("claim", "T001", "--as", "alpha"),
+    "release": ("release", "T001"),
+    "handoff": ("handoff", "T001", "--objective", "o", "--state", "s", "--blockers", "b"),
+    "bump": ("bump", "T001"),
+    "migrate": ("migrate",),
+}
+READ_ARGV = {"list": ("list",), "pack": ("pack",), "report": ("report",)}
+
+
+class TestQueueDirCreation(QueueTest):
+    """The cwd-derived default queue dir did not exist on a fresh install until
+    something outside the plugin made it, so the first `tk-queue` call on a new
+    project failed with "memory dir not found". Now the default dir is created by
+    a WRITE command and by nothing else: a read reports an empty queue and leaves
+    the disk as it found it, and an explicit `--dir` is never created — a typo
+    there must fail, not grow a stray queue."""
+
+    def setUp(self):
+        super().setUp()
+        self.site_mod = _load_tk_site()
+
+    def fresh_project(self, name):
+        """A project directory with NO queue dir yet, and the path its default
+        queue dir would take under this test's HOME."""
+        proj = os.path.realpath(os.path.join(self.dir, "projects-src", name))
+        os.makedirs(proj)
+        default = os.path.join(self.home, ".claude", "projects",
+                               self.site_mod.project_slug(proj), "memory")
+        return proj, default
+
+    def spawn(self, argv, cwd):
+        """`tk-queue` with NO `--dir`: the default dir is the thing under test."""
+        return subprocess.run([sys.executable, TK, *argv], capture_output=True, text=True,
+                              cwd=cwd, env=dict(os.environ, HOME=self.home), timeout=60)
+
+    def test_the_argv_tables_cover_every_subcommand(self):
+        r = subprocess.run([sys.executable, TK, "--help"], capture_output=True, text=True,
+                           env=dict(os.environ, HOME=self.home), timeout=60)
+        listed = set(re.search(r"\{([a-z,-]+)\}", r.stdout).group(1).split(","))
+        self.assertEqual(listed, set(WRITE_ARGV) | set(READ_ARGV))
+
+    def test_a_write_command_creates_the_missing_default_dir(self):
+        for cmd, argv in WRITE_ARGV.items():
+            with self.subTest(cmd=cmd):
+                proj, default = self.fresh_project(cmd)
+                self.assertFalse(os.path.exists(default))
+                r = self.spawn(argv, proj)
+                self.assertNotIn("memory dir not found", r.stderr)
+                self.assertTrue(os.path.isdir(default),
+                                f"{cmd} left the default queue dir uncreated: {r.stderr}")
+                self.assertIn(f"queue: {default}", r.stderr)
+
+    def test_a_read_command_on_the_missing_default_dir_reports_empty_and_creates_nothing(self):
+        for cmd, argv in READ_ARGV.items():
+            with self.subTest(cmd=cmd):
+                proj, default = self.fresh_project(cmd)
+                projects_root = os.path.join(self.home, ".claude", "projects")
+                r = self.spawn(argv, proj)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertFalse(os.path.exists(os.path.dirname(default)),
+                                 f"{cmd} created {default}")
+                self.assertFalse(os.path.exists(projects_root) and os.listdir(projects_root),
+                                 f"{cmd} created something under {projects_root}")
+                if cmd == "list":
+                    self.assertIn("(queue empty)", r.stdout)
+                elif cmd == "pack":
+                    self.assertIn("eligible (0 of 0", r.stdout)
+                else:
+                    self.assertEqual(r.stdout, "")
+
+    def test_an_explicit_missing_dir_fails_on_read_and_write_and_creates_nothing(self):
+        for cmd, argv in (("list", READ_ARGV["list"]), ("pack", READ_ARGV["pack"]),
+                          ("add", WRITE_ARGV["add"]), ("migrate", WRITE_ARGV["migrate"])):
+            with self.subTest(cmd=cmd):
+                missing = os.path.join(self.dir, "typo-" + cmd, "memory")
+                r = self.spawn((*argv, "--dir", missing), self.dir)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("memory dir not found", r.stderr)
+                self.assertFalse(os.path.exists(os.path.dirname(missing)),
+                                 f"{cmd} created {missing}")
+
+
 # --- review#2: the real field is the one in the CHAIN, never the last marker ---
 
 # the reported shape: a legacy item whose continuation note quotes the marker
