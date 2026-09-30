@@ -33,11 +33,12 @@ parent (`gh issue close`) is the candidate item, run on the user's check. Under 
 `pack`, either goes to the closing report's **Blockers and notes for the next session** line
 instead (`../wrap-up/REPORT.md`).
 
-Sources, in this order: **`next-steps.md`** in the project's auto-memory — the canonical
-queue (`../../reference/queue.md`); absent it (first kickoff), the memory files
-the index flags as having pending items. Then **open issues and PRs** (`gh issue list`,
-`gh pr list`) when there is a tracker, then the site extensions' sources. Wiki and repo
-docs are NOT agenda sources — a pending item there is stale doc.
+Sources, in this order: **`next-steps.md`** in the project's tk directory — the canonical
+queue (`../../reference/queue.md`); absent it (first kickoff) and with auto-memory on, the
+memory files its index flags as having pending items. Then **open issues and PRs**
+(`gh issue list`, `gh pr list`) when there is a tracker, then the site extensions' sources.
+Repo docs and the stores lessons are routed to are NOT agenda sources — a pending item there
+is stale doc.
 
 **Every `tk-queue` and `tk-ticket-ref` call carries `--dir "<queue dir>"`** — the queue dir
 `../../reference/queue.md` addresses. Without it, an earlier `cd` points the script at another
@@ -94,7 +95,7 @@ recommended dispatch from the palette (step 5).
 
 Before asking, show the **full triaged agenda** — ALL items, one line each, with class — so the
 user sees nothing was lost before checking. **Brief each DECISION first, in prose**, two to four
-lines from what the item already carries — its text, its `**Criterion:**`, the memory file behind
+lines from what the item already carries — its text, its `**Criterion:**`, the note behind
 a `[[slug]]` at ONE hop, its handoff. Retransmission, not synthesis: context in none of those is
 a **missing handoff**, and the briefing says so.
 

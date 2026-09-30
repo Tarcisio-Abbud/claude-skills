@@ -106,6 +106,6 @@ order is another measurement.
 ## Hard rules
 
 Everything `LANE-CONTRACT.md` forbids the implementer, this file forbids the reviewer: no queue
-writes, no writes to auto-memory or the wiki or the vault, no merge, no branch deletion, and no
-work inside the live clones. A finding whose repair would grow the lane's scope becomes a line
+writes, no writes to auto-memory or to any store the site routes lessons to, no merge, no
+branch deletion, and no work inside the live clones. A finding whose repair would grow the lane's scope becomes a line
 of the comment, never a commit.

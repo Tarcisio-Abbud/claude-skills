@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """tk-queue — deterministic gate for a project's pending-items queue.
 
-The ONLY writer of the two auto-memory queue files:
+The ONLY writer of the two queue files in the project's tk directory:
 
   next-steps.md   open items only (the queue /tk:kickoff dispatches)
   done-log.md     what left the queue, when, and how (feeds progress reports)
@@ -80,7 +80,7 @@ NOT an `edit` flag: `edit --claimed <other>` would take a held item in a second
 command, which is precisely what `claim` refuses in one.
 
 Size ceilings: an item is a PENDING ACTION, not an essay. Durable context
-belongs in a memory file or the wiki, linked from the item. TWO ceilings, and
+belongs in a durable note, linked from the item. TWO ceilings, and
 which one a flag answers to depends on the flag's NATURE:
 
   block (CEILING)   the whole item. `add` always. `edit` whenever a PROSE flag
@@ -108,7 +108,8 @@ that already exists, and `handoff`.
 
 Every mutating command prints the resolved memory dir on stderr before acting:
 the target queue is inferred from --dir or the cwd, and an unseen inference is
-an unchecked one.
+an unchecked one. Only the cwd-derived default dir is ever created, and only by a
+write command — `memory_dir` decides; an explicit --dir must already exist.
 """
 
 import argparse
@@ -330,7 +331,7 @@ metadata:
 # Done log
 
 Escrito somente pelo `tk-queue` (done/cancel/migrate). Uma linha por item;
-o ponteiro aponta para o endereço mais durável (PR/commit > wiki/doc >
+o ponteiro aponta para o endereço mais durável (PR/commit > doc versionado >
 arquivo de memória). A linha deve fazer sentido sozinha se o ponteiro morrer.
 """
 
@@ -4001,8 +4002,8 @@ def check_ceiling(item, force):
             f"text AND its field chain, not the text alone: {text} chars of text and "
             f"{fields} of fields, so the cut comes out of the "
             f"{'text' if text >= fields else 'fields'}. An item is a pending "
-            "action, not an essay: move the context to a memory file or wiki page "
-            "and link it ([[slug]])." + ("" if force else " --force raises the ceiling to "
+            "action, not an essay: move the context to a durable note — a repo doc, or "
+            "the store your site routes lessons to — and link it ([[slug]])." + ("" if force else " --force raises the ceiling to "
             f"{CEILING_FORCED} for the rare exception.")
         )
 
@@ -4028,8 +4029,8 @@ def check_field_ceilings(force, **fields):
                              else FIELD_CEILING), FIELD_CEILING_FORCED
         if len(val) > limit:
             fail(f"--{name} has {len(val)} chars (field ceiling {limit}). A field is one "
-                 "line: put the substance in a memory file or wiki page and link it "
-                 "([[slug]])." + ("" if force else f" --force raises it to {forced}."))
+                 "line: put the substance in a durable note — a repo doc, or the store "
+                 "your site routes lessons to — and link it ([[slug]])." + ("" if force else f" --force raises it to {forced}."))
 
 
 # --- the WIP cap: how many open items this machine may hold at once ---------
