@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation harness for the two compaction hooks — puts each defect back.
+"""Mutation harness for the two compaction hooks and tk's mod — puts each defect back.
 
 Run: python3 tk/tests/mutations_compact_hooks.py
 
@@ -32,6 +32,7 @@ from mutations_tk_contract import run      # noqa: E402  (path above enables it)
 
 MARK = os.path.join("bin", "tk-compact-mark")
 POINTER = os.path.join("bin", "tk-compact-pointer")
+MOD = os.path.join("hooks", "compact-veto.js")
 
 QUIET = "TheMarkHook.test_no_package_pointer_writes_nothing_and_says_nothing"
 SEVEN = "TheMarkHook.test_one_line_is_appended_with_the_seven_fields_the_ledger_defines"
@@ -64,6 +65,29 @@ AGENT_WAKE = ("ThePointerHook."
               "test_the_main_thread_of_an_agent_session_is_still_pointed_at_the_handoff")
 BLANK_WAKE = ("ThePointerHook."
               "test_a_blank_agent_id_is_not_a_subagent_and_the_handoff_is_still_named")
+WAKE_OTHER = "ThePointerHook.test_a_session_the_pointer_does_not_name_hears_nothing"
+WAKE_OWN = "ThePointerHook.test_the_session_the_pointer_names_is_pointed_at_the_handoff"
+EXCLUSION = ("ThePointerHook."
+             "test_the_paragraph_opens_with_the_exclusion_a_dispatched_agent_obeys")
+
+O = "TheOrchestratorsLedger."
+OTHER_SESSION = O + "test_another_sessions_compaction_writes_nothing_in_this_ledger"
+OWN_SESSION = O + "test_the_orchestrators_own_compaction_is_written"
+NAMES = O + "test_the_line_names_the_session_and_a_numeric_window"
+NOT_NUMERIC = O + "test_a_window_that_is_not_a_number_says_a_subagent_lands_here"
+SETTINGS_KEY = O + "test_the_settings_key_is_read_from_the_sessions_own_directory"
+
+M = "TheModVeto."
+VETOED = M + "test_a_subagent_auto_compaction_in_the_package_session_is_vetoed"
+MAIN_KEPT = M + "test_the_main_conversation_is_never_vetoed"
+MANUAL = M + "test_a_manual_compaction_of_a_subagent_is_not_vetoed"
+NO_POINTER = M + "test_with_no_package_pointer_nothing_is_vetoed"
+BAD_JSON = M + "test_a_pointer_nobody_can_parse_vetoes_nothing"
+OTHER_SUBAGENTS = M + "test_another_sessions_subagents_compact_while_a_package_runs"
+NO_SESSION = M + "test_a_pointer_that_names_no_session_vetoes_nothing"
+AT_LIMIT = M + "test_a_window_at_the_model_limit_vetoes_nothing"
+PROBE = M + "test_the_pointer_address_can_be_named_for_a_probe"
+DECIDE = M + "test_decide_refuses_every_input_that_is_not_a_veto"
 
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
@@ -173,17 +197,17 @@ MUTATIONS = [
      [NO_PACKAGE], POINTER),
 
     ("the injection names the handoff and forgets the procedure that resumes it",
-     '''        said.append(f"Read the handoff at {handoff} before anything else, then resume "
-                    f"by {RESUME}.")''',
-     '''        said.append(f"Read the handoff at {handoff} before anything else.")''',
+     '''                    f"before anything else, then resume by {RESUME}.")''',
+     '''                    f"before anything else.")''',
      [ADDRESSES], POINTER),
 
     ("a handoff nobody wrote is pointed at as though it were there",
-     """        said.append(f"The package pointer names a handoff at {handoff} and there is no "
-                    f"file there. Do not reconstruct it from the summary above: read "
-                    f"{RESUME}, and rebuild the state from git and the ledger.")""",
-     """        said.append(f"Read the handoff at {handoff} before anything else, then resume "
-                    f"by {RESUME}.")""",
+     """        said.append(f"If you were orchestrating {name}: the package pointer names a "
+                    f"handoff at {handoff} and there is no file there. Do not "
+                    f"reconstruct it from the summary above: read {RESUME}, and "
+                    f"rebuild the state from git and the ledger.")""",
+     """        said.append(f"If you were orchestrating {name}: read the handoff at {handoff} "
+                    f"before anything else, then resume by {RESUME}.")""",
      [NO_HANDOFF], POINTER),
 
     ("a subagent that compacted is told it was orchestrating, as it shipped",
@@ -209,6 +233,116 @@ MUTATIONS = [
             "hookEventName": EVENT, "additionalContext": " ".join(said)}}))""",
      '        print(" ".join(said))',
      [ENVELOPE], POINTER),
+
+    ("the exclusion is dropped, and a subagent hears only the orchestrator's order",
+     """    said = [f"tk: a compaction happened while package {name} was running.",
+            "If the summary above shows you were dispatched with a brief or an item, "
+            "this paragraph is not for you: continue your item and do not read the "
+            "handoff."]""",
+     """    said = [f"tk: this session was compacted while orchestrating {name}."]""",
+     [EXCLUSION], POINTER),
+
+    ("another session's compaction is sent to this package's handoff",
+     """    if isinstance(owner, str) and owner.strip() and payload.get("session_id") != owner:""",
+     """    if False:""",
+     [WAKE_OTHER], POINTER),
+
+    ("the wake gate compares nothing, and the orchestrator itself hears nothing",
+     """    if isinstance(owner, str) and owner.strip() and payload.get("session_id") != owner:""",
+     """    if isinstance(owner, str) and owner.strip():""",
+     [WAKE_OWN], POINTER),
+
+    # -- the mark hook's session gate and judgement ----------------------------
+    ("another session's compaction is written in the package's ledger",
+     """    if other_session(package, payload):""",
+     """    if False:""",
+     [OTHER_SESSION], MARK),
+
+    ("the gate compares nothing, and the orchestrator's own compaction is dropped",
+     """    return payload.get("session_id") != owner""",
+     """    return True""",
+     [OWN_SESSION, NAMES, NOT_NUMERIC, SETTINGS_KEY], MARK),
+
+    ("a pointer that names no session gates every compaction out",
+     """    if not isinstance(owner, str) or not owner.strip():
+        return False""",
+     """    if not isinstance(owner, str) or not owner.strip():
+        return True""",
+     [SEVEN], MARK),
+
+    ("the line keeps the old wording and names neither session nor judgement",
+     '''        plain(f"context emptied (session {session}: {judgement(payload)}); "''',
+     '''        plain("context emptied; "''',
+     [NAMES, NOT_NUMERIC, SETTINGS_KEY], MARK),
+
+    ("the judgement reads the window backwards",
+     """    if found is None:
+        return "window not numeric""",
+     """    if found is not None:
+        return "window not numeric""",
+     [NAMES, NOT_NUMERIC, SETTINGS_KEY], MARK),
+
+    ("the window is read from the payload's cwd instead of the session's directory",
+     '''        base = (context.session_dir(path) if isinstance(path, str) else None) \\
+            or payload.get("cwd") or os.getcwd()''',
+     '''        base = payload.get("cwd") or os.getcwd()''',
+     [SETTINGS_KEY], MARK),
+
+    # -- the mod ------------------------------------------------------------------
+    ("the skip is never returned, and every subagent compacts mid-item",
+     """    return why === null ? next(e) : { skip: why }""",
+     """    return next(e)""",
+     [VETOED, PROBE], MOD),
+
+    ("the agentId test is flipped, and the main conversation is vetoed instead",
+     """  if (typeof agentId !== 'string' || agentId === '') return null""",
+     """  if (typeof agentId === 'string' && agentId !== '') return null""",
+     [VETOED, MAIN_KEPT, PROBE, DECIDE], MOD),
+
+    ("the trigger gate is dropped, and a person's /compact of a subagent is refused",
+     """  on('session.compact', { trigger: 'auto' }, async ($, e, next) => {""",
+     """  on('session.compact', async ($, e, next) => {""",
+     [MANUAL], MOD),
+
+    ("the pointer gate is dropped, so a missing pointer throws inside the verdict",
+     """  if (pointer === null || typeof pointer !== 'object' || Array.isArray(pointer)) return null""",
+     "",
+     [DECIDE], MOD),
+
+    ("a missing or unreadable pointer is read as this session's package",
+     """    return null                       // no package running: the ordinary case""",
+     """    return { session: await $.session.id() }""",
+     [NO_POINTER, BAD_JSON], MOD),
+
+    ("the session gate is dropped, and every session's subagents lose their compaction",
+     """  if (pointer.session !== sessionId) return null""",
+     "",
+     [OTHER_SUBAGENTS], MOD),
+
+    ("a pointer with no session matches a session that has no id",
+     """  if (typeof pointer.session !== 'string' || pointer.session === '') return null""",
+     "",
+     [DECIDE], MOD),
+
+    ("a pointer written before the session field vetoes in every session",
+     """  if (typeof pointer.session !== 'string' || pointer.session === '') return null""",
+     """  if (pointer.session === undefined) return VETO""",
+     [NO_SESSION], MOD),
+
+    ("the window gate is dropped, and the recovery at the model's limit is refused",
+     """  if (compactWindow >= modelWindow) return null""",
+     "",
+     [AT_LIMIT], MOD),
+
+    ("a window nobody read is taken for a number",
+     """  if (!Number.isFinite(compactWindow) || !Number.isFinite(modelWindow)) return null""",
+     "",
+     [DECIDE], MOD),
+
+    ("the probe's pointer address is ignored",
+     """(await $.env.get('TK_PACKAGE_POINTER')) || """,
+     "",
+     [PROBE], MOD),
 ]
 
 if __name__ == "__main__":

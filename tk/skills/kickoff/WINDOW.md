@@ -509,39 +509,63 @@ Three pieces, and the tick is the first:
    **The project settings come from the SESSION's directory**, the first `cwd` its
    transcript records. So the tick reads the same window from a worktree as from the
    project root, and the flag names that directory beside the number.
-2. **At the compact**: the `PreCompact` hook, matcher `auto`, running
-   `../../bin/tk-compact-mark`. It blocks nothing, decides nothing and runs no skill: it
-   appends one ledger line, with the hour read and the quota field the bin printed. A
-   trace. **The line is the orchestrator's own compaction and no one else's**: the hook
-   fires inside every subagent too, and a subagent reports the orchestrator's `session_id`
-   and `cwd`, so the bin reads `agent_id` — present only from within a subagent — and
-   writes nothing when it is there. **What the guard costs**: a subagent that fills its own
-   window is then traced only in its own transcript, under `<session>/subagents/`. The package's ledger
-   carries no line of its own for that event: the user decided so on 22/09.
+2. **At the compact**, two pieces.
+   - **The veto: tk's mod**, `../../hooks/compact-veto.js`, loaded with the plugin. The
+     auto-compact window is the process's, so a subagent compacts at the orchestrator's
+     threshold, mid-item, and loses the item. On `session.compact` the mod returns
+     `{ skip }` when all of these hold: the trigger is `auto`; the event names an `agentId`
+     (a subagent's or a fork's own transcript, never the main conversation); the package
+     pointer names this session's id; and the compaction window is a number below the
+     model's own window.
+   - **The version floor is Claude Code 2.1.287**, the first with mods. On an older binary
+     no mod loads, and every subagent compacts as before.
+   - **What still compacts**: the orchestrator itself; a person's `/compact`; every session
+     the pointer does not name; and every subagent under a window that is not a number.
+   - **The model-limit assumption.** `auto` covers the threshold and the recovery from a
+     prompt too long, and the event does not tell them apart. Refusing the recovery fails
+     the subagent's request, so the veto runs only under a window set below the model's
+     limit, where the subagent it keeps whole has the distance between the two to work in.
+     A subagent on a model whose window is smaller than the window set is outside this.
+   - **The trace**: the `PreCompact` hook, matcher `auto`, running
+     `../../bin/tk-compact-mark`. It runs no skill and blocks nothing. It appends one
+     ledger line, with the hour read, the quota field the bin printed, and a `<result>`
+     naming the session (8 characters) and the window's judgement. The engine runs this hook
+     below the mod, so a vetoed compaction never reaches it and leaves no line. Its payload
+     carries no `agent_id` for a subagent (measured on 2.1.287), so under a window that is
+     not a number a subagent's compaction also writes a line, and that line says so.
 3. **After**: the `SessionStart` hook, matcher `compact`, running
    `../../bin/tk-compact-pointer`. It prints one JSON envelope, and the
    `hookSpecificOutput.additionalContext` in it is INJECTED into the new context — the only
    channel that reaches a compacted orchestrator. A paragraph printed bare outside that
    envelope reaches nobody: the harness logs the hook as having produced no payload, and the
-   session starts as empty as before. What the paragraph says is: read the handoff at this
-   path, then resume by `RESUME.md`. It reads `agent_id` as the bin above does: a compacted
-   implementer told to read the orchestrator's handoff drops its own item.
+   session starts as empty as before. **The paragraph is harmless to a subagent**, because a
+   subagent the mod let through hears it too. Its first instruction is the exclusion: an
+   agent the summary shows was dispatched with a brief or an item continues it and reads no
+   handoff. Only then does it tell the orchestrator to read the handoff at this path and
+   resume by `RESUME.md`.
 
-Both hooks read the package's addresses from `~/.claude/state/tk-package.json`, which the
-orchestrator writes when the package opens:
+The mod and both hooks read the package from `~/.claude/state/tk-package.json`, which the
+orchestrator writes when the package opens, with its own session id:
 
 ```sh
 mkdir -p ~/.claude/state && printf '%s\n' \
-  '{"package": "<package>", "ledger": "<ledger file>", "handoff": "<handoff file>"}' \
+  "{\"package\": \"<package>\", \"ledger\": \"<ledger file>\", \"handoff\": \"<handoff file>\", \"session\": \"$CLAUDE_CODE_SESSION_ID\"}" \
   > ~/.claude/state/tk-package.json
 ```
 
-With no such file both hooks do nothing at all, which is what lets the wiring sit in the
-settings permanently: most sessions on this machine are not packages. The wiring itself is
-the site's and the human's — `~/.claude/settings.json` is written by Claude Code and
-versioned by snapshot — so a package that finds the hooks unwired says so in the ledger and
-goes on. The refresh depends on the tick's own reading; the hooks are the trace and the
-pointer around it.
+The pointer is one file per machine, so `session` is what keeps a package's veto, ledger
+and handoff out of every other session: each of the three acts only for the session it
+names. A pointer without `session` (written before the field) gates nothing, so the hooks
+act for every session and the mod vetoes nowhere. The package's close removes the pointer
+(`AFK.md` §7); a mid-package wrap-up keeps it, since the next generation resumes the same
+package.
+
+With no such file the mod and the hooks do nothing at all, which is what lets the wiring sit
+in the settings permanently: most sessions on this machine are not packages. The hooks'
+wiring is the site's and the human's — `~/.claude/settings.json` is written by Claude Code
+and versioned by snapshot — so a package that finds the hooks unwired says so in the ledger
+and goes on. The mod needs no wiring: it loads with the plugin. The refresh depends on the
+tick's own reading; the mod and the hooks are the veto, the trace and the pointer around it.
 
 **The ceiling is high enough that the wrap-up does not retrigger the compact.** The margin
 above exists for that: a threshold set just under the window makes the summary itself cross

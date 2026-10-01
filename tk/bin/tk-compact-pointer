@@ -17,7 +17,7 @@ session it ran for could not find a word of it. The binary's own reader says why
 context is `hookSpecificOutput.additionalContext`, under the matching
 `hookEventName`, so that is what this prints.
 
-IT DECIDES NOTHING ELSE. It does not resume anything, does not read the queue and
+IT DOES NOTHING ELSE. It does not resume anything, does not read the queue and
 does not run a skill; `../skills/kickoff/RESUME.md` owns the procedure and this
 hook only names it.
 
@@ -25,20 +25,31 @@ WHERE THE ADDRESSES COME FROM: the package pointer at
 `~/.claude/state/tk-package.json`, written by the orchestrator when the package
 opens. **No pointer file, nothing printed.** Most compacted sessions on this
 machine are not packages, and injecting a package's instruction into one of them
-is worse than saying nothing.
+is worse than saying nothing. The pointer is one file per machine, so it names
+the orchestrator's `session` too, and a session it does not name hears nothing
+(measured 2026-10-01: without the gate, a subagent of an unrelated session was
+told a package was running).
 
 `RESUME.md` IS RESOLVED FROM THIS FILE, not from the pointer. The skill travels
 with the bin, so the path is known here and a pointer that named it could go
 stale against a plugin that moved.
 
-A SUBAGENT IS NOT THE ORCHESTRATOR. This hook fires inside a subagent that
-compacts, measured on 2026-09-19 in an implementer's own transcript: it was told
-it had been orchestrating the package and must read the orchestrator's handoff
-"before anything else", which is an instruction to drop the item it was holding.
-`agent_id` is what the harness sets only from within a subagent, and with it
-present nothing is printed. `agent_type` is not the field to ask: it also
-arrives on the main thread of a session started with `--agent`, the very session
-this hook exists for.
+A SUBAGENT HEARS IT TOO, SO IT IS WRITTEN TO BE HARMLESS THERE. This hook fires
+inside a subagent that compacts, measured on 2026-09-19 in an implementer's own
+transcript: it was told it had been orchestrating the package and must read the
+orchestrator's handoff "before anything else", which is an instruction to drop
+the item it was holding. The harness documents `agent_id` as set only from
+within a subagent, and with it present nothing is printed; on 2.1.286 and
+2.1.287 that test is inert, because a subagent's compaction payloads carry no
+`agent_id` (measured 2026-10-01). tk's mod (`../hooks/compact-veto.js`) vetoes a
+package subagent's compaction on 2.1.287 and later, under a numeric window; the
+one it lets through (an older binary, a window that is not a number) wakes here
+looking like the orchestrator's. So the paragraph opens with the EXCLUSION: an
+agent the summary shows was dispatched with a brief or an item continues it and
+reads no handoff.
+Only then does it address the orchestrator. `agent_type` is not the field to
+ask: it also arrives on the main thread of a session started with `--agent`,
+the very session this hook exists for.
 
 Stdin:  the hook's JSON payload. `source` other than `compact` prints nothing, an
         absent or unreadable one included — the matcher in the wiring already
@@ -80,12 +91,12 @@ def pointer(path):
 
 
 def from_subagent(payload):
-    """Whether this wake belongs to a subagent rather than the session itself.
+    """Whether the payload itself says this wake is a subagent's.
 
-    The same discriminator `tk-compact-mark` reads beside it, and for the same
-    reason: a subagent reports the orchestrator's session id and working
-    directory, so only `agent_id` separates them. A blank or non-string value is
-    read as absence, since neither is a subagent's identity.
+    Inert on 2.1.286 and 2.1.287 (module docstring), kept for a binary that
+    sends the field; the exclusion that opens the paragraph is what protects a
+    subagent today. A blank or non-string value is read as absence, since
+    neither is a subagent's identity.
     """
     agent = payload.get("agent_id")
     return isinstance(agent, str) and agent.strip() != ""
@@ -94,24 +105,29 @@ def from_subagent(payload):
 def lines(package):
     """What the compacted session is told, or nothing at all.
 
-    The handoff is asked for on disk. A pointer at a briefing nobody wrote is
-    worse than silence — the session would go looking and find a summary of its
-    own context instead — so that case says what is wrong rather than where to
-    read.
+    The exclusion comes first, so a subagent stops reading at the sentence that
+    tells it to keep its item. The handoff is asked for on disk: a pointer at a
+    briefing nobody wrote is worse than silence — the session would go looking
+    and find a summary of its own context instead — so that case says what is
+    wrong rather than where to read.
     """
     handoff = package.get("handoff")
     if not handoff:
         return []
     handoff = os.path.expanduser(plain(handoff))
     name = plain(package.get("package") or "this package")
-    said = [f"tk: this session was compacted while orchestrating {name}."]
+    said = [f"tk: a compaction happened while package {name} was running.",
+            "If the summary above shows you were dispatched with a brief or an item, "
+            "this paragraph is not for you: continue your item and do not read the "
+            "handoff."]
     if os.path.isfile(handoff):
-        said.append(f"Read the handoff at {handoff} before anything else, then resume "
-                    f"by {RESUME}.")
+        said.append(f"If you were orchestrating {name}: read the handoff at {handoff} "
+                    f"before anything else, then resume by {RESUME}.")
     else:
-        said.append(f"The package pointer names a handoff at {handoff} and there is no "
-                    f"file there. Do not reconstruct it from the summary above: read "
-                    f"{RESUME}, and rebuild the state from git and the ledger.")
+        said.append(f"If you were orchestrating {name}: the package pointer names a "
+                    f"handoff at {handoff} and there is no file there. Do not "
+                    f"reconstruct it from the summary above: read {RESUME}, and "
+                    f"rebuild the state from git and the ledger.")
     ledger = package.get("ledger")
     if ledger:
         said.append(f"The package ledger is {os.path.expanduser(plain(ledger))}; its last "
@@ -144,6 +160,10 @@ def main(argv=None):
 
     package = pointer(path)
     if not package:
+        return 0
+    owner = package.get("session")
+    if isinstance(owner, str) and owner.strip() and payload.get("session_id") != owner:
+        # A package is running, in another session: its handoff is not this one's.
         return 0
     said = lines(package)
     if said:

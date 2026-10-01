@@ -166,21 +166,27 @@ tk/
                                   an unconfigured window
   bin/tk-compact-mark             the `PreCompact` hook: appends ONE event line, in
                                   LEDGER.md's format, to the ledger of the package named by
-                                  `~/.claude/state/tk-package.json`. A trace, never a
-                                  decision — it blocks nothing and exits 0 always, and with
-                                  no package pointer it writes nothing and says nothing.
-                                  A compaction carrying an `agent_id` is a SUBAGENT's and
-                                  gets no line: the session the ledger belongs to kept its
-                                  context
+                                  `~/.claude/state/tk-package.json`, naming the session and
+                                  whether the window let the mod veto a subagent's. A
+                                  trace: it blocks nothing and exits 0 always. With no
+                                  pointer, or one naming another session, it writes and
+                                  says nothing
   bin/tk-compact-pointer          the `SessionStart` hook, matcher `compact`: prints to
                                   stdout — which Claude Code INJECTS into the compacted
                                   session's context — where the handoff is and that
                                   RESUME.md is the procedure. The piece missing on
                                   2026-09-06, when an orchestrator woke from a compaction
                                   holding a summary that named no handoff. Silent where no
-                                  package pointer names one, and silent inside a SUBAGENT
-                                  (`agent_id`), which would otherwise be sent to abandon
-                                  its item and resume the package
+                                  package pointer names one, or names another session. The
+                                  paragraph opens with the exclusion that keeps a compacted
+                                  SUBAGENT on its item, because its payload carries no
+                                  `agent_id` (2.1.286 and 2.1.287)
+  hooks/compact-veto.js           tk's mod (Claude Code 2.1.287+; `hooks/hooks.json`
+                                  names it): on `session.compact` with trigger `auto`,
+                                  returns `{ skip }` for a subagent's compaction when the
+                                  package pointer names this session and the window is a
+                                  number below the model's. Tested by the first-party kit,
+                                  `claude plugin test tk`, through `compact_veto.test.ts`
   bin/tk-quota                    what is left of the rolling usage windows — the 5h and
                                   weekly figures reach the STATUSLINE SCRIPT at render time
                                   and are in no transcript, so this is the only way an agent
@@ -243,8 +249,8 @@ tk/
                                   dispatches into a full container
   tests/mutations_compact_hooks.py
                                   their mutations — the mark hook's silence, its event
-                                  line's seven fields, and the pointer hook's guard and
-                                  envelope, over both hook bins
+                                  line's seven fields and session gate, the pointer hook's
+                                  guard and envelope, and the mod's five gates and its skip
   tests/mutations_tk_quota.py     its mutations — nine on the writer, which lived
                                   outside any suite until a lens found four wrong-number
                                   defects in it, four on the wall's prose, and one on the
@@ -413,7 +419,7 @@ commit guard through `python3 githooks/tests/mutations_private_values.py`, the t
 `python3 tk/tests/mutations_closure.py`, `tk-context` through
 `python3 tk/tests/mutations_tk_context.py`, `tk-quota` through
 `python3 tk/tests/mutations_tk_quota.py`, `tk-ram` through
-`python3 tk/tests/mutations_tk_ram.py`, and the two compaction hooks through
+`python3 tk/tests/mutations_tk_ram.py`, and the two compaction hooks and the mod through
 `python3 tk/tests/mutations_compact_hooks.py`. The harnesses are separate files sharing
 one shape; the oldest differs only in naming its test module inline. FIVE of them mutate
 more than a bin: the manifests one mutates DATA only — its subject is the repository's

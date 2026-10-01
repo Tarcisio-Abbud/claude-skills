@@ -125,6 +125,11 @@ git -C "<the lane's repo address>" worktree add --no-track "<path>/T<id>" -b "sp
 git -C "<path>/T<id>" push -u origin "spec/<m>/T<id>"
 ```
 
+**One item per implementer run, inside a lane too.** A lane's items run in series, one
+implementer each, every one cut from the lane's branch as above. The window is why:
+the tk mod's compaction veto (`WINDOW.md`, *Three pieces*) keeps a subagent's context whole,
+so a run carrying a second item grows toward the model's real limit instead of compacting.
+
 Solo items dispatch beside it, in series within one repository; neither lane passes the
 local ceiling. An item too big for one subagent's context leaves the package carrying its
 briefing (form in `../verify/SKILL.md`) and its ready-to-paste line.
@@ -194,7 +199,8 @@ between the launch and the return.
 **Done when:** every item is claimed or reported held elsewhere, the lane branch exists and is
 pushed before its first ticket goes out, the base was explored once with its notes outside the
 repository, every cited code line was checked before its run, and every run carries a generated
-contract block, that path, and a prompt self-sufficient without the tracker. On a public
+contract block, that path, and a prompt self-sufficient without the tracker. Every implementer
+run carries exactly one item. On a public
 repository the exit rule binds every run. The vehicle's script names no model, effort or
 contract of its own.
 
@@ -355,8 +361,11 @@ items merge unattended, and the closing template.
 The package's closing report states, literally, `wrap-up afk: rodou` or
 `wrap-up afk: nao rodou (<motivo>)` — no Stop hook catches the skip on every machine, and
 `<motivo>` covers a legitimate skip (a concurrent guard, the quota wall) as much as an omission.
+After the report, remove the package pointer: `rm -f ~/.claude/state/tk-package.json`
+(`WINDOW.md`, *Three pieces*). A pointer left behind keeps the next session's compactions
+pointed at a package that is over.
 **Done when:** the wrap-up reached its own "Done when" — or it did not run, and the report names
-the step that stopped the package and the state the tree was left in.
+the step that stopped the package and the state the tree was left in — and the pointer is gone.
 
 ## The fixer cap
 

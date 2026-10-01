@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Behaviour proof for the two compaction hooks, `../bin/tk-compact-mark` and
-`../bin/tk-compact-pointer`.
+`../bin/tk-compact-pointer`, and for tk's mod, `../hooks/compact-veto.js`.
 
-Run: python3 -m unittest discover -s tk/tests   (stdlib only, no deps)
+Run: python3 -m unittest discover -s tk/tests   (stdlib only, no deps; the mod's
+     class also needs a `claude` binary with mods, 2.1.287+, and skips without)
 Proved by: python3 tk/tests/mutations_compact_hooks.py
 
 WHAT IS ON TRIAL. Two scripts wired into `~/.claude/settings.json` for EVERY
@@ -22,6 +23,11 @@ attached to nothing. That defect was live here and a test reading raw stdout
 passed over it, so the pointer's tests parse the envelope before they read a
 word of the paragraph.
 
+THE MOD IS TESTED BY ITS OWN KIT. It is JavaScript run inside Claude Code, so
+its tests are `compact_veto.test.ts`, run by `claude plugin test` on the tree
+this file sits in (a mutant's copy, under the mutation runner); `TheModVeto`
+turns each kit test into a unittest one by name.
+
 WHAT THESE TESTS CANNOT SEE. Whether Claude Code ever calls either script — that
 is the wiring, which lives in a settings file this repository does not own, and
 it is measured by running a session, not by a suite. Nor whether the injected
@@ -32,6 +38,7 @@ model read anything.
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -54,6 +61,8 @@ def ledger_fields():
     assert fence, "LEDGER.md no longer carries a fenced event-line format"
     return [cell.strip() for cell in fence.group(1).strip().split("|")]
 
+
+WINDOW_ENV = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
 
 SESSION = "00000000-1111-2222-3333-444444444444"
 PROJECT = "/home/someone/.claude/projects/-a-project"
@@ -137,16 +146,44 @@ class HookFixture(unittest.TestCase):
                        "seven_day": {"used_percentage": 40,
                                      "resets_at": now + 4 * 86400}}, fh)
 
-    def run_hook(self, script, payload, pointer=None):
+    def env(self, window=None):
+        """This test's environment. The window is never the caller's: the
+        variable is dropped unless `window` names one."""
         env = dict(os.environ, HOME=self.home.name)
+        env.pop(WINDOW_ENV, None)
+        if window is not None:
+            env[WINDOW_ENV] = str(window)
+        return env
+
+    def run_hook(self, script, payload, pointer=None, window=None):
         return subprocess.run([sys.executable, script, "--file",
                                self.pointer if pointer is None else pointer],
                               input=json.dumps(payload), capture_output=True,
-                              text=True, env=env, cwd=self.home.name)
+                              text=True, env=self.env(window), cwd=self.home.name)
+
+    def transcript(self):
+        return os.path.join(self.home.name, f"{SESSION}.jsonl")
+
+    def append_turn(self, kind, stamp, size=0, cwd=None):
+        """One main-thread record, `user` or `assistant`, stamped `stamp`. Its
+        `cwd` is this fixture's HOME unless named, so the session's project
+        settings are read from there and nowhere else. `size` pads the record,
+        for the reader that starts at the file's end."""
+        record = {"type": kind, "timestamp": stamp, "cwd": cwd or self.home.name,
+                  "sessionId": SESSION, "message": {"content": "x" * size}}
+        with open(self.transcript(), "a") as fh:
+            fh.write(json.dumps(record) + "\n")
+
+    def judged_payload(self, **fields):
+        """A PreCompact payload with no `agent_id` and this fixture's main
+        transcript: the shape measured on 2.1.286 and 2.1.287 for subagent and
+        orchestrator alike."""
+        return main_thread_payload(transcript_path=self.transcript(),
+                                   cwd=self.home.name, **fields)
 
     def rows(self):
-        return [line for line in open(self.ledger, encoding="utf-8").read().splitlines()
-                if line.strip()]
+        with open(self.ledger, encoding="utf-8") as fh:
+            return [line for line in fh.read().splitlines() if line.strip()]
 
 
 class TheMarkHook(HookFixture):
@@ -415,6 +452,166 @@ class ThePointerHook(HookFixture):
                          "a key outside hookSpecificOutput does not reach a context")
         self.assertEqual(sorted(envelope["hookSpecificOutput"]),
                          ["additionalContext", "hookEventName"])
+
+    def test_a_session_the_pointer_does_not_name_hears_nothing(self):
+        # The pointer is one file per machine: another session's compaction is
+        # not the package's, and its subagents least of all.
+        self.write_pointer(session="ffffffff-1111-2222-3333-444444444444")
+        open(self.handoff, "w").close()
+        run = self.run_hook(POINTER, session_start())
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.stdout.strip(), "",
+                         "a session the pointer does not name was sent to the handoff")
+
+    def test_the_session_the_pointer_names_is_pointed_at_the_handoff(self):
+        self.write_pointer(session=SESSION)
+        open(self.handoff, "w").close()
+        said = self.injected(self.run_hook(POINTER, session_start()))
+        self.assertIn(self.handoff, said)
+
+    def test_the_paragraph_opens_with_the_exclusion_a_dispatched_agent_obeys(self):
+        # On 2.1.286 a subagent's wake carries no `agent_id`, so a subagent the
+        # veto let through reads this paragraph too. Its FIRST instruction must
+        # be the one that keeps the item; the orchestrator's comes after.
+        self.write_pointer()
+        open(self.handoff, "w").close()
+        said = self.injected(self.run_hook(POINTER, session_start()))
+        sentences = said.split(". ")
+        self.assertTrue(sentences[0].startswith("tk: a compaction happened while package "),
+                        f"the paragraph opens with something else: {sentences[0]!r}")
+        self.assertIn("continue your item and do not read the handoff", sentences[1],
+                      "the first instruction is not the one that tells a dispatched "
+                      "agent to keep its item")
+        self.assertLess(said.index("continue your item"), said.index(self.handoff),
+                        "the handoff is named before the exclusion")
+
+
+T0 = "2026-10-01T12:00:00.000Z"          # the main thread's last response
+OTHER = "ffffffff-1111-2222-3333-444444444444"
+
+
+class TheOrchestratorsLedger(HookFixture):
+    """Whose line it is: the pointer names the orchestrator's session, and the
+    line names the session and whether the mod could veto a subagent's."""
+
+    def setUp(self):
+        super().setUp()
+        self.append_turn("assistant", T0)
+
+    def sixth(self):
+        rows = self.rows()
+        self.assertEqual(len(rows), 1, f"one compaction wrote {len(rows)} rows")
+        return rows[0].split("|")[5]
+
+    def test_another_sessions_compaction_writes_nothing_in_this_ledger(self):
+        # The pointer is one file per machine: a session that is not the
+        # package's must not write the package's seams.
+        self.write_pointer(session=OTHER)
+        run = self.run_hook(MARK, self.judged_payload(), window=100000)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(self.rows(), [],
+                         "another session's compaction was written as the package's")
+
+    def test_the_orchestrators_own_compaction_is_written(self):
+        self.write_pointer(session=SESSION)
+        self.run_hook(MARK, self.judged_payload(), window=100000)
+        self.assertEqual(len(self.rows()), 1,
+                         "the session the pointer names left no line")
+
+    def test_the_line_names_the_session_and_a_numeric_window(self):
+        self.write_pointer(session=SESSION)
+        self.run_hook(MARK, self.judged_payload(), window=100000)
+        result = self.sixth()
+        self.assertIn(f"session {SESSION[:8]}", result)
+        self.assertIn("window 100000, so the tk mod vetoes a subagent's", result)
+
+    def test_a_window_that_is_not_a_number_says_a_subagent_lands_here(self):
+        # Under `auto` the mod vetoes nothing, so this line may be a subagent's.
+        self.write_pointer(session=SESSION)
+        self.run_hook(MARK, self.judged_payload(), window=None)
+        self.assertIn("window not numeric", self.sixth())
+
+    def test_the_settings_key_is_read_from_the_sessions_own_directory(self):
+        # The resolver `tk-context --window` uses: the key in the project
+        # settings of the directory the transcript opened in, which is neither
+        # the payload's `cwd` nor the hook's own directory here.
+        self.write_pointer(session=SESSION)
+        project = os.path.join(self.home.name, "project")
+        os.makedirs(os.path.join(project, ".claude"))
+        with open(os.path.join(project, ".claude", "settings.json"), "w") as fh:
+            json.dump({"autoCompactWindow": 100000}, fh)
+        os.remove(self.transcript())
+        self.append_turn("assistant", T0, cwd=project)
+        self.run_hook(MARK, self.judged_payload(), window=None)
+        self.assertIn("window 100000", self.sixth(),
+                      "the project's numeric key was not read")
+
+
+KIT_TIMEOUT = 120
+
+
+def kit_results(tk_dir):
+    """{test name: passed} from one `claude plugin test` run over `tk_dir`, or
+    None and the reason there is none."""
+    claude = shutil.which("claude")
+    if claude is None:
+        return None, "no claude binary on PATH"
+    run = subprocess.run([claude, "plugin", "test", tk_dir], capture_output=True,
+                         text=True, timeout=KIT_TIMEOUT)
+    out = run.stdout + run.stderr
+    found = {m.group(2): m.group(1) == "pass"
+             for m in re.finditer(r"^\((pass|fail)\) (.+?) \[[\d.]+m?s\]$", out, re.M)}
+    if not found:
+        return None, f"claude plugin test ran nothing: {out[-300:]!r}"
+    return found, out
+
+
+class TheModVeto(unittest.TestCase):
+    """`compact_veto.test.ts`, run once by the first-party kit, read test by test.
+
+    No `claude` binary, or one without mods, skips the class: the kit is that
+    binary's, and nothing else here can run the mod."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.results, cls.output = kit_results(TK_DIR)
+
+    def kit(self, name):
+        if self.results is None:
+            self.skipTest(self.output)
+        self.assertIn(name, self.results, f"the kit ran no test named {name!r}")
+        self.assertTrue(self.results[name],
+                        f"kit test failed: {name}\n{self.output[-3000:]}")
+
+    def test_a_subagent_auto_compaction_in_the_package_session_is_vetoed(self):
+        self.kit("a subagent auto-compaction in the package session is vetoed")
+
+    def test_the_main_conversation_is_never_vetoed(self):
+        self.kit("the main conversation is never vetoed")
+
+    def test_a_manual_compaction_of_a_subagent_is_not_vetoed(self):
+        self.kit("a manual compaction of a subagent is not vetoed")
+
+    def test_with_no_package_pointer_nothing_is_vetoed(self):
+        self.kit("with no package pointer nothing is vetoed")
+
+    def test_a_pointer_nobody_can_parse_vetoes_nothing(self):
+        self.kit("a pointer nobody can parse vetoes nothing")
+
+    def test_another_sessions_subagents_compact_while_a_package_runs(self):
+        self.kit("another session subagents compact while a package runs")
+
+    def test_a_pointer_that_names_no_session_vetoes_nothing(self):
+        self.kit("a pointer that names no session vetoes nothing")
+
+    def test_a_window_at_the_model_limit_vetoes_nothing(self):
+        self.kit("a window at the model limit vetoes nothing")
+
+    def test_the_pointer_address_can_be_named_for_a_probe(self):
+        self.kit("the pointer address can be named for a probe")
+
+    def test_decide_refuses_every_input_that_is_not_a_veto(self):
+        self.kit("decide refuses every input that is not a veto")
 
 
 if __name__ == "__main__":

@@ -339,6 +339,32 @@ def settings_value(base):
     return found
 
 
+def numeric_window(base):
+    """(tokens, where it came from) when the window is a NUMBER, else None.
+
+    The environment variable first, the settings key second, each obeyed only
+    inside the harness's bounds. None covers `auto`, no key at all, and a value
+    the harness refuses. `tk-compact-mark` asks this half alone: its ledger line
+    says whether the window let tk's mod veto a subagent's compaction, which the
+    mod does only under a numeric window.
+    """
+    raw = os.environ.get(WINDOW_ENV)
+    if raw is not None:
+        try:
+            asked = int(str(raw).strip())
+        except (TypeError, ValueError):
+            asked = None
+        if asked is not None and WINDOW_FLOOR <= asked <= WINDOW_CEILING:
+            return asked, f"the environment ({WINDOW_ENV})"
+
+    value, path = settings_value(base)
+    if isinstance(value, bool):
+        value = None                  # `isinstance(True, int)` is true in Python
+    if isinstance(value, int) and WINDOW_FLOOR <= value <= WINDOW_CEILING:
+        return value, f"`{WINDOW_KEY}` in {plain(path)}"
+    return None
+
+
 def effective_window(base):
     """(tokens, where it came from, whether it was configured at all).
 
@@ -349,20 +375,11 @@ def effective_window(base):
     is a configured key, reported as one, and its number is the model's own
     context — measured 1M on Fable, which is what `WINDOW_DEFAULT` holds.
     """
-    raw = os.environ.get(WINDOW_ENV)
-    if raw is not None:
-        try:
-            asked = int(str(raw).strip())
-        except (TypeError, ValueError):
-            asked = None
-        if asked is not None and WINDOW_FLOOR <= asked <= WINDOW_CEILING:
-            return asked, f"the environment ({WINDOW_ENV})", True
+    found = numeric_window(base)
+    if found is not None:
+        return found[0], found[1], True
 
     value, path = settings_value(base)
-    if isinstance(value, bool):
-        value = None                  # `isinstance(True, int)` is true in Python
-    if isinstance(value, int) and WINDOW_FLOOR <= value <= WINDOW_CEILING:
-        return value, f"`{WINDOW_KEY}` in {plain(path)}", True
     if isinstance(value, str) and value.strip() == WINDOW_AUTO:
         return (WINDOW_DEFAULT,
                 f"`{WINDOW_KEY}` = {WINDOW_AUTO} in {plain(path)}", True)
