@@ -326,8 +326,8 @@ from the statusline at that seam""",
      [W_NO_TOKEN], CONTEXT),
 
     ("the settings key is never read, so the harness's own window is invisible",
-     "    value, path = settings_value(base)",
-     "    value, path = None, None",
+     "    value, path = settings_value(base)\n    if isinstance(value, bool):",
+     "    value, path = None, None\n    if isinstance(value, bool):",
      [W_KEY], CONTEXT),
 
     ("the environment variable stops winning over the key it must beat",

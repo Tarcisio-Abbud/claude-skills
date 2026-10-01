@@ -32,10 +32,15 @@ What each plugin needs on the machine:
 | `contrato` | the Workflow tool; `python-docx` for a `.docx` contract; `node` for the plan step (optional) and the tests |
 | `plugin-drift` | Python 3 on `PATH` |
 
-The `tk` plugin ships no hooks. Its compaction hooks (`tk/bin/tk-compact-mark` on
-`PreCompact`, `tk/bin/tk-compact-pointer` on `SessionStart` with matcher `compact`) and the
-quota reading (`tk/bin/tk-quota --write`, called from your statusline script) are wired by
-you; each bin's docstring says how. The site file `~/.claude/tk/env` is optional until a
+The `tk` plugin ships one mod and no settings hooks. The mod, `tk/hooks/compact-veto.js`,
+vetoes a running package's subagent auto-compaction on Claude Code 2.1.287 and later; older
+binaries load no mod. **A mod is code that runs inside Claude Code with your permissions**:
+this one reads the package pointer under `~/.claude/state/`, this session's id and its
+context-window figures, and nothing else. `claude plugin validate --strict tk` lists what it
+hooks and calls. The compaction hooks (`tk/bin/tk-compact-mark` on `PreCompact`,
+`tk/bin/tk-compact-pointer` on `SessionStart` with matcher `compact`) and the quota reading
+(`tk/bin/tk-quota --write`, called from your statusline script) are wired by you; each bin's
+docstring says how. The site file `~/.claude/tk/env` is optional until a
 queue item names an environment; its format is in `tk/bin/tk_site.py`.
 
 ## Skills
