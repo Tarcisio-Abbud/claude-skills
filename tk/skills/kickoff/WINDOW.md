@@ -567,7 +567,9 @@ the list of what only the human does:
 
 **Entering the state deletes the tick** (*The tick*): nothing is left in flight, so the
 orchestrator deletes it (`CronDelete`) and writes the line with the hour read from `date`, as
-every ledger line is. Re-arming is a `CronCreate` the session makes itself when it revives on
+every ledger line is. Entering it is also where `FINDINGS.md`'s batched question is asked: with
+nothing in flight, it gates nothing. The revival on the answer finishes the claims it unblocks.
+Re-arming is a `CronCreate` the session makes itself when it revives on
 the human's message.
 
 **A goal-check hook does not live with a goal that reserves the merge to the human.** Such a

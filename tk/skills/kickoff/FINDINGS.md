@@ -63,6 +63,10 @@ Only a NAMED human decision takes it. Park the finding: a DECISION carrying `--d
 branch pushed, and the handoff of `WINDOW.md` written. That `add` is REFUSED at `max-open-items`
 past every flag — fold with `edit --text` or `handoff`, never by closing an item to make room.
 The package never waits on a parked finding.
+A human-only act a run returns is parked the same way: an act on `WINDOW.md`'s
+`ESPERANDO-HUMANO` list, such as a merge or a live-config edit. The ORCHESTRATOR parks it, since
+a run cannot `add` (`../fleet/SKILL.md`, *The texts a run returns are born at the close*).
+Recorded only in a pull request's body, it is the report line *The destinations* refuses.
 
 At the close, never mid-package, ONE `AskUserQuestion` batches every parked DECISION. The
 report comes out FIRST, and the question then quotes its **What changed** lines
