@@ -150,10 +150,14 @@ import importlib.util       # noqa: E402
 _ROSTER = None
 
 
-def roster():
+def roster(consequence=None):
     """The `tk-roster` module, loaded ON FIRST USE and never at import time.
 
-    Only the WIP cap reads it, and only on a machine that set a cap. Loaded at
+    Two readers: the WIP cap, only on a machine that set a cap, and `pack --all`,
+    which sweeps the queues it reports. `consequence` is the reader's own
+    sentence for the refusal — what is lost and how to run without it — since
+    the cap's remedy (take the cap out of the site file) means nothing to a
+    sweep. Loaded at
     import, it would make every `list`, `done` and `add` — on every machine,
     capped or not — depend on a file none of them reads. Measured before this
     was lazy: with `tk-roster` deleted or carrying a syntax error, `list` and
@@ -174,9 +178,11 @@ def roster():
             loader.exec_module(mod)
         except Exception as e:
             fail(f"`tk-roster` beside this script could not be loaded "
-                 f"({e.__class__.__name__}: {e}), and the WIP cap is summed over the "
-                 f"queues it reports. Restore that file, or take `{WIP_KEY}` out of "
-                 "the site file to run with no cap at all.")
+                 f"({e.__class__.__name__}: {e}), and "
+                 + (consequence or
+                    "the WIP cap is summed over the queues it reports. Restore that "
+                    f"file, or take `{WIP_KEY}` out of the site file to run with no "
+                    "cap at all."))
         _ROSTER = mod
     return _ROSTER
 
@@ -3325,7 +3331,25 @@ address this command may not read costs the item a mark and never its place.
 **Deferred:** is deliberately NOT read here. `--deferred` is refused on every
 class but DECISION and leaving that class drops it, so no path through this CLI
 produces an AUTONOMOUS item carrying one. The invariant lives in the writer,
-where one mutation holds it, instead of being re-asserted by every reader."""
+where one mutation holds it, instead of being re-asserted by every reader.
+
+ALL, `pack --all`: one row per queue `tk-roster` sweeps, instead of one queue's
+items —
+
+  eligible  open  project     queue
+         3     5  -srv-alpha  <home>/.claude/projects/-srv-alpha/memory
+         0     7  -srv-beta   <home>/.claude/projects/-srv-beta/memory
+         ?     ?  -srv-gamma  <home>/.claude/projects/-srv-gamma/memory
+
+`eligible` and `open` are the two numbers of the `eligible (<n> of <total>, …)`
+line a single `pack` prints for that queue, from the same pass. Eligible leads and
+the rows sort by it, most first, ties in roster order: a queue whose open items are
+all BLOCKED or EXTERNAL is no work for an unattended run, however many it holds.
+`project` is the queue's directory name — the name `tk-roster` prints, and the
+name the site file's lists match. A queue `fleet-allow`/`fleet-deny` holds back is
+not listed. `?` is a queue file this command could not decode; it sorts last and
+the reason is on stderr. No queue at all prints `(no queue on this machine)`.
+`--dir` is ignored; `--spec-under-way` and `--blocked` reach every queue."""
 
 
 def field_value(segment):
@@ -3347,10 +3371,19 @@ def pack_identity():
     all. A file that EXISTS and is broken is the other case entirely and is refused
     verbatim: there, "no environments exist" would be a guess about a file the user
     can see, and every Env-bearing item would silently leave the package."""
+    return pack_site_identity(pack_site())
+
+
+def pack_site():
+    """The site file `pack` reads, or None when there is none — a broken one is
+    refused verbatim, for the reason `pack_identity` gives."""
     try:
-        site = tk_site.load()
+        return tk_site.load()
     except tk_site.SiteError as e:
         fail(str(e))
+
+
+def pack_site_identity(site):
     return site.identity if site else None
 
 
@@ -3846,21 +3879,16 @@ def pack_lanes(candidates, under_way=frozenset()):
     return lanes, pushed
 
 
-def cmd_pack(args):
-    # Refused BEFORE the queue is opened, the way argparse refuses a bad flag: a
-    # malformed reference is the caller's error whatever the queue holds, and the
-    # same gate `--spec` passes through on the way in. Silence here would elect the
-    # lane as though the caller had said nothing — the exact blindness the flag
-    # exists to end, wearing a typo instead of a missing call.
-    under_way = frozenset(validate_ref("spec-under-way", v)
-                          for v in (args.spec_under_way or []))
-    # the same gate, for the same reason: a malformed ticket reference matches no
-    # item, so the ticket the caller called a second time to take OUT would be
-    # dispatched — the blindness back, wearing a typo
-    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))
-    memdir = memory_dir(args)
-    content = read_queue(args, memdir)
-    identity = pack_identity()
+def pack_verdicts(content, identity, under_way, blocked):
+    """(rows, pushed, lanes, ambiguous) for one queue's text — every verdict `pack`
+    prints, computed and not yet printed. `rows` is `(label, text, verdict)` per open
+    item in queue order, `pushed` the rows the lane takes out, `lanes` the lane of
+    each row that stays, `ambiguous` the IDs more than one open item carries.
+
+    Split out of `cmd_pack` so `pack --all` counts a queue with the SAME pass the
+    single-queue listing prints it from: a second count would be a second answer
+    to "how much of this queue is eligible", and the table and the listing would
+    drift apart the day one of them learned a new rung."""
     # ONE pass over the queue, in its order, then the lane. The lane is the only
     # rule here that is not about the item alone — it needs to know which spec
     # came first and how many tickets it has — so the verdicts are collected
@@ -3903,13 +3931,48 @@ def cmd_pack(args):
         if verdict is None:
             candidates.append((len(rows) - 1, text))
     lanes, pushed = pack_lanes(candidates, under_way)
+    return rows, pushed, lanes, ambiguous
+
+
+def pack_takes(n, verdict, pushed):
+    """Whether the package takes row `n`: no verdict, and not pushed out by the
+    lane. ONE spelling, read by the single-queue listing and by the `--all` table
+    alike, so the two cannot disagree about what counts as eligible."""
+    return verdict is None and n not in pushed
+
+
+def pack_eligible(rows, pushed):
+    """How many rows the package takes — the count `pack` prints as
+    `eligible (<n> of <total>, …)`."""
+    return sum(1 for n, (_, _, verdict) in enumerate(rows)
+               if pack_takes(n, verdict, pushed))
+
+
+def cmd_pack(args):
+    # Refused BEFORE the queue is opened, the way argparse refuses a bad flag: a
+    # malformed reference is the caller's error whatever the queue holds, and the
+    # same gate `--spec` passes through on the way in. Silence here would elect the
+    # lane as though the caller had said nothing — the exact blindness the flag
+    # exists to end, wearing a typo instead of a missing call.
+    under_way = frozenset(validate_ref("spec-under-way", v)
+                          for v in (args.spec_under_way or []))
+    # the same gate, for the same reason: a malformed ticket reference matches no
+    # item, so the ticket the caller called a second time to take OUT would be
+    # dispatched — the blindness back, wearing a typo
+    blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))
+    if args.all:
+        return pack_all(under_way, blocked)
+    memdir = memory_dir(args)
+    content = read_queue(args, memdir)
+    rows, pushed, lanes, ambiguous = pack_verdicts(content, pack_identity(),
+                                                   under_way, blocked)
 
     eligible, excluded, repairs = [], [], []
     width = label_column(label for label, _, _ in rows)
     for n, (label, text, verdict) in enumerate(rows):
         dup = item_id(text) if item_id(text) in ambiguous else None
         mark = f"  [{AMBIGUOUS_MARK % dup}]" if dup is not None else ""
-        if verdict is None and n not in pushed:
+        if pack_takes(n, verdict, pushed):
             # Effort is free text, so the column is padded and never TRUNCATED: a
             # long one pushes the title right, where a cut one would hide the very
             # wall-clock guess the caller sizes the package by. The lane sits
@@ -3944,6 +4007,67 @@ def cmd_pack(args):
         print("\nrepairs:")
         for r in repairs:
             print("- " + r)
+
+
+PACK_ALL_UNREAD = "?"
+
+
+def pack_all(under_way, blocked):
+    """`pack --all`: one row per queue the roster sweeps — eligible, open, project,
+    queue dir — most eligible first.
+
+    The roster is `tk-roster`'s answer, read the way the WIP cap reads it
+    (`queues` and `excluded_by`, never `sweep`): which queues exist is that bin's
+    question, and its docstring promises it never reads inside a queue file, so
+    the counting happens HERE, through the same `pack_verdicts` a single `pack`
+    prints from. The site file's `fleet-allow`/`fleet-deny` are honoured, so a
+    queue the machine was told to leave alone is not offered as work.
+
+    ELIGIBLE COMES FIRST and open beside it. A queue holding twenty items and no
+    eligible one (every item BLOCKED, EXTERNAL or waiting on a decision) is no
+    work for an unattended run, and a table led by the open count would rank it
+    first.
+
+    Ties keep the roster's order, which is sorted by name: `sorted` is stable.
+
+    A queue that cannot be decoded costs its own row and never the table: its
+    counts read `?`, it sorts after every counted row, and `read`'s refusal goes
+    to stderr naming the file. A single `pack` on that queue fails as it always
+    did — this is a sweep over files other sessions wrote, and one of them is not
+    a reason to hide the other eleven.
+
+    `--spec-under-way` and `--blocked` reach every queue: both carry a full
+    `<repo>#<n>`, which names the same spec or ticket in whichever queue holds it.
+    """
+    site = pack_site()
+    identity = pack_site_identity(site)
+    tk_roster = roster("`pack --all` sweeps the queues it reports. Restore that file, "
+                       "or run `pack` from each project's directory.")
+    allow, deny = tk_roster.lists(site)
+    counted, unread = [], []
+    for name, memdir in tk_roster.queues(tk_roster.projects_root()):
+        if tk_roster.excluded_by(name, allow, deny):
+            continue
+        try:
+            content = read(os.path.join(memdir, "next-steps.md"))
+        except SystemExit as e:
+            # `read` refuses through `fail`, which is right for a command aimed at
+            # ONE queue; here it would take the whole sweep down with it
+            print(e.code, file=sys.stderr)
+            unread.append((name, memdir))
+            continue
+        rows, pushed, _, _ = pack_verdicts(content or "", identity, under_way, blocked)
+        counted.append((pack_eligible(rows, pushed), len(rows), name, memdir))
+    counted.sort(key=lambda row: -row[0])
+    table = ([(str(e), str(o), name, d) for e, o, name, d in counted]
+             + [(PACK_ALL_UNREAD, PACK_ALL_UNREAD, name, d) for name, d in unread])
+    if not table:
+        print("(no queue on this machine)")
+        return
+    width = max(len("project"), *(len(name) for _, _, name, _ in table))
+    print(f"eligible  open  {'project':<{width}}  queue")
+    for elig, opened, name, d in table:
+        print(f"{elig:>8}  {opened:>4}  {name:<{width}}  {d}")
 
 
 def compose_item(args, iid):
@@ -6356,6 +6480,12 @@ def main():
                          "package, and its spec's ticket COUNT with it, so a spec held "
                          "up by one blocked ticket stops winning the accumulated lane "
                          "on that ticket's strength (see LANE)")
+    pk.add_argument("--all", action="store_true",
+                    help="every queue the roster sweeps instead of one: a table with one "
+                         "row per queue — eligible count, open count, project, queue dir "
+                         "— most eligible first, the site file's fleet-allow/fleet-deny "
+                         "honoured. `--dir` is ignored, as `report --all` ignores it "
+                         "(see ALL)")
 
     mg = sub.add_parser("migrate", parents=[common],
                         help="move legacy [x] items to the done-log, assign IDs to open "
@@ -6393,10 +6523,11 @@ def main():
     # parse, and BEFORE the work, so a command that then fails or blocks on the
     # lock has still said where it was aiming.
     #
-    # `report` is the ONE command with no single dir to name: it sweeps every
-    # project's queue under PROJECTS_ROOT by construction, so there is no
-    # inference for it to expose and no dir of its own to resolve.
-    memdir = None if args.cmd == "report" else memory_dir(args)
+    # `report` and `pack --all` have no single dir to name: each sweeps every
+    # project's queue by construction, so there is no inference for them to
+    # expose and no dir of their own to resolve.
+    memdir = (None if args.cmd == "report" or getattr(args, "all", False)
+              else memory_dir(args))
     if memdir is not None:
         print(f"tk-queue: queue: {memdir}", file=sys.stderr)
     if args.cmd not in READERS and os.path.isdir(memdir):

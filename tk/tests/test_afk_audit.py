@@ -120,8 +120,6 @@ AWAITING_A_SWEEP = {
         "skills/kickoff/SKILL.md",
     '../../bin/tk-ticket-ref <id> --dir "<queue dir>" --closing-line':
         "skills/kickoff/SKILL.md",
-    '(cd "<the project\'s directory>" && python3 <.../tk/bin>/tk-queue pack)':
-        "skills/fleet/SKILL.md",
 }
 
 # The audit's own file, and the numbered step of AFK.md that routes into it.

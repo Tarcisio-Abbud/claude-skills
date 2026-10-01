@@ -10004,5 +10004,117 @@ class TestMutationHarness(unittest.TestCase):
             self.assertNotIn(line, out)
         self.assertEqual(code, 1, out)
 
+
+# --- T521: `pack --all`, one row per roster queue --------------------------
+
+class TestPackAll(WipCapTest):
+    """`pack --all` answers "which queues hold work" for the whole machine, in one
+    call — the table a fleet opens its menu on, and the one a person reads from a
+    phone before choosing which queues to sweep.
+
+    Every queue lives under this test's HOME, where `tk-roster` sweeps; the
+    suite's own `self.mem` is outside it and never appears.
+    """
+
+    def pack_all(self, *extra):
+        env = dict(os.environ, HOME=self.home)
+        return subprocess.run([sys.executable, TK, "pack", "--all", *extra],
+                              capture_output=True, text=True, cwd=self.dir, env=env,
+                              timeout=60)
+
+    def table(self, r):
+        """(eligible, open, project, queue) per row, the header asserted on the way."""
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        lines = r.stdout.splitlines()
+        self.assertEqual(lines[0].split(), ["eligible", "open", "project", "queue"])
+        return [tuple(ln.split()) for ln in lines[1:]]
+
+    def blocked(self, n):
+        return [item(i, f"bloqueado {i}", klass="BLOCKED") for i in range(1, n + 1)]
+
+    def test_each_row_carries_eligible_open_project_and_queue_dir(self):
+        """Four columns in that order: the counts first, so they align whatever
+        the length of a project name, and the queue dir last, whole."""
+        d = self.roster_queue("-srv-alpha", item(1, "um"), item(2, "dois", klass="DECISION"))
+        rows = self.table(self.pack_all())
+        self.assertEqual(rows, [("1", "2", "-srv-alpha", d)])
+
+    def test_the_rows_sort_by_ELIGIBLE_most_first_ties_in_roster_order(self):
+        """The roster lists by name; the table re-sorts by eligible, and a tie
+        keeps the name order — the fleet dispatches the biggest queue first."""
+        self.roster_queue("-srv-a", item(1, "um"))
+        self.roster_queue("-srv-b", item(1, "um"), item(2, "dois"), item(3, "tres"))
+        self.roster_queue("-srv-c", item(1, "um"))
+        self.roster_queue("-srv-d", item(1, "um"), item(2, "dois"))
+        rows = self.table(self.pack_all())
+        self.assertEqual([r[2] for r in rows], ["-srv-b", "-srv-d", "-srv-a", "-srv-c"])
+
+    def test_a_queue_with_many_open_items_and_none_eligible_ranks_LAST(self):
+        """The reason eligible leads: five BLOCKED items are no work for an
+        unattended run, and a table sorted by the open count would put them on
+        top of the queue that actually has one."""
+        self.roster_queue("-srv-a", *self.blocked(5))
+        self.roster_queue("-srv-b", item(1, "um"))
+        rows = self.table(self.pack_all())
+        self.assertEqual(rows[0][:3], ("1", "1", "-srv-b"))
+        self.assertEqual(rows[1][:3], ("0", "5", "-srv-a"))
+
+    def test_the_count_is_the_one_a_single_pack_prints_lane_included(self):
+        """Same pass as `pack`: the tickets a second spec's lane pushes out are
+        open and NOT eligible, exactly as the single listing counts them."""
+        d = self.roster_queue("-srv-a",
+                              ticket_item(1, "um", spec="repo#171"),
+                              ticket_item(2, "dois", spec="repo#180"),
+                              ticket_item(3, "tres", spec="repo#171"),
+                              ticket_item(4, "quatro", spec="repo#180"))
+        rows = self.table(self.pack_all())
+        self.assertEqual(rows[0][:2], ("2", "4"))
+        single = subprocess.run([sys.executable, TK, "pack", "--dir", d],
+                                capture_output=True, text=True, cwd=self.dir,
+                                env=dict(os.environ, HOME=self.home), timeout=60)
+        self.assertIn("eligible (2 of 4, in queue order):", single.stdout)
+
+    def test_a_queue_the_site_file_denies_is_not_listed(self):
+        """`fleet-deny` is the machine's "do not touch": a table offering that
+        queue as work would put it one tap away from a sweep."""
+        self.site("identity = alpha\nenvironments = alpha\nfleet-deny = -srv-b\n")
+        self.roster_queue("-srv-a", item(1, "um"))
+        self.roster_queue("-srv-b", item(1, "um"), item(2, "dois"))
+        rows = self.table(self.pack_all())
+        self.assertEqual([r[2] for r in rows], ["-srv-a"])
+
+    def test_with_an_allowlist_only_the_listed_queues_appear(self):
+        self.site("identity = alpha\nenvironments = alpha\nfleet-allow = -srv-b\n")
+        self.roster_queue("-srv-a", item(1, "um"))
+        self.roster_queue("-srv-b", item(1, "um"))
+        rows = self.table(self.pack_all())
+        self.assertEqual([r[2] for r in rows], ["-srv-b"])
+
+    def test_dir_is_ignored_as_report_all_ignores_it(self):
+        """`report --all` sweeps and never resolves `--dir`; this matches it. A
+        `--dir` naming nothing is not refused, and no `queue:` line names a dir
+        the command did not read."""
+        self.roster_queue("-srv-a", item(1, "um"))
+        r = self.pack_all("--dir", os.path.join(self.dir, "nao-existe"))
+        self.assertEqual([row[2] for row in self.table(r)], ["-srv-a"])
+        self.assertNotIn("queue:", r.stderr)
+
+    def test_an_undecodable_queue_costs_its_own_row_not_the_table(self):
+        d = self.roster_queue("-srv-a")
+        with open(os.path.join(d, "next-steps.md"), "wb") as f:
+            f.write(b"\x80\x81 not utf-8\n")
+        self.roster_queue("-srv-b", item(1, "um"))
+        r = self.pack_all()
+        rows = self.table(r)
+        self.assertEqual(rows, [("1", "1", "-srv-b", rows[0][3]), ("?", "?", "-srv-a", d)])
+        self.assertIn("is not valid utf-8", r.stderr)
+
+    def test_no_queue_on_the_machine_says_so(self):
+        r = self.pack_all()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "(no queue on this machine)")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
