@@ -1,11 +1,11 @@
 ---
 name: wrap-up
-description: "Session close before /compact or /clear: resolves pendings, updates memory and docs, runs tests, settles every commit/push/merge in one gate, reports on a fixed template. Arg: afk (unattended, strict merge)"
+description: "Session close before /compact or /clear: resolves pendings, routes lessons, updates docs, runs tests, settles every commit/push/merge in one gate, reports on a fixed template. Arg: afk (unattended, strict merge)"
 disable-model-invocation: true
 argument-hint: "[afk]"
 ---
 
-A **wrap-up** leaves the external state (memory + docs + tests + version control)
+A **wrap-up** leaves the external state (lessons + docs + tests + version control)
 reflecting what this session did — a close that leaves silent pendings is not a close.
 Execute the steps in order; each ends on a checkable criterion, and every skip is stated.
 
@@ -17,8 +17,8 @@ response-style preference disagrees with that structure, the template wins.
 
 **Argument:** `afk` — the user is leaving now; see "The `afk` argument" at the end.
 **Site extensions:** read `~/.claude/tk/wrap-up.md` and `.claude/tk/wrap-up.md` (project
-root) if they exist — documentation targets, flow recommendations, the afk merge's repo
-list.
+root) if they exist — step 2's routing destinations, documentation targets, flow
+recommendations, the afk merge's repo list.
 
 ## 1. Inventory the session's changes
 
@@ -38,11 +38,21 @@ decisions/facts, every session finding, refusal, unconfirmed queue write and unp
 command was answered, discarded or carried to step 2 as work, and each later step is
 marked run/skip.
 
-## 2. Update memory, and gate what survives into the queue
+## 2. Route the lessons, and gate what survives into the queue
 
-For each durable and **non-obvious** fact from step 1, create/update ONE file in the
-project's auto-memory (dir `memory/`, index `MEMORY.md`); prefer updating over
-duplicating, delete what proved wrong, make relative dates absolute, link with `[[slug]]`.
+A **lesson** is a durable and **non-obvious** fact from step 1. Route each one to the
+FIRST destination that applies:
+
+1. **The site's routing.** A `## Routing destinations (step 2)` section in a site
+   extension decides every lesson's destination, and replaces both defaults below.
+2. **Auto-memory**, when the harness gave this session auto-memory instructions: one file
+   per lesson in the directory they name, with its line in the index they name.
+3. **The owning repo's `docs/`**, otherwise: the doc that covers the lesson's subject, or
+   a new file there, committed through step 5's gate.
+
+In every destination, update rather than duplicate, delete what proved wrong, and make
+relative dates absolute. A queue item's **pointer** to a lesson is `[[slug]]` where the
+destination is auto-memory, and the lesson's repo-relative path elsewhere.
 
 **Pending items go through `tk-queue`** — contract, commands and the pointer rule:
 `../../reference/queue.md`. Decide each new item's `--criterion` here rather than leaving
@@ -77,8 +87,8 @@ source after — the block ceiling refuses the union once the source's text is g
 error (fixed pattern, banned call, misplaced file) corrected once is a system signal —
 propose encoding it (skill, hook, test, lint). Name `/retro` for one when
 `~/.claude/skills/retro/` exists.
-**Done when:** every durable fact has a memory file (pointer in `MEMORY.md`), every open
-item names its survival gate, no RECURRING item is parked, what a package queued was
+**Done when:** every lesson sits in its destination, every open item names its survival
+gate, no RECURRING item is parked, what a package queued was
 consolidated, and every system signal has an encoding proposed or discarded.
 
 ## 3. Update the repo documentation

@@ -109,7 +109,7 @@ gives.
 ## Hard rules
 
 - No new queue items, and no queue writes of any kind.
-- No writes to auto-memory, to the wiki or to the vault.
+- No writes to auto-memory or to any store the site routes lessons to.
 - No `git pull` and no checkout in the live clones; no merge; no branch deletion.
 - A criterion that cannot pass from this container is reported as unsatisfiable here, with the
   reason, and never faked. Deliver the rest of the item.

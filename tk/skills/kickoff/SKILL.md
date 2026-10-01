@@ -33,11 +33,12 @@ parent (`gh issue close`) is the candidate item, run on the user's check. Under 
 `pack`, either goes to the closing report's **Blockers and notes for the next session** line
 instead (`../wrap-up/REPORT.md`).
 
-Sources, in this order: **`next-steps.md`** in the project's auto-memory — the canonical
-queue (`../../reference/queue.md`); absent it (first kickoff), the memory files
-the index flags as having pending items. Then **open issues and PRs** (`gh issue list`,
-`gh pr list`) when there is a tracker, then the site extensions' sources. Wiki and repo
-docs are NOT agenda sources — a pending item there is stale doc.
+Sources, in this order: **`next-steps.md`** in the project's queue dir — the canonical
+queue (`../../reference/queue.md`); absent it (first kickoff) and with auto-memory on, the
+memory files its index flags as having pending items. Then **open issues and PRs**
+(`gh issue list`, `gh pr list`) when there is a tracker, then the site extensions' sources.
+Repo docs and the stores lessons are routed to are NOT agenda sources — a pending item there
+is stale doc.
 
 **Every `tk-queue` and `tk-ticket-ref` call carries `--dir "<queue dir>"`** — the queue dir
 `../../reference/queue.md` addresses. Without it, an earlier `cd` points the script at another
@@ -58,10 +59,10 @@ or a package handoff was found here, and its contents are the agenda.
 
 Before any item enters the agenda, check the current state (`gh pr list`, `gh issue view`,
 `git log`, read the code). An already-resolved item leaves ON THE SPOT via
-`tk-queue done "<id>" --dir "<queue dir>" --how "<what resolved it>"`, and the memory citing
-it is fixed at once.
-**Done when:** every remaining item is confirmed open and no known-stale memory is
-left uncorrected.
+`tk-queue done "<id>" --dir "<queue dir>" --how "<what resolved it>"`, and a lesson citing
+it as pending is corrected at its destination at once.
+**Done when:** every remaining item is confirmed open and no lesson known to be stale is
+left uncorrected at its destination.
 
 ## 3. Triage
 
@@ -94,8 +95,8 @@ recommended dispatch from the palette (step 5).
 
 Before asking, show the **full triaged agenda** — ALL items, one line each, with class — so the
 user sees nothing was lost before checking. **Brief each DECISION first, in prose**, two to four
-lines from what the item already carries — its text, its `**Criterion:**`, the memory file behind
-a `[[slug]]` at ONE hop, its handoff. Retransmission, not synthesis: context in none of those is
+lines from what the item already carries — its text, its `**Criterion:**`, the note behind
+its pointer at ONE hop, its handoff. Retransmission, not synthesis: context in none of those is
 a **missing handoff**, and the briefing says so.
 
 Then one multiSelect `AskUserQuestion` with the actionable items (AUTONOMOUS + RECURRING)

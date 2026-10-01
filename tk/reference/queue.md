@@ -1,7 +1,8 @@
 # The queue contract: `next-steps.md` + `done-log.md`, written only by `tk-queue`
 
 Single source for a project's queue of pending items. Two sibling files in the project's
-auto-memory (`~/.claude/projects/<cwd-slug>/memory/`, each with a pointer in `MEMORY.md`):
+**queue dir**, `~/.claude/projects/<cwd-slug>/memory/`, which the first write command
+creates. With auto-memory on, each file carries a pointer in the queue dir's `MEMORY.md`:
 
 - **`next-steps.md`** — OPEN items only, the queue `/tk:kickoff` dispatches.
 - **`done-log.md`** — what left the queue (FEITO or DESCARTADO), when, and how. Feeds
@@ -40,7 +41,7 @@ allocated, or removed by another writer. None of those mean "invent it again": r
 
 ## The stderr lines
 
-Every command but `report` prints the memory dir it resolved on **stderr** before acting —
+Every command but `report` prints the queue dir it resolved on **stderr** before acting —
 `list` and `pack` too. That target is INFERRED, from `--dir` or the cwd, and a shell that
 kept its cwd has landed an `edit` on a homonymous item of another project. Read it.
 
@@ -49,8 +50,9 @@ to a real run's; the banner that tells them apart is on **stderr**.
 
 ## The two size ceilings
 
-An item is a pending action, not an essay — durable context goes to a memory file or wiki
-page, linked with `[[slug]]`. The script enforces two ceilings:
+An item is a pending action, not an essay — durable context goes to a note
+`../skills/wrap-up/SKILL.md` step 2 routes, linked by the item's pointer. The script enforces
+two ceilings:
 
 - **the block ceiling**, on the whole item: `add` always; `edit` whenever a prose flag
   (`--text`, `--criterion`, `--risk`, `--deferred`) grows the item.
@@ -126,7 +128,7 @@ deliberately no `edit --born`: an age a session can rewrite is an age no reader 
 
 ## The done-log pointer rule
 
-`--how` points at the most durable address available — commit/PR (immutable) > wiki page or
-repo doc (versioned) > memory file (prunable). The line must make sense on its own even if
-the pointer dies; when the work left no artifact at all, `--note` carries the substance,
-because the line IS the only record.
+`--how` points at the most durable address available — commit/PR (immutable) > a
+versioned doc (repo or site store) > an auto-memory file (prunable). The line must make
+sense on its own even if the pointer dies; when the work left no artifact at all, `--note`
+carries the substance, because the line IS the only record.

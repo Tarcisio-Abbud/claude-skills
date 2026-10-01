@@ -45,14 +45,14 @@ queue item names an environment; its format is in `tk/bin/tk_site.py`.
 | Skill | Auto | What it does |
 |---|---|---|
 | `/tk:kickoff` | no | Opens a session: triages the project's queue, briefs each decision, dispatches the work; `afk`/`pack` build an unattended package |
-| `/tk:wrap-up` | no | Closes a session on a fixed template: memory, docs, tests, and one versioning gate for every commit, push and merge |
+| `/tk:wrap-up` | no | Closes a session on a fixed template: lessons routed to their store, docs, tests, and one versioning gate for every commit, push and merge |
 | `/tk:dispatch` | yes | Matches a task to the mechanism that runs it unattended and hands back the ready-to-paste line |
 | `/tk:merge-gate` | no | The digest a pull request is judged on and the five safe-to-merge verdicts; also read by `/tk:wrap-up` |
 | `/tk:verify` | yes | Runs the item's acceptance criterion as the gate of the delivery and writes the evidence block |
 | `/tk:review` | yes | One lens over a committed slice, before the repo's mandatory two-axis review |
 | `/tk:second-opinion` | no | A fresh Fable subagent's verdict on the current discussion, once or argued to consensus |
 | `/tk:fleet` | no | Runs every project's unattended package on this machine and closes on one consolidated HTML vista |
-| `/tk:docs-audit` | no | Audits every doc and the project's auto-memory against the code, fixes, and opens a PR |
+| `/tk:docs-audit` | no | Audits every doc against the code, and the project's auto-memory when it is on; fixes, and opens a PR |
 | `/tk:prune` | no | Measures a skill against the writing-for-agents ruler and reports what to keep, move and drop |
 | `/asr:transcribe-audio` | yes | Transcribes audio that Read cannot decode, on CPU, in resumable batches |
 | `/whatsapp:export-delta` | yes | Reads a WhatsApp export `.zip` by its delta against the previous export |
@@ -68,15 +68,19 @@ Each skill's manual is its `<plugin>/skills/<name>/SKILL.md`. Longer material:
 
 ## Site extensions
 
-The skills are generic and standalone. Site-specific integrations — a wiki to update at
-wrap-up, the concrete commands behind the dispatch palette rows, extra agenda sources —
-plug in via optional extension files the skills read when present:
+The skills are generic and standalone. Site-specific integrations — where wrap-up routes
+a session's lessons, the concrete commands behind the dispatch palette rows, extra agenda
+sources — plug in via optional extension files the skills read when present:
 
 - `~/.claude/tk/<skill>.md` — global to the machine;
 - `.claude/tk/<skill>.md` — per project, at the project root.
 
 `asr` follows the same shape: `~/.claude/asr/transcribe-audio.md` holds this machine's
 interpreter, cache path and provisioning notes.
+
+With no extension, wrap-up routes a lesson to auto-memory when the harness has it on, and
+to the owning repo's `docs/` otherwise. A `## Routing destinations (step 2)` section in
+`wrap-up.md` replaces both defaults.
 
 Keep extension files out of public repos when they carry private paths or names.
 

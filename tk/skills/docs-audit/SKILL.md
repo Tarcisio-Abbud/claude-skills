@@ -1,6 +1,6 @@
 ---
 name: docs-audit
-description: "Full documentation audit against the code, run periodically: finds stale docs, fixes, verifies, audits the project's auto-memory and opens a PR"
+description: "Full documentation audit against the code, run periodically: finds stale docs, fixes, verifies, audits the project's auto-memory when it is on, and opens a PR"
 disable-model-invocation: true
 ---
 
@@ -32,12 +32,13 @@ Run the project's test suite, **detecting the runner** rather than assuming one.
 claims you fixed: the documented command runs, the count matches.
 **Done when:** tests green and every fix re-confirmed against the code.
 
-## 5. Audit the project's auto-memory
+## 5. Audit the project's auto-memory, when it is on
 
-The repo's docs are not the only thing that goes stale. The project's auto-memory
-(`~/.claude/projects/<cwd-slug>/memory/`, index `MEMORY.md`) records the moment it was
-written. Read every file in that directory — the index alone is not the audit — and give
-each one exactly ONE outcome:
+Runs when the harness gave this session auto-memory instructions; otherwise skip it and say
+so. The repo's docs are not the only thing that goes stale. The project's auto-memory (the
+directory those instructions name, index `MEMORY.md`) records the moment it was written.
+Read every file in that directory — the index alone is not the audit — and give each one
+exactly ONE outcome:
 
 - **Obsolete → propose pruning.** The fact stopped holding: the file/flag/script it cites no
   longer exists, the branch merged, the PR closed, a later decision replaced it. Establish
@@ -46,9 +47,10 @@ each one exactly ONE outcome:
   every file on disk.
 - **Canonical → promote.** The fact stopped being volatile: stable knowledge (an
   architecture decision, an entity, a convention) any future session needs. Write it into
-  the project's canonical store — repo docs/ADR, or the site's wiki when there is one —
-  under that store's own contract. Then reduce the memory file to a pointer to it. The
-  boundary is volatility: what will change again next session stays in memory.
+  a canonical store, under that store's own contract: repo docs/ADR, or a store the site
+  names in wrap-up's `## Routing destinations (step 2)`. Then reduce the
+  memory file to a pointer to it. The boundary is volatility: what will change again next
+  session stays in memory.
 - **Stale in part → correct in place.** The lesson still holds, a detail around it moved (a
   version number, a count, a renamed command, an issue that closed). Fix the detail exactly
   as step 3 fixes a doc — a memory carrying one dead fact is read as dead whole.
@@ -66,7 +68,8 @@ An index line that survived its file's correction is stale by the same test as t
 pointer with no file, a file with no pointer, and a `[[link]]` resolving to neither memory
 nor canonical store are all findings.
 
-**Done when:** every file in `memory/` carries one of the four outcomes, none unread. Each
+**Done when:** auto-memory was off and the skip was said, or every file in the
+auto-memory directory carries one of the four outcomes, none unread. Each
 promotion is written into the canonical store, and every correction is applied. `MEMORY.md`
 is one line per file, with the two queue pointers intact. The user has the pruning proposal,
 file by file with its evidence, and nothing is deleted.
@@ -90,6 +93,6 @@ conversation's opening sentence.
 ## Under /loop
 `/loop Whenever a documentation pass is needed, audit every doc against the code. Inventory the
 claims and verify each against the codebase. Fix the stale ones, then run the project's tests.
-Audit the project's auto-memory, promoting what turned canonical. Open a documentation-only PR
+When auto-memory is on, audit it, promoting what turned canonical. Open a documentation-only PR
 and recommend the next step.`
 The loop's model cannot invoke a user-invoked skill, so the line restates the steps.
