@@ -5,22 +5,21 @@ through `SKILL.md`, *A session opening on a package handoff*. **Every step numbe
 `AFK.md`'s.**
 
 A generation opened by one of `WINDOW.md`'s two vehicles inherits a package mid-flight and builds
-none: the claims it inherited are the whole of its work. It runs this file first, once, and only
-where the handoff names an accumulated lane already on the remote. Three handoffs enter step 3
-instead. One naming solo items alone goes straight to its dispatch. One a planning seam wrote —
-composed, never claimed — runs it whole (a `pack` stopped at the cut enters at step 2 first). One
-cut after the claim, where `git ls-remote` finds no `spec/<m>-<slug>`, runs it from the floor
-recount on, skipping only the claim: the claims are inherited, so the absent lane is this
-package's to create. Found there, the predecessor pushed it after writing the handoff, and this
-file runs. Of step 3 this file runs the DISPATCH alone: it does not claim (a second claim of an
-inherited item is refused, even under the same label), does not re-run the `git ls-remote` check
-(the branch it would find is this package's own lane), and creates no branch.
+none: the claims it inherited are the whole of its work. It runs this file first, once, and
+only where the handoff names an accumulated lane; a handoff naming solo items alone goes straight
+to step 3's dispatch, and one a planning seam wrote — composed, never claimed — runs step 3 whole
+(a `pack` stopped at the cut enters at step 2 first). Of step 3 this file runs the DISPATCH
+alone: it does not claim (a second claim of an inherited item is refused, even under the same
+label), does not re-run the `git ls-remote` check (the branch it would find is this package's own
+lane), and creates no branch.
 
 **Read the handoff whole before anything else** — `tk-queue done "<id>" --dir "<queue dir>"`
 deletes the briefing of the item it closes, and nothing below re-reads the file. Then four beats
 in order, each reading a tree the one before it settled:
 
-**Reset.** Where the lane's worktree is gone, recreate it: `git worktree prune`, then
+**Reset.** Where `git ls-remote origin "spec/<m>-<slug>"`, run in the lane's repository, prints
+nothing, the exits below decide before any beat runs. Where the lane's worktree is gone,
+recreate it: `git worktree prune`, then
 `git worktree add --track -B "spec/<m>-<slug>" "<path>/spec-<m>" "origin/spec/<m>-<slug>"` —
 without `--track -B` the HEAD is detached and its push can report `Everything up-to-date` while
 the remote never moves. Then:
@@ -63,11 +62,12 @@ redone, not resumed: merge `origin/main` where `git merge-base --is-ancestor ori
 exits 1; a handoff silent on the review means the review is re-fired whole; the criteria run is
 redone whole either way.
 
-The exits grade different objects, so every row that applies runs. Handoff missing, or — on a
-handoff cut after the lane was pushed — no `origin/spec/<m>-<slug>` after the prune while
-`gh pr list --state all` returns `[]`: stop and report the branch and the claims — they stay
-held, so no sibling takes the items. The same absent ref with a `MERGED` row: the lane is
-DELIVERED — close its open claimed items from the merge commit's own
-`<mergeCommit>^1..<mergeCommit>^2` merges, and the tail does not run. A claim held by another
-owner: that item leaves this generation, reported under the dependency gate. Nothing here
-reopens an item, reverts a merge or rewrites anything pushed.
+The exits grade different objects, so every row that applies runs. Handoff missing: stop and
+report the branch and the claims — they stay held, so no sibling takes the items. Reset's `git ls-remote`
+printing nothing while `gh pr list --state all` returns `[]`: the lane was never pushed, and it
+is this package's to create. Leave this file for step 3 at its floor recount, claiming nothing:
+the claims are inherited. The same absent ref with a `MERGED` row: the lane is DELIVERED — close
+its open claimed items from the merge commit's own `<mergeCommit>^1..<mergeCommit>^2` merges,
+and the tail does not run. A claim held by another owner: that item leaves this generation,
+reported under the dependency gate. Nothing here reopens an item, reverts a merge or rewrites
+anything pushed.
