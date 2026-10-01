@@ -328,6 +328,18 @@ SHORT_FLAGS = frozenset(("classe", "class", "effort", "project"))
 FREE_TEXT_FLAGS = ("text", "criterion", "risk", "deferred")
 PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
 
+# What `add` writes as the queue's first text when `next-steps.md` is not there
+# yet. Only a header: it carries no item, so every reader takes it for an empty queue.
+NEXT_STEPS_TEMPLATE = """---
+name: next-steps
+description: open items of this project's queue, written only by tk-queue
+metadata:
+  type: project
+---
+
+# Next steps
+"""
+
 DONE_LOG_TEMPLATE = """---
 name: done-log
 description: log de execução — itens que saíram da fila next-steps, com data e ponteiro
@@ -345,6 +357,16 @@ arquivo de memória). A linha deve fazer sentido sozinha se o ponteiro morrer.
 
 def fail(msg):
     sys.exit(f"tk-queue: {msg}")
+
+
+def no_queue_file(memdir):
+    """The refusal of a command that needs a queue file the dir does not hold.
+
+    It names the one command that creates the file, `add`, because nothing else
+    in the plugin does: a refusal that sent the reader to "the first kickoff"
+    pointed at a step that never writes it."""
+    return (f"next-steps.md not found in {memdir} — a queue file is created by "
+            "`tk-queue add`, with the queue's first item")
 
 
 def memory_dir(args):
@@ -396,7 +418,7 @@ def read_queue(args, memdir):
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
         if args.dir:
-            fail("next-steps.md not found in " + memdir)
+            fail(no_queue_file(memdir))
         return ""
     return content
 
@@ -2845,7 +2867,7 @@ def find_open_item(memdir, wanted_id):
     """
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
-        fail("next-steps.md not found in " + memdir)
+        fail(no_queue_file(memdir))
     pos, found = 0, []
     for kind, text in split_blocks(content):
         if kind == "item-open" and item_id(text) == wanted_id:
@@ -4313,14 +4335,13 @@ def open_items(memdir):
     queue item of its own; inheriting the guard costs nothing and closes the door
     the day either of those changes.
 
-    A queue file that is not there counts zero rather than failing: `tk-roster`
-    answered that the queue existed a moment ago, and one that vanished between
-    that answer and this read holds nothing. THAT RACE IS THE ONLY WAY INTO THAT
-    BRANCH, and it is why no test drives it: `tk-roster` lists a project only
-    where the queue is already a plain file, and the TARGET queue's absence is
-    refused further up `cmd_add` — `read` fails with "next-steps.md not found"
-    before this gate is reached. The branch is kept for the race, not for a
-    first `add` into a brand-new queue: that add never gets here.
+    A queue file that is not there counts zero rather than failing. Two ways
+    lead into that branch. One is a race: `tk-roster` answered that the queue
+    existed a moment ago, and one that vanished between that answer and this
+    read holds nothing. The other is the TARGET queue on its first `add`:
+    `cmd_add` writes `next-steps.md` only after this gate, so a brand-new queue
+    is counted here as the empty queue it is. The suite drives the second way;
+    the race it does not.
 
     Only the TARGET queue's lock is held while this runs, and taking every
     queue's would need a locking order across projects — two sessions on two
@@ -4531,7 +4552,12 @@ def cmd_add(args):
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:
-        fail("next-steps.md not found in " + memdir + " (first kickoff creates it)")
+        # the queue's FIRST item: nothing else in the plugin writes this file, so a
+        # refusal here left a fresh install with no way to open its queue. The
+        # skeleton is only text until the write below, so every gate between here
+        # and there still refuses with the disk untouched; `memory_dir` has already
+        # refused a `--dir` that does not exist, so no stray queue grows at a typo
+        content = NEXT_STEPS_TEMPLATE
     # the WIP cap. It sits above `max_id` for reading order, not for safety:
     # `max_id` only READS, nothing is reserved, and a refusal below it would
     # leave no hole in the sequence — the claim that it would was written here
@@ -6147,7 +6173,7 @@ def cmd_migrate(args):
     path = os.path.join(memdir, "next-steps.md")
     content = read(path)
     if content is None:
-        fail("next-steps.md not found in " + memdir)
+        fail(no_queue_file(memdir))
     blocks = split_blocks(content)
     # a [x] item moves with the paragraphs it carries below it (attached_prose),
     # the same extent `done` and `cancel` move — the block alone strands them
