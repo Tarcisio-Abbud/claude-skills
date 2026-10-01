@@ -62,11 +62,13 @@ so a spec whose second ticket is blocked drops under the floor.
 
 **Cut** from the top of that list until the package fits one session — around 3–6 items or ~2h of
 summed Effort, an opening bid step 6's measurement corrects; what multiplies a lane is its
-correction cycles. Recount tickets per Spec among the survivors and re-apply the floor (the
-recount only demotes; a spec below the floor takes the solo lane). A package with an
-accumulated lane reserves two more lines — the review at parity with the summed lanes, and
-the tail as one suite plus the lane's N criteria and the merge of `origin/main` — or its
-last third is unfunded.
+correction cycles. Under `--budget unlimited` there is no size cut: every survivor of the
+exclusions, the floor and `ROOT-CAUSE.md` is claimed, in queue order, and the package's opening
+ledger line records the budget with its free-text mapping (`SKILL.md` gives the rule). Recount
+tickets per Spec among the survivors and re-apply the floor (the recount only demotes; a spec
+below the floor takes the solo lane). A package with an accumulated lane reserves two more
+lines — the review at parity with the summed lanes, and the tail as one suite plus the lane's N
+criteria and the merge of `origin/main` — or its last third is unfunded.
 
 **Done when:** the package lists its items with summed Effort and each one's lane after the
 recount, the review and tail lines stand beside them, and every exclusion and item left out
@@ -336,7 +338,7 @@ created the item and **carried** when it predates the package, each under the de
 sibling's claim or live audit comment, owner and moment), the lane gate (a spec's branch on the
 remote, the pull request's number or the deletion repair), any other `pack` exclusion (its
 printed value, and whether it names a defect in the item), or the effort gate (cut for size, with
-the ready-to-paste line that runs it).
+the ready-to-paste line that runs it; absent under `--budget unlimited`).
 An item step 3 found already fixed takes the **already resolved** rung, with the sha and date.
 Items verify ended at proof ready or DECISION owe nothing further.
 
@@ -370,7 +372,7 @@ close, so the pull request does not wait on it. It waits only on a finding no fi
 
 ## A session finding, unattended
 
-`FINDINGS.md` beside this file owns where the finding goes — the three destinations, the one
+`FINDINGS.md` beside this file owns where the finding goes — the destinations, the one
 exit that leaves the package without code, and the close's single question.
 Read it there, whole, at the moment of discovery. No new queue item is born while the package
 runs.

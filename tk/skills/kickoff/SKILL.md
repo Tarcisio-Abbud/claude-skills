@@ -1,8 +1,8 @@
 ---
 name: kickoff
-description: "Session opening — mirror of /tk:wrap-up: gathers the project's pending items, verifies each against reality, triages and dispatches what the user checks. Args: afk, pack (unattended package), --budget N (orchestrator generations)"
+description: "Session opening — mirror of /tk:wrap-up: gathers the project's pending items, verifies each against reality, triages and dispatches what the user checks. Args: afk, pack (unattended package), --budget N|unlimited (orchestrator generations)"
 disable-model-invocation: true
-argument-hint: "[afk|pack] [--budget N]"
+argument-hint: "[afk|pack] [--budget N|unlimited]"
 ---
 
 A **kickoff** opens the session that `/tk:wrap-up` closed: it builds the **agenda** of pending
@@ -10,7 +10,9 @@ items, verifies and triages it, and **dispatches** what the user checks. Execute
 order; each ends on a checkable criterion.
 
 **Arguments:** `afk` and `pack` replace steps 4–5 with the package flow — after step 3,
-switch to `AFK.md` beside this file. `--budget N` (default 1) rides with either, read in `WINDOW.md`.
+switch to `AFK.md` beside this file. `--budget N` (default 1) or `unlimited` rides with either,
+read in `WINDOW.md`. Free text asking for everything or to go to the end is `--budget unlimited`;
+the package's opening ledger line and the report say the mapping.
 
 **Site extensions:** read `~/.claude/tk/kickoff.md` and `.claude/tk/kickoff.md` (project
 root) if they exist — they add site-specific agenda sources and dispatch commands.

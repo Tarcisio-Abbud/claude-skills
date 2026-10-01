@@ -37,7 +37,8 @@ Three rungs are left, read in order:
    check. It goes to a `fixer` under the fixer cap, the fourth exit of `../skills/review/SKILL.md`.
 2. **Hand it to the package's vehicle** — `../skills/kickoff/FINDINGS.md` owns which vehicle
    takes it, and no new queue item is born while a package runs. Never a `fixer`: dispatching
-   backlog is scope creep.
+   backlog is scope creep. Under `--budget unlimited` the vehicle may be a finding run, gated
+   as `../skills/kickoff/FINDINGS.md` destination 4 says.
 3. **Park it** — only the user can judge it: a DECISION carrying `--deferred afk`, the branch pushed,
    the handoff of `../skills/kickoff/WINDOW.md` written, and the package goes on. That `add`
    is refused at `max-open-items`, past every flag; `edit --text` folds the finding into an item
