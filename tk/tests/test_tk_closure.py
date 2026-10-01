@@ -741,6 +741,17 @@ class TestTheAccumulatedLane(Fixture):
         self.assertIn("can no longer be", run.stdout)
         self.assertIn("still open", run.stdout)
 
+    def test_a_sibling_whose_reference_cannot_be_composed_is_red_named(self):
+        """A sibling naming a ticket in a repository the tracker does not name has
+        no owner on this machine — red with the reader's refusal, never a line
+        guessed off the body."""
+        items = self.lane()
+        stranger = self.add("a slice elsewhere", ticket="other-repo#9")
+        body = self.lane_body(items, tail=f"Fixes {OWNER}/other-repo#9\n")
+        run = self.check_lane(items[0], body, items + [stranger])
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, rf"(?m)^lane\s+FAILED\s+{stranger}: repo-mismatch:")
+
     def test_the_checked_item_listed_or_not_gives_the_same_verdict(self):
         items = self.lane()
         body = self.lane_body(items)

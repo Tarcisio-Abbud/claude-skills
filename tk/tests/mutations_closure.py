@@ -276,7 +276,8 @@ MUTATIONS = [
 
     ("T238 CLAUSE: only the first closing line is examined, so every other one closes its "
      "own ticket on merge, silently",
-     "    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)]",
+     "    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)\n"
+     "              and not any(is_reference(m, e) for e in expected_lines)]",
      "    strays = []",
      ["TestTheClosureChecker.test_a_second_closing_line_closes_a_second_ticket_and_is_red",
       "TestTheClosureChecker."
@@ -320,8 +321,8 @@ MUTATIONS = [
 
     ("T238 the reference is re-derived from the item's own halves instead of composed by "
      "the reader, so the checker greenlights what the reader refuses to emit",
-     "        expected = reader.qualify(ticket, reader.tracker_slug(clone, label), label)",
-     '        expected = reader.tracker_slug(clone, label).partition("/")[0] + "/" + ticket',
+     "            expected = reader.qualify(ticket, slug(), label)",
+     '            expected = slug().partition("/")[0] + "/" + ticket',
      ["TestTheClosureChecker.test_a_cited_repository_the_tracker_does_not_name_is_red"],
      CHECKER),
 
@@ -392,8 +393,8 @@ MUTATIONS = [
 
     # --- the escape, and the state that had none ---------------------------
     ("T238 the escape asserts the item names no ticket instead of quoting it",
-     '                   ("item", OK, block.splitlines()[0].strip())], label)',
-     '                   ("item", OK, "(the item names no ticket)")], label)',
+     '                   ("item", OK, block.splitlines()[0].strip())] + lane, label)',
+     '                   ("item", OK, "(the item names no ticket)")] + lane, label)',
      ["TestTheClosureChecker.test_an_item_with_no_ticket_is_green_and_the_item_is_quoted"],
      CHECKER),
 
@@ -411,6 +412,117 @@ MUTATIONS = [
      "    if False:",
      ["TestTheClosureChecker."
       "test_the_offline_mode_refuses_to_leave_the_base_condition_unasked"], CHECKER),
+
+    # --- the accumulated lane ------------------------------------------------
+    ("lane CLAUSE: a listed sibling's own line is still read as an extra, so every "
+     "item of a lane of two or more stays red",
+     "    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)\n"
+     "              and not any(is_reference(m, e) for e in expected_lines)]",
+     "    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)]",
+     ["TestTheAccumulatedLane."
+      "test_every_item_of_a_four_item_lane_is_green_with_the_lane_listed",
+      "TestTheAccumulatedLane.test_the_checked_item_listed_or_not_gives_the_same_verdict",
+      "TestTheAccumulatedLane.test_a_sibling_naming_no_ticket_expects_no_line",
+      "TestTheAccumulatedLane."
+      "test_the_lane_takes_ids_in_the_positional_syntax_and_refuses_an_empty_one"],
+     CHECKER),
+
+    ("lane the `lane` row is never asked, so a sibling whose line is absent or whose "
+     "reference cannot be composed passes",
+     "    if siblings is not None:\n        out.append(lane_row(honoured, siblings))",
+     "    if False:\n        out.append(lane_row(honoured, siblings))",
+     ["TestTheAccumulatedLane.test_a_lane_id_whose_line_is_absent_is_red_naming_it",
+      "TestTheAccumulatedLane."
+      "test_a_sibling_that_left_the_queue_is_red_named_and_never_read_off_the_body",
+      "TestTheAccumulatedLane."
+      "test_a_siblings_line_under_a_word_the_forge_ignores_is_absent"], CHECKER),
+
+    ("lane CLAUSE: a sibling's line is matched without its owner half, so a line "
+     "resolved against somebody else's account counts as the sibling's",
+     "    return (aims_at(mention[1], mention[2], repo, number)\n"
+     '            and owner_verdict(mention[1], owner)[0] == "right")',
+     "    return aims_at(mention[1], mention[2], repo, number)",
+     ["TestTheAccumulatedLane."
+      "test_a_siblings_line_with_another_owner_is_an_extra_not_the_siblings"], CHECKER),
+
+    ("lane CLAUSE: the `lane` row reads every mention, so a sibling's line under a word "
+     "the forge ignores counts as present",
+     "        out.append(lane_row(honoured, siblings))",
+     "        out.append(lane_row(found, siblings))",
+     ["TestTheAccumulatedLane."
+      "test_a_siblings_line_under_a_word_the_forge_ignores_is_absent"], CHECKER),
+
+    ("lane a sibling that LEFT the queue is read as one naming no ticket, so its line "
+     "passes unverified",
+     '            if refusal.code == "no-ticket":',
+     "            if True:",
+     ["TestTheAccumulatedLane."
+      "test_a_sibling_that_left_the_queue_is_red_named_and_never_read_off_the_body"],
+     CHECKER),
+
+    ("lane a sibling naming no ticket is red, though it expects no line",
+     '            if refusal.code == "no-ticket":',
+     "            if False:",
+     ["TestTheAccumulatedLane.test_a_sibling_naming_no_ticket_expects_no_line"], CHECKER),
+
+    ("lane the closed sibling's row carries no remedy, so the reader is not told to ask "
+     "while every lane item is open",
+     '            if refusal.code == "closed":',
+     "            if False:",
+     ["TestTheAccumulatedLane."
+      "test_a_sibling_that_left_the_queue_is_red_named_and_never_read_off_the_body"],
+     CHECKER),
+
+    ("lane a sibling whose reference the reader refuses to compose is read as one "
+     "expecting no line",
+     '            out.append((label, None, f"{refusal.code}: {refusal.message}"))',
+     "            out.append((label, None, None))",
+     ["TestTheAccumulatedLane."
+      "test_a_sibling_whose_reference_cannot_be_composed_is_red_named"], CHECKER),
+
+    ("lane the checked item is read as its own sibling",
+     "        if wanted == args.id:\n            continue\n",
+     "",
+     ["TestTheAccumulatedLane.test_the_checked_item_listed_or_not_gives_the_same_verdict"],
+     CHECKER),
+
+    ("lane CLAUSE: the no-ticket escape ignores the siblings, so an item with no ticket "
+     "in a lane is red on their lines",
+     "    closing = [m for m in honoured\n"
+     "               if not any(is_reference(m, e) for e in expected_lines)]",
+     "    closing = honoured",
+     ["TestTheAccumulatedLane."
+      "test_an_item_with_no_ticket_in_a_lane_expects_its_siblings_lines"], CHECKER),
+
+    ("lane an unconfigured clone is pinned on one sibling instead of refused as the "
+     "run's defect",
+     "        tracker = slug()\n        try:\n",
+     "        try:\n            tracker = slug()\n",
+     ["TestTheAccumulatedLane.test_an_unconfigured_clone_is_the_runs_defect_not_one_siblings"],
+     CHECKER),
+
+    ("lane the ids are split on something other than the comma, so a list reads as "
+     "one unparsable id",
+     '    for piece in raw.split(","):',
+     '    for piece in raw.split(";"):',
+     ["TestTheAccumulatedLane."
+      "test_the_lane_takes_ids_in_the_positional_syntax_and_refuses_an_empty_one"],
+     CHECKER),
+
+    ("lane the flag reaches nothing, so the run is the five conditions alone",
+     "        siblings = None if args.lane is None else lane_siblings(args, memdir, slug)",
+     "        siblings = None",
+     ["TestTheAccumulatedLane."
+      "test_every_item_of_a_four_item_lane_is_green_with_the_lane_listed",
+      "TestTheAccumulatedLane.test_an_extra_closing_line_no_lane_item_names_is_red_and_named"],
+     CHECKER),
+
+    ("lane an absent flag is read as an empty lane, so every run grows a `lane` row it "
+     "was never asked for",
+     "        siblings = None if args.lane is None else lane_siblings(args, memdir, slug)",
+     "        siblings = lane_siblings(args, memdir, slug) if args.lane else []",
+     ["TestTheAccumulatedLane.test_without_the_flag_the_same_body_stays_red_on_extras"],
+     CHECKER),
 
     # --- the forge, and the network ----------------------------------------
     ("T238 the forge CLI is resolved somewhere other than PATH, so the fake is never reached",

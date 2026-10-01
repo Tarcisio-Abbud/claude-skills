@@ -142,7 +142,9 @@ tk/
                                   branch, each reported by name. It compares against the
                                   reference the reader composes, so it cannot greenlight
                                   what the reader refuses to emit. Exit 1 names the ones
-                                  that failed
+                                  that failed. `--lane <ids>` expects an accumulated
+                                  lane's sibling lines, each composed the same way, and
+                                  a `lane` row names any sibling whose line is missing
   bin/tk-context                  this session's context occupancy in tokens, read from its
                                   own transcript — the number WINDOW.md's seams compare, and
                                   which no orchestrator can see in the statusline. Absolute,
