@@ -29,9 +29,10 @@
     "tk/skills/fleet/SKILL.md": {
       "role": "pruned",
       "report": "fleet-report.md",
-      "lines": 428,
-      "body_words": 4163,
-      "over": []
+      "lines": 470,
+      "body_words": 4664,
+      "over": [],
+      "locked": "2026-10-01"
     },
     "tk/skills/kickoff/SKILL.md": {
       "role": "pruned",
@@ -46,12 +47,13 @@
     "tk/skills/kickoff/AFK.md": {
       "role": "pruned",
       "report": "kickoff-report.md",
-      "lines": 354,
-      "body_words": 3775,
+      "lines": 402,
+      "body_words": 4310,
       "over": [
         "max_sentence_words",
         "sentences_over_30"
-      ]
+      ],
+      "locked": "2026-10-01"
     },
     "tk/skills/kickoff/WINDOW.md": {
       "role": "pruned",

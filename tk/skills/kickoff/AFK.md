@@ -74,10 +74,33 @@ criteria and the merge of `origin/main` — or its last third is unfunded.
 recount, the review and tail lines stand beside them, and every exclusion and item left out
 carries its reason.
 
+### Fit the package in memory
+
+Other sessions on this machine hold memory the package's runs need, and only the user may close
+one. The package's **width** is the most runs it holds at once: one for the accumulated lane,
+plus one per repository its solo items land in. Fit the width before anything is claimed:
+
+1. List every other live `claude` process on this machine with its working directory, this
+   session's own (`$CLAUDE_PID`) left out. Where `~/.claude/tk/kickoff.md` carries a command for
+   this, run that one.
+2. Run `../../bin/tk-ram` and compare its fit with the width. Cap the width first at the most
+   the bin ever prints: closing sessions raises the fit to that top and no further. Exit 2 falls
+   back on `max-local-subagents`, as step 3 says.
+3. **It fits**, or the list is empty: report the list in one line, ask nothing, and leave every
+   session open.
+4. **It falls short:** under `pack`, step 2's menu carries the list as "close these to fit
+   <width> runs". The user closes them; the agent names sessions and never ends one. Read
+   `tk-ram` again after the answer. Under `afk`, nobody answers: the package runs at the fit
+   `tk-ram` gives.
+
+**Done when:** the list was reported, and where the fit fell short, an `(orquestrador)` line of
+`LEDGER.md` names the width, the fit and the list.
+
 ## 2. `pack` only: confirm
 
 One multiSelect `AskUserQuestion` listing the package items, summed Effort in the question; the
-check IS the authorization. (`afk` skips this step: invoking it IS the authorization.)
+check IS the authorization. Where *Fit the package in memory* fell short, the same call carries its
+sessions as a second question. (`afk` skips this step: invoking it IS the authorization.)
 **Done when:** the confirmed package is fixed.
 
 ## 3. Claim, then dispatch
@@ -179,9 +202,10 @@ works in the worktree already checked out on its branch, named by path.
 `WINDOW.md`'s "The tick" owns the quota axis, `max-local-opus`; concurrent runs count against
 `max-local-subagents`, the RAM axis. **Read it before each local dispatch:**
 `../../bin/tk-ram` prints what the cgroup fits now, `LEDGER.md` takes that line, and
-exit 2 falls back on the site key. Where the harness's own cap — `min(16, nproc - 2)` — is
-smaller, the difference stays UNUSED: weigh a second workflow beside the first, never Agent
-runs whose return lands in this session's context.
+exit 2 falls back on the site key. Step 1's *Fit the package in memory* read it once against
+the whole width; this reading is the one each dispatch answers to. Where the harness's own cap
+— `min(16, nproc - 2)` — is smaller, the difference stays UNUSED: weigh a second workflow
+beside the first, never Agent runs whose return lands in this session's context.
 
 **Unless a fleet dispatched this package, arm the tick before the turn that dispatches the first
 run ends** — `WINDOW.md`, *The tick*, says who arms it and why a fleet's project run does not.

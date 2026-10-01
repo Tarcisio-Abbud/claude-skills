@@ -119,6 +119,18 @@ python3 <.../tk/bin>/tk-contract --role fleet-orchestrator --fleet <W>     # the
 one is a fork of the policy. The block itself says it wins wherever it and the surrounding prose
 disagree. Where `--fleet W` divides down to nothing the bin says so in words: shrink `W`.
 
+**Fit the fleet in memory before fixing `W`.** Run `../kickoff/AFK.md`'s *Fit the package in
+memory*. Its width here is the local ceiling the no-divisor block states, since the divisor's
+shares add up to it. Where the block states none, the width is the `W` you are about
+to pick. Its four steps hold, with two substitutions:
+
+- **It falls short:** the list goes in its own `AskUserQuestion` before the first dispatch,
+  since the fleet has no confirm menu. A fleet fired with nobody to answer skips the question.
+- **The record** is a line of the textual report, naming the width, the fit and the list.
+
+Where the fit stays short — the user closed too little, or nobody answered — the default below
+takes the fit as its ceiling.
+
 **Both ceilings are optional in the site file, and an absent one is not a zero.** With
 `max-local-subagents` unwritten, the block states no number. It says to decide and to log the
 decision as a deviation. Do exactly that: pick `W` from the project count and what this machine
@@ -147,6 +159,7 @@ it. `W` is the fleet's own quantity, and the fleet does two things with it:
   and it changes nothing any block states. Above it, the project runs' own slots outnumber the
   work they dispatch — a fleet spending its memory on coordination. Below it is available and
   costs only wall clock, which is the right trade where a project run is known to be heavy.
+  Where the memory fit stayed short, `ceiling` is that fit, and `W` never drops below one.
 - **Report the peak.** The measurement line of step 6 carries `peak` beside the other numbers.
   The site file's own ceiling is written as a calibrable number, and this is the run that
   produces the evidence to calibrate it. `peak` is what the runs OBSERVABLY held at once, taken
@@ -156,6 +169,7 @@ it. `W` is the fleet's own quantity, and the fleet does two things with it:
 **Done when:**
 
 - the ceilings were read from a block generated with no divisor;
+- the live sessions were listed, and a short fit is a line of the textual report;
 - `W` is fixed, at `ceiling // 2` by default, or by a logged decision where the site file states
   no ceiling;
 - every dispatch below will paste a block generated at that `W`;
