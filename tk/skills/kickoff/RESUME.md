@@ -63,8 +63,8 @@ exits 1; a handoff silent on the review means the review is re-fired whole; the 
 redone whole either way.
 
 The exits grade different objects, so every row that applies runs. Handoff missing: stop and
-report the branch and the claims — they stay held, so no sibling takes the items. Reset's `git ls-remote`
-printing nothing while `gh pr list --state all` returns `[]`: the lane was never pushed, and it
+report the branch and the claims — they stay held, so no sibling takes the items. Reset's
+`git ls-remote` printing nothing while `gh pr list --state all` returns `[]`: the lane was never pushed, and it
 is this package's to create. Leave this file for step 3 at its floor recount, claiming nothing:
 the claims are inherited. The same absent ref with a `MERGED` row: the lane is DELIVERED — close
 its open claimed items from the merge commit's own `<mergeCommit>^1..<mergeCommit>^2` merges,
