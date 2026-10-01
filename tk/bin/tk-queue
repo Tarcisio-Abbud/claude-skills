@@ -138,7 +138,8 @@ import tk_site      # noqa: E402  (the path above is what makes it importable)
 # `tk-roster` carries no `.py` suffix, so it is loaded by path — the same four
 # lines `tk-hygiene` beside it uses, and for the same reason: the roster already
 # answers which queues exist on this machine, and a second sweep written here
-# would be a second answer to it. The WIP cap needs that answer (see check_wip).
+# would be a second answer to it. Two readers need that answer: the WIP cap (see
+# check_wip) and `pack --all` (see pack_all), both through `roster_queues`.
 # The two copies do NOT behave alike, and saying so is cheaper than implying it:
 # `tk-hygiene` loads at import and lets a failure raise, this one loads lazily
 # and reports through `fail()`. One shared loader would settle that, and it is a
@@ -157,9 +158,8 @@ def roster(consequence=None):
     which sweeps the queues it reports. `consequence` is the reader's own
     sentence for the refusal — what is lost and how to run without it — since
     the cap's remedy (take the cap out of the site file) means nothing to a
-    sweep. Loaded at
-    import, it would make every `list`, `done` and `add` — on every machine,
-    capped or not — depend on a file none of them reads. Measured before this
+    sweep. Loaded at import, it would make every `list`, `done` and `add` — on
+    every machine, capped or not — depend on a file none of them reads. Measured before this
     was lazy: with `tk-roster` deleted or carrying a syntax error, `list` and
     `done` died in a raw traceback, `done` being the very remedy the cap's
     refusal prints.
@@ -3338,6 +3338,7 @@ items —
 
   eligible  open  project     queue
          3     5  -srv-alpha  <home>/.claude/projects/-srv-alpha/memory
+         2     2  -srv-delta  <home>/.claude/projects/-srv-delta/memory  (outside fleet-allow)
          0     7  -srv-beta   <home>/.claude/projects/-srv-beta/memory
          ?     ?  -srv-gamma  <home>/.claude/projects/-srv-gamma/memory
 
@@ -3346,10 +3347,12 @@ line a single `pack` prints for that queue, from the same pass. Eligible leads a
 the rows sort by it, most first, ties in roster order: a queue whose open items are
 all BLOCKED or EXTERNAL is no work for an unattended run, however many it holds.
 `project` is the queue's directory name — the name `tk-roster` prints, and the
-name the site file's lists match. A queue `fleet-allow`/`fleet-deny` holds back is
-not listed. `?` is a queue file this command could not decode; it sorts last and
-the reason is on stderr. No queue at all prints `(no queue on this machine)`.
-`--dir` is ignored; `--spec-under-way` and `--blocked` reach every queue."""
+name the site file's lists match. A queue `fleet-deny` holds back is not listed.
+A queue `fleet-allow` leaves out is listed, marked `(outside fleet-allow)` after
+its dir: a fleet runs it only when `--queues` names it. `?` is a queue file this
+command could not read or decode; it sorts last and the reason is on stderr.
+No queue at all prints `(no queue on this machine)`. `--dir` is ignored;
+`--spec-under-way` and `--blocked` reach every queue."""
 
 
 def field_value(segment):
@@ -3371,7 +3374,8 @@ def pack_identity():
     all. A file that EXISTS and is broken is the other case entirely and is refused
     verbatim: there, "no environments exist" would be a guess about a file the user
     can see, and every Env-bearing item would silently leave the package."""
-    return pack_site_identity(pack_site())
+    site = pack_site()
+    return site.identity if site else None
 
 
 def pack_site():
@@ -3381,10 +3385,6 @@ def pack_site():
         return tk_site.load()
     except tk_site.SiteError as e:
         fail(str(e))
-
-
-def pack_site_identity(site):
-    return site.identity if site else None
 
 
 def pack_classless_reason(block):
@@ -4010,18 +4010,40 @@ def cmd_pack(args):
 
 
 PACK_ALL_UNREAD = "?"
+# the mark on a row `fleet-allow` leaves out: work a fleet takes only when
+# `--queues` names it, so it is shown, and shown as outside the standing scope
+PACK_ALL_OUTSIDE = "(outside fleet-allow)"
+
+
+def roster_queues(site, consequence=None):
+    """(name, memory dir, keeper) for every queue `tk-roster` finds — `keeper` the
+    site-file list that holds it back, or None.
+
+    ONE spelling of "which queues, and which list holds each", read by the WIP
+    cap and by `pack --all`. Each reader decides what a keeper costs: the cap
+    drops every held queue, the table drops only the denied ones. `queues` and
+    `excluded_by`, never `sweep` — see wip_queues for why.
+    """
+    tk_roster = roster(consequence)
+    allow, deny = tk_roster.lists(site)
+    return [(name, memdir, tk_roster.excluded_by(name, allow, deny))
+            for name, memdir in tk_roster.queues(tk_roster.projects_root())]
 
 
 def pack_all(under_way, blocked):
     """`pack --all`: one row per queue the roster sweeps — eligible, open, project,
     queue dir — most eligible first.
 
-    The roster is `tk-roster`'s answer, read the way the WIP cap reads it
-    (`queues` and `excluded_by`, never `sweep`): which queues exist is that bin's
-    question, and its docstring promises it never reads inside a queue file, so
-    the counting happens HERE, through the same `pack_verdicts` a single `pack`
-    prints from. The site file's `fleet-allow`/`fleet-deny` are honoured, so a
-    queue the machine was told to leave alone is not offered as work.
+    The roster is `tk-roster`'s answer, through `roster_queues`: which queues exist
+    is that bin's question, and its docstring promises it never reads inside a
+    queue file, so the counting happens HERE, through the same `pack_verdicts` a
+    single `pack` prints from.
+
+    THE SITE FILE'S LISTS: a queue `fleet-deny` holds is not listed — the machine
+    was told to leave it alone, and no argument overrules that. A queue
+    `fleet-allow` leaves out IS listed, marked `(outside fleet-allow)`: a fleet's
+    `--queues` replaces the allowlist for one run, so that queue is work the user
+    can still choose, and the table is where the choice is made.
 
     ELIGIBLE COMES FIRST and open beside it. A queue holding twenty items and no
     eligible one (every item BLOCKED, EXTERNAL or waiting on a decision) is no
@@ -4030,9 +4052,11 @@ def pack_all(under_way, blocked):
 
     Ties keep the roster's order, which is sorted by name: `sorted` is stable.
 
-    A queue that cannot be decoded costs its own row and never the table: its
-    counts read `?`, it sorts after every counted row, and `read`'s refusal goes
-    to stderr naming the file. A single `pack` on that queue fails as it always
+    A queue that cannot be read costs its own row and never the table: its counts
+    read `?`, it sorts after every counted row, and the reason goes to stderr
+    naming the file. Two refusals reach here — `read`'s own, through `fail`, for
+    a file that is not text, and the `OSError` its `open` raises for one the
+    system will not hand over. A single `pack` on that queue fails as it always
     did — this is a sweep over files other sessions wrote, and one of them is not
     a reason to hide the other eleven.
 
@@ -4040,34 +4064,40 @@ def pack_all(under_way, blocked):
     `<repo>#<n>`, which names the same spec or ticket in whichever queue holds it.
     """
     site = pack_site()
-    identity = pack_site_identity(site)
-    tk_roster = roster("`pack --all` sweeps the queues it reports. Restore that file, "
-                       "or run `pack` from each project's directory.")
-    allow, deny = tk_roster.lists(site)
+    identity = site.identity if site else None
+    consequence = ("`pack --all` sweeps the queues it reports. Restore that file, "
+                   "or run `pack` from each project's directory.")
     counted, unread = [], []
-    for name, memdir in tk_roster.queues(tk_roster.projects_root()):
-        if tk_roster.excluded_by(name, allow, deny):
+    for name, memdir, keeper in roster_queues(site, consequence):
+        if keeper == "fleet-deny":
             continue
+        mark = PACK_ALL_OUTSIDE if keeper else ""
+        path = os.path.join(memdir, "next-steps.md")
         try:
-            content = read(os.path.join(memdir, "next-steps.md"))
+            content = read(path)
         except SystemExit as e:
             # `read` refuses through `fail`, which is right for a command aimed at
             # ONE queue; here it would take the whole sweep down with it
             print(e.code, file=sys.stderr)
-            unread.append((name, memdir))
+            unread.append((name, memdir, mark))
+            continue
+        except OSError as e:
+            # the open, not the decode: a file the system will not hand over
+            print(f"tk-queue: {path}: {e.strerror}", file=sys.stderr)
+            unread.append((name, memdir, mark))
             continue
         rows, pushed, _, _ = pack_verdicts(content or "", identity, under_way, blocked)
-        counted.append((pack_eligible(rows, pushed), len(rows), name, memdir))
+        counted.append((pack_eligible(rows, pushed), len(rows), name, memdir, mark))
     counted.sort(key=lambda row: -row[0])
-    table = ([(str(e), str(o), name, d) for e, o, name, d in counted]
-             + [(PACK_ALL_UNREAD, PACK_ALL_UNREAD, name, d) for name, d in unread])
+    table = ([(str(e), str(o), name, d, m) for e, o, name, d, m in counted]
+             + [(PACK_ALL_UNREAD, PACK_ALL_UNREAD, name, d, m) for name, d, m in unread])
     if not table:
         print("(no queue on this machine)")
         return
-    width = max(len("project"), *(len(name) for _, _, name, _ in table))
+    width = max(len("project"), *(len(row[2]) for row in table))
     print(f"eligible  open  {'project':<{width}}  queue")
-    for elig, opened, name, d in table:
-        print(f"{elig:>8}  {opened:>4}  {name:<{width}}  {d}")
+    for elig, opened, name, d, mark in table:
+        print(f"{elig:>8}  {opened:>4}  {name:<{width}}  {d}" + (f"  {mark}" if mark else ""))
 
 
 def compose_item(args, iid):
@@ -4326,14 +4356,15 @@ def wip_queues(site, memdir):
     which queues exist is its question, and a second sweep here would be a
     second cap.
 
-    `queues` and `excluded_by`, NOT `sweep`: this gate needs the queues, and
-    `sweep`'s other half recovers the directory to open a session in by walking
-    the filesystem once per queue, which is a price every `add` would pay for a
-    path the cap never reads. That half also DROPS the queues no single
-    directory resolves to, and a queue nothing can dispatch holds open items all
-    the same. The site file's `fleet-allow`/`fleet-deny` are honoured through
-    `excluded_by`, so a project the machine was told not to touch is not counted
-    against the work it is allowed to do.
+    `queues` and `excluded_by`, through `roster_queues`, NOT `sweep`: this gate
+    needs the queues, and `sweep`'s other half recovers the directory to open a
+    session in by walking the filesystem once per queue, which is a price every
+    `add` would pay for a path the cap never reads. That half also DROPS the
+    queues no single directory resolves to, and a queue nothing can dispatch
+    holds open items all the same. The site file's `fleet-allow`/`fleet-deny`
+    are honoured — every queue either list holds is dropped — so a project the
+    machine was told not to touch is not counted against the work it is allowed
+    to do.
 
     The target queue is appended because it need not be on the roster at all:
     `--dir` names any directory, and a cap that counted only the roster would
@@ -4345,10 +4376,7 @@ def wip_queues(site, memdir):
     would put two definitions of "the same queue" in one gate — the caller could
     drift from the dedup above it and nothing would say so.
     """
-    tk_roster = roster()
-    allow, deny = tk_roster.lists(site)
-    dirs = [d for name, d in tk_roster.queues(tk_roster.projects_root())
-            if not tk_roster.excluded_by(name, allow, deny)]
+    dirs = [d for _, d, keeper in roster_queues(site) if not keeper]
     dirs.append(memdir)
     seen, out = set(), []
     for d in dirs:
@@ -6483,9 +6511,9 @@ def main():
     pk.add_argument("--all", action="store_true",
                     help="every queue the roster sweeps instead of one: a table with one "
                          "row per queue — eligible count, open count, project, queue dir "
-                         "— most eligible first, the site file's fleet-allow/fleet-deny "
-                         "honoured. `--dir` is ignored, as `report --all` ignores it "
-                         "(see ALL)")
+                         "— most eligible first; a queue fleet-deny holds is left out, "
+                         "one fleet-allow leaves out is marked. `--dir` is ignored, as "
+                         "`report --all` ignores it (see ALL)")
 
     mg = sub.add_parser("migrate", parents=[common],
                         help="move legacy [x] items to the done-log, assign IDs to open "
@@ -6526,7 +6554,7 @@ def main():
     # `report` and `pack --all` have no single dir to name: each sweeps every
     # project's queue by construction, so there is no inference for them to
     # expose and no dir of their own to resolve.
-    memdir = (None if args.cmd == "report" or getattr(args, "all", False)
+    memdir = (None if args.cmd == "report" or (args.cmd == "pack" and args.all)
               else memory_dir(args))
     if memdir is not None:
         print(f"tk-queue: queue: {memdir}", file=sys.stderr)

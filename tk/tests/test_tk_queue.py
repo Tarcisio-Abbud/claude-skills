@@ -10084,12 +10084,39 @@ class TestPackAll(WipCapTest):
         rows = self.table(self.pack_all())
         self.assertEqual([r[2] for r in rows], ["-srv-a"])
 
-    def test_with_an_allowlist_only_the_listed_queues_appear(self):
+    def test_a_queue_fleet_allow_leaves_out_is_listed_and_MARKED(self):
+        """A fleet's `--queues` replaces the allowlist for one run, so a queue the
+        list leaves out is still work the user can choose — shown, in its eligible
+        place, and marked so nobody mistakes it for the standing scope."""
         self.site("identity = alpha\nenvironments = alpha\nfleet-allow = -srv-b\n")
-        self.roster_queue("-srv-a", item(1, "um"))
-        self.roster_queue("-srv-b", item(1, "um"))
+        a = self.roster_queue("-srv-a", item(1, "um"), item(2, "dois"))
+        b = self.roster_queue("-srv-b", item(1, "um"))
         rows = self.table(self.pack_all())
-        self.assertEqual([r[2] for r in rows], ["-srv-b"])
+        self.assertEqual(rows, [("2", "2", "-srv-a", a, "(outside", "fleet-allow)"),
+                                ("1", "1", "-srv-b", b)])
+
+    def test_blocked_reaches_every_queue(self):
+        """`--blocked` names a ticket by its full `<repo>#<n>`, so it means the
+        same ticket in whichever queue holds it: the table counts it out there."""
+        self.roster_queue("-srv-a", ticket_item(1, "um", ticket="repo#10"),
+                          ticket_item(2, "dois", ticket="repo#11"))
+        self.roster_queue("-srv-b", ticket_item(1, "um", ticket="repo#12"))
+        self.assertEqual([r[:3] for r in self.table(self.pack_all())],
+                         [("2", "2", "-srv-a"), ("1", "1", "-srv-b")])
+        rows = self.table(self.pack_all("--blocked", "repo#10", "--blocked", "repo#12"))
+        self.assertEqual([r[:3] for r in rows],
+                         [("1", "2", "-srv-a"), ("0", "1", "-srv-b")])
+
+    def test_spec_under_way_reaches_every_queue(self):
+        """A spec another lane is already running pushes its tickets out of every
+        queue's count, not just one — the same spec, wherever it is queued."""
+        self.roster_queue("-srv-a", ticket_item(1, "um", spec="repo#171"),
+                          ticket_item(2, "dois", spec="repo#171"))
+        self.roster_queue("-srv-b", item(1, "um"))
+        self.assertEqual(self.table(self.pack_all())[0][:3], ("2", "2", "-srv-a"))
+        rows = self.table(self.pack_all("--spec-under-way", "repo#171"))
+        self.assertEqual([r[:3] for r in rows],
+                         [("1", "1", "-srv-b"), ("0", "2", "-srv-a")])
 
     def test_dir_is_ignored_as_report_all_ignores_it(self):
         """`report --all` sweeps and never resolves `--dir`; this matches it. A
@@ -10109,6 +10136,35 @@ class TestPackAll(WipCapTest):
         rows = self.table(r)
         self.assertEqual(rows, [("1", "1", "-srv-b", rows[0][3]), ("?", "?", "-srv-a", d)])
         self.assertIn("is not valid utf-8", r.stderr)
+
+    def test_a_queue_the_system_will_not_open_costs_its_own_row(self):
+        """The OPEN, not the decode: an `OSError` from a queue file the system
+        will not hand over (EACCES, EIO) is that queue's `?` row and a stderr
+        line naming the file, never a traceback over the whole table. Run in
+        process, because this suite runs as a user no permission bit stops."""
+        import contextlib
+        import errno
+        import io
+        from unittest import mock
+        a = self.roster_queue("-srv-a", item(1, "um"))
+        self.roster_queue("-srv-b", item(1, "um"))
+        tk = load_tk()
+        real = tk.read
+        refused = os.path.join(a, "next-steps.md")
+
+        def read(path):
+            if path == refused:
+                raise PermissionError(errno.EACCES, "Permission denied", path)
+            return real(path)
+
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(os.environ, {"HOME": self.home}), \
+                mock.patch.object(tk, "read", read), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            tk.pack_all(frozenset(), frozenset())
+        rows = [tuple(ln.split()) for ln in out.getvalue().splitlines()[1:]]
+        self.assertEqual([r[:3] for r in rows], [("1", "1", "-srv-b"), ("?", "?", "-srv-a")])
+        self.assertIn(f"tk-queue: {refused}: Permission denied", err.getvalue())
 
     def test_no_queue_on_the_machine_says_so(self):
         r = self.pack_all()

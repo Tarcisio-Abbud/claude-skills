@@ -269,6 +269,77 @@ class TestAllowDeny(RosterTest):
         self.assertEqual(self.block(r.stdout, "`fleet-deny` names no queue"), [])
 
 
+# --- `--queues`: this run's queues, replacing the allowlist ---------------
+
+class TestQueuesArgument(RosterTest):
+    """`--queues` is how a fleet runs one or two queues without editing the site
+    file. The named queues REPLACE `fleet-allow` for the run; `fleet-deny` still
+    wins, because a "do not touch" an argument can overrule protects nothing."""
+
+    def setUp(self):
+        super().setUp()
+        self.kept, self.kept_name = self.project_dir("kept")
+        self.other, self.other_name = self.project_dir("other")
+        self.queue(self.kept_name)
+        self.queue(self.other_name)
+
+    def test_a_named_queue_fleet_allow_leaves_out_RUNS(self):
+        """The whole point of naming it: the allowlist keeps it out of the
+        standing scope, and the argument puts it in this run — path resolved.
+
+        Every call here writes `--queues=<names>`, with the `=`: a queue name
+        opens with '-', and argparse reads a separate `-srv-x` as a flag."""
+        self.site(SITE + f"fleet-allow = {self.kept_name}\n")
+        r = self.run_roster(f"--queues={self.other_name}")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.block(r.stdout, "roster"), [f"{self.other_name}  {self.other}"])
+
+    def test_only_the_named_queues_are_this_runs_and_the_rest_go_unreported(self):
+        """A queue the argument leaves out is not held back by a LIST, so it is
+        not in the site file's section: that section stays the user's file."""
+        self.site()
+        r = self.run_roster(f"--queues={self.kept_name}")
+        self.assertEqual(self.names(r.stdout, "roster"), [self.kept_name])
+        self.assertNotIn(self.other_name, r.stdout)
+
+    def test_a_named_queue_in_fleet_deny_is_REFUSED_with_a_message(self):
+        self.site(SITE + f"fleet-deny = {self.other_name}\n")
+        r = self.run_roster(f"--queues={self.kept_name},{self.other_name}")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.names(r.stdout, "roster"), [self.kept_name])
+        self.assertEqual(
+            self.block(r.stdout, "`--queues` names a queue `fleet-deny` holds back"),
+            [f"{self.other_name}  (fleet-deny wins over --queues: take it out of "
+             "fleet-deny to run it)"])
+
+    def test_without_the_flag_the_allowlist_still_binds(self):
+        """No queues named is today's sweep, byte for byte the site file's."""
+        self.site(SITE + f"fleet-allow = {self.kept_name}\n")
+        r = self.run_roster()
+        self.assertEqual(self.names(r.stdout, "roster"), [self.kept_name])
+        self.assertEqual(self.block(r.stdout, "excluded by the site file"),
+                         [f"{self.other_name}  (fleet-allow)"])
+
+    def test_a_name_matching_no_queue_is_a_stray_entry(self):
+        self.site()
+        r = self.run_roster(f"--queues={self.kept_name}, -not-a-project")
+        self.assertEqual(self.names(r.stdout, "roster"), [self.kept_name])
+        self.assertEqual(self.names(r.stdout, "`--queues` names no queue"),
+                         ["-not-a-project"])
+
+    def test_a_name_written_as_a_path_names_the_same_queue(self):
+        self.site()
+        r = self.run_roster(f"--queues={self.other}")
+        self.assertEqual(self.names(r.stdout, "roster"), [self.other_name])
+
+    def test_a_malformed_argument_is_refused_before_the_sweep(self):
+        for bad in ("", " , ", "../x"):
+            r = self.run_roster(f"--queues={bad}")
+            self.assertEqual(r.returncode, 2, (bad, r.stdout))
+            self.assertIn("--queues", r.stderr)
+            self.assertEqual(r.stdout, "")
+
+
 # --- the site file refuses a list it cannot act on ------------------------
 
 class TestListValidation(RosterTest):

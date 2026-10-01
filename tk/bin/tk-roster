@@ -31,6 +31,11 @@ listed project may be named by its directory or by its absolute path, and an
 entry that matched NOTHING is reported: an unknown key in that file is ignored
 by design, so a mistyped `fleet-deny` would otherwise sweep exactly the project
 it was written to keep out, silently.
+
+`--queues` NARROWS ONE RUN without touching the file: the queues it names
+replace `fleet-allow` for that run, and `fleet-deny` still wins. It is how a
+fleet runs one or two queues, the allowlist's or not, and leaves the machine's
+standing scope as the file says.
 """
 
 import argparse
@@ -185,9 +190,16 @@ def lists(site):
             site.fleet_deny if site else ())
 
 
-def sweep(site):
+def sweep(site, named=None):
     """The sweep itself: which queues enter, which a list holds back, which no
     single directory resolves — and the root all three were read from.
+
+    `named` is THIS RUN's queues (`--queues`), or None for the machine's standing
+    scope. Named, they REPLACE `fleet-allow` for the run — a queue the allowlist
+    leaves out enters when it is named, which is the point of naming it without
+    editing the site file — and `fleet-deny` still wins. A queue the argument does
+    not name is simply not this run's: it is left out of `held`, which reports
+    only what a LIST kept out.
 
     Split out of `main` so a SECOND reader of the roster (`tk-hygiene`, which
     needs the project paths and not the report) gets the same answer from the
@@ -195,16 +207,19 @@ def sweep(site):
     "which projects are there", drifting the day the report's shape changes.
     """
     allow, deny = lists(site)
+    if named is not None:
+        allow = named
 
     root = projects_root()
     swept, held, blind, listed = [], [], [], set()
     for name, memdir in queues(root):
+        listed.add(name)
         keeper = excluded_by(name, allow, deny)
+        if keeper == "fleet-allow" and named is not None:
+            continue                 # not named: outside this run, not held by a list
         if keeper:
             held.append((name, keeper))
-            listed.add(name)
             continue
-        listed.add(name)
         paths = project_paths(name)
         if len(paths) == 1:
             swept.append((name, paths[0]))
@@ -213,16 +228,42 @@ def sweep(site):
     return root, swept, held, blind, listed
 
 
+def queue_names(raw):
+    """`--queues`: comma-separated, each entry spelled the way a site-file list
+    entry is — a queue directory name or an absolute path — and validated by the
+    same rule, so the argument cannot name what the file would refuse."""
+    entries = [p.strip() for p in raw.split(",") if p.strip()]
+    if not entries:
+        raise argparse.ArgumentTypeError(
+            "names no queue. Name one or more, comma-separated, or leave the flag out "
+            "to sweep the site file's scope.")
+    for entry in entries:
+        if not entry.startswith("/") and not tk_site.PROJECT_NAME_RE.match(entry):
+            raise argparse.ArgumentTypeError(
+                f"{entry!r} is neither a queue directory name (letters, digits and "
+                "'-', as the `## roster` section prints it) nor an absolute path.")
+    return tuple(entries)
+
+
 def main(argv=None):
-    argparse.ArgumentParser(
+    p = argparse.ArgumentParser(
         prog="tk-roster",
         description="The projects on this machine that have a queue, and the "
                     "directory to open a session in for each.",
-    ).parse_args(argv)
+    )
+    p.add_argument("--queues", type=queue_names, metavar="<name>,<name>...",
+                   help="this run's queues, written `--queues=<name>,<name>` — with "
+                        "the `=`, since a queue name opens with '-' and would read as "
+                        "a flag. They REPLACE the site file's fleet-allow for this "
+                        "run, and fleet-deny still wins. `## roster` then "
+                        "carries only the named queues; a named queue the deny list "
+                        "holds back, and a name matching no queue, each get their own "
+                        "section")
+    named = p.parse_args(argv).queues
 
     site = load_site()
     allow, deny = lists(site)
-    root, swept, held, blind, listed = sweep(site)
+    root, swept, held, blind, listed = sweep(site, named)
 
     if swept:
         print(f"## roster — {len(swept)} project(s) to sweep\n")
@@ -237,7 +278,14 @@ def main(argv=None):
         for name, memdir, paths in blind:
             print(f"{name}\n  queue: {memdir}\n  {blind_reason(name, paths)}")
 
-    if held:
+    if held and named is not None:
+        # under `--queues` only the deny list can hold a queue back, and only a
+        # queue the user just NAMED: a refusal of what was asked, said as one
+        print("\n## `--queues` names a queue `fleet-deny` holds back\n")
+        for name, keeper in held:
+            print(f"{name}  ({keeper} wins over --queues: take it out of {keeper} "
+                  "to run it)")
+    elif held:
         print("\n## excluded by the site file\n")
         for name, keeper in held:
             print(f"{name}  ({keeper})")
@@ -245,7 +293,8 @@ def main(argv=None):
     # an entry that matched nothing, reported because the site file IGNORES an
     # unknown key: `fleet-denny = x` reads as no list at all, and the project it
     # names would be swept with no sign that a line meant to stop it exists
-    for key, entries in (("fleet-allow", allow), ("fleet-deny", deny)):
+    for key, entries in (("fleet-allow", allow), ("fleet-deny", deny),
+                         ("--queues", named or ())):
         unmatched = [e for e in entries if list_key(e) not in listed]
         if unmatched:
             print(f"\n## `{key}` names no queue on this machine\n")
