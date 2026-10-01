@@ -545,9 +545,34 @@ class TheOrchestratorsLedger(HookFixture):
         self.run_hook(MARK, self.judged_payload(), window=None)
         self.assertIn("window 100000", self.sixth(),
                       "the project's numeric key was not read")
+        self.assertNotIn("hook's directory", self.sixth(),
+                         "the session's own directory was reported as a fallback")
+
+    def test_a_window_read_without_the_sessions_directory_says_so(self):
+        self.write_pointer(session=SESSION)
+        payload = self.judged_payload()
+        payload["transcript_path"] = None
+        self.run_hook(MARK, payload, window=100000)
+        self.assertIn("read from the hook's directory", self.sixth(),
+                      "the fallback to the hook's directory went unsaid")
+
+    def test_the_veto_claim_names_the_model_window_condition(self):
+        self.write_pointer(session=SESSION)
+        self.run_hook(MARK, self.judged_payload(), window=100000)
+        self.assertIn("when the model window is larger", self.sixth(),
+                      "the line claims a veto the mod's second condition may refuse")
 
 
 KIT_TIMEOUT = 120
+MOD_FLOOR = (2, 1, 287)                 # the first Claude Code that loads mods
+
+
+def binary_version(claude):
+    """The binary's version as a tuple, or None when it prints none."""
+    run = subprocess.run([claude, "--version"], capture_output=True, text=True,
+                         timeout=KIT_TIMEOUT)
+    m = re.match(r"(\d+)\.(\d+)\.(\d+)", run.stdout.strip())
+    return tuple(int(part) for part in m.groups()) if m else None
 
 
 def kit_results(tk_dir):
@@ -556,21 +581,26 @@ def kit_results(tk_dir):
     claude = shutil.which("claude")
     if claude is None:
         return None, "no claude binary on PATH"
+    version = binary_version(claude)
+    if version is None or version < MOD_FLOOR:
+        return None, f"claude {version} predates mods"
     run = subprocess.run([claude, "plugin", "test", tk_dir], capture_output=True,
                          text=True, timeout=KIT_TIMEOUT)
     out = run.stdout + run.stderr
     found = {m.group(2): m.group(1) == "pass"
              for m in re.finditer(r"^\((pass|fail)\) (.+?) \[[\d.]+m?s\]$", out, re.M)}
-    if not found:
-        return None, f"claude plugin test ran nothing: {out[-300:]!r}"
+    if not found:                       # a binary with mods that ran none: the mod broke
+        return {}, f"claude plugin test ran nothing: {out[-3000:]!r}"
     return found, out
 
 
 class TheModVeto(unittest.TestCase):
     """`compact_veto.test.ts`, run once by the first-party kit, read test by test.
 
-    No `claude` binary, or one without mods, skips the class: the kit is that
-    binary's, and nothing else here can run the mod."""
+    No `claude` binary, or one older than the mod floor, skips the class: the
+    kit is that binary's, and nothing else here can run the mod. A binary with
+    mods whose kit runs nothing fails every test, since a mod that does not
+    load is the likeliest cause."""
 
     @classmethod
     def setUpClass(cls):
@@ -579,7 +609,8 @@ class TheModVeto(unittest.TestCase):
     def kit(self, name):
         if self.results is None:
             self.skipTest(self.output)
-        self.assertIn(name, self.results, f"the kit ran no test named {name!r}")
+        self.assertIn(name, self.results,
+                      f"the kit ran no test named {name!r}\n{self.output[-3000:]}")
         self.assertTrue(self.results[name],
                         f"kit test failed: {name}\n{self.output[-3000:]}")
 

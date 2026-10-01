@@ -1,8 +1,9 @@
-// Behaviour proof for tk's mod, `../hooks/compact-veto.js`.
+// Behaviour proof for the tk mod, `../hooks/compact-veto.js`.
 //
 // Run: claude plugin test tk            (the first-party kit; no session, no network)
-// Read by: test_compact_veto.py, which runs this file and reports each test by
-// name, so `mutations_compact_hooks.py` can name the one a mutant must break.
+// Read by: test_compact_hooks.py, `TheModVeto`, which runs this file and reports
+// each test by name, so `mutations_compact_hooks.py` can name the one a mutant
+// must break.
 //
 // Each test raises `session.compact` through the mod with the engine's answers
 // stubbed: the pointer file, this session's id, the window figures, and the

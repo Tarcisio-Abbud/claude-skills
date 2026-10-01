@@ -181,7 +181,7 @@ tk/
                                   paragraph opens with the exclusion that keeps a compacted
                                   SUBAGENT on its item, because its payload carries no
                                   `agent_id` (2.1.286 and 2.1.287)
-  hooks/compact-veto.js           tk's mod (Claude Code 2.1.287+; `hooks/hooks.json`
+  hooks/compact-veto.js           the tk mod (Claude Code 2.1.287+; `hooks/hooks.json`
                                   names it): on `session.compact` with trigger `auto`,
                                   returns `{ skip }` for a subagent's compaction when the
                                   package pointer names this session and the window is a

@@ -76,6 +76,8 @@ OWN_SESSION = O + "test_the_orchestrators_own_compaction_is_written"
 NAMES = O + "test_the_line_names_the_session_and_a_numeric_window"
 NOT_NUMERIC = O + "test_a_window_that_is_not_a_number_says_a_subagent_lands_here"
 SETTINGS_KEY = O + "test_the_settings_key_is_read_from_the_sessions_own_directory"
+FALLBACK_SAID = O + "test_a_window_read_without_the_sessions_directory_says_so"
+MODEL_CONDITION = O + "test_the_veto_claim_names_the_model_window_condition"
 
 M = "TheModVeto."
 VETOED = M + "test_a_subagent_auto_compaction_in_the_package_session_is_vetoed"
@@ -277,16 +279,25 @@ MUTATIONS = [
 
     ("the judgement reads the window backwards",
      """    if found is None:
-        return "window not numeric""",
+        return (f"window not numeric""",
      """    if found is not None:
-        return "window not numeric""",
+        return (f"window not numeric""",
      [NAMES, NOT_NUMERIC, SETTINGS_KEY], MARK),
 
     ("the window is read from the payload's cwd instead of the session's directory",
-     '''        base = (context.session_dir(path) if isinstance(path, str) else None) \\
-            or payload.get("cwd") or os.getcwd()''',
-     '''        base = payload.get("cwd") or os.getcwd()''',
+     '''        base = context.session_dir(path) if isinstance(path, str) else None''',
+     '''        base = None''',
      [SETTINGS_KEY], MARK),
+
+    ("a window read from the hook's directory is reported as the session's",
+     """        fell_back = not base""",
+     """        fell_back = False""",
+     [FALLBACK_SAID], MARK),
+
+    ("the ledger claims a veto without the model-window condition",
+     """            "2.1.287+ when the model window is larger")""",
+     """            "2.1.287+")""",
+     [MODEL_CONDITION], MARK),
 
     # -- the mod ------------------------------------------------------------------
     ("the skip is never returned, and every subagent compacts mid-item",

@@ -23,7 +23,8 @@ A solo item's pull request and the lane's take *The fixer cap* below.
 
 `RESUME.md` beside this file carries the whole procedure — reset, draft, close, re-dispatch,
 and the exits that grade a package it cannot resume. Read it there, whole, before anything
-below runs; a generation that built its own package skips it.
+below runs; a generation that built its own package skips it. **Unless a fleet dispatched
+this package, rewrite the pointer's `session` before anything else** (`WINDOW.md`, *Three pieces*).
 
 ## 1. Build the package
 
@@ -126,9 +127,8 @@ git -C "<path>/T<id>" push -u origin "spec/<m>/T<id>"
 ```
 
 **One item per implementer run, inside a lane too.** A lane's items run in series, one
-implementer each, every one cut from the lane's branch as above. The window is why:
-the tk mod's compaction veto (`WINDOW.md`, *Three pieces*) keeps a subagent's context whole,
-so a run carrying a second item grows toward the model's real limit instead of compacting.
+implementer each, every one cut from the lane's branch as above. The compaction veto is
+why (`WINDOW.md`, *Three pieces*).
 
 Solo items dispatch beside it, in series within one repository; neither lane passes the
 local ceiling. An item too big for one subagent's context leaves the package carrying its

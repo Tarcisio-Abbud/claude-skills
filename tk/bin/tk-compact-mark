@@ -7,7 +7,7 @@ A generation later, reading the ledger, there was no way to tell a compaction
 that happened from one that did not. This hook is the trace. It blocks nothing
 and asks nothing: it appends one line to the package's ledger in the format
 `../skills/kickoff/LEDGER.md` fixes, and exits 0. The veto of a subagent's
-compaction is not here: it is tk's mod, `../hooks/compact-veto.js`.
+compaction is not here: it is the tk mod, `../hooks/compact-veto.js`.
 
 WHERE THE LEDGER IS. Not here, and not in the wiring. The ledger is one file per
 package, in that package's own outbox, so the address is volatile and the
@@ -159,20 +159,27 @@ def judgement(payload):
     """Whether the mod could have kept a subagent's compaction out of this line.
 
     The window is the SESSION's, read from the directory its transcript opened
-    in, as `tk-context --window` reads it. A failure to read it costs the words,
-    never the line.
+    in, as `tk-context --window` reads it. Where that directory is unknown, the
+    hook's own directory stands in, and the words say so. A failure to read it
+    costs the words, never the line. The model window is not in the payload, so
+    the words name the mod's second condition instead of judging it.
     """
     try:
         context = load("tk-context")
         path = payload.get("transcript_path")
-        base = (context.session_dir(path) if isinstance(path, str) else None) \
-            or payload.get("cwd") or os.getcwd()
+        base = context.session_dir(path) if isinstance(path, str) else None
+        fell_back = not base
+        if fell_back:
+            base = payload.get("cwd") or os.getcwd()
         found = context.numeric_window(base)
     except (Exception, SystemExit) as exc:    # a hook that raises interrupts the session
         return f"window unread ({plain(type(exc).__name__)})"
+    where = ", read from the hook's directory" if fell_back else ""
     if found is None:
-        return "window not numeric, so the tk mod vetoes nothing and a subagent's lands here too"
-    return f"window {found[0]}, so the tk mod vetoes a subagent's on Claude Code 2.1.287+"
+        return (f"window not numeric{where}, so the tk mod vetoes nothing "
+                "and a subagent's lands here too")
+    return (f"window {found[0]}{where}, so the tk mod vetoes a subagent's on Claude Code "
+            "2.1.287+ when the model window is larger")
 
 
 def event_line(payload):

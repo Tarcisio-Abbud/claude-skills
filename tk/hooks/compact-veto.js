@@ -1,4 +1,4 @@
-// compact-veto.js — tk's mod: a package's subagent does not auto-compact.
+// compact-veto.js — the tk mod: a package's subagent does not auto-compact.
 //
 // WHY IT EXISTS. The auto-compact window is the process's, so a subagent
 // compacts at the orchestrator's threshold, mid-item, and loses the item it was
@@ -19,10 +19,10 @@
 //      machine, so without this gate every session's subagents would lose their
 //      compaction while any package ran. `$.session.id()` answers the main
 //      session's id inside a subagent's event too (measured on 2.1.287);
-//   5. the compaction window is a number below the model's own window. `auto`
+//   5. the compaction window is a number below the model window. `auto`
 //      folds the threshold and the recovery from a prompt that is too long into
 //      one trigger, and no field tells them apart; refusing the recovery fails
-//      the request. Under a window set below the model's limit, the subagent
+//      the request. Under a compaction window below the model window, the subagent
 //      the veto keeps whole still has the distance between the two to work in.
 //      The model window read is the session's model's: a subagent on a model
 //      with a smaller window than the window set is outside this assumption.

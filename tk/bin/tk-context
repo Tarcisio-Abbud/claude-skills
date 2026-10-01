@@ -345,7 +345,7 @@ def numeric_window(base):
     The environment variable first, the settings key second, each obeyed only
     inside the harness's bounds. None covers `auto`, no key at all, and a value
     the harness refuses. `tk-compact-mark` asks this half alone: its ledger line
-    says whether the window let tk's mod veto a subagent's compaction, which the
+    says whether the window let the tk mod veto a subagent's compaction, which the
     mod does only under a numeric window.
     """
     raw = os.environ.get(WINDOW_ENV)
