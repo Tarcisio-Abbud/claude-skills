@@ -14,7 +14,7 @@ request's body, a sweep lane over the UNION of the package's pull requests. A
 finding that reaches none of them is not filed away — the file says so in the one
 sentence a report line would otherwise satisfy.
 
-WHAT IS PROVED. That the three destinations are written, numbered and ordered; that
+WHAT IS PROVED. That the destinations are written, numbered and ordered; that
 the audit's own moment — before the first run, with no lane and no pull request —
 has its own destination and it is not the queue; that AFK.md's two sites route
 there and prescribe no `add` of their own; that AUDIT.md's **backlog** outcome does
@@ -180,18 +180,22 @@ class TheDestinationsFile(unittest.TestCase):
     def test_the_file_is_there_and_carries_the_rule(self):
         self.assertTrue(self.text.strip(), "FINDINGS.md is empty")
         self.assertIn("No new queue item is born while a package runs", self.text,
-                      "the file no longer states the rule its three destinations "
+                      "the file no longer states the rule its destinations "
                       "exist to serve")
 
-    def test_the_three_destinations_are_ordered(self):
+    def test_the_destinations_are_ordered(self):
         """Order is the content: destination 1 is the cheapest and destination 3 is
-        the one that costs a lane, and a reader takes the first that holds."""
-        body = section(self.text, "## The three destinations")
-        self.assertTrue(body, "FINDINGS.md has no `## The three destinations` section")
+        the one that costs a lane, and a reader takes the first that holds. The
+        fourth is APPENDED, never inserted: `UNION.md` cites destination 2 by number."""
+        body = section(self.text, "## The destinations")
+        self.assertTrue(body, "FINDINGS.md has no `## The destinations` section")
         numbered = re.findall(r"^(\d)\. \*\*(.+?)\*\*", body, re.M)
-        self.assertEqual([n for n, _ in numbered], ["1", "2", "3"],
-                         "the destinations are not three numbered items in order")
-        first, second, third = (t for _, t in numbered)
+        self.assertEqual([n for n, _ in numbered], ["1", "2", "3", "4"],
+                         "the destinations are not four numbered items in order")
+        first, second, third, fourth = (t for _, t in numbered)
+        self.assertIn("run of the package", fourth)
+        self.assertIn("--budget unlimited", flat(body),
+                      "destination 4 no longer says which package may take it")
         self.assertIn("commit", first)
         self.assertIn("pull request's body", second)
         self.assertIn("Achados não tratados", second)
@@ -213,7 +217,7 @@ class TheDestinationsFile(unittest.TestCase):
 
     def test_the_audit_moment_has_a_destination_that_is_not_the_queue(self):
         """The correction of 2026-09-08: the wave audit runs before the first run, so
-        the three destinations above have nothing to attach to."""
+        the destinations above have nothing to attach to."""
         body = flat(section(self.text, "## Before the first run: the audit's own moment"))
         self.assertTrue(body, "FINDINGS.md never names the audit's own moment, and "
                               "AUDIT.md's **backlog** outcome points at nothing")

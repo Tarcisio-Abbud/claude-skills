@@ -371,7 +371,7 @@ close, so the pull request does not wait on it. It waits only on a finding no fi
 
 ## A session finding, unattended
 
-`FINDINGS.md` beside this file owns where the finding goes — the three destinations, the one
+`FINDINGS.md` beside this file owns where the finding goes — the destinations, the one
 exit that leaves the package without code, and the close's single question.
 Read it there, whole, at the moment of discovery. No new queue item is born while the package
 runs.

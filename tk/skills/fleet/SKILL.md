@@ -281,8 +281,9 @@ and reports at the close.
 ### The texts a run returns are born at the close
 
 A project run returns text meant for its own queue — a finding its package could not fix, a
-decision nobody was there to take. **The fleet births those texts and the run does not.**
-A `tk-queue add` is refused inside a subagent by this machine's `ask-before-queue-add` hook.
+decision nobody was there to take. Under `unlimited`, such a finding is one that
+`../kickoff/FINDINGS.md`'s destination 4 refused. **The fleet births those texts and the run
+does not.** A `tk-queue add` is refused inside a subagent by this machine's `ask-before-queue-add` hook.
 The refusal is the point: an item is written only after a human has seen its words. The
 first fleet run brought back twelve such texts and none was born. They reached the report, and
 a report line is a deferral with another name — `../kickoff/FINDINGS.md` owns that verdict.

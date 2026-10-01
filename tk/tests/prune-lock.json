@@ -184,12 +184,13 @@
     },
     "tk/skills/kickoff/FINDINGS.md": {
       "role": "guarded",
-      "lines": 75,
-      "body_words": 806,
+      "lines": 91,
+      "body_words": 988,
       "over": [
         "max_sentence_words",
         "inline_evidence"
-      ]
+      ],
+      "locked": "2026-10-01"
     },
     "tk/skills/kickoff/HYGIENE.md": {
       "role": "guarded",

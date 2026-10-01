@@ -57,7 +57,7 @@ A consumer that copies the values into itself has forked the policy — read the
 |---|---|---|---|---|---|---|
 | audit-finder | sonnet | session | local | none | none | Adversarial lens over the work; dispatch one agent per lens. |
 | verifier-1 | sonnet | session | local | none | none | Refutes a finding. A finding that would edit a spec or a ticket goes on to verifier-2. |
-| verifier-2 | opus | high | local | none | none | Second verdict, for a finding that edits a spec or a ticket. Effort is pinned. |
+| verifier-2 | opus | high | local | none | none | Second verdict, for a finding that edits a spec or a ticket, and for a finding that would become a run or a parked item of an unlimited package (`../skills/kickoff/FINDINGS.md`). Effort is pinned. |
 | tiebreak | opus | high | local | none | none | Settles a split verdict. Effort is pinned. |
 | root-cause-auditor | opus | high | local | none | none | Audits the CUT before the package is claimed — the dedup, merge and split candidates of `../skills/kickoff/ROOT-CAUSE.md`. It writes no repository: what it returns is the package the orchestrator then claims, so the checkpoint invariant has nothing to hold. |
 | implementer | opus | high | local | opens | required | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |

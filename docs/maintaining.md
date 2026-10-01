@@ -43,7 +43,7 @@ tk/
                                   the prompt, the count of the live ones, what a return must
                                   contain, and what is killed before a lane closes
   skills/kickoff/FINDINGS.md      branch file: which VEHICLE an unattended finding takes —
-                                  the three destinations, and the one exit that parks it
+                                  the four destinations, and the one exit that parks it
                                   without code
   skills/kickoff/REVIEW-CONTRACT.md
                                   branch file: the cold reviewer of a lane's own pull
