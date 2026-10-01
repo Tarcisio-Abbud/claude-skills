@@ -17,7 +17,9 @@ lane), and creates no branch.
 deletes the briefing of the item it closes, and nothing below re-reads the file. Then four beats
 in order, each reading a tree the one before it settled:
 
-**Reset.** Where the lane's worktree is gone, recreate it: `git worktree prune`, then
+**Reset.** Where `git ls-remote origin "spec/<m>-<slug>"`, run in the lane's repository, prints
+nothing, the exits below decide before any beat runs. Where the lane's worktree is gone,
+recreate it: `git worktree prune`, then
 `git worktree add --track -B "spec/<m>-<slug>" "<path>/spec-<m>" "origin/spec/<m>-<slug>"` —
 without `--track -B` the HEAD is detached and its push can report `Everything up-to-date` while
 the remote never moves. Then:
@@ -60,10 +62,12 @@ redone, not resumed: merge `origin/main` where `git merge-base --is-ancestor ori
 exits 1; a handoff silent on the review means the review is re-fired whole; the criteria run is
 redone whole either way.
 
-The exits grade different objects, so every row that applies runs. Handoff missing, or no
-`origin/spec/<m>-<slug>` after the prune while `gh pr list --state all` returns `[]`: stop and
-report the branch and the claims — they stay held, so no sibling takes the items. The same absent
-ref with a `MERGED` row: the lane is DELIVERED — close its open claimed items from the merge
-commit's own `<mergeCommit>^1..<mergeCommit>^2` merges, and the tail does not run. A claim held
-by another owner: that item leaves this generation, reported under the dependency gate. Nothing
-here reopens an item, reverts a merge or rewrites anything pushed.
+The exits grade different objects, so every row that applies runs. Handoff missing: stop and
+report the branch and the claims — they stay held, so no sibling takes the items. Reset's
+`git ls-remote` printing nothing while `gh pr list --state all` returns `[]`: the lane was never
+pushed, and it is this package's to create. Leave this file for step 3 at its floor recount,
+claiming nothing: the claims are inherited. The same absent ref with a `MERGED` row: the lane is
+DELIVERED — close its open claimed items from the merge commit's own
+`<mergeCommit>^1..<mergeCommit>^2` merges, and the tail does not run. A claim held by another
+owner: that item leaves this generation, reported under the dependency gate. Nothing here
+reopens an item, reverts a merge or rewrites anything pushed.
