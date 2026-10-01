@@ -10254,6 +10254,9 @@ class TestFirstAddCreatesTheQueueFile(WipCapTest):
                         "--criterion", "A: x"), proj)
         self.assertNotEqual(r.returncode, 0)
         self.assertNotIn("Traceback", r.stderr)
+        # the gate under test, not an earlier one: only the block ceiling sits
+        # after the skeleton is assigned, which is what makes this refusal a proof
+        self.assertIn("the item BLOCK has", r.stderr)
         self.assertFalse(os.path.exists(os.path.join(default, "next-steps.md")))
 
     def test_a_first_add_refused_by_the_wip_cap_writes_no_queue_file(self):

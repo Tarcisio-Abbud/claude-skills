@@ -96,18 +96,18 @@ present, and its absence keeps the default. Create one only to change that defau
 `.claude/tk/<skill>.md` of a project, where one exists, is read beside the global file.
 
 - `~/.claude/tk/env` — this machine's identity, its environment roster and its ceilings.
-  Read by `tk-queue` (`--env` and the open-item cap), `tk-roster`, `tk-contract`, `tk-ram`,
+  Read by `tk-queue` (`--env` and the open-item cap), `tk-roster`, `tk-contract`, `tk-hygiene`,
   `/tk:fleet` and `/tk:kickoff`. Absent, no item may name an environment and no cap applies.
 - `~/.claude/tk/kickoff.md` — extra agenda sources and dispatch commands for `/tk:kickoff`.
 - `~/.claude/tk/dispatch.md` — the concrete commands behind `/tk:dispatch`'s palette rows;
   `/tk:kickoff`'s package and audit modes read it too.
 - `~/.claude/tk/wrap-up.md` — where `/tk:wrap-up` routes a session's lessons; `/tk:merge-gate`
-  reads it too.
+  reads it too, and `/tk:fleet` takes its `outbox =` line for the vista.
 - `~/.claude/tk/review.md` — the tier and the proofs `/tk:review` applies.
 - `~/.claude/tk/verify.md` — site rules for `/tk:verify`.
 
-`tk-queue` needs none of them to start a queue: its first `add` creates `next-steps.md`, and
-the default queue dir with it.
+`tk-queue` needs none of them to start a queue: its first `add` creates `next-steps.md`. Run
+without `--dir`, it creates the default queue dir too; a `--dir` it is given must already exist.
 
 ## Working on this repo
 
