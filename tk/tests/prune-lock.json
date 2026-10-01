@@ -56,13 +56,14 @@
     "tk/skills/kickoff/WINDOW.md": {
       "role": "pruned",
       "report": "kickoff-report.md",
-      "lines": 533,
-      "body_words": 6069,
+      "lines": 589,
+      "body_words": 6776,
       "over": [
         "max_sentence_words",
         "sentences_over_30",
         "inline_evidence"
-      ]
+      ],
+      "locked": "2026-10-01"
     },
     "tk/skills/review/SKILL.md": {
       "role": "pruned",

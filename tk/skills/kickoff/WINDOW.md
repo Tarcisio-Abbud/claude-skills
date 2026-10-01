@@ -187,7 +187,7 @@ wrote into the handoff** — that package and no item beyond it. It claims that 
 
 The reason is the window it wakes into. A resumed package eats a window the user has not
 opened yet, and holding it to the items already claimed puts a ceiling on that appetite that
-needs no number.
+needs no number. `--budget unlimited` is the user lifting that ceiling on purpose.
 
 ## Auto-continue is a fail-safe, never a plan
 
@@ -237,7 +237,7 @@ different continuation texts, so a rule matching a sentence is a rule the next r
 
 The orchestrator's skill carries `disable-model-invocation: true`, and that lock decides what
 can open a successor. A subagent cannot invoke the command, so a subagent is not a generation
-(`../dispatch/SKILL.md`, *Mechanism boundaries*). Two vehicles remain:
+(`../dispatch/SKILL.md`, *Mechanism boundaries*). Three vehicles remain:
 
 - **A scheduled fire** whose prompt points at this skill's files by path rather than by
   command name — the route that same section documents for a locked skill — naming the
@@ -247,8 +247,10 @@ can open a successor. A subagent cannot invoke the command, so a subagent is not
   package ledger's last line and the handoff's hour first, and ends without opening anything
   where the predecessor has written since the reset.
 - **The user's own first line**, when they return.
+- **The fleet's refill**, for a project run: `../fleet/SKILL.md` step 4 re-dispatches a returned
+  run on its handoff.
 
-Which of the two this machine has is the site's answer, in `~/.claude/tk/kickoff.md`. **Where
+Which of the first two this machine has is the site's answer, in `~/.claude/tk/kickoff.md`. **Where
 neither is available unattended, the handoff IS the ending**: the package stops with its state
 on disk, and the next kickoff finishes it. That ending is a good one — it costs a night, and
 it costs nothing else.
@@ -258,6 +260,12 @@ it costs nothing else.
 `/tk:kickoff afk --budget N` (default 1) is how many orchestrator **generations** the package
 may spend, this one included. At `--budget 1` the orchestrator writes the handoff and stops;
 above it, a successor may be opened by a vehicle above, carrying `--budget N-1`.
+
+`--budget unlimited` lifts the two ceilings the user sets — generations, and `AFK.md` step 1's
+size cut. A successor of such a package carries `unlimited` again. The wall, the context
+threshold and the compact fire as before: on a site with no vehicle the compact keeps the one
+generation alive, and the wall still ends it with a handoff. A package that dies under it leaves
+a claim on every eligible item; `tk-queue release "<id>" --dir "<queue dir>"` hands each back.
 
 The design gives up on keeping the parent sharp. The **smart zone** is roughly the first ~100k
 tokens of a session, and a package cannot be orchestrated from inside it. So the package

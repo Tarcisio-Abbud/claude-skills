@@ -2,7 +2,7 @@
 name: fleet
 description: "Fleet run: one command opens the unattended package of EVERY project on this machine, and closes on one consolidated vista. Arg: the load — `afk` (default) or `docs-audit`."
 disable-model-invocation: true
-argument-hint: "[afk|docs-audit]"
+argument-hint: "[afk|docs-audit] [--budget N|unlimited]"
 arguments: load
 ---
 
@@ -184,10 +184,11 @@ The prompt carries, in this order:
    plugin copy and any worktree the fleet runs from. Resolve the path here and paste it, so the
    run follows the copy the fleet meant;
 3. **the load's own flags** — the table below says what each load carries, and a load whose skill
-   reads no flag is handed none. For `afk` the flag is **`--budget 1`, explicitly**. It restates
-   kickoff's default on purpose: a default can move. A project run is
-   one generation and writes a handoff instead of opening a successor. A successor opened
-   from inside a project run would be a second live orchestrator over that queue;
+   reads no flag is handed none. For `afk` the flag is **the fleet's own `--budget`**, `1` by
+   default, passed explicitly: a default can move. Free text asking for everything reads as
+   `unlimited`, said in the report. A project run never opens a successor. It writes a handoff
+   and returns; the refill below is the vehicle that opens one. A successor opened from inside
+   a project run would be a second live orchestrator over that queue;
 4. **the project's directory**, as the FIRST instruction the run obeys. Every `tk-queue` call
    resolves its queue from the cwd, and no dispatch mechanism here sets a subagent's cwd;
 5. **the order to run every suite in the FOREGROUND, with a declared timeout.** A run that
@@ -205,6 +206,12 @@ The prompt carries, in this order:
 run returns, its slot is free and the next project in the step-2 order enters immediately.
 Waiting for the slowest project run of a wave leaves every earlier finisher's slot idle for
 exactly as long as that member runs.
+
+**A run that returned holding claims is dispatched again.** Its handoff names claims still held,
+and the budget it carried had generations left. It re-enters the roster at its head. The fleet
+dispatches it on that handoff (`../kickoff/RESUME.md`), at budget N−1, never while its
+predecessor is alive. Under `unlimited` the budget stays `unlimited`. This repeats until the run
+returns holding no claim, or the wall closes the fleet.
 
 ### The fleet's quota ceiling
 
@@ -267,7 +274,7 @@ this machine. A run returning a quota failure is reporting a fact about the flee
   naming the reset time the error carried. The weekly wall deletes the tick
   (`../kickoff/WINDOW.md`, *The tick*).
 
-Each project run still carries `../kickoff/WINDOW.md` for itself, at `--budget 1` — its own
+Each project run still carries `../kickoff/WINDOW.md` for itself, at the fleet's `--budget` — its own
 handoff, its claims, its pushed tree. The fleet writes none of those. It stops sending work,
 and reports at the close.
 
@@ -331,6 +338,8 @@ covering every project that finished. The ones still in flight are named as such
 
 - every dispatchable project has been dispatched or is queued behind a slot, unless the quota
   ceiling or the weekly wall stopped the fleet first;
+- every run that returned holding claims, with budget left, has been dispatched again or is
+  queued behind a slot;
 - a quota reading was taken before each dispatch, and each one's age is on record;
 - every in-flight run carries a generated block, an absolute load path, that load's flags, its
   own working directory, the foreground-suite order and the order to write its texts into the
@@ -423,7 +432,7 @@ report — exactly as written:
 
 | Argument | What each project run is told to do | Flags it carries |
 |---|---|---|
-| `afk` (default) | follow `../kickoff/SKILL.md` with the `afk` argument | `--budget 1` |
+| `afk` (default) | follow `../kickoff/SKILL.md` with the `afk` argument | `--budget <the fleet's value>` |
 | `docs-audit` | follow `../docs-audit/SKILL.md` | none |
 
 **The `afk` load enters at `../kickoff/SKILL.md`, not at `AFK.md`.** `AFK.md` is a continuation.

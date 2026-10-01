@@ -13,7 +13,7 @@ takes no `--dir`.
 
 **Read `WINDOW.md` beside this file before anything below runs** — the quota wall and its
 handoff, the checkpoint invariant, the seam's context threshold, the five `--state` contents of
-an accumulated lane, the two vehicles that open a successor generation, `--budget N`.
+an accumulated lane, the vehicles that open a successor generation, `--budget N`.
 Those rules fire at moments the steps below do not choose. Read this file by section, never end
 to end: what a step defers is its BODY, not its existence. A session finding, at any step, takes
 *A session finding, unattended* below.
@@ -62,7 +62,8 @@ so a spec whose second ticket is blocked drops under the floor.
 
 **Cut** from the top of that list until the package fits one session — around 3–6 items or ~2h of
 summed Effort, an opening bid step 6's measurement corrects; what multiplies a lane is its
-correction cycles. Recount tickets per Spec among the survivors and re-apply the floor (the
+correction cycles. Under `--budget unlimited` there is no size cut: every survivor of the
+exclusions, the floor and `ROOT-CAUSE.md` is claimed, in queue order. Recount tickets per Spec among the survivors and re-apply the floor (the
 recount only demotes; a spec below the floor takes the solo lane). A package with an
 accumulated lane reserves two more lines — the review at parity with the summed lanes, and
 the tail as one suite plus the lane's N criteria and the merge of `origin/main` — or its
@@ -336,7 +337,7 @@ created the item and **carried** when it predates the package, each under the de
 sibling's claim or live audit comment, owner and moment), the lane gate (a spec's branch on the
 remote, the pull request's number or the deletion repair), any other `pack` exclusion (its
 printed value, and whether it names a defect in the item), or the effort gate (cut for size, with
-the ready-to-paste line that runs it).
+the ready-to-paste line that runs it; absent under `--budget unlimited`).
 An item step 3 found already fixed takes the **already resolved** rung, with the sha and date.
 Items verify ended at proof ready or DECISION owe nothing further.
 
