@@ -76,31 +76,35 @@ carries its reason.
 
 ### Fit the package in memory
 
-Other sessions on this machine hold memory the package's runs need, and only the user may close
-one. The package's **width** is the most runs it holds at once: one for the accumulated lane,
-plus one per repository its solo items land in. Fit the width before anything is claimed:
+Unless a fleet dispatched this package, fit it in memory here; the fleet already did, in
+`../fleet/SKILL.md` §3. Other sessions on this machine hold memory the package's runs need, and
+only the user may close one. The package's **width** is the most LOCAL runs it will hold at one
+moment. Count every run §3 and the tail may keep in flight together: implementers, the explore
+run, a verifier, a lens, a review's two reviewers — `HYGIENE.md` counts reviewers against the
+local ceiling too. Fit the width before anything is claimed:
 
-1. List every other live `claude` process on this machine with its working directory, this
-   session's own (`$CLAUDE_PID`) left out. Where `~/.claude/tk/kickoff.md` carries a command for
+1. List every other live `claude` process on this machine with its working directory, leaving
+   out this session's own process. Where `~/.claude/tk/kickoff.md` carries the command for
    this, run that one.
-2. Run `../../bin/tk-ram` and compare its fit with the width. Cap the width first at the most
-   the bin ever prints: closing sessions raises the fit to that top and no further. Exit 2 falls
-   back on `max-local-subagents`, as step 3 says.
-3. **It fits**, or the list is empty: report the list in one line, ask nothing, and leave every
-   session open.
-4. **It falls short:** under `pack`, step 2's menu carries the list as "close these to fit
-   <width> runs". The user closes them; the agent names sessions and never ends one. Read
-   `tk-ram` again after the answer. Under `afk`, nobody answers: the package runs at the fit
-   `tk-ram` gives.
+2. Run `../../bin/tk-ram` and compare its **fit** with the width. Cap the width first at the
+   most the bin ever prints: closing sessions raises the fit to that top and no further. A
+   printed `1` whose stderr says the raw fit was at or below zero is a fit of 0 (`WINDOW.md`,
+   the RAM axis). Exit 2 falls back on `max-local-subagents`, as §3 says.
+3. **It fits:** ask nothing. Every session stays open.
+4. **It falls short:** under `pack`, with sessions listed, §2's menu carries them as "close
+   these to fit <width> runs". The user closes them; the agent names sessions and never ends
+   one. Read `tk-ram` again after the answer. Where the fit is still short, no session was
+   listed, or the mode is `afk`, the package runs at the fit `tk-ram` gives.
 
-**Done when:** the list was reported, and where the fit fell short, an `(orquestrador)` line of
-`LEDGER.md` names the width, the fit and the list.
+**Done when:** an `(orquestrador)` line of `LEDGER.md` names the width, the fit and the list,
+whether the fit held or fell short.
 
 ## 2. `pack` only: confirm
 
 One multiSelect `AskUserQuestion` listing the package items, summed Effort in the question; the
-check IS the authorization. Where *Fit the package in memory* fell short, the same call carries its
-sessions as a second question. (`afk` skips this step: invoking it IS the authorization.)
+check IS the authorization. Where *Fit the package in memory* fell short with sessions listed,
+the same call carries them as a second question. (`afk` skips this step: invoking it IS the
+authorization.)
 **Done when:** the confirmed package is fixed.
 
 ## 3. Claim, then dispatch
@@ -202,8 +206,8 @@ works in the worktree already checked out on its branch, named by path.
 `WINDOW.md`'s "The tick" owns the quota axis, `max-local-opus`; concurrent runs count against
 `max-local-subagents`, the RAM axis. **Read it before each local dispatch:**
 `../../bin/tk-ram` prints what the cgroup fits now, `LEDGER.md` takes that line, and
-exit 2 falls back on the site key. Step 1's *Fit the package in memory* read it once against
-the whole width; this reading is the one each dispatch answers to. Where the harness's own cap
+exit 2 falls back on the site key. §1's *Fit the package in memory* read it once against the
+whole width; this reading is the one each dispatch answers to. Where the harness's own cap
 — `min(16, nproc - 2)` — is smaller, the difference stays UNUSED: weigh a second workflow
 beside the first, never Agent runs whose return lands in this session's context.
 
