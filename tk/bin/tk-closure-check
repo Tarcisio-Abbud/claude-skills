@@ -44,9 +44,24 @@ source and the PAIR against none.
 
 ROW NAMES, so that a caller greps for one rather than for prose: the five above,
 plus `ticket` — the pre-condition, that the item's own reference could be
-composed at all — and `item`, the line the escape quotes. Every row reads
-`<name>  <state>  <detail>`, and a detail spanning lines is indented under its
-own column.
+composed at all — `item`, the line the escape quotes, and `lane`, printed only
+under `--lane`. Every row reads `<name>  <state>  <detail>`, and a detail
+spanning lines is indented under its own column.
+
+LANE MODE, `--lane <ids>`. An accumulated lane's pull request carries one
+closing line per item, by design, so without the flag every item of a lane of
+two or more is red on `extras`: each one sees its siblings' lines. With it, a
+closing line counts as EXPECTED when its reference IS the composed reference of
+a listed sibling — the same composition as the item's own (`item_ticket`, then
+`qualify` under the tracker of the clone this run resolved), keyword honoured,
+owner half right — and any other closing line stays an extra, named. The `lane`
+row is red, naming the id, for each listed sibling whose line is absent, and for
+each whose reference cannot be composed. A sibling that LEFT the queue is one of
+those: its **Ticket:** field left with it, and its reference is never read off
+the body instead, because the body is the thing being checked. A sibling naming
+no ticket expects no line. The checked item may be listed or not: its own line
+is what `number` and `owner` ask, so its id in the list is skipped. An item with
+no ticket stays the escape below, with its siblings' lines expected.
 
 THE ITEM DECIDES WHAT COUNTS, NEVER THE BODY ALONE. An item naming no ticket is
 green only when the body closes nothing either — a body that closes something is
@@ -224,7 +239,41 @@ def owner_verdict(slug, wanted):
     return "right", owner
 
 
-def conditions(body, base, default, expected, label):
+def is_reference(mention, expected):
+    """Is this mention EXACTLY the composed `expected` — the number, the repository
+    half and a right owner half? What a sibling's line must be to count as
+    expected: aiming at the ticket with a wrong owner closes an issue of
+    somebody else's account, and that is an extra, not the sibling's line."""
+    owner, repo, number = split(expected)
+    return (aims_at(mention[1], mention[2], repo, number)
+            and owner_verdict(mention[1], owner)[0] == "right")
+
+
+def lane_row(honoured, siblings):
+    """The `lane` row: every listed sibling's own closing line is in the body.
+
+    `siblings` is [(label, expected or None, problem or None)] — a problem is a
+    reference that could not be composed, and it is red by itself; an expected of
+    None with no problem is a sibling naming no ticket, which expects no line."""
+    missing, present = [], []
+    for label, expected, problem in siblings:
+        if problem is not None:
+            missing.append(f"{label}: {problem}")
+        elif expected is None:
+            present.append(f"{label} names no ticket and expects no line")
+        elif any(is_reference(m, expected) for m in honoured):
+            present.append(f"{label} `{expected}`")
+        else:
+            missing.append(f"{label}: no closing line in the body names its ticket "
+                           f"`{expected}`. The line to paste is "
+                           f"`{reader.CLOSING_KEYWORD} {expected}`.")
+    if missing:
+        return ("lane", FAILED, "\n".join(missing))
+    return ("lane", OK, "every sibling's closing line is present: " + ", ".join(present)
+            if present else "no sibling listed besides this item")
+
+
+def conditions(body, base, default, expected, label, siblings=None):
     """[(name, state, detail)] — the five conditions, in a fixed order.
 
     Every one of them is reported, green or red, and that is deliberate: a gate
@@ -250,7 +299,9 @@ def conditions(body, base, default, expected, label):
     aimed = [m for m in candidates if aims_at(m[1], m[2], repo, number)]
     right = [m for m in aimed if owner_verdict(m[1], split(expected)[0])[0] == "right"]
     subject = (right or aimed or candidates or [None])[0]
-    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)]
+    expected_lines = [e for _, e, _ in siblings or () if e is not None]
+    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)
+              and not any(is_reference(m, e) for e in expected_lines)]
 
     out = []
     if honoured:
@@ -285,14 +336,22 @@ def conditions(body, base, default, expected, label):
         state, detail = owner_verdict(subject[1], split(expected)[0])
         out.append(("owner", OK, detail) if state == "right" else ("owner", FAILED, detail))
 
+    # a line of a sibling whose reference could not be composed lands here too:
+    # nothing vouches for it, and the `lane` row says why
+    nor = (", nor the composed reference of a listed lane sibling"
+           if siblings is not None else "")
     if strays:
         out.append(("extras", FAILED,
                     f"the body also closes {', '.join(spell(m) for m in strays)}, which is "
-                    f"not {label}'s ticket. The forge honours EVERY keyword and reference "
+                    f"not {label}'s ticket{nor}. The forge honours EVERY keyword and reference "
                     "in a body, not the first one, so merging this pull request closes "
                     "that ticket too — silently, and there is no undo."))
     else:
-        out.append(("extras", OK, "no other closing line in the body"))
+        out.append(("extras", OK, "no other closing line in the body"
+                    + (" besides the listed lane siblings'" if siblings is not None else "")))
+
+    if siblings is not None:
+        out.append(lane_row(honoured, siblings))
 
     if base != default:
         out.append(("base", FAILED,
@@ -338,20 +397,28 @@ def refused(refusal, label, remedy=None):
     return report([("ticket", FAILED, detail + ("\n" + remedy if remedy else ""))], label)
 
 
-def escape(block, body, label):
+def escape(block, body, label, siblings=None):
     """Verdict 5 for an item that names no ticket — the merge gate's own escape, and
     it is the ITEM that gives it. Every closing line is named, not the first: a
-    body carrying two of them closes two tickets this item never claimed."""
-    closing = [m for m in mentions(body) if m[0].lower() in reader.KEYWORDS]
+    body carrying two of them closes two tickets this item never claimed. Under
+    `--lane` a listed sibling's own line is not one of them, and the `lane` row
+    asks that each is there."""
+    honoured = [m for m in mentions(body) if m[0].lower() in reader.KEYWORDS]
+    expected_lines = [e for _, e, _ in siblings or () if e is not None]
+    closing = [m for m in honoured
+               if not any(is_reference(m, e) for e in expected_lines)]
+    lane = [lane_row(honoured, siblings)] if siblings is not None else []
     if closing:
         return report([("ticket", FAILED,
                         f"{label} names no ticket, and the body says "
                         f"{', '.join(spell(m) for m in closing)} — a closing line for a "
                         "ticket this item never claimed. Drop it, or point the item at "
-                        "that ticket.")], label)
+                        "that ticket.")] + lane, label)
     # the row below is the quotation the digest is required to show
-    return report([("ticket", OK, f"{label} names no ticket, and the body closes nothing"),
-                   ("item", OK, block.splitlines()[0].strip())], label)
+    beside = " besides its lane siblings' lines" if siblings is not None else ""
+    return report([("ticket", OK,
+                    f"{label} names no ticket, and the body closes nothing{beside}"),
+                   ("item", OK, block.splitlines()[0].strip())] + lane, label)
 
 
 # What the reader's refusal cannot know: WHY verdict 5 wanted the item. The
@@ -361,6 +428,45 @@ CLOSED_REMEDY = (
     "with the item, and the log line does not carry it. Ask verdict 5 BEFORE the close — "
     "the pull request's body is written at `AFK.md` step 5 stage 6 and the item closes at "
     "stage 7 — or answer it by hand against the reference that body carries.")
+
+
+# The same ordering, seen from a sibling: an earlier item of the lane closed at
+# its own stage 7, before this item's verdict 5 was asked.
+LANE_CLOSED_REMEDY = (
+    "Its **Ticket:** field left the queue with it, so its reference can no longer be "
+    "composed, and it is never read off the body instead. Ask verdict 5 while EVERY "
+    "lane item is still open, or answer this sibling's line by hand.")
+
+
+def lane_siblings(args, memdir, slug):
+    """[(label, expected or None, problem or None)] for each listed id other than
+    the checked one, in the order given. Each reference is COMPOSED exactly as the
+    item's own is, under the same tracker; a refusal on the way is the problem."""
+    out = []
+    for wanted in args.lane:
+        if wanted == args.id:
+            continue
+        label = f"T{wanted:03d}"
+        try:
+            block, label = reader.item_block(memdir, wanted)
+            ticket = reader.item_ticket(block, label)
+        except reader.Refusal as refusal:
+            if refusal.code == "no-ticket":
+                out.append((label, None, None))
+                continue
+            problem = f"{refusal.code}: {refusal.message}"
+            if refusal.code == "closed":
+                problem += "\n" + LANE_CLOSED_REMEDY
+            out.append((label, None, problem))
+            continue
+        # `slug()` stays OUTSIDE the per-sibling catch: a clone with no tracker is
+        # the run's defect, reported on the `ticket` row, not one sibling's
+        tracker = slug()
+        try:
+            out.append((label, reader.qualify(ticket, tracker, label), None))
+        except reader.Refusal as refusal:
+            out.append((label, None, f"{refusal.code}: {refusal.message}"))
+    return out
 
 
 def check(args):
@@ -382,22 +488,45 @@ def check(args):
     # resolved before either is needed — and NOT resolved for an item with no
     # ticket read from a body on disk, where no clone is asked anything
     clone = None
-    if ticket is not None or args.pr is not None:
+    if ticket is not None or args.pr is not None or args.lane is not None:
         try:
             clone = reader.item_clone(block, label, args.repo)
         except reader.Refusal as refusal:
             return refused(refusal, label)
 
-    if ticket is None:
-        return escape(block, pull_request(args, clone)[0], label)
+    # the tracker is read once, and only when a reference is composed: a lane
+    # whose siblings name no ticket asks it nothing, as the escape always did
+    slugs = []
+
+    def slug():
+        if not slugs:
+            slugs.append(reader.tracker_slug(clone, label))
+        return slugs[0]
 
     try:
-        expected = reader.qualify(ticket, reader.tracker_slug(clone, label), label)
+        siblings = None if args.lane is None else lane_siblings(args, memdir, slug)
+        if ticket is not None:
+            expected = reader.qualify(ticket, slug(), label)
     except reader.Refusal as refusal:
         return refused(refusal, label)
 
+    if ticket is None:
+        return escape(block, pull_request(args, clone)[0], label, siblings)
+
     body, base, default = pull_request(args, clone)
-    return report(conditions(body, base, default, expected, label), label)
+    return report(conditions(body, base, default, expected, label, siblings), label)
+
+
+def lane_ids(raw):
+    """`--lane T001,T002,…` — each id in the syntax the positional ID takes,
+    duplicates dropped, order kept. An empty piece is refused, not skipped: a
+    trailing comma is a sibling somebody meant to name."""
+    ids = []
+    for piece in raw.split(","):
+        wanted = reader.tk_queue.parse_id(piece.strip())
+        if wanted not in ids:
+            ids.append(wanted)
+    return ids
 
 
 def main(argv=None):
@@ -422,6 +551,10 @@ def main(argv=None):
     parser.add_argument("--body-file", metavar="PATH",
                         help="the body on disk, for a check made before the pull request "
                              "exists; needs --base and --default-branch")
+    parser.add_argument("--lane", type=lane_ids, metavar="IDS",
+                        help="the accumulated lane's item ids, comma-separated: their "
+                             "own closing lines are expected rather than extras, and each "
+                             "must be present (the checked item may be listed)")
     parser.add_argument("--base", metavar="BRANCH",
                         help="the branch the pull request targets, with --body-file")
     parser.add_argument("--default-branch", metavar="BRANCH",
