@@ -469,21 +469,45 @@ MUTATIONS = [
 
     # --- T503: which queue dir a command may create -------------------------
     ("T503 a write command no longer creates the missing default dir",
-     "        if args.cmd not in READERS:\n            try:\n                os.makedirs(",
+     "        if args.cmd not in READERS and not getattr(args, \"dry_run\", False):\n"
+     "            try:\n                os.makedirs(",
      "        if False:\n            try:\n                os.makedirs(",
      ["TestQueueDirCreation.test_a_write_command_creates_the_missing_default_dir"]),
 
     ("T503 a read command creates the default dir too",
-     "        if args.cmd not in READERS:\n            try:\n                os.makedirs(",
+     "        if args.cmd not in READERS and not getattr(args, \"dry_run\", False):\n"
+     "            try:\n                os.makedirs(",
      "        if True:\n            try:\n                os.makedirs(",
      ["TestQueueDirCreation."
       "test_a_read_command_on_the_missing_default_dir_reports_empty_and_creates_nothing"]),
 
     ("T503 a never-written default queue fails the readers again",
-     '        if not os.path.exists(memdir):\n            return ""',
-     '        if False:\n            return ""',
+     '        if args.dir:\n            fail("next-steps.md not found in " + memdir)',
+     '        if True:\n            fail("next-steps.md not found in " + memdir)',
      ["TestQueueDirCreation."
-      "test_a_read_command_on_the_missing_default_dir_reports_empty_and_creates_nothing"]),
+      "test_a_read_command_on_the_missing_default_dir_reports_empty_and_creates_nothing",
+      "TestQueueDirCreation."
+      "test_a_failed_write_leaves_a_default_queue_the_readers_still_read_as_empty"]),
+
+    # over-trigger direction: an explicit --dir holding no queue file is a wrong
+    # path, not an empty queue
+    ("T503 an explicit --dir without next-steps.md reads as an empty queue",
+     '        if args.dir:\n            fail("next-steps.md not found in " + memdir)',
+     '        if False:\n            fail("next-steps.md not found in " + memdir)',
+     ["TestQueueDirCreation."
+      "test_an_explicit_dir_without_a_queue_file_still_fails_the_readers"]),
+
+    ("T503 a migrate preview creates the missing default dir",
+     '        if args.cmd not in READERS and not getattr(args, "dry_run", False):\n',
+     "        if args.cmd not in READERS:\n",
+     ["TestQueueDirCreation."
+      "test_a_migrate_preview_on_the_missing_default_dir_creates_nothing"]),
+
+    ("T503 a preview locks a default dir that does not exist",
+     "    if args.cmd not in READERS and os.path.isdir(memdir):\n",
+     "    if args.cmd not in READERS:\n",
+     ["TestQueueDirCreation."
+      "test_a_migrate_preview_on_the_missing_default_dir_creates_nothing"]),
 
     ("T503 an explicit --dir is created like the default",
      "        d = os.path.abspath(os.path.expanduser(args.dir))\n",

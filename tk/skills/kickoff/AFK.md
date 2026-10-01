@@ -138,7 +138,7 @@ Each run's prompt carries, produced here and never delegated back: the **contrac
 verbatim from `../../bin/tk-contract --role <row>` — `implementer`, `implementer-spec` on the
 accumulated lane, whose `pr = none` cell withholds the per-ticket pull request, or
 `lane-implementer` for a lane that opens its own pull request — and
-the **item's distilled contract**: the item, the note behind its `[[slug]]` at one hop,
+the **item's distilled contract**: the item, the note behind its pointer at one hop,
 its handoff; context in none of the three is a missing handoff, named in its own line.
 **A public repository adds the exit rule.** `gh repo view --json isPrivate -q .isPrivate`, run
 in the item's clone before any branch is named, decides: any answer but `true` is public. On a

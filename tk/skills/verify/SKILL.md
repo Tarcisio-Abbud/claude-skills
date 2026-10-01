@@ -96,7 +96,7 @@ never a substitute for it.
 
 Lives in the **body of the PR**. With no PR, in a note at a destination that step 2 of
 `../wrap-up/SKILL.md` names. The item carries the pointer, never the block:
-`tk-queue done "<id>" --dir "<queue dir>" --how "[[slug]] — <what resolved it>"`.
+`tk-queue done "<id>" --dir "<queue dir>" --how "<pointer> — <what resolved it>"`.
 Pass no `--note`: it carries substance only where no pointer exists. The block is written
 once, here — a wrap-up digest, a reviewer or the next session displays it, never re-derives it.
 

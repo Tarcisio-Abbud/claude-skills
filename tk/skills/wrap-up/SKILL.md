@@ -51,7 +51,8 @@ FIRST destination that applies:
    a new file there, committed through step 5's gate.
 
 In every destination, update rather than duplicate, delete what proved wrong, and make
-relative dates absolute.
+relative dates absolute. A queue item's **pointer** to a lesson is `[[slug]]` where the
+destination is auto-memory, and the lesson's repo-relative path elsewhere.
 
 **Pending items go through `tk-queue`** — contract, commands and the pointer rule:
 `../../reference/queue.md`. Decide each new item's `--criterion` here rather than leaving

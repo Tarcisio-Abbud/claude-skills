@@ -1471,6 +1471,38 @@ class TestQueueDirCreation(QueueTest):
                 self.assertFalse(os.path.exists(os.path.dirname(missing)),
                                  f"{cmd} created {missing}")
 
+    def test_a_failed_write_leaves_a_default_queue_the_readers_still_read_as_empty(self):
+        # `done` on a fresh project fails (no next-steps.md), yet it has already
+        # created the default dir and its lock: the dir exists and the queue file
+        # does not — the same state a reader racing a first write meets
+        for cmd in ("list", "pack"):
+            with self.subTest(cmd=cmd):
+                proj, default = self.fresh_project("failed-" + cmd)
+                self.assertNotEqual(self.spawn(WRITE_ARGV["done"], proj).returncode, 0)
+                self.assertTrue(os.path.isdir(default))
+                self.assertFalse(os.path.exists(os.path.join(default, "next-steps.md")))
+                r = self.spawn(READ_ARGV[cmd], proj)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("(queue empty)" if cmd == "list" else "eligible (0 of 0",
+                              r.stdout)
+
+    def test_an_explicit_dir_without_a_queue_file_still_fails_the_readers(self):
+        for cmd in ("list", "pack"):
+            with self.subTest(cmd=cmd):
+                d = os.path.join(self.dir, "no-queue-file-" + cmd)
+                os.makedirs(d)
+                r = self.spawn((*READ_ARGV[cmd], "--dir", d), self.dir)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("next-steps.md not found", r.stderr)
+
+    def test_a_migrate_preview_on_the_missing_default_dir_creates_nothing(self):
+        proj, default = self.fresh_project("preview")
+        r = self.spawn(("migrate", "--dry-run"), proj)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("next-steps.md not found", r.stderr)
+        self.assertFalse(os.path.exists(os.path.dirname(default)),
+                         f"the preview created {default}")
+
 
 # --- review#2: the real field is the one in the CHAIN, never the last marker ---
 

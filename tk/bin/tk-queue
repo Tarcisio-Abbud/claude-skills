@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """tk-queue — deterministic gate for a project's pending-items queue.
 
-The ONLY writer of the two queue files in the project's tk directory:
+The ONLY writer of the two queue files in the project's queue dir:
 
   next-steps.md   open items only (the queue /tk:kickoff dispatches)
   done-log.md     what left the queue, when, and how (feeds progress reports)
@@ -106,10 +106,11 @@ number is the user's, chosen on the machine that lives with it. What stays open
 at the cap is the pair of sinks that write no new item — `edit --text` on an item
 that already exists, and `handoff`.
 
-Every mutating command prints the resolved memory dir on stderr before acting:
+Every mutating command prints the resolved queue dir on stderr before acting:
 the target queue is inferred from --dir or the cwd, and an unseen inference is
 an unchecked one. Only the cwd-derived default dir is ever created, and only by a
-write command — `memory_dir` decides; an explicit --dir must already exist.
+write command, never by a `migrate --dry-run` preview — `memory_dir` decides; an
+explicit --dir must already exist.
 """
 
 import argparse
@@ -345,11 +346,13 @@ def memory_dir(args):
 
     The ONE place that decides whether that directory may be created. Only the
     cwd-derived default is ever created, and only by a WRITE command (any
-    command outside READERS), before `queue_lock` needs it: on a fresh install
-    no queue dir exists yet, and the first write is what gives the project its
-    queue. A READ command on a missing default creates nothing and reads it as
-    an empty queue (`read_queue`). An explicit `--dir` is never created, on a
-    read or a write: a mistyped path must fail, not grow a stray queue.
+    command outside READERS, a `migrate --dry-run` preview excepted), before
+    `queue_lock` needs it: on a fresh install no queue dir exists yet, and the
+    first write is what gives the project its queue. A READ command on a missing
+    default creates nothing and reads it as an empty queue (`read_queue`); a
+    preview creates nothing either, and `main` takes no lock in a dir that is not
+    there. An explicit `--dir` is never created, on a read or a write: a mistyped
+    path must fail, not grow a stray queue.
 
     The encoding is `tk_site.project_slug`, not a regex of its own. It was one
     here and one there, and the roster runs the SAME rule BACKWARDS — it walks
@@ -362,7 +365,7 @@ def memory_dir(args):
         d = os.path.abspath(os.path.expanduser(args.dir))
     else:
         d = os.path.join(PROJECTS_ROOT, tk_site.project_slug(os.getcwd()), "memory")
-        if args.cmd not in READERS:
+        if args.cmd not in READERS and not getattr(args, "dry_run", False):
             try:
                 os.makedirs(d, exist_ok=True)
             except OSError as e:
@@ -374,18 +377,21 @@ def memory_dir(args):
     return d
 
 
-def read_queue(memdir):
+def read_queue(args, memdir):
     """`next-steps.md`'s text, for the readers of one queue (`list`, `pack`).
 
-    A missing `memdir` here can only be the cwd-derived default that no write
-    has created yet — `memory_dir` refuses a missing `--dir` — and a queue
-    nobody ever wrote to is an EMPTY queue, not an error.
+    On the cwd-derived default, a missing `next-steps.md` is a queue nobody has
+    written to yet — an EMPTY queue, not an error — whether or not its dir
+    exists: a write that failed after `memory_dir` created the dir, or a first
+    write still in flight, leaves the dir without the file. An explicit `--dir`
+    without the file still fails: `memory_dir` has already refused a missing one,
+    and a dir the caller named that holds no queue is more likely a wrong path.
     """
     content = read(os.path.join(memdir, "next-steps.md"))
     if content is None:
-        if not os.path.exists(memdir):
-            return ""
-        fail("next-steps.md not found in " + memdir)
+        if args.dir:
+            fail("next-steps.md not found in " + memdir)
+        return ""
     return content
 
 
@@ -2978,7 +2984,7 @@ def age_cell(days):
 
 def cmd_list(args):
     memdir = memory_dir(args)
-    content = read_queue(memdir)
+    content = read_queue(args, memdir)
     opens = [text for kind, text in split_blocks(content) if kind == "item-open"]
     ids = [item_id(t) for t in opens]
     # the ID, not the spelling: T001 and T0001 are one number and two rows, and a
@@ -3853,7 +3859,7 @@ def cmd_pack(args):
     # dispatched — the blindness back, wearing a typo
     blocked = frozenset(validate_ref("blocked", v) for v in (args.blocked or []))
     memdir = memory_dir(args)
-    content = read_queue(memdir)
+    content = read_queue(args, memdir)
     identity = pack_identity()
     # ONE pass over the queue, in its order, then the lane. The lane is the only
     # rule here that is not about the item alone — it needs to know which spec
@@ -4003,7 +4009,7 @@ def check_ceiling(item, force):
             f"{fields} of fields, so the cut comes out of the "
             f"{'text' if text >= fields else 'fields'}. An item is a pending "
             "action, not an essay: move the context to a durable note — a repo doc, or "
-            "the store your site routes lessons to — and link it ([[slug]])." + ("" if force else " --force raises the ceiling to "
+            "the store your site routes lessons to — and point the item at it." + ("" if force else " --force raises the ceiling to "
             f"{CEILING_FORCED} for the rare exception.")
         )
 
@@ -4030,7 +4036,7 @@ def check_field_ceilings(force, **fields):
         if len(val) > limit:
             fail(f"--{name} has {len(val)} chars (field ceiling {limit}). A field is one "
                  "line: put the substance in a durable note — a repo doc, or the store "
-                 "your site routes lessons to — and link it ([[slug]])." + ("" if force else f" --force raises it to {forced}."))
+                 "your site routes lessons to — and point the item at it." + ("" if force else f" --force raises it to {forced}."))
 
 
 # --- the WIP cap: how many open items this machine may hold at once ---------
@@ -5979,7 +5985,9 @@ def cmd_migrate(args):
     # The queue's exclusive lock is still taken, dry or not — previewing a queue
     # another writer is mid-rewrite of would preview a state that never existed — so
     # a queue no command has ever written gains an EMPTY `.tk-queue.lock`. It is the
-    # one name a preview can bring into existence, and it never carries a byte.
+    # one name a preview can bring into existence, and it never carries a byte. On a
+    # default dir no write has created, the preview creates nothing at all — no dir,
+    # no lock (`memory_dir`, `main`).
     save = (lambda _path, _text: None) if args.dry_run else write_atomic
     if args.dry_run:
         print(f"tk-queue: --dry-run: writes {DRY_RUN_WRITES}. The report below is what a "
@@ -6138,7 +6146,7 @@ def cmd_migrate(args):
 def main():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--dir", default=argparse.SUPPRESS,
-                        help="memory dir override (default: resolved from cwd)")
+                        help="queue dir override (default: resolved from cwd)")
     p = argparse.ArgumentParser(prog="tk-queue", description=__doc__.splitlines()[0])
     p.add_argument("--dir", default=None, help=argparse.SUPPRESS)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -6209,7 +6217,7 @@ def main():
 
     d = sub.add_parser("done", parents=[common], help="conclude: move the item to the done-log")
     d.add_argument("id", type=parse_id)
-    d.add_argument("--how", required=True, help="outcome + pointer: 'PR #82', 'commit abc123', '[[slug]]'")
+    d.add_argument("--how", required=True, help="outcome + pointer: 'PR #82', 'commit abc123', '[[slug]]', 'docs/x.md'")
     d.add_argument("--summary", help="replaces the item text on the log line")
     d.add_argument("--note", help="extra substance when there is NO pointer (the line is the only record)")
     d.add_argument("--force", action="store_true",
@@ -6391,12 +6399,16 @@ def main():
     memdir = None if args.cmd == "report" else memory_dir(args)
     if memdir is not None:
         print(f"tk-queue: queue: {memdir}", file=sys.stderr)
-    if args.cmd not in READERS:
+    if args.cmd not in READERS and os.path.isdir(memdir):
         # taken BEFORE the handler's first read, released after its last write:
         # a lock around the write alone would still let a stale snapshot win
         with queue_lock(memdir):
             handler(args)
     else:
+        # a reader takes no lock; neither does a `migrate --dry-run` aimed at a
+        # default dir no write has created (the one non-reader `memory_dir`
+        # lets through missing), since the lock file would be the one thing it
+        # created
         handler(args)
 
 

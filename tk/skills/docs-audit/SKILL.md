@@ -68,8 +68,8 @@ An index line that survived its file's correction is stale by the same test as t
 pointer with no file, a file with no pointer, and a `[[link]]` resolving to neither memory
 nor canonical store are all findings.
 
-**Done when:** auto-memory was off and the skip was said, or every file in `memory/`
-carries one of the four outcomes, none unread. Each
+**Done when:** auto-memory was off and the skip was said, or every file in the
+auto-memory directory carries one of the four outcomes, none unread. Each
 promotion is written into the canonical store, and every correction is applied. `MEMORY.md`
 is one line per file, with the two queue pointers intact. The user has the pruning proposal,
 file by file with its evidence, and nothing is deleted.

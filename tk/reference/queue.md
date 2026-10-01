@@ -1,8 +1,8 @@
 # The queue contract: `next-steps.md` + `done-log.md`, written only by `tk-queue`
 
 Single source for a project's queue of pending items. Two sibling files in the project's
-**tk directory**, `~/.claude/projects/<cwd-slug>/memory/`, which the first write command
-creates. With auto-memory on, each carries a pointer in its `MEMORY.md`:
+**queue dir**, `~/.claude/projects/<cwd-slug>/memory/`, which the first write command
+creates. With auto-memory on, each file carries a pointer in the queue dir's `MEMORY.md`:
 
 - **`next-steps.md`** — OPEN items only, the queue `/tk:kickoff` dispatches.
 - **`done-log.md`** — what left the queue (FEITO or DESCARTADO), when, and how. Feeds
@@ -51,7 +51,7 @@ to a real run's; the banner that tells them apart is on **stderr**.
 ## The two size ceilings
 
 An item is a pending action, not an essay — durable context goes to a note
-`../skills/wrap-up/SKILL.md` step 2 routes, linked with `[[slug]]`. The script enforces
+`../skills/wrap-up/SKILL.md` step 2 routes, linked by the item's pointer. The script enforces
 two ceilings:
 
 - **the block ceiling**, on the whole item: `add` always; `edit` whenever a prose flag

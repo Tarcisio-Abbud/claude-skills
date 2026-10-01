@@ -13,4 +13,4 @@ item left: end the loop and summarize what remains.
 ```
 
 An edit takes effect on the next iteration. The file belongs to the project and is versioned
-there; the queue stays in the project's tk directory.
+there; the queue stays in the project's queue dir.
