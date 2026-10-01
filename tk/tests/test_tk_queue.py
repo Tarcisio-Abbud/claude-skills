@@ -8163,15 +8163,16 @@ class TestWipCap(WipCapTest):
         self.assertNotIn("another project's name into this session's output", flat)
         self.assertIn("names the sibling queue whose file cannot be read", flat)
 
-    def test_the_untested_branch_says_it_is_the_race_and_not_a_first_add(self):
-        """F9's decline is only recorded where a reader finds it. The `content is
-        None` branch is reachable ONLY by a queue vanishing under the count:
-        `tk-roster` lists a project where the queue is already a plain file, and
-        a missing TARGET queue is refused further up `cmd_add`. The first `add`
-        into a brand-new queue never reaches this function."""
-        doc = load_tk().open_items.__doc__
-        self.assertIn("THAT RACE IS THE ONLY WAY INTO THAT", doc)
-        self.assertNotIn("The other reachable way in is a", doc)
+    def test_the_missing_file_branch_names_both_ways_in(self):
+        """The `content is None` branch has two ways in: a queue vanishing under
+        the count, and the TARGET queue on its first `add`, whose file `cmd_add`
+        writes only after this gate. It once claimed the race alone, while
+        `cmd_add` refused a missing queue file; that refusal is gone, and a
+        docstring still claiming it sends a reader after a guard that no longer
+        exists. `TestFirstAddCreatesTheQueueFile` drives the second way."""
+        flat = " ".join(load_tk().open_items.__doc__.split())
+        self.assertIn("The other is the TARGET queue on its first `add`", flat)
+        self.assertNotIn("ONLY WAY INTO THAT", flat)
 
 
 class TestWipCapPerQueue(WipCapTest):
@@ -10170,6 +10171,109 @@ class TestPackAll(WipCapTest):
         r = self.pack_all()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.strip(), "(no queue on this machine)")
+
+
+# --- the first `add` creates the queue file ----------------------------------
+
+class TestFirstAddCreatesTheQueueFile(WipCapTest):
+    """`add` used to refuse a queue dir holding no `next-steps.md`, naming "the
+    first kickoff" as the step that creates it — and nothing in the plugin ever
+    wrote that file, so a fresh install could never add its first item. `add`
+    now writes the file itself, and only once every gate has passed: a refused
+    first add leaves the disk as it found it."""
+
+    def setUp(self):
+        super().setUp()
+        self.site_mod = _load_tk_site()
+
+    def fresh_default(self, name, make_dir=True):
+        """A project with no queue file, and its default queue dir — created
+        empty when `make_dir`, absent otherwise."""
+        proj = os.path.realpath(os.path.join(self.dir, "projects-src", name))
+        os.makedirs(proj)
+        default = os.path.join(self.home, ".claude", "projects",
+                               self.site_mod.project_slug(proj), "memory")
+        if make_dir:
+            os.makedirs(default)
+        return proj, default
+
+    def spawn(self, argv, cwd):
+        """`tk-queue` with NO `--dir`: the default queue dir is under test."""
+        return subprocess.run([sys.executable, TK, *argv], capture_output=True, text=True,
+                              cwd=cwd, env=dict(os.environ, HOME=self.home), timeout=60)
+
+    def assert_round_trip(self, path, run):
+        """The created file reads back through `list` and takes a second `add`."""
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertTrue(text.startswith("---\nname: next-steps\n"), text)
+        self.assertIn("**T001** — achado da review", text)
+        r = run(("list",))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+        r = run(("add", "segundo item", "--class", "AUTONOMOUS", "--effort", "S",
+                 "--criterion", "A: y"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added T002", r.stdout)
+        r = run(("list",))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("T001", r.stdout)
+        self.assertIn("T002", r.stdout)
+        r = run(("pack",))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("eligible (2 of 2", r.stdout)
+
+    def test_add_on_a_fresh_default_queue_dir_writes_the_first_item(self):
+        for make_dir in (True, False):
+            with self.subTest(dir_already_there=make_dir):
+                proj, default = self.fresh_default(f"fresh-{make_dir}", make_dir)
+                path = os.path.join(default, "next-steps.md")
+                self.assertFalse(os.path.exists(path))
+                r = self.spawn(self.ADD, proj)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("added T001", r.stdout)
+                self.assertTrue(os.path.isfile(path))
+                self.assert_round_trip(path, lambda argv: self.spawn(argv, proj))
+
+    def test_add_with_an_explicit_dir_holding_no_queue_file_writes_the_first_item(self):
+        d = os.path.join(self.dir, "named-queue")
+        os.makedirs(d)
+        r = self.add_in(d)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added T001", r.stdout)
+
+        def run(argv):
+            return subprocess.run([sys.executable, TK, *argv, "--dir", d],
+                                  capture_output=True, text=True, cwd=self.dir,
+                                  env=dict(os.environ, HOME=self.home), timeout=60)
+        self.assert_round_trip(os.path.join(d, "next-steps.md"), run)
+
+    def test_a_first_add_refused_by_the_block_ceiling_writes_no_queue_file(self):
+        proj, default = self.fresh_default("ceiling")
+        r = self.spawn(("add", "x" * 800, "--class", "AUTONOMOUS", "--effort", "S",
+                        "--criterion", "A: x"), proj)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(default, "next-steps.md")))
+
+    def test_a_first_add_refused_by_the_wip_cap_writes_no_queue_file(self):
+        # the cap counts the machine, and the fresh queue is counted as empty
+        # rather than skipped: one open item elsewhere fills a cap of one
+        self.site(site_cap(1))
+        self.roster_queue("other", item(1, "aberto noutra fila"))
+        proj, default = self.fresh_default("capped")
+        r = self.spawn(self.ADD, proj)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("against a cap of 1", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(default, "next-steps.md")))
+
+    def test_a_command_that_still_needs_the_file_names_add_as_its_remedy(self):
+        proj, _ = self.fresh_default("remedy")
+        r = self.spawn(("done", "T001", "--how", "PR #1"), proj)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("next-steps.md not found", r.stderr)
+        self.assertIn("`tk-queue add`", r.stderr)
+        self.assertNotIn("first kickoff", r.stderr)
 
 
 if __name__ == "__main__":

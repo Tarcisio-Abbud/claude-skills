@@ -483,8 +483,8 @@ MUTATIONS = [
       "test_a_read_command_on_the_missing_default_dir_reports_empty_and_creates_nothing"]),
 
     ("T503 a never-written default queue fails the readers again",
-     '        if args.dir:\n            fail("next-steps.md not found in " + memdir)',
-     '        if True:\n            fail("next-steps.md not found in " + memdir)',
+     '        if args.dir:\n            fail(no_queue_file(memdir))',
+     '        if True:\n            fail(no_queue_file(memdir))',
      ["TestQueueDirCreation."
       "test_a_read_command_on_the_missing_default_dir_reports_empty_and_creates_nothing",
       "TestQueueDirCreation."
@@ -493,8 +493,8 @@ MUTATIONS = [
     # over-trigger direction: an explicit --dir holding no queue file is a wrong
     # path, not an empty queue
     ("T503 an explicit --dir without next-steps.md reads as an empty queue",
-     '        if args.dir:\n            fail("next-steps.md not found in " + memdir)',
-     '        if False:\n            fail("next-steps.md not found in " + memdir)',
+     '        if args.dir:\n            fail(no_queue_file(memdir))',
+     '        if False:\n            fail(no_queue_file(memdir))',
      ["TestQueueDirCreation."
       "test_an_explicit_dir_without_a_queue_file_still_fails_the_readers"]),
 
@@ -516,6 +516,30 @@ MUTATIONS = [
      "        os.makedirs(d, exist_ok=True)\n",
      ["TestQueueDirCreation."
       "test_an_explicit_missing_dir_fails_on_read_and_write_and_creates_nothing"]),
+
+    # --- the first `add` creates the queue file ------------------------------
+    ("first add refuses a queue dir holding no next-steps.md again",
+     "        content = NEXT_STEPS_TEMPLATE\n",
+     "        fail(no_queue_file(memdir))\n",
+     ["TestFirstAddCreatesTheQueueFile."
+      "test_add_on_a_fresh_default_queue_dir_writes_the_first_item",
+      "TestFirstAddCreatesTheQueueFile."
+      "test_add_with_an_explicit_dir_holding_no_queue_file_writes_the_first_item"]),
+
+    # over-trigger direction: the skeleton reaches the disk before the gates rule
+    ("first add writes the queue file before its gates",
+     "        content = NEXT_STEPS_TEMPLATE\n",
+     "        content = NEXT_STEPS_TEMPLATE\n        write_atomic(path, content)\n",
+     ["TestFirstAddCreatesTheQueueFile."
+      "test_a_first_add_refused_by_the_block_ceiling_writes_no_queue_file",
+      "TestFirstAddCreatesTheQueueFile."
+      "test_a_first_add_refused_by_the_wip_cap_writes_no_queue_file"]),
+
+    ("a missing queue file's refusal stops naming add",
+     "\"`tk-queue add`, with the queue's first item\")",
+     "\"the first kickoff\")",
+     ["TestFirstAddCreatesTheQueueFile."
+      "test_a_command_that_still_needs_the_file_names_add_as_its_remedy"]),
 
     # a subcommand the argv tables do not list is a write command the creation
     # test never runs
@@ -3407,10 +3431,10 @@ MUTATIONS = [
      "    # WHERE the work is, WITHOUT writing another project's name into this session's output. The",
      ["TestWipCap.test_no_prose_claims_the_refusals_channel_never_names_another_project"]),
 
-    ("T346 the untested branch claims a first `add` reaches it",
-     "THAT RACE IS THE ONLY WAY INTO THAT",
-     "The other reachable way in is a first `add` into a brand-new queue. THAT IS NOT",
-     ["TestWipCap.test_the_untested_branch_says_it_is_the_race_and_not_a_first_add"]),
+    ("the missing-file branch is said to be reachable by the race alone again",
+     "Two ways\n    lead into that branch.",
+     "THAT RACE IS THE ONLY WAY INTO THAT\n    branch.",
+     ["TestWipCap.test_the_missing_file_branch_names_both_ways_in"]),
 
     # --- the CLI's own words: one entry per sentence a reader decides from ---
     ("T274 the owner refusal drops the first-character rule again",
