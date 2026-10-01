@@ -119,11 +119,28 @@ python3 <.../tk/bin>/tk-contract --role fleet-orchestrator --fleet <W>     # the
 one is a fork of the policy. The block itself says it wins wherever it and the surrounding prose
 disagree. Where `--fleet W` divides down to nothing the bin says so in words: shrink `W`.
 
+**Fit the fleet in memory before fixing `W`.** Run `../kickoff/AFK.md`'s *Fit the package in
+memory*, with three changes:
+
+- **The width** is the site ceiling the no-divisor block states, since the divisor's shares add
+  up to it. Where the block states none, the width is the count of projects step 2 left on the
+  roster.
+- **A short fit with sessions listed** goes in its own `AskUserQuestion` before the first
+  dispatch, since the fleet has no confirm menu. A fleet that no typed turn of the user fired —
+  a scheduled routine, a `/loop` — has nobody to answer, and skips the question.
+- **The record** is a line of the textual report naming the width, the fit and the list. It
+  takes the place of the ledger line that file's *Done when* names.
+
+Where the fit stays short, `W` follows it, by the default below. The blocks are still generated
+from the site ceiling at that `W`, so their shares add up past the fit. What holds each project
+run to the memory is its own `tk-ram` reading before every local dispatch, `../kickoff/AFK.md`
+§3.
+
 **Both ceilings are optional in the site file, and an absent one is not a zero.** With
 `max-local-subagents` unwritten, the block states no number. It says to decide and to log the
-decision as a deviation. Do exactly that: pick `W` from the project count and what this machine
-can hold, write the deviation line of step 6, and dispatch. Inventing a ceiling to divide would
-put a number the user never wrote into every project run's block.
+decision as a deviation. Do exactly that: pick `W` from the project count and the fit, write
+the deviation line of step 6, and dispatch. Inventing a ceiling to divide would put a number
+the user never wrote into every project run's block.
 
 **The divisor never touches `max-cloud-subagents`.** The block says so itself, and a project
 run's cloud share is whatever that ceiling states, undivided. What cloud runs contend for is not
@@ -147,6 +164,7 @@ it. `W` is the fleet's own quantity, and the fleet does two things with it:
   and it changes nothing any block states. Above it, the project runs' own slots outnumber the
   work they dispatch — a fleet spending its memory on coordination. Below it is available and
   costs only wall clock, which is the right trade where a project run is known to be heavy.
+  Where the memory fit stayed short, `W` defaults to `fit // 2` instead, and never below one.
 - **Report the peak.** The measurement line of step 6 carries `peak` beside the other numbers.
   The site file's own ceiling is written as a calibrable number, and this is the run that
   produces the evidence to calibrate it. `peak` is what the runs OBSERVABLY held at once, taken
@@ -156,8 +174,9 @@ it. `W` is the fleet's own quantity, and the fleet does two things with it:
 **Done when:**
 
 - the ceilings were read from a block generated with no divisor;
-- `W` is fixed, at `ceiling // 2` by default, or by a logged decision where the site file states
-  no ceiling;
+- the live sessions were listed, and the textual report names the width, the fit and the list;
+- `W` is fixed, at `ceiling // 2` by default (`fit // 2` where the fit stayed short), or by a
+  logged decision where the site file states no ceiling;
 - every dispatch below will paste a block generated at that `W`;
 - the observed peak is being tracked for the report.
 

@@ -74,10 +74,37 @@ criteria and the merge of `origin/main` — or its last third is unfunded.
 recount, the review and tail lines stand beside them, and every exclusion and item left out
 carries its reason.
 
+### Fit the package in memory
+
+Unless a fleet dispatched this package, fit it in memory here; the fleet already did, in
+`../fleet/SKILL.md` §3. Other sessions on this machine hold memory the package's runs need, and
+only the user may close one. The package's **width** is the most LOCAL runs it will hold at one
+moment. Count every run §3 and the tail may keep in flight together: implementers, the explore
+run, a verifier, a lens, a review's two reviewers — `HYGIENE.md` counts reviewers against the
+local ceiling too. Fit the width before anything is claimed:
+
+1. List every other live `claude` process on this machine with its working directory, leaving
+   out this session's own process. Where `~/.claude/tk/kickoff.md` carries the command for
+   this, run that one.
+2. Run `../../bin/tk-ram` and compare its **fit** with the width. Cap the width first at the
+   most the bin ever prints: closing sessions raises the fit to that top and no further. A
+   printed `1` whose stderr says the raw fit was at or below zero is a fit of 0 (`WINDOW.md`,
+   the RAM axis). Exit 2 falls back on `max-local-subagents`, as §3 says.
+3. **It fits:** ask nothing. Every session stays open.
+4. **It falls short:** under `pack`, with sessions listed, §2's menu carries them as "close
+   these to fit <width> runs". The user closes them; the agent names sessions and never ends
+   one. Read `tk-ram` again after the answer. Where the fit is still short, no session was
+   listed, or the mode is `afk`, the package runs at the fit `tk-ram` gives.
+
+**Done when:** an `(orquestrador)` line of `LEDGER.md` names the width, the fit and the list,
+whether the fit held or fell short.
+
 ## 2. `pack` only: confirm
 
 One multiSelect `AskUserQuestion` listing the package items, summed Effort in the question; the
-check IS the authorization. (`afk` skips this step: invoking it IS the authorization.)
+check IS the authorization. Where *Fit the package in memory* fell short with sessions listed,
+the same call carries them as a second question. (`afk` skips this step: invoking it IS the
+authorization.)
 **Done when:** the confirmed package is fixed.
 
 ## 3. Claim, then dispatch
@@ -179,9 +206,10 @@ works in the worktree already checked out on its branch, named by path.
 `WINDOW.md`'s "The tick" owns the quota axis, `max-local-opus`; concurrent runs count against
 `max-local-subagents`, the RAM axis. **Read it before each local dispatch:**
 `../../bin/tk-ram` prints what the cgroup fits now, `LEDGER.md` takes that line, and
-exit 2 falls back on the site key. Where the harness's own cap — `min(16, nproc - 2)` — is
-smaller, the difference stays UNUSED: weigh a second workflow beside the first, never Agent
-runs whose return lands in this session's context.
+exit 2 falls back on the site key. §1's *Fit the package in memory* read it once against the
+whole width; this reading is the one each dispatch answers to. Where the harness's own cap
+— `min(16, nproc - 2)` — is smaller, the difference stays UNUSED: weigh a second workflow
+beside the first, never Agent runs whose return lands in this session's context.
 
 **Unless a fleet dispatched this package, arm the tick before the turn that dispatches the first
 run ends** — `WINDOW.md`, *The tick*, says who arms it and why a fleet's project run does not.
