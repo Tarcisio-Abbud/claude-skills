@@ -667,6 +667,200 @@ class TestTheClosureChecker(Fixture):
         self.assertIn("--body-file needs --base and --default-branch", run.stderr)
 
 
+class TestTheAccumulatedLane(Fixture):
+    """`--lane`. An accumulated lane's pull request carries one closing line per
+    item, by design, so every item of a lane of two or more was red on `extras`:
+    each one read its siblings' lines as closing tickets it never claimed.
+    Measured on a merged four-item lane whose every per-item check was red."""
+
+    NUMBERS = (11, 12, 13, 14)
+
+    def lane(self):
+        return [self.add(f"lane slice {n}", ticket=f"{REPO}#{n}") for n in self.NUMBERS]
+
+    def lane_body(self, items, numbers=NUMBERS, tail=""):
+        """The real shape: an items table that cites every ticket, prose citing
+        tickets under words that close nothing, then one closing line per item."""
+        rows = "".join(f"| {item} | {REPO}#{n} | merged |\n"
+                       for item, n in zip(items, self.NUMBERS))
+        lines = "".join(f"Fixes {OWNER}/{REPO}#{n}\n" for n in numbers)
+        return ("Accumulated lane: four items.\n\n| Item | Ticket | Merge |\n"
+                f"|---|---|---|\n{rows}\nThe spec is {REPO}#3; it follows #2 and "
+                f"against {REPO}#10.\n\n{lines}{tail}")
+
+    def check_lane(self, item, body, ids):
+        return self.check(item, body, extra=("--lane", ",".join(ids)))
+
+    def test_every_item_of_a_four_item_lane_is_green_with_the_lane_listed(self):
+        items = self.lane()
+        body = self.lane_body(items)
+        for item in items:
+            run = self.check_lane(item, body, items)
+            self.assertEqual(run.returncode, 0, item + "\n" + run.stdout + run.stderr)
+            self.assertRegex(run.stdout, r"(?m)^extras\s+ok\s")
+            self.assertRegex(run.stdout, r"(?m)^lane\s+ok\s")
+            self.assertIn(f"verdict-5: GREEN for {item}", run.stdout)
+
+    def test_without_the_flag_the_same_body_stays_red_on_extras(self):
+        """The regression guard: the flag is what makes a sibling's line expected,
+        and a run without it still reads that line as an extra."""
+        items = self.lane()
+        run = self.check(items[0], self.lane_body(items))
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertIn(f"verdict-5: RED for {items[0]} — extras", run.stdout)
+        self.assertNotRegex(run.stdout, r"(?m)^lane\s")
+
+    def test_an_extra_closing_line_no_lane_item_names_is_red_and_named(self):
+        items = self.lane()
+        body = self.lane_body(items, tail=f"Closes {OWNER}/{REPO}#99\n")
+        run = self.check_lane(items[0], body, items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, r"(?m)^extras\s+FAILED\s")
+        self.assertIn(f"`Closes {OWNER}/{REPO}#99`", run.stdout)
+        self.assertNotIn(f"`Fixes {OWNER}/{REPO}#12`", run.stdout,
+                         "a listed sibling's own line was named as an extra")
+        self.assertIn(f"verdict-5: RED for {items[0]} — extras", run.stdout)
+
+    def test_a_lane_id_whose_line_is_absent_is_red_naming_it(self):
+        items = self.lane()
+        body = self.lane_body(items, numbers=self.NUMBERS[:3])
+        run = self.check_lane(items[0], body, items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, rf"(?m)^lane\s+FAILED\s+{items[3]}: no closing line")
+        self.assertIn(f"`Fixes {OWNER}/{REPO}#14`", run.stdout,
+                      "the row does not hand over the line to paste")
+        self.assertIn(f"verdict-5: RED for {items[0]} — lane", run.stdout)
+
+    def test_a_sibling_that_left_the_queue_is_red_named_and_never_read_off_the_body(self):
+        """Its **Ticket:** left with it. Reading its reference off the body would
+        check the body against itself, so the row is red with the remedy named."""
+        items = self.lane()
+        self.close(items[3])
+        run = self.check_lane(items[0], self.lane_body(items), items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, rf"(?m)^lane\s+FAILED\s+{items[3]}: closed:")
+        self.assertIn("can no longer be", run.stdout)
+        self.assertIn("still open", run.stdout)
+
+    def test_a_sibling_whose_reference_cannot_be_composed_is_red_named(self):
+        """A sibling naming a ticket in a repository the tracker does not name has
+        no owner on this machine — red with the reader's refusal, never a line
+        guessed off the body."""
+        items = self.lane()
+        stranger = self.add("a slice elsewhere", ticket="other-repo#9")
+        body = self.lane_body(items, tail=f"Fixes {OWNER}/other-repo#9\n")
+        run = self.check_lane(items[0], body, items + [stranger])
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, rf"(?m)^lane\s+FAILED\s+{stranger}: repo-mismatch:")
+
+    def test_the_checked_item_listed_or_not_gives_the_same_verdict(self):
+        items = self.lane()
+        body = self.lane_body(items)
+        listed = self.check_lane(items[0], body, items)
+        unlisted = self.check_lane(items[0], body, items[1:])
+        self.assertEqual((listed.returncode, unlisted.returncode), (0, 0),
+                         listed.stdout + unlisted.stdout)
+        lane_row = [line for line in listed.stdout.splitlines() if line.startswith("lane")]
+        self.assertNotIn(items[0], lane_row[0],
+                         "the checked item was read as its own sibling")
+
+    def test_a_siblings_line_with_another_owner_is_an_extra_not_the_siblings(self):
+        """Present, aimed at the sibling's number, and resolved against somebody
+        else's account: it is not the composed reference, so it is not expected."""
+        items = self.lane()
+        body = self.lane_body(items).replace(f"Fixes {OWNER}/{REPO}#12",
+                                             f"Fixes Other-Owner/{REPO}#12")
+        run = self.check_lane(items[0], body, items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, r"(?m)^extras\s+FAILED\s")
+        self.assertIn(f"`Fixes Other-Owner/{REPO}#12`", run.stdout)
+        self.assertRegex(run.stdout, rf"(?m)^lane\s+FAILED\s+{items[1]}: no closing line")
+
+    def test_a_siblings_line_under_a_word_the_forge_ignores_is_absent(self):
+        items = self.lane()
+        body = self.lane_body(items).replace(f"Fixes {OWNER}/{REPO}#13",
+                                             f"Fecha {OWNER}/{REPO}#13")
+        run = self.check_lane(items[0], body, items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, rf"(?m)^lane\s+FAILED\s+{items[2]}: no closing line")
+
+    def test_the_items_own_line_under_a_word_the_forge_ignores_is_red_on_keyword(self):
+        """One defect, one repair, inside a lane too: the rows read THIS item's
+        line, so the ignored word is named on `keyword` and the number is right,
+        never a sibling's line answered in its place."""
+        items = self.lane()
+        body = self.lane_body(items).replace(f"Fixes {OWNER}/{REPO}#11",
+                                             f"Fecha {OWNER}/{REPO}#11")
+        run = self.check_lane(items[0], body, items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout,
+                         rf"(?m)^keyword\s+FAILED\s+the body says `Fecha {OWNER}/{REPO}#11`")
+        self.assertRegex(run.stdout, r"(?m)^number\s+ok\s")
+        self.assertRegex(run.stdout, r"(?m)^lane\s+ok\s")
+
+    def test_a_sibling_sharing_this_items_ticket_leaves_the_line_this_items(self):
+        """A line aiming at this item's ticket is this item's line, whichever
+        sibling also names that ticket — set aside, the item would read as having
+        none."""
+        items = self.lane()
+        twin = self.add("a second slice of the same ticket", ticket=f"{REPO}#11")
+        body = self.lane_body(items)
+        for item in (items[0], twin):
+            run = self.check_lane(item, body, items + [twin])
+            self.assertEqual(run.returncode, 0, item + "\n" + run.stdout + run.stderr)
+
+    def test_an_item_with_no_ticket_in_a_lane_is_red_when_a_siblings_line_is_absent(self):
+        items = self.lane()
+        loose = self.add("a slice answering to no ticket")
+        body = self.lane_body(items, numbers=self.NUMBERS[:3])
+        run = self.check_lane(loose, body, items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, rf"(?m)^lane\s+FAILED\s+{items[3]}: no closing line")
+
+    def test_an_item_with_no_ticket_in_a_lane_expects_its_siblings_lines(self):
+        """The escape, inside a lane: the item closes nothing itself, and its
+        siblings' lines are expected rather than tickets it never claimed."""
+        items = self.lane()
+        loose = self.add("a slice answering to no ticket")
+        body = self.lane_body(items)
+        run = self.check_lane(loose, body, items + [loose])
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn(f"verdict-5: GREEN for {loose}", run.stdout)
+        self.assertIn("a slice answering to no ticket", run.stdout)
+        run = self.check_lane(loose, body + f"Closes {OWNER}/{REPO}#99\n", items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertIn(f"`Closes {OWNER}/{REPO}#99`", run.stdout)
+        self.assertNotIn(f"`Fixes {OWNER}/{REPO}#11`", run.stdout)
+
+    def test_a_sibling_naming_no_ticket_expects_no_line(self):
+        items = self.lane()
+        loose = self.add("a slice answering to no ticket")
+        run = self.check_lane(items[0], self.lane_body(items), items + [loose])
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn(f"{loose} names no ticket and expects no line", run.stdout)
+
+    def test_an_unconfigured_clone_is_the_runs_defect_not_one_siblings(self):
+        """No tracker means no reference can be composed for anyone, so it is the
+        `ticket` row's refusal — reported once, not pinned on a sibling."""
+        items = self.lane()
+        loose = self.add("a slice answering to no ticket")
+        self.set_tracker(None)
+        run = self.check_lane(loose, self.lane_body(items), items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertIn("ticket  FAILED  tracker-unset:", run.stdout)
+        self.assertNotRegex(run.stdout, r"(?m)^lane\s")
+
+    def test_the_lane_takes_ids_in_the_positional_syntax_and_refuses_an_empty_one(self):
+        items = self.lane()
+        body = self.lane_body(items)
+        spelt = ",".join([items[0].lower(), items[1][1:], str(int(items[2][1:])), items[3]])
+        run = self.check(items[0], body, extra=("--lane", spelt))
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        run = self.check(items[0], body, extra=("--lane", ",".join(items) + ","))
+        self.assertEqual(run.returncode, 2, run.stdout + run.stderr)
+        self.assertIn("invalid id", run.stderr)
+
+
 class TestTheForgeIsReachedThroughPath(Fixture):
     def test_the_pull_request_is_read_through_gh_on_path(self):
         item = self.add(ticket=f"{REPO}#7")
