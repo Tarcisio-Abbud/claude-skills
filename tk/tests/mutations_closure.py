@@ -263,7 +263,8 @@ MUTATIONS = [
      CHECKER),
 
     ("T238 the keyword-red path answers only the keyword, so one defect reads as three",
-     "    candidates = honoured or found", "    candidates = honoured",
+     "    candidates = own or [m for m in found if m not in theirs]",
+     "    candidates = own",
      ["TestTheClosureChecker."
       "test_a_word_the_forge_ignores_still_gets_the_other_conditions_answered"], CHECKER),
 
@@ -276,8 +277,7 @@ MUTATIONS = [
 
     ("T238 CLAUSE: only the first closing line is examined, so every other one closes its "
      "own ticket on merge, silently",
-     "    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)\n"
-     "              and not any(is_reference(m, e) for e in expected_lines)]",
+     "    strays = [m for m in own if not aims_at(m[1], m[2], repo, number)]",
      "    strays = []",
      ["TestTheClosureChecker.test_a_second_closing_line_closes_a_second_ticket_and_is_red",
       "TestTheClosureChecker."
@@ -416,9 +416,9 @@ MUTATIONS = [
     # --- the accumulated lane ------------------------------------------------
     ("lane CLAUSE: a listed sibling's own line is still read as an extra, so every "
      "item of a lane of two or more stays red",
-     "    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)\n"
-     "              and not any(is_reference(m, e) for e in expected_lines)]",
-     "    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)]",
+     "    theirs = [m for m in found if is_siblings_line(m, siblings)\n"
+     "              and not aims_at(m[1], m[2], repo, number)]",
+     "    theirs = []",
      ["TestTheAccumulatedLane."
       "test_every_item_of_a_four_item_lane_is_green_with_the_lane_listed",
       "TestTheAccumulatedLane.test_the_checked_item_listed_or_not_gives_the_same_verdict",
@@ -480,6 +480,37 @@ MUTATIONS = [
      ["TestTheAccumulatedLane."
       "test_a_sibling_whose_reference_cannot_be_composed_is_red_named"], CHECKER),
 
+    ("lane CLAUSE: a line aiming at this item's own ticket is set aside as a sibling's, "
+     "so an item sharing its ticket with a sibling reads as having no line",
+     "    theirs = [m for m in found if is_siblings_line(m, siblings)\n"
+     "              and not aims_at(m[1], m[2], repo, number)]",
+     "    theirs = [m for m in found if is_siblings_line(m, siblings)]",
+     ["TestTheAccumulatedLane."
+      "test_a_sibling_sharing_this_items_ticket_leaves_the_line_this_items"], CHECKER),
+
+    ("lane the rows pick the line they read among the siblings' too, so this item's "
+     "line under an ignored word is answered by a sibling's line",
+     "    candidates = own or [m for m in found if m not in theirs]",
+     "    candidates = honoured or found",
+     ["TestTheAccumulatedLane."
+      "test_the_items_own_line_under_a_word_the_forge_ignores_is_red_on_keyword"],
+     CHECKER),
+
+    ("lane the keyword row asks whether ANY line is honoured, a sibling's included, so "
+     "this item's line under an ignored word reads as a right keyword",
+     "    if own:\n", "    if honoured:\n",
+     ["TestTheAccumulatedLane."
+      "test_the_items_own_line_under_a_word_the_forge_ignores_is_red_on_keyword"],
+     CHECKER),
+
+    ("lane the escape never asks the `lane` row, so an item with no ticket passes a "
+     "lane whose sibling's line is absent",
+     "    lane = [lane_row(honoured, siblings)] if siblings is not None else []",
+     "    lane = []",
+     ["TestTheAccumulatedLane."
+      "test_an_item_with_no_ticket_in_a_lane_is_red_when_a_siblings_line_is_absent"],
+     CHECKER),
+
     ("lane the checked item is read as its own sibling",
      "        if wanted == args.id:\n            continue\n",
      "",
@@ -488,8 +519,7 @@ MUTATIONS = [
 
     ("lane CLAUSE: the no-ticket escape ignores the siblings, so an item with no ticket "
      "in a lane is red on their lines",
-     "    closing = [m for m in honoured\n"
-     "               if not any(is_reference(m, e) for e in expected_lines)]",
+     "    closing = [m for m in honoured if not is_siblings_line(m, siblings)]",
      "    closing = honoured",
      ["TestTheAccumulatedLane."
       "test_an_item_with_no_ticket_in_a_lane_expects_its_siblings_lines"], CHECKER),

@@ -44,7 +44,8 @@ source and the PAIR against none.
 
 ROW NAMES, so that a caller greps for one rather than for prose: the five above,
 plus `ticket` — the pre-condition, that the item's own reference could be
-composed at all — `item`, the line the escape quotes, and `lane`, printed only
+composed at all, and under `--lane` that the clone names a tracker the
+siblings' references are composed under — `item`, the line the escape quotes, and `lane`, printed only
 under `--lane`. Every row reads `<name>  <state>  <detail>`, and a detail
 spanning lines is indented under its own column.
 
@@ -59,7 +60,10 @@ row is red, naming the id, for each listed sibling whose line is absent, and for
 each whose reference cannot be composed. A sibling that LEFT the queue is one of
 those: its **Ticket:** field left with it, and its reference is never read off
 the body instead, because the body is the thing being checked. A sibling naming
-no ticket expects no line. The checked item may be listed or not: its own line
+no ticket expects no line. A sibling's line is set aside before the rows pick
+the line they read, so `keyword` and `owner` answer THIS item's line, never a
+sibling's; a line aiming at this item's own ticket stays this item's even when a
+sibling shares that ticket. The checked item may be listed or not: its own line
 is what `number` and `owner` ask, so its id in the list is skipped. An item with
 no ticket stays the escape below, with its siblings' lines expected.
 
@@ -249,6 +253,12 @@ def is_reference(mention, expected):
             and owner_verdict(mention[1], owner)[0] == "right")
 
 
+def is_siblings_line(mention, siblings):
+    """Is this mention the composed reference of a listed lane sibling? The one
+    test both `conditions` and `escape` set a sibling's line aside by."""
+    return any(is_reference(mention, e) for _, e, _ in siblings or () if e is not None)
+
+
 def lane_row(honoured, siblings):
     """The `lane` row: every listed sibling's own closing line is in the body.
 
@@ -292,19 +302,25 @@ def conditions(body, base, default, expected, label, siblings=None):
     _, repo, number = split(expected)
     found = mentions(body)
     honoured = [m for m in found if m[0].lower() in reader.KEYWORDS]
+    # under `--lane` a listed sibling's own line is set aside before any row picks
+    # the line it reads: left in, it is what `keyword` and `owner` answer when this
+    # item's line is missing or under a word the forge ignores, and the defect is
+    # reported against the wrong line. A line aiming at THIS ticket stays this
+    # item's, whichever sibling shares it
+    theirs = [m for m in found if is_siblings_line(m, siblings)
+              and not aims_at(m[1], m[2], repo, number)]
+    own = [m for m in honoured if m not in theirs]
     # the rows below read the HONOURED lines when there are any and the found
     # ones when there are none, so that a body under a word the forge does not
     # honour still gets its number and owner answered: one defect, one repair
-    candidates = honoured or found
+    candidates = own or [m for m in found if m not in theirs]
     aimed = [m for m in candidates if aims_at(m[1], m[2], repo, number)]
     right = [m for m in aimed if owner_verdict(m[1], split(expected)[0])[0] == "right"]
     subject = (right or aimed or candidates or [None])[0]
-    expected_lines = [e for _, e, _ in siblings or () if e is not None]
-    strays = [m for m in honoured if not aims_at(m[1], m[2], repo, number)
-              and not any(is_reference(m, e) for e in expected_lines)]
+    strays = [m for m in own if not aims_at(m[1], m[2], repo, number)]
 
     out = []
-    if honoured:
+    if own:
         out.append(("keyword", OK, subject[0]))
     elif subject is not None:
         out.append(("keyword", FAILED,
@@ -404,9 +420,7 @@ def escape(block, body, label, siblings=None):
     `--lane` a listed sibling's own line is not one of them, and the `lane` row
     asks that each is there."""
     honoured = [m for m in mentions(body) if m[0].lower() in reader.KEYWORDS]
-    expected_lines = [e for _, e, _ in siblings or () if e is not None]
-    closing = [m for m in honoured
-               if not any(is_reference(m, e) for e in expected_lines)]
+    closing = [m for m in honoured if not is_siblings_line(m, siblings)]
     lane = [lane_row(honoured, siblings)] if siblings is not None else []
     if closing:
         return report([("ticket", FAILED,
@@ -486,7 +500,9 @@ def check(args):
 
     # the clone is what `gh` is run in and what declares the owner, so it is
     # resolved before either is needed — and NOT resolved for an item with no
-    # ticket read from a body on disk, where no clone is asked anything
+    # ticket read from a body on disk outside `--lane`, where no clone is asked
+    # anything. Under `--lane` it is, because a sibling's reference is composed
+    # under this clone's tracker
     clone = None
     if ticket is not None or args.pr is not None or args.lane is not None:
         try:

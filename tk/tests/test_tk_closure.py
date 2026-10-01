@@ -679,13 +679,14 @@ class TestTheAccumulatedLane(Fixture):
         return [self.add(f"lane slice {n}", ticket=f"{REPO}#{n}") for n in self.NUMBERS]
 
     def lane_body(self, items, numbers=NUMBERS, tail=""):
-        """The real shape: an items table that cites every ticket, then one
-        closing line per item."""
+        """The real shape: an items table that cites every ticket, prose citing
+        tickets under words that close nothing, then one closing line per item."""
         rows = "".join(f"| {item} | {REPO}#{n} | merged |\n"
                        for item, n in zip(items, self.NUMBERS))
         lines = "".join(f"Fixes {OWNER}/{REPO}#{n}\n" for n in numbers)
         return ("Accumulated lane: four items.\n\n| Item | Ticket | Merge |\n"
-                f"|---|---|---|\n{rows}\n{lines}{tail}")
+                f"|---|---|---|\n{rows}\nThe spec is {REPO}#3; it follows #2 and "
+                f"against {REPO}#10.\n\n{lines}{tail}")
 
     def check_lane(self, item, body, ids):
         return self.check(item, body, extra=("--lane", ",".join(ids)))
@@ -782,6 +783,39 @@ class TestTheAccumulatedLane(Fixture):
         run = self.check_lane(items[0], body, items)
         self.assertEqual(run.returncode, 1, run.stdout)
         self.assertRegex(run.stdout, rf"(?m)^lane\s+FAILED\s+{items[2]}: no closing line")
+
+    def test_the_items_own_line_under_a_word_the_forge_ignores_is_red_on_keyword(self):
+        """One defect, one repair, inside a lane too: the rows read THIS item's
+        line, so the ignored word is named on `keyword` and the number is right,
+        never a sibling's line answered in its place."""
+        items = self.lane()
+        body = self.lane_body(items).replace(f"Fixes {OWNER}/{REPO}#11",
+                                             f"Fecha {OWNER}/{REPO}#11")
+        run = self.check_lane(items[0], body, items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout,
+                         rf"(?m)^keyword\s+FAILED\s+the body says `Fecha {OWNER}/{REPO}#11`")
+        self.assertRegex(run.stdout, r"(?m)^number\s+ok\s")
+        self.assertRegex(run.stdout, r"(?m)^lane\s+ok\s")
+
+    def test_a_sibling_sharing_this_items_ticket_leaves_the_line_this_items(self):
+        """A line aiming at this item's ticket is this item's line, whichever
+        sibling also names that ticket — set aside, the item would read as having
+        none."""
+        items = self.lane()
+        twin = self.add("a second slice of the same ticket", ticket=f"{REPO}#11")
+        body = self.lane_body(items)
+        for item in (items[0], twin):
+            run = self.check_lane(item, body, items + [twin])
+            self.assertEqual(run.returncode, 0, item + "\n" + run.stdout + run.stderr)
+
+    def test_an_item_with_no_ticket_in_a_lane_is_red_when_a_siblings_line_is_absent(self):
+        items = self.lane()
+        loose = self.add("a slice answering to no ticket")
+        body = self.lane_body(items, numbers=self.NUMBERS[:3])
+        run = self.check_lane(loose, body, items)
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertRegex(run.stdout, rf"(?m)^lane\s+FAILED\s+{items[3]}: no closing line")
 
     def test_an_item_with_no_ticket_in_a_lane_expects_its_siblings_lines(self):
         """The escape, inside a lane: the item closes nothing itself, and its
