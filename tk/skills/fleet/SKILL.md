@@ -1,8 +1,8 @@
 ---
 name: fleet
-description: "Fleet run: one command opens the unattended package of EVERY project on this machine, and closes on one consolidated vista. Args: the load (`afk` default, or `docs-audit`) and `--budget`."
+description: "Fleet run: one command opens the unattended package of EVERY project on this machine, and closes on one consolidated vista. Args: the load (`afk` default, or `docs-audit`), `--budget`, `--queues`."
 disable-model-invocation: true
-argument-hint: "[afk|docs-audit] [--budget N|unlimited]"
+argument-hint: "[afk|docs-audit] [--budget N|unlimited] [--queues <name>,<name>...]"
 arguments: load
 ---
 
@@ -23,7 +23,8 @@ rule survives the fleet because every write happens inside the project run that 
 
 ## 1. Build the roster
 
-Run `../../bin/tk-roster`, no flags and no subcommand. It prints up to five sections, each
+Run `../../bin/tk-roster`. When `--queues` was given, pass it on as `--queues=<names>`: the `=`
+keeps a name opening with `-` from reading as a flag. The bin prints up to seven sections, each
 carrying a different obligation.
 
 `## roster` is always printed, empty or not, and its empty form is a stop condition below. Every
@@ -37,6 +38,8 @@ report.
 | `## excluded by the site file` | reports it, naming which list excluded each |
 | `` ## `fleet-allow` names no queue on this machine `` | reports it as a **stray entry**, below |
 | `` ## `fleet-deny` names no queue on this machine `` | reports it as a **stray entry**, below |
+| `` ## `--queues` names no queue on this machine `` | reports it as a **stray entry**, below |
+| `` ## `--queues` names a queue `fleet-deny` holds back `` | reports it; never dispatches it |
 
 **Do not build a project's path from its queue name.** The name is the cwd encoded. The
 encoding is one-way: `/w/p/x-y` and `/w/p/x/y` produce the same name. That is why the second
@@ -45,57 +48,83 @@ refuses to guess. The fleet refuses with it. Their queues stay readable without 
 through the `queue:` path the section prints: `tk-queue list --dir "<queue dir>"`. Read them when
 the report is better for saying what is waiting there.
 
-**The allow/denylist belongs to the site file (`~/.claude/tk/env`), not to this skill.** The bin
-reads both keys. Present, `fleet-allow` admits only the queues it lists. `fleet-deny` removes the
-ones it lists, and it wins over the allow. The fleet accepts no list of its own by flag and
-reimplements no filter. A second answer to "what does the fleet touch" is a second source of
-truth, and the one the user edits is the file.
+**The allow/denylist belongs to the site file (`~/.claude/tk/env`).** The bin reads both keys.
+Present, `fleet-allow` admits only the queues it lists. `fleet-deny` removes the ones it lists,
+and it wins over the allow. The fleet reimplements neither filter: the machine's standing scope
+is the file the user edits.
 
-**Both `names no queue` sections are stray entries, not noise.** The bin emits one per list. An
+**This run's queues come from `--queues`, and they replace `fleet-allow`.** `--queues
+<name>,<name>...` names the queues to sweep this run, by the name `## roster` prints. A queue
+`fleet-allow` leaves out runs when it is named. `fleet-deny` still wins. `## roster` then carries
+only the named queues, and step 2 asks no menu. The argument lasts one run; a scope meant to last
+goes in the site file.
+
+**Every `names no queue` section is a stray entry, not noise.** The bin emits one per list. An
 unknown key in the site file is ignored on purpose, so `fleet-denny` reads as an absent list and
 sweeps everything. An entry that matched no queue is the only signal that a line exists and is
 doing nothing. Each such section goes in the report under its own heading, whatever else the run
 found.
 
-**Two exits, two meanings.** Exit 1 is a rotten site file. The fleet stops and quotes
-`tk-roster`'s own stderr verbatim, because every ceiling below comes from that same file. Exit 0
-with an empty roster is a fact, not a failure. Report that there was nothing to sweep, and stop
-before dispatching anything.
+**Three exits, three meanings.** Exit 1 is a rotten site file. The fleet stops and quotes
+`tk-roster`'s own stderr verbatim, because every ceiling below comes from that same file. Exit 2 is
+a `--queues` the bin refused: stop and quote its stderr. Exit 0 with an empty roster is a fact, not
+a failure. Report that there was nothing to sweep, and stop before dispatching anything.
 
 **Done when:**
 
 - every section the bin printed was read;
 - `## roster` is the only one that will be dispatched;
+- every name `--queues` carried is matched to a `## roster` entry, or reported from its section;
 - every other section it printed is already written into the report.
 
 ## 2. Size each project, and order the fleet
 
-**Largest first.** A project's size is the **eligible count** `tk-queue pack` prints for it. Run
-it from the project's own directory, so the queue resolves the documented way instead of from a
-path this skill built:
+**Largest first.** A project's size is its **eligible count**. One command prints it for every
+queue on the roster:
 
 ```sh
-(cd "<the project's directory>" && python3 <.../tk/bin>/tk-queue pack)
+../../bin/tk-queue pack --all
 ```
 
-Read the `eligible (<count> of <total>, in queue order)` line.
+Each row is one queue: eligible, open, project, queue dir. A row `fleet-allow` leaves out ends in
+`(outside fleet-allow)`. The two counts are the two numbers of the `eligible (<count> of
+<total>, in queue order)` line a single `pack` prints for that queue. The `project` column is the
+name `## roster` prints; match each roster entry to its row by it. A row with no `## roster` entry
+is not dispatched: step 1 reported it, or `--queues` left it out. Its `--help`, under ALL, owns
+the format.
 
 **An eligible count of zero leaves the project out of the fleet.** There is nothing to dispatch.
 Report it with one line per exclusion REASON, not one per excluded item. A queue full of
 ineligible items is a different story from an empty one. The reason classes tell the two apart
-without reprinting two dozen lines.
+without reprinting two dozen lines. For a zero row with open items, read the reasons from
+`tk-queue pack --dir "<queue dir>"`, the row's own dir. A row reading `?` is a queue file `pack`
+could not read. Report it with the stderr line that names the file, and leave it out.
 
-Order the rest by eligible count, descending. Ties keep the roster's order. The reason is the
-wall clock: `W` bounds how many run at once, not how many run in total. So the longest project
-has to start earliest, or the fleet ends when that project ends.
+**Choose this run's queues.** When `--queues` was given, step 1 already chose; skip this. Otherwise
+show the `pack --all` table, then ask in one `AskUserQuestion`, with `multiSelect`, which queues to
+sweep. Four options at most. The whole roster comes first, recommended. Then up to three rows
+matched to a `## roster` entry, largest eligible count first, none at zero. The free-text answer
+names any other row by its `project`, one outside `fleet-allow` included. The whole roster, picked
+with anything else, wins. Any other answer becomes `--queues`: run step 1 again with it, and its
+`## roster` is this run's. A fleet that no typed turn of the user fired — a scheduled routine, a
+`/loop` — has nobody to answer. It asks nothing and sweeps the whole roster, so an unattended fleet
+never stalls on the menu. A typed fleet waits for the answer, since `AskUserQuestion` has no
+timeout.
+
+Order the remaining projects by eligible count, descending, which is the order `pack --all`
+prints. Ties keep the roster's order. The reason is the wall clock: `W` bounds how many run at
+once, not how many run in total. So the longest project has to start earliest, or the fleet ends
+when that project ends.
 
 This step only reads. `pack` takes no claim, so a project sized here and never dispatched needs
 no release.
 
 **Done when:**
 
-- every dispatchable project carries an eligible count;
+- every dispatchable project carries the eligible count of its `pack --all` row;
 - the zero ones have left the fleet, with their exclusion reasons;
+- this run's queues are fixed — by `--queues`, by the menu's answer, or as the whole roster when
+  nobody could answer;
 - the rest are ordered descending.
 
 ## 3. Fix the fleet size, and let the block state the ceilings
@@ -126,7 +155,8 @@ memory*, with three changes:
   up to it. Where the block states none, the width is the count of projects step 2 left on the
   roster.
 - **A short fit with sessions listed** goes in its own `AskUserQuestion` before the first
-  dispatch, since the fleet has no confirm menu. A fleet that no typed turn of the user fired —
+  dispatch: the fleet has no confirm menu, and step 2's queue menu is asked before the fit
+  exists. A fleet that no typed turn of the user fired —
   a scheduled routine, a `/loop` — has nobody to answer, and skips the question.
 - **The record** is a line of the textual report naming the width, the fit and the list. It
   takes the place of the ledger line that file's *Done when* names.
@@ -261,8 +291,8 @@ spend before it stops sending work.
   crosses it mid-run leaves the rest of the week to everything else.
 - **On the 5-hour window the fleet adds no number.** `WINDOW.md`'s "The tick" already states
   the floors every dispatch answers to, and a second number here would fork them.
-- **The user overrides by naming a ceiling in the turn that fires the run.** This skill takes
-  no flag of its own: the argument slot is the load's. The override is NOT a site-file key
+- **The user overrides by naming a ceiling in the turn that fires the run.** No flag carries
+  it: the fleet's flags are `--budget` and `--queues`. The override is NOT a site-file key
   either. An unknown key in `~/.claude/tk/env` is ignored in silence, so prose sending the user
   there would promise a switch no bin reads.
 

@@ -91,8 +91,9 @@ tk/
   reference/vista-template.html   that page in its smallest form: the five markers, both
                                   themes, and nothing the browser fetches
   bin/tk-queue                    deterministic CLI: only writer of the queue files.
-                                  `add` also refuses at the site file's WIP cap,
-                                  summed over the roster's queues and with no bypass
+                                  Reads the roster twice: `add` refuses at the site
+                                  file's WIP cap, summed over the roster's queues with
+                                  no bypass, and `pack --all` counts every roster queue
   bin/tk_site.py                  reads the site file (~/.claude/tk/env): this machine's
                                   identity, the roster of environments, the ceilings (two
                                   for subagents, one for the queue's open items), and the
@@ -101,7 +102,8 @@ tk/
                                   from the site file and the role table — never written
                                   from memory, and carrying no copy of either
   bin/tk-roster                   sweeps ~/.claude/projects for the queues that exist and
-                                  where their projects are, minus the site file's lists
+                                  where their projects are, minus the site file's lists;
+                                  `--queues` replaces `fleet-allow` for one run
   bin/tk-hygiene                  audits delete_branch_on_merge across every repo it
                                   reaches — the roster's, plus the clone it is installed
                                   in — and prunes what the default branch already has, by

@@ -454,16 +454,17 @@ MUTATIONS = [
       "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
 
     ("T215 the readers of one queue go back to naming nothing",
-     '    memdir = None if args.cmd == "report" else memory_dir(args)',
-     "    memdir = None if args.cmd in READERS else memory_dir(args)",
+     '    memdir = (None if args.cmd == "report" or (args.cmd == "pack"',
+     "    memdir = (None if args.cmd in READERS or (args.cmd == \"pack\"",
      ["TestTargetQueueAnnounced."
       "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
 
     # over-trigger direction: `report` sweeps every project's queue, so a single
     # dir named on it is a queue it does not read
     ("T215 report announces one queue out of the many it sweeps",
-     '    memdir = None if args.cmd == "report" else memory_dir(args)',
-     "    memdir = memory_dir(args)",
+     '    memdir = (None if args.cmd == "report" or (args.cmd == "pack" and args.all)\n'
+     "              else memory_dir(args))",
+     "    memdir = (memory_dir(args))",
      ["TestTargetQueueAnnounced."
       "test_the_readers_of_one_queue_name_it_too_and_report_stays_silent"]),
 
@@ -1523,12 +1524,12 @@ MUTATIONS = [
      ["TestPack.test_with_no_site_file_an_Env_is_foreign_and_no_Env_is_local"]),
 
     ("T126 a site file that exists and is BROKEN is read as an absent one",
+     "        return tk_site.load()\n"
      "    except tk_site.SiteError as e:\n"
-     "        fail(str(e))\n"
-     "    return site.identity if site else None",
+     "        fail(str(e))",
+     "        return tk_site.load()\n"
      "    except tk_site.SiteError:\n"
-     "        return None\n"
-     "    return site.identity if site else None",
+     "        return None",
      ["TestPack.test_a_site_file_that_EXISTS_and_is_broken_is_refused_verbatim"]),
 
     # the same rule in two places: the writer already refuses a value outside the
@@ -2729,8 +2730,8 @@ MUTATIONS = [
      ["TestPackBlockedTicket.test_the_flag_is_documented_in_the_help_the_skill_reads"]),
 
     ("T172 a ticket the taken lane pushed out is listed as eligible TOO",
-     "        if verdict is None and n not in pushed:",
-     "        if verdict is None:",
+     "    return verdict is None and n not in pushed",
+     "    return verdict is None",
      ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason"]),
 
     ("T172 the new field names leave the grammar, so no reader knows them",
@@ -3242,8 +3243,7 @@ MUTATIONS = [
     # the measured bypass: a cap that counts one queue is walked around with
     # `--dir`, and the WIP is the same WIP
     ("T297 the cap counts the target queue only (the --dir bypass restored)",
-     "    dirs = [d for name, d in tk_roster.queues(tk_roster.projects_root())\n"
-     "            if not tk_roster.excluded_by(name, allow, deny)]",
+     "    dirs = [d for _, d, keeper in roster_queues(site) if not keeper]",
      "    dirs = []",
      ["TestWipCap.test_the_count_sums_every_queue_on_the_roster",
       "TestWipCap.test_pointing_dir_at_another_queue_does_not_get_past_the_cap"]),
@@ -3253,7 +3253,8 @@ MUTATIONS = [
      ["TestWipCap.test_the_add_is_refused_when_the_open_items_reach_the_cap"]),
 
     ("T297 a queue the site file excludes is counted anyway",
-     "            if not tk_roster.excluded_by(name, allow, deny)]", "            if True]",
+     "    dirs = [d for _, d, keeper in roster_queues(site) if not keeper]",
+     "    dirs = [d for _, d, keeper in roster_queues(site)]",
      ["TestWipCap.test_a_queue_the_site_file_excludes_is_not_counted"]),
 
     ("T297 one queue reached by two spellings is counted twice",
@@ -3800,7 +3801,9 @@ MUTATIONS = [
      '    return project_slug(entry) if entry.startswith("/") else entry',
      "    return entry",
      ["test_tk_roster."
-       "TestAllowDeny.test_an_entry_written_as_a_path_names_the_same_project"], ROSTER),
+       "TestAllowDeny.test_an_entry_written_as_a_path_names_the_same_project",
+      "test_tk_roster."
+       "TestQueuesArgument.test_a_name_written_as_a_path_names_the_same_queue"], ROSTER),
 
     ("T128 roster an entry that matched nothing is passed over in silence",
      "        unmatched = [e for e in entries if list_key(e) not in listed]",
@@ -4443,6 +4446,139 @@ MUTATIONS = [
      '        if val and "\\n" in val:',
      ["TestAnItemsParagraphsLeaveWithIt.test_add_refuses_every_line_separator",
       "TestAnItemsParagraphsLeaveWithIt.test_edit_refuses_every_line_separator"]),
+
+    # --- T521: `pack --all`, one row per roster queue ----------------------
+
+    ("T521 the table keeps the roster's name order instead of sorting by eligible",
+     "    counted.sort(key=lambda row: -row[0])\n", "",
+     ["TestPackAll.test_the_rows_sort_by_ELIGIBLE_most_first_ties_in_roster_order",
+      "TestPackAll.test_a_queue_with_many_open_items_and_none_eligible_ranks_LAST"]),
+
+    ("T521 the table sorts by the OPEN count",
+     "    counted.sort(key=lambda row: -row[0])\n",
+     "    counted.sort(key=lambda row: -row[1])\n",
+     ["TestPackAll.test_a_queue_with_many_open_items_and_none_eligible_ranks_LAST"]),
+
+    ("T521 a tie on eligible is broken against the roster's order",
+     "    counted.sort(key=lambda row: -row[0])\n",
+     "    counted.sort(key=lambda row: (-row[0], [-ord(c) for c in row[2]]))\n",
+     ["TestPackAll.test_the_rows_sort_by_ELIGIBLE_most_first_ties_in_roster_order"]),
+
+    ("T521 the table counts a ticket the lane pushed out as eligible",
+     "               if pack_takes(n, verdict, pushed))",
+     "               if verdict is None)",
+     ["TestPackAll.test_the_count_is_the_one_a_single_pack_prints_lane_included"]),
+
+    ("T521 the table lists the queues fleet-deny holds back",
+     '        if keeper == "fleet-deny":\n            continue',
+     "        if False:\n            continue",
+     ["TestPackAll.test_a_queue_the_site_file_denies_is_not_listed"]),
+
+    ("T521 the table drops the queues fleet-allow leaves out, as the cap does",
+     '        if keeper == "fleet-deny":\n            continue',
+     "        if keeper:\n            continue",
+     ["TestPackAll.test_a_queue_fleet_allow_leaves_out_is_listed_and_MARKED"]),
+
+    ("T521 a row outside fleet-allow carries no mark",
+     '        mark = PACK_ALL_OUTSIDE if keeper else ""',
+     '        mark = ""',
+     ["TestPackAll.test_a_queue_fleet_allow_leaves_out_is_listed_and_MARKED"]),
+
+    ("T521 `--blocked` reaches only the single-queue `pack`",
+     '        rows, pushed, _, _ = pack_verdicts(content or "", identity, under_way, blocked)',
+     '        rows, pushed, _, _ = pack_verdicts(content or "", identity, under_way, '
+     'frozenset())',
+     ["TestPackAll.test_blocked_reaches_every_queue"]),
+
+    ("T521 `--spec-under-way` reaches only the single-queue `pack`",
+     '        rows, pushed, _, _ = pack_verdicts(content or "", identity, under_way, blocked)',
+     '        rows, pushed, _, _ = pack_verdicts(content or "", identity, frozenset(), '
+     'blocked)',
+     ["TestPackAll.test_spec_under_way_reaches_every_queue"]),
+
+    ("T521 a queue file the system will not open takes the whole table down",
+     "        except OSError as e:\n            # the open, not the decode",
+     "        except ZeroDivisionError as e:\n            # the open, not the decode",
+     ["TestPackAll.test_a_queue_the_system_will_not_open_costs_its_own_row"]),
+
+    ("T521 `pack --all` resolves `--dir` and refuses one naming nothing",
+     '    memdir = (None if args.cmd == "report" or (args.cmd == "pack" and args.all)',
+     '    memdir = (None if args.cmd == "report"',
+     ["TestPackAll.test_dir_is_ignored_as_report_all_ignores_it"]),
+
+    ("T521 one undecodable queue takes the whole table down",
+     "        except SystemExit as e:\n            # `read` refuses",
+     "        except ZeroDivisionError as e:\n            # `read` refuses",
+     ["TestPackAll.test_an_undecodable_queue_costs_its_own_row_not_the_table"]),
+
+    ("T521 the open count leads the row",
+     '        print(f"{elig:>8}  {opened:>4}  {name:<{width}}  {d}"',
+     '        print(f"{opened:>8}  {elig:>4}  {name:<{width}}  {d}"',
+     ["TestPackAll.test_each_row_carries_eligible_open_project_and_queue_dir"]),
+
+    ("T521 an empty roster crashes instead of saying so",
+     '    if not table:\n        print("(no queue on this machine)")\n        return\n', "",
+     ["TestPackAll.test_no_queue_on_the_machine_says_so"]),
+
+    # --- T521: `tk-roster --queues`, this run's queues replacing fleet-allow ---
+
+    ("T521 roster `--queues` is layered under fleet-allow instead of replacing it",
+     "    if named is not None:\n        allow = named",
+     "    if named is not None:\n        allow = allow or named",
+     ["test_tk_roster."
+       "TestQueuesArgument.test_a_named_queue_fleet_allow_leaves_out_RUNS"], ROSTER),
+
+    ("T521 roster with no queues named, every queue enters",
+     "    if named is not None:\n        allow = named",
+     "    if True:\n        allow = named or ()",
+     ["test_tk_roster."
+       "TestQueuesArgument.test_without_the_flag_the_allowlist_still_binds"], ROSTER),
+
+    ("T521 roster `--queues` overrules fleet-deny",
+     "        keeper = excluded_by(name, allow, deny)\n"
+     '        if keeper == "fleet-allow" and named is not None:',
+     "        keeper = excluded_by(name, allow, () if named is not None else deny)\n"
+     '        if keeper == "fleet-allow" and named is not None:',
+     ["test_tk_roster."
+       "TestQueuesArgument.test_a_named_queue_in_fleet_deny_is_REFUSED_with_a_message"],
+     ROSTER),
+
+    ("T521 roster a queue `--queues` does not name is reported as held back",
+     '        if keeper == "fleet-allow" and named is not None:\n            continue',
+     "        if False:\n            continue",
+     ["test_tk_roster."
+       "TestQueuesArgument.test_only_the_named_queues_are_this_runs_and_the_rest_go_unreported"],
+     ROSTER),
+
+    ("T521 roster the site file's own allowlist exclusions go unreported",
+     '        if keeper == "fleet-allow" and named is not None:\n            continue',
+     '        if keeper == "fleet-allow":\n            continue',
+     ["test_tk_roster."
+       "TestQueuesArgument.test_without_the_flag_the_allowlist_still_binds"], ROSTER),
+
+    ("T521 roster a named queue the deny list refuses reads as a standing exclusion",
+     "    if held and named is not None:", "    if False:",
+     ["test_tk_roster."
+       "TestQueuesArgument.test_a_named_queue_in_fleet_deny_is_REFUSED_with_a_message"],
+     ROSTER),
+
+    ("T521 roster a `--queues` name matching no queue is passed over in silence",
+     '                         ("--queues", named or ())):',
+     "                         ):",
+     ["test_tk_roster."
+       "TestQueuesArgument.test_a_name_matching_no_queue_is_a_stray_entry"], ROSTER),
+
+    ("T521 roster a `--queues` entry outside the name alphabet is accepted",
+     '        if not entry.startswith("/") and not tk_site.PROJECT_NAME_RE.match(entry):',
+     "        if False:",
+     ["test_tk_roster."
+       "TestQueuesArgument.test_a_malformed_argument_is_refused_before_the_sweep"], ROSTER),
+
+    ("T521 roster an empty `--queues` sweeps every queue instead of being refused",
+     "    if not entries:\n        raise argparse.ArgumentTypeError(",
+     "    if False:\n        raise argparse.ArgumentTypeError(",
+     ["test_tk_roster."
+       "TestQueuesArgument.test_a_malformed_argument_is_refused_before_the_sweep"], ROSTER),
 
 ]
 

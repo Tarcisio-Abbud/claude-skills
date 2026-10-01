@@ -146,6 +146,9 @@ what went, and `fleet.md` holds the same text for a one-paste reversal.
 | F:429–431 | a load with no queue is unordered | KEEP | `docs-audit` |
 | F:433–434 | a load the table does not name is not a load | KEEP | an unknown argument (stop) |
 
+> Later note (T521): row F:73–81's per-project `pack` loop became one `tk-queue pack --all`
+> call, and its `test_afk_audit` pin left with it.
+
 Counts: 60 KEEP, 6 DROP, 5 CLAUSE, 0 MOVE, 0 FIT. The inline evidence left the skill as DROP
 and CLAUSE rows, and each is stored verbatim in `fleet.md`. That file is the destination the
 `REPORT.md` MOVE table names for an own skill's evidence. So one edit puts any of them back. No
