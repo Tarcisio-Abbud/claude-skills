@@ -4,7 +4,7 @@ Read from the section of the same name in `AFK.md` beside this file, which a ses
 through `SKILL.md`, *A session opening on a package handoff*. **Every step number below is
 `AFK.md`'s.**
 
-A generation opened by one of `WINDOW.md`'s vehicles inherits a package mid-flight and builds
+A generation opened by one of `WINDOW.md`'s two vehicles inherits a package mid-flight and builds
 none: the claims it inherited are the whole of its work. It runs this file first, once, and
 only where the handoff names an accumulated lane; a handoff naming solo items alone goes straight
 to step 3's dispatch, and one a planning seam wrote — composed, never claimed — runs step 3 whole

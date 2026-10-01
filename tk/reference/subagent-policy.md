@@ -57,7 +57,7 @@ A consumer that copies the values into itself has forked the policy — read the
 |---|---|---|---|---|---|---|
 | audit-finder | sonnet | session | local | none | none | Adversarial lens over the work; dispatch one agent per lens. |
 | verifier-1 | sonnet | session | local | none | none | Refutes a finding. A finding that would edit a spec or a ticket goes on to verifier-2. |
-| verifier-2 | opus | high | local | none | none | Second verdict, for a finding that edits a spec or a ticket, and for a finding that would become a run or a parked item of an unlimited package (`../skills/kickoff/FINDINGS.md`). Effort is pinned. |
+| verifier-2 | opus | high | local | none | none | Second verdict, for a finding that edits a spec or a ticket, and for the gate of `../skills/kickoff/FINDINGS.md` destination 4. Effort is pinned. |
 | tiebreak | opus | high | local | none | none | Settles a split verdict. Effort is pinned. |
 | root-cause-auditor | opus | high | local | none | none | Audits the CUT before the package is claimed — the dedup, merge and split candidates of `../skills/kickoff/ROOT-CAUSE.md`. It writes no repository: what it returns is the package the orchestrator then claims, so the checkpoint invariant has nothing to hold. |
 | implementer | opus | high | local | opens | required | Downgradable to sonnet on a mechanical, fully specified ticket. Log the downgrade. |
@@ -69,7 +69,7 @@ A consumer that copies the values into itself has forked the policy — read the
 | review | sonnet | session | cloud | none | none | Second pair of eyes; follows the audit-finder row, returning findings for someone else to judge rather than a verdict. Its return is text the orchestrator relays — a cloud agent reaches no tracker of its own. |
 | cold-reviewer | opus | high | local | none | required | The cold review of a lane's pull request, judging and fixing in one agent, as the attended cold session does. Runs on sonnet when the site's rules put the lane's diff below the line where the two axes run on the session's model: the orchestrator decides at dispatch, from the diff, and logs the downgrade. The axes spawn on this agent's model, so its model is theirs. It commits its corrections on the branch the lane opened the pull request on, which is why `checkpoint` is required and `pr` is none. Local; on opus it therefore spends a slot in the local Opus ceiling — see *Venue* below. The separation this table protects, who FINDS against who JUDGES, survives the fusion: the two axes of `mattpocock-skills:code-review` are what find. |
 | explore | haiku | session | local | none | none | Pure search and file location, no verdict. |
-| fleet-orchestrator | opus | session | local | opens | required | One project's whole package, dispatched by the fleet at the fleet's `--budget`. Its wrap-up versioning gate opens that package's pull requests, so the closing line rides with it wherever the item names a tracker ticket. Local by construction: its queue lives in the project's queue dir, which no pushed repo carries. |
+| fleet-orchestrator | opus | session | local | opens | required | One project's whole package, dispatched by the fleet at the budget the fleet hands it (`../skills/fleet/SKILL.md` step 4). Its wrap-up versioning gate opens that package's pull requests, so the closing line rides with it wherever the item names a tracker ticket. Local by construction: its queue lives in the project's queue dir, which no pushed repo carries. |
 <!-- /tk:roles -->
 
 ## The closing line

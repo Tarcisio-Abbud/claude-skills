@@ -1,6 +1,6 @@
 ---
 name: fleet
-description: "Fleet run: one command opens the unattended package of EVERY project on this machine, and closes on one consolidated vista. Arg: the load — `afk` (default) or `docs-audit`."
+description: "Fleet run: one command opens the unattended package of EVERY project on this machine, and closes on one consolidated vista. Args: the load (`afk` default, or `docs-audit`) and `--budget`."
 disable-model-invocation: true
 argument-hint: "[afk|docs-audit] [--budget N|unlimited]"
 arguments: load
@@ -184,11 +184,14 @@ The prompt carries, in this order:
    plugin copy and any worktree the fleet runs from. Resolve the path here and paste it, so the
    run follows the copy the fleet meant;
 3. **the load's own flags** — the table below says what each load carries, and a load whose skill
-   reads no flag is handed none. For `afk` the flag is **the fleet's own `--budget`**, `1` by
-   default, passed explicitly: a default can move. Free text asking for everything reads as
-   `unlimited`, said in the report. A project run never opens a successor. It writes a handoff
-   and returns; the refill below is the vehicle that opens one. A successor opened from inside
-   a project run would be a second live orchestrator over that queue;
+   reads no flag is handed none. For `afk` the flag is **the budget the fleet hands it**.
+   On the first dispatch that is the fleet's own `--budget`, `1` by default and passed
+   explicitly, since a default can move. A re-dispatch hands one less than the budget the run
+   returned with. Free text maps to a budget as `../kickoff/SKILL.md` says, and the report says
+   the mapping. The `afk` prompt also carries the **no-successor line**, verbatim: "Open no
+   successor generation; write the package handoff and return". A successor opened from inside
+   a project run would be a second live orchestrator over that queue. The re-dispatch below
+   opens the next run;
 4. **the project's directory**, as the FIRST instruction the run obeys. Every `tk-queue` call
    resolves its queue from the cwd, and no dispatch mechanism here sets a subagent's cwd;
 5. **the order to run every suite in the FOREGROUND, with a declared timeout.** A run that
@@ -207,11 +210,12 @@ run returns, its slot is free and the next project in the step-2 order enters im
 Waiting for the slowest project run of a wave leaves every earlier finisher's slot idle for
 exactly as long as that member runs.
 
-**A run that returned holding claims is dispatched again.** Its handoff names claims still held,
-and the budget it carried had generations left. It re-enters the roster at its head. The fleet
-dispatches it on that handoff (`../kickoff/RESUME.md`), at budget N−1, never while its
-predecessor is alive. Under `unlimited` the budget stays `unlimited`. This repeats until the run
-returns holding no claim, or the wall closes the fleet.
+**A run that returned holding claims is re-dispatched.** Its handoff names claims still held,
+and the budget it carried had generations left. It goes ahead of the next project in the step-2
+order. The fleet re-dispatches it on that handoff (`../kickoff/RESUME.md`), at one less than the
+budget it returned with, never while its predecessor is alive. Under `unlimited` the budget stays
+`unlimited`. This repeats until the run returns holding no claim, or the weekly wall closes the
+fleet; the 5-hour wall only pauses it.
 
 ### The fleet's quota ceiling
 
@@ -274,17 +278,17 @@ this machine. A run returning a quota failure is reporting a fact about the flee
   naming the reset time the error carried. The weekly wall deletes the tick
   (`../kickoff/WINDOW.md`, *The tick*).
 
-Each project run still carries `../kickoff/WINDOW.md` for itself, at the fleet's `--budget` — its own
-handoff, its claims, its pushed tree. The fleet writes none of those. It stops sending work,
-and reports at the close.
+Each project run still carries `../kickoff/WINDOW.md` for itself, at the budget the fleet hands
+it — its own handoff, its claims, its pushed tree. The fleet writes none of those. It stops
+sending work, and reports at the close.
 
 ### The texts a run returns are born at the close
 
 A project run returns text meant for its own queue — a finding its package could not fix, a
-decision nobody was there to take. Under `unlimited`, such a finding is one that
-`../kickoff/FINDINGS.md`'s destination 4 refused. **The fleet births those texts and the run
-does not.** A `tk-queue add` is refused inside a subagent by this machine's `ask-before-queue-add` hook.
-The refusal is the point: an item is written only after a human has seen its words. The
+decision nobody was there to take. Under `unlimited`, such a finding is one that failed a check
+of `../kickoff/FINDINGS.md`'s destination 4. **The fleet births those texts and the run does
+not.** A `tk-queue add` is refused inside a subagent by this machine's `ask-before-queue-add`
+hook. The refusal is the point: an item is written only after a human has seen its words. The
 first fleet run brought back twelve such texts and none was born. They reached the report, and
 a report line is a deferral with another name — `../kickoff/FINDINGS.md` owns that verdict.
 
@@ -325,8 +329,9 @@ run killed between its `done` and its return leaves them there for the close to 
 **Two units, two checkpoints.** A checkpoint anchors on a completed ITEM, and that one belongs
 to the project run. It checkpoints per item, inside its project, under `AFK.md`. The fleet's
 unit is a project, so the same rule reads here as a completed PROJECT RUN. Its refill takes the
-next project in the step-2 order, never the next unblocked item. The fleet computes no frontier,
-because each queue's `blocked-by` is resolved inside the project run that owns that queue.
+next project in the step-2 order, never the next unblocked item; a re-dispatch goes ahead of it.
+The fleet computes no frontier, because each queue's `blocked-by` is resolved inside the project
+run that owns that queue.
 
 With no barrier there is no end of wave to anchor on. The **textual report** is therefore
 checkpointed **each time a project run returns**. That project's section is appended to it, on
@@ -339,12 +344,12 @@ covering every project that finished. The ones still in flight are named as such
 
 - every dispatchable project has been dispatched or is queued behind a slot, unless the quota
   ceiling or the weekly wall stopped the fleet first;
-- every run that returned holding claims, with budget left, has been dispatched again or is
+- every run that returned holding claims, with budget left, has been re-dispatched or is
   queued behind a slot;
 - a quota reading was taken before each dispatch, and each one's age is on record;
-- every in-flight run carries a generated block, an absolute load path, that load's flags, its
-  own working directory, the foreground-suite order and the order to write its texts into the
-  package handoff;
+- every in-flight run carries a generated block, an absolute load path, that load's flags (for
+  `afk`, the no-successor line too), its own working directory, the foreground-suite order and
+  the order to write its texts into the package handoff;
 - the textual report carries one `Start stamp:` line, taken once;
 - the textual report on disk covers every run that has returned.
 
@@ -433,7 +438,7 @@ report — exactly as written:
 
 | Argument | What each project run is told to do | Flags it carries |
 |---|---|---|
-| `afk` (default) | follow `../kickoff/SKILL.md` with the `afk` argument | `--budget <the fleet's value>` |
+| `afk` (default) | follow `../kickoff/SKILL.md` with the `afk` argument | `--budget <the budget the fleet hands it>` |
 | `docs-audit` | follow `../docs-audit/SKILL.md` | none |
 
 **The `afk` load enters at `../kickoff/SKILL.md`, not at `AFK.md`.** `AFK.md` is a continuation.

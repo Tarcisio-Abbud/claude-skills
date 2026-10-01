@@ -184,8 +184,8 @@
     },
     "tk/skills/kickoff/FINDINGS.md": {
       "role": "guarded",
-      "lines": 91,
-      "body_words": 988,
+      "lines": 101,
+      "body_words": 1135,
       "over": [
         "max_sentence_words",
         "inline_evidence"

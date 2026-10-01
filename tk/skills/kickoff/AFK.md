@@ -13,7 +13,7 @@ takes no `--dir`.
 
 **Read `WINDOW.md` beside this file before anything below runs** — the quota wall and its
 handoff, the checkpoint invariant, the seam's context threshold, the five `--state` contents of
-an accumulated lane, the vehicles that open a successor generation, `--budget N`.
+an accumulated lane, the two vehicles that open a successor generation, `--budget N`.
 Those rules fire at moments the steps below do not choose. Read this file by section, never end
 to end: what a step defers is its BODY, not its existence. A session finding, at any step, takes
 *A session finding, unattended* below.
@@ -63,11 +63,12 @@ so a spec whose second ticket is blocked drops under the floor.
 **Cut** from the top of that list until the package fits one session — around 3–6 items or ~2h of
 summed Effort, an opening bid step 6's measurement corrects; what multiplies a lane is its
 correction cycles. Under `--budget unlimited` there is no size cut: every survivor of the
-exclusions, the floor and `ROOT-CAUSE.md` is claimed, in queue order. Recount tickets per Spec among the survivors and re-apply the floor (the
-recount only demotes; a spec below the floor takes the solo lane). A package with an
-accumulated lane reserves two more lines — the review at parity with the summed lanes, and
-the tail as one suite plus the lane's N criteria and the merge of `origin/main` — or its
-last third is unfunded.
+exclusions, the floor and `ROOT-CAUSE.md` is claimed, in queue order, and the package's opening
+ledger line records the budget with its free-text mapping (`SKILL.md` gives the rule). Recount
+tickets per Spec among the survivors and re-apply the floor (the recount only demotes; a spec
+below the floor takes the solo lane). A package with an accumulated lane reserves two more
+lines — the review at parity with the summed lanes, and the tail as one suite plus the lane's N
+criteria and the merge of `origin/main` — or its last third is unfunded.
 
 **Done when:** the package lists its items with summed Effort and each one's lane after the
 recount, the review and tail lines stand beside them, and every exclusion and item left out

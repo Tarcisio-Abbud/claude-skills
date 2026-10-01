@@ -3,11 +3,11 @@
 Read from `AFK.md` beside this file, at any step, by the ORCHESTRATOR.
 `../../reference/session-finding.md` defines the term and carries both ladders, attended and
 unattended; the unattended one's second rung points here. This file decides which VEHICLE a
-finding takes, never whether the finding survives.
+finding takes, never whether the finding survives — destination 4's refutation aside.
 
 **No new queue item is born while a package runs**, except the parked DECISION of *The one exit
-that leaves the package without code* below, which a named human decision authorises. A run
-of the package is not an item. The
+that leaves the package without code* below, which a named human decision authorises. A
+finding run is not an item. The
 hydra is measured, on the queue this rule was written against. Of the 110 open items, 74 —
 67% — were born in seven days, every one of them
 out of a review campaign or an afk package. 43 of them name a review mechanism in their own
@@ -15,8 +15,9 @@ out of a review campaign or an afk package. 43 of them name a review mechanism i
 cap, and the hook that asks before an `add` — and what this file retires is the rung that kept
 feeding it.
 
-Nothing is discarded here, because discard is the user's judgement and stays theirs. The finding
-changes vehicle instead, and the vehicle is one of the destinations below.
+Nothing is discarded here, because discard is the user's judgement and stays theirs. The one
+exception is a finding destination 4's `verifier-2` refutes, which is no finding at all. The
+finding changes vehicle instead, and the vehicle is one of the destinations below.
 
 ## The destinations
 
@@ -38,20 +39,23 @@ line. The choice is made at the moment of discovery, with the rest of the packag
    several. `UNION.md` beside this file is where this destination is reached, and that sweep
    runs on EVERY package: the condition above decides only whether this finding rides it into
    a lane, never whether the union is looked at.
-4. **A run of the package, with no item** — `--budget unlimited` only. The finding passes five
-   checks, each written yes/no with its evidence in the ledger line (`LEDGER.md`):
+4. **A finding run, with no item** — `--budget unlimited` only. A `verifier-2`
+   (`../../reference/subagent-policy.md`) first tries to refute every finding that reaches this
+   destination, one per finding; destination 1's fixer never waits on it. A finding it
+   **refutes** is no finding: it leaves as a discard, one ledger line, the trace a discard
+   leaves. A finding that survives passes five checks, each written yes/no with its evidence in
+   the ledger line (`LEDGER.md`):
    - an `A:` criterion;
    - a clone of its repo here;
    - no Risk;
    - no file held by a live lane (held: destination 1, or wait for it);
    - no existing item or fix on main (`tk-queue list`, `git log origin/main`).
 
-   A `verifier-2` (`../../reference/subagent-policy.md`) tries to refute it first, one per
-   finding; destination 1's fixer never waits on it. At most one of those verdicts per package
-   may run on Fable, logged as a deviation. A refuted finding runs nowhere: the close lists it
-   with the refutation, under the user's veto. A finding that survives dispatches as a solo item
-   does (`AFK.md` step 3); its pull request is its trace, the merge gate its veto. Depth one: a
-   finding found inside such a run never takes this destination.
+   A finding that **fails a check** takes the other destinations in order, down to the parked
+   DECISION below. One that passes dispatches as a solo item does (`AFK.md` step 3); its pull
+   request is its trace, the merge gate its veto. Its verify step checks the `A:` criterion and
+   records it in the run's ledger line. There is no claim and no `done`, because there is no
+   item. Depth one: a finding found inside a finding run never takes this destination.
 
 **A report line is not a destination.** "Linha de relatório é adiamento com outro nome" — the
 user's verdict, 2026-09-06. A finding written down for a reader nobody asked to act is a
@@ -69,6 +73,8 @@ a run cannot `add` (`../fleet/SKILL.md`, *The texts a run returns are born at th
 Recorded only in a pull request's body, it is the report line *The destinations* refuses.
 
 At the close, never mid-package, ONE `AskUserQuestion` batches every parked DECISION. The
+question is asked once, at the close, which is the entry into `WINDOW.md`'s `ESPERANDO-HUMANO`.
+A later close in the same package asks only about what was parked since the last question. The
 report comes out FIRST, and the question then quotes its **What changed** lines
 (`../wrap-up/REPORT.md`). Portuguese, these labels verbatim:
 

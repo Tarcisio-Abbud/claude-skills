@@ -8,9 +8,10 @@ WHY THIS FILE EXISTS. A package used to answer every finding with one command:
 `tk-queue add`. The hydra that came of it was measured on the queue this rule was
 written against — 74 of 110 open items born in seven days, all of them out of a
 review campaign or an afk package. So the second rung of the unattended ladder was
-retired, and `skills/kickoff/FINDINGS.md` replaced it with three destinations that
+retired, and `skills/kickoff/FINDINGS.md` replaced it with destinations that
 keep the finding inside the package: a correction commit, a line in the pull
-request's body, a sweep lane over the UNION of the package's pull requests. A
+request's body, a sweep lane over the UNION of the package's pull requests, and,
+under `--budget unlimited` only, a finding run with no item. A
 finding that reaches none of them is not filed away — the file says so in the one
 sentence a report line would otherwise satisfy.
 
@@ -193,8 +194,13 @@ class TheDestinationsFile(unittest.TestCase):
         self.assertEqual([n for n, _ in numbered], ["1", "2", "3", "4"],
                          "the destinations are not four numbered items in order")
         first, second, third, fourth = (t for _, t in numbered)
-        self.assertIn("run of the package", fourth)
-        self.assertIn("--budget unlimited", flat(body),
+        self.assertIn("finding run", fourth)
+        # Scoped to destination 4's OWN text: the read-order sentence above the
+        # list also names `--budget unlimited`, so a search over the whole section
+        # stays green when the item loses its tag.
+        items = re.split(r"(?m)^(?=\d\. \*\*)", body)
+        own = flat(next(i for i in items if i.startswith("4. ")))
+        self.assertIn("`--budget unlimited` only", own,
                       "destination 4 no longer says which package may take it")
         self.assertIn("commit", first)
         self.assertIn("pull request's body", second)
