@@ -66,8 +66,9 @@ from mutations_tk_contract import (  # noqa: E402 (path above)
 # itself as coverage, which is worse than an uncovered guard. Such entries are
 # excluded from the tally and reported apart, and this is the debt the list
 # carries: a ceiling to LOWER as entries are repaired, never to raise. Measured
-# 2026-09-05: nine entries named five tests renamed out from under them; all nine
-# were repaired and the ceiling is zero, so any new misnamed entry reddens the suite.
+# 2026-09-05: nine entries named tests since renamed or moved to another class;
+# all nine were repaired and the ceiling is zero, so any new misnamed entry reddens
+# the suite.
 KNOWN_MISNAMED = 0
 
 # TESTS NO ENTRY NAMES. A run prints `N/N caught` and means it — but N counts
