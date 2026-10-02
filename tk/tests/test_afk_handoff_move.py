@@ -80,7 +80,7 @@ class TheHandoffMoveRePointsWhatNamesIt(unittest.TestCase):
     def test_the_move_updates_the_pointer_s_handoff_in_the_same_move(self):
         self.assertRegex(self.flat, r"(?i)in the same move",
                          "the move no longer says the re-pointing happens with it")
-        self.assertRegex(self.flat, r"pointer's `handoff`",
+        self.assertRegex(self.flat, r"(?i)re-point the package pointer's `handoff`",
                          "the move leaves the package pointer's `handoff` on the file "
                          "`done` deletes")
 
@@ -91,6 +91,9 @@ class TheHandoffMoveRePointsWhatNamesIt(unittest.TestCase):
                          "the move says nothing of a tick whose prompt carries the path")
         self.assertIn("`CronDelete`", self.flat,
                       "a cron job has no edit; the rule must delete and re-arm")
+        self.assertRegex(self.flat, r"`CronCreate` it again with the new path",
+                         "the move deletes the tick without arming it again, leaving "
+                         "the package with no tick at all")
 
 
 class ThePrescribedCommandRuns(unittest.TestCase):
@@ -139,6 +142,13 @@ class ThePrescribedCommandRuns(unittest.TestCase):
         self.assertEqual({k: v for k, v in after.items() if k != "handoff"},
                          {k: v for k, v in before.items() if k != "handoff"},
                          "the rewrite lost the pointer's other fields")
+
+    def test_a_pointer_naming_the_closing_file_by_tilde_still_moves(self):
+        self.write_pointer("~/queue/handoff-T1.md")
+        self.run_cmd()
+        self.assertEqual(os.path.realpath(self.pointer_now()["handoff"]),
+                         os.path.realpath(self.new),
+                         "the match compares spellings, not the file they name")
 
     def test_a_pointer_naming_another_file_is_left_alone(self):
         other = os.path.join(self.queue, "handoff-T9.md")
