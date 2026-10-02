@@ -581,7 +581,9 @@ python3 -c 'import json, os, sys; p = os.path.expanduser("~/.claude/state/tk-pac
 That id is the one the run's `session.compact` carries (measured on 2.1.287): each listed run
 compacts, and every other subagent of the fleet's session is vetoed. A project run writes,
 rewrites and removes no pointer, since each would cost every run in flight its exemption or
-its veto. The fleet removes the pointer at its own close.
+its veto. `AFK.md` step 5's handoff move holds no exception: the fleet's pointer names no
+`handoff`, so its re-point writes nothing, and a project run armed no tick to re-arm. The fleet
+removes the pointer at its own close.
 
 The pointer is one file per machine. `session` keeps a package's veto, ledger and handoff out
 of every other session: each of the three acts only for the session it names. A pointer
