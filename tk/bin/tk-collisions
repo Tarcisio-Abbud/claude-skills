@@ -178,7 +178,11 @@ def run_suite(repo, commit, cmd):
     NO TIMEOUT. A real gate runs one suite per open PR, minutes each, in the
     foreground; a wrapper that killed a slow one would report a union it
     never measured. A shell that cannot even start the command (126, 127) is
-    a run that did not happen, never a red union."""
+    a run that did not happen, never a red union.
+
+    BASH, NOT `shell=True`: that is `/bin/sh`, which is dash on Debian, and a
+    suite line written for bash (`set -o pipefail; ...`) exits 2 there before
+    the suite starts — a red union nobody measured."""
     path = tempfile.mkdtemp(prefix="tk-collisions-union.")
     try:
         add = git(repo, "worktree", "add", "--detach", path, commit)
@@ -187,7 +191,7 @@ def run_suite(repo, commit, cmd):
                  f"so the suite was not run: "
                  f"{(add.stderr or add.stdout).strip() or 'no output'}")
         try:
-            run = subprocess.run(cmd, shell=True, cwd=path,
+            run = subprocess.run(["bash", "-c", cmd], cwd=path,
                                  capture_output=True, text=True)
         except OSError as e:
             fail(f"the suite could not be run in the union: {e}")
@@ -351,10 +355,10 @@ def main(argv=None):
                              "it the union misses whatever the base gained "
                              "since the branches were cut")
     parser.add_argument("--suite", metavar="CMD",
-                        help="the shell command that says whether a union is "
-                             "green, run with the union as its working "
-                             "directory. Required with --against, and given "
-                             "no timeout")
+                        help="the bash command that says whether a union is "
+                             "green, run by `bash -c` with the union as its "
+                             "working directory. Required with --against, and "
+                             "given no timeout")
     parser.add_argument("--json", action="store_true",
                         help="the same answer, for a reader")
     return collisions(parser.parse_args(argv))

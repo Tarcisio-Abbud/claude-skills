@@ -165,6 +165,12 @@ MUTATIONS = [
      ["TestUnionFailures.test_a_suite_that_could_not_be_run_is_never_reported_as_green"],
      SCRIPT),
 
+    ("the suite goes back to /bin/sh, where a bash suite line exits before it runs",
+     '            run = subprocess.run(["bash", "-c", cmd], cwd=path,',
+     "            run = subprocess.run(cmd, shell=True, cwd=path,",
+     ["TestUnion.test_a_suite_written_for_bash_runs_under_bash"],
+     SCRIPT),
+
     ("the pivot and the base are not checked to name a commit",
      "    for ref in args.refs + [r for r in (args.against, args.base) if r]:",
      "    for ref in args.refs:",
