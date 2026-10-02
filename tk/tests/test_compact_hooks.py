@@ -641,6 +641,15 @@ class TheModVeto(unittest.TestCase):
     def test_the_pointer_address_can_be_named_for_a_probe(self):
         self.kit("the pointer address can be named for a probe")
 
+    def test_a_fleet_project_run_listed_as_exempt_compacts(self):
+        self.kit("a fleet project run listed as exempt compacts")
+
+    def test_a_project_run_implementer_is_vetoed_beside_the_exempt_list(self):
+        self.kit("a project run implementer is vetoed beside the exempt list")
+
+    def test_an_exempt_field_that_is_not_a_list_of_ids_vetoes_nothing(self):
+        self.kit("an exempt field that is not a list of ids vetoes nothing")
+
     def test_decide_refuses_every_input_that_is_not_a_veto(self):
         self.kit("decide refuses every input that is not a veto")
 

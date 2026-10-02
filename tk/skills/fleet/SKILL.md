@@ -222,6 +222,10 @@ run ends** — `../kickoff/WINDOW.md`, *The tick*.
 stops the fleet before any dispatch. A fleet resumed after a wall reads the line back and never
 takes a new stamp.
 
+**Write the package pointer before the first dispatch, and append each project run's `agentId`
+in the turn that dispatches it**, re-dispatches included. `../kickoff/WINDOW.md`, *Three
+pieces*, holds both commands and why the runs are exempt from the veto.
+
 **The prompt names the skill's file, never the command.** `../kickoff/SKILL.md` carries
 `disable-model-invocation: true`. `../dispatch/SKILL.md` owns why the file route works where the
 command does not, under *Mechanism boundaries*.
@@ -399,6 +403,7 @@ covering every project that finished. The ones still in flight are named as such
 - every in-flight run carries a generated block, an absolute load path, that load's flags (for
   `afk`, the no-successor line too), its own working directory, the foreground-suite order and
   the order to write its texts into the package handoff;
+- the package pointer names this session and lists every dispatched run's `agentId`;
 - the textual report carries one `Start stamp:` line, taken once;
 - the textual report on disk covers every run that has returned.
 
@@ -469,6 +474,9 @@ step 4. It stands outside the three above because it is the close's and not `vis
 A red gate does not hold the fleet, because the textual report is the close. Report the refusal
 in the state `vista.md` names, and end the run anyway.
 
+**Remove the package pointer last**, red gate or not: `rm -f ~/.claude/state/tk-package.json`. A run still in
+flight at the close loses the veto from then on.
+
 **Done when:**
 
 - the textual report is complete on the wrap-up template;
@@ -477,7 +485,8 @@ in the state `vista.md` names, and end the run anyway.
 - the gate was run and its state is in the report;
 - the measurement and deviation lines are written, the first carrying the quota ceiling;
 - every text a run returned was born with `--dir`, or is named in the report with the reason it
-  could not be.
+  could not be;
+- the package pointer is gone.
 
 ## The load is a parameter
 

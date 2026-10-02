@@ -96,6 +96,25 @@ test('the pointer address can be named for a probe', async ($, on) => {
   expect(r.skip).toBe(VETO)
 })
 
+test('a fleet project run listed as exempt compacts', async ($, on) => {
+  stub(on, { pointer: { ...PACKAGE, exempt: ['a1111111111111111', AGENT] } })
+  const r = await compact($)
+  expect(r.skip).toBeUndefined()
+  expect(r.messages).toBeDefined()
+})
+
+test('a project run implementer is vetoed beside the exempt list', async ($, on) => {
+  stub(on, { pointer: { ...PACKAGE, exempt: ['a1111111111111111'] } })
+  const r = await compact($)
+  expect(r.skip).toBe(VETO)
+})
+
+test('an exempt field that is not a list of ids vetoes nothing', async ($, on) => {
+  stub(on, { pointer: { ...PACKAGE, exempt: 'a1111111111111111' } })
+  const r = await compact($)
+  expect(r.skip).toBeUndefined()
+})
+
 test('decide refuses every input that is not a veto', () => {
   const base = { agentId: AGENT, sessionId: SESSION, pointer: PACKAGE, compactWindow: 100000, modelWindow: 1000000 }
   expect(decide(base)).toBe(VETO)
@@ -105,4 +124,9 @@ test('decide refuses every input that is not a veto', () => {
   expect(decide({ ...base, pointer: { ...PACKAGE, session: '' }, sessionId: '' })).toBe(null)
   expect(decide({ ...base, compactWindow: undefined })).toBe(null)
   expect(decide({ ...base, compactWindow: 1200000 })).toBe(null)
+  expect(decide({ ...base, pointer: { ...PACKAGE, exempt: [] } })).toBe(VETO)
+  expect(decide({ ...base, pointer: { ...PACKAGE, exempt: [AGENT] } })).toBe(null)
+  expect(decide({ ...base, pointer: { ...PACKAGE, exempt: [AGENT + 'x'] } })).toBe(VETO)
+  expect(decide({ ...base, pointer: { ...PACKAGE, exempt: [7] } })).toBe(null)
+  expect(decide({ ...base, pointer: { ...PACKAGE, exempt: null } })).toBe(null)
 })

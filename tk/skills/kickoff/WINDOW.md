@@ -515,14 +515,16 @@ Three pieces, and the tick is the first:
      threshold, mid-item, and loses the item. On `session.compact` the mod returns
      `{ skip }` when all of these hold: the trigger is `auto`; the event names an `agentId`
      (a subagent's or a fork's own transcript, never the main conversation); the package
-     pointer names this session's id; and the compaction window is a number below the
-     model window. This is why `AFK.md` gives each implementer run one item: a run the veto
-     keeps whole has no compaction to shed a second one.
+     pointer names this session's id; the pointer's `exempt` list does not hold that
+     `agentId`; and the compaction window is a number below the model window. This is why
+     `AFK.md` gives each implementer run one item: a run the veto keeps whole has no
+     compaction to shed a second one.
    - **The version floor is Claude Code 2.1.287**, the first with mods. On an older binary
      no mod loads, and every subagent compacts as before.
    - **What still compacts**: the orchestrator itself; a person's `/compact`; every session
      the pointer does not name; every subagent under a compaction window that is not a
-     number; and every subagent of a fleet, whose project runs write no `session` (below).
+     number; and every agent the pointer lists under `exempt`, which is how a fleet's
+     project runs keep their own compaction (below).
    - **The model-window assumption.** `auto` covers the threshold and the recovery from a
      prompt too long, and the event does not tell them apart. Refusing the recovery fails
      the subagent's request, so the veto runs only under a compaction window below the model
@@ -556,26 +558,45 @@ mkdir -p ~/.claude/state && printf '%s\n' \
   > ~/.claude/state/tk-package.json
 ```
 
-**A fleet's project run drops the `session` field from that line.** A project run is a
-subagent, and its shell carries the fleet session's id. Written with `session`, the pointer
-would let the mod veto the project run's own compaction, and that run would then grow to the
-model window and fail there.
+**A fleet owns the pointer, and its project runs write none.** A project run is a subagent
+and an orchestrator at once: the veto must reach its implementers and spare the run. So the
+fleet writes the pointer before its first dispatch (`../fleet/SKILL.md` step 4), with its own
+`session`, an empty `exempt` list, and no ledger or handoff, which keeps both hooks silent:
+
+```sh
+mkdir -p ~/.claude/state && printf '%s\n' \
+  "{\"package\": \"fleet-<start stamp>\", \"session\": \"$CLAUDE_CODE_SESSION_ID\", \"exempt\": []}" \
+  > ~/.claude/state/tk-package.json
+```
+
+After each dispatch of a project run, re-dispatches included, the fleet appends the `agentId`
+that dispatch returned, in the same turn. **One call carries every id the turn's dispatches
+returned**: the command reads, extends and replaces the file, so two calls in parallel can
+drop an id, and the run it named loses its exemption:
+
+```sh
+python3 -c 'import json, os, sys; p = os.path.expanduser("~/.claude/state/tk-package.json"); d = json.load(open(p)); d.setdefault("exempt", []).extend(sys.argv[1:]); t = p + ".tmp"; json.dump(d, open(t, "w")); os.replace(t, p)' "<agentId>" ...
+```
+
+That id is the one the run's `session.compact` carries (measured on 2.1.287): each listed run
+compacts, and every other subagent of the fleet's session is vetoed. A project run writes,
+rewrites and removes no pointer, since each would cost every run in flight its exemption or
+its veto. `AFK.md` step 5's handoff move holds no exception: the fleet's pointer names no
+`handoff`, so its re-point writes nothing, and a project run armed no tick to re-arm. The fleet
+removes the pointer at its own close.
 
 The pointer is one file per machine. `session` keeps a package's veto, ledger and handoff out
 of every other session: each of the three acts only for the session it names. A pointer
 without `session` gates nothing: the hooks act for every session, and the mod vetoes nowhere.
-That is a fleet's cost. While a fleet runs, every compacting session on this machine writes a
-ledger line and hears the handoff paragraph, which names the project run that wrote last.
 
 The package's close removes the pointer (`AFK.md` §7). A mid-package wrap-up keeps it for the
 next generation, a new session. **That generation rewrites `session` first**, or the veto,
-the ledger line and the handoff paragraph all go silent:
+the ledger line and the handoff paragraph all go silent. A resumed fleet rewrites it too, and
+keeps its `exempt` list:
 
 ```sh
 python3 -c 'import json, os; p = os.path.expanduser("~/.claude/state/tk-package.json"); d = json.load(open(p)); d["session"] = os.environ["CLAUDE_CODE_SESSION_ID"]; json.dump(d, open(p, "w"))'
 ```
-
-A fleet's project run skips that rewrite, for the same reason it wrote no `session`.
 
 With no such file the mod and the hooks do nothing at all, which is what lets the wiring sit
 in the settings permanently: most sessions on this machine are not packages. The hooks'

@@ -189,9 +189,11 @@ tk/
   hooks/compact-veto.js           the tk mod (Claude Code 2.1.287+; `hooks/hooks.json`
                                   names it): on `session.compact` with trigger `auto`,
                                   returns `{ skip }` for a subagent's compaction when the
-                                  package pointer names this session and the window is a
-                                  number below the model's. Tested by the first-party kit,
-                                  `claude plugin test tk`, through `compact_veto.test.ts`
+                                  package pointer names this session, its `exempt` list
+                                  (a fleet's project runs) does not hold the agent, and the
+                                  window is a number below the model's. Tested by the
+                                  first-party kit, `claude plugin test tk`, through
+                                  `compact_veto.test.ts`
   bin/tk-quota                    what is left of the rolling usage windows — the 5h and
                                   weekly figures reach the STATUSLINE SCRIPT at render time
                                   and are in no transcript, so this is the only way an agent
@@ -347,6 +349,10 @@ docs/agents/                      what the mattpocock engineering skills read; v
   issue-tracker.md                where the issues live and how to reach them, with the
                                   private half resolved from local git config
   triage-labels.md                the five triage roles, mapped to label strings
+docs/probes/                      probes that measured a claim the code relies on, one
+                                  directory each, named file by file in `.gitignore`
+  fleet-compact-veto/             the fleet's exempt list on 2.1.287: a logger plugin,
+                                  `run.sh` to reproduce the run, `analyze.py` to read it
 docs/prune/                       the pruning track's committed output: the baselines —
                                   what the skills of this plugin and of `mattpocock-skills`
                                   measure, and the gap between them — and one pair of files
