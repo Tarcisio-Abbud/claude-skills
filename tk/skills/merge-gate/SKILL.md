@@ -165,7 +165,9 @@ too.
 - **Verdict 2 hardened: every finding FIXED under the fixer cap, counted as N under
   "Achados não tratados" in the digest before the menu, or PARKED, zero accepted** — the cap is
   `../kickoff/AFK.md`'s *The fixer cap*, counted per FIRING of the review and never per life
-  of this pull request. Accepting a finding is human judgment; `../kickoff/FINDINGS.md` names
+  of this pull request. On a package's solo pull request, the review flow is the cold
+  reviewer's comment that `../kickoff/AFK.md` step 5 dispatched; with no such comment, verdict
+  2 is red. Accepting a finding is human judgment; `../kickoff/FINDINGS.md` names
   the destinations. A parked finding reaches the user in the close's question. It defers this
   pull request only where no fixer could close it. Three cases bind what an unattended session
   may merge, each checked alone:

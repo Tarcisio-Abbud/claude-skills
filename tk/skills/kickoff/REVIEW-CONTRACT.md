@@ -4,7 +4,9 @@ The **cold reviewer** of a lane reviews one pull request it did not write, and f
 confirms. It is not a second implementer and not a lens: it reads the whole lane against its
 items, triages every finding on the merits, repairs what belongs to the lane, and hands back a
 colour. `AFK.md` step 5 reaches this file for a lane that opened its own pull request under
-`LANE-CONTRACT.md` beside this one; the same file binds the reviewer's own commits.
+`LANE-CONTRACT.md` beside this one, and for a solo item's pull request once verify approved it.
+For a solo item, read "the lane" below as that one item: its branch, its worktree, its pull
+request. `LANE-CONTRACT.md` binds the reviewer's own commits either way.
 
 ## Inputs
 
@@ -13,7 +15,7 @@ colour. `AFK.md` step 5 reaches this file for a lane that opened its own pull re
    is `tk-contract --role cold-reviewer`: local, and on opus it therefore spends one of the
    machine's concurrent Opus slots (`../../reference/subagent-policy.md`, which also says when
    the role runs on sonnet).
-2. `<items file>`, the full text of the lane's items, and `<brief file>` where a
+2. `<items file>`, the full text of the lane's items — one item for a solo pull request — and `<brief file>` where a
    `/tk:second-opinion once` verdict decided a design: there the brief, not the item's
    statement, is what the lane was asked to build.
 3. The pull request, body AND comments —
