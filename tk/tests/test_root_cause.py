@@ -17,7 +17,7 @@ Nothing in this file runs a package. Two properties carry the weight:
   single failure this step exists to prevent;
 - the tracker import is prescribed with the three provenance flags and WITHOUT
   `--blocked-by` between siblings. That flag would make `pack` drop every blocked
-  sibling out of the package (ledger `blocked-by-na-fila`), and the eight tickets that
+  sibling out of the package, and the eight tickets that
   sat outside the queue on 2026-09-08 are why the import is written down at all.
 
 VACUITY GUARD FIRST. Every check below cuts a slice on a heading, and a heading that
