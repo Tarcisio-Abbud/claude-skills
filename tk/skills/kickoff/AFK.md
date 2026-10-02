@@ -269,8 +269,9 @@ python3 -c 'import json, os, sys; p = os.path.expanduser("~/.claude/state/tk-pac
 if d.get("handoff") and r(d["handoff"]) == r(sys.argv[1]): d["handoff"] = r(sys.argv[2]); json.dump(d, open(p + ".tmp", "w")); os.replace(p + ".tmp", p)' "<closing item's handoff file>" "<new handoff file>"
 ```
 
-Where the tick's prompt names the closing item's file, `CronDelete` the tick and arm it again
-with the new path: a cron prompt cannot be edited (`WINDOW.md`, *The tick*).
+Then run `CronList`. Where the `tk-tick` job's prompt names the closing item's file,
+`CronDelete` it and `CronCreate` it again with the new path, as `WINDOW.md`, *The tick*, arms
+it: a cron job has no edit.
 
 A solo item's pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file,
 as a lane holding its own pull request does.

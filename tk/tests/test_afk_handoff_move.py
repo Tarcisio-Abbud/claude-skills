@@ -85,10 +85,12 @@ class TheHandoffMoveRePointsWhatNamesIt(unittest.TestCase):
                          "`done` deletes")
 
     def test_the_move_re_arms_a_tick_that_names_the_file(self):
-        self.assertRegex(self.flat, r"(?i)where the tick's prompt names",
+        self.assertIn("`CronList`", self.flat,
+                      "the move never says how to find the tick whose prompt it checks")
+        self.assertRegex(self.flat, r"(?i)prompt names the closing item's file",
                          "the move says nothing of a tick whose prompt carries the path")
         self.assertIn("`CronDelete`", self.flat,
-                      "a cron prompt cannot be edited; the rule must delete and re-arm")
+                      "a cron job has no edit; the rule must delete and re-arm")
 
 
 class ThePrescribedCommandRuns(unittest.TestCase):
