@@ -165,7 +165,12 @@ too.
 - **Verdict 2 hardened: every finding FIXED under the fixer cap, counted as N under
   "Achados não tratados" in the digest before the menu, or PARKED, zero accepted** — the cap is
   `../kickoff/AFK.md`'s *The fixer cap*, counted per FIRING of the review and never per life
-  of this pull request. Accepting a finding is human judgment; `../kickoff/FINDINGS.md` names
+  of this pull request. On a package's solo pull request, a finding run's included, verdict 2
+  reads the cold reviewer's comment that `../kickoff/AFK.md` step 5 dispatched, the one opening
+  "Review fria (Standards + Spec": a *consertado* finding counts as fixed, a *não tratado* line
+  counts under "Achados não tratados", and a *recusado* one, declined with its reason as no
+  defect of this pull request, is not an accepted finding. With no such comment, verdict 2 is
+  red. Accepting a finding is human judgment; `../kickoff/FINDINGS.md` names
   the destinations. A parked finding reaches the user in the close's question. It defers this
   pull request only where no fixer could close it. Three cases bind what an unattended session
   may merge, each checked alone:
