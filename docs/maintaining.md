@@ -189,8 +189,10 @@ tk/
   hooks/compact-veto.js           the tk mod (Claude Code 2.1.287+; `hooks/hooks.json`
                                   names it): on `session.compact` with trigger `auto`,
                                   returns `{ skip }` for a subagent's compaction when the
-                                  package pointer names this session and the window is a
-                                  number below the model's. Tested by the first-party kit,
+                                  package pointer names this session, its `exempt` list
+                                  (a fleet's project runs) does not hold the agent, and the
+                                  window is a number below the model's. Tested by the
+                                  first-party kit,
                                   `claude plugin test tk`, through `compact_veto.test.ts`
   bin/tk-quota                    what is left of the rolling usage windows — the 5h and
                                   weekly figures reach the STATUSLINE SCRIPT at render time
