@@ -416,11 +416,11 @@ The package's closing report states, literally, `wrap-up afk: rodou` or
 `<motivo>` covers a legitimate skip (a concurrent guard, the quota wall) as much as an omission.
 After the report, remove the package pointer: `rm -f ~/.claude/state/tk-package.json`
 (`WINDOW.md`, *Three pieces*). A pointer left behind keeps the next session's compactions
-pointed at a package that is over. A package a fleet dispatched leaves the pointer in place:
-the fleet owns it and removes it at its own close.
+pointed at a package that is over. A package a fleet dispatched keeps the pointer, which the
+fleet removes at its own close.
 **Done when:** the wrap-up reached its own "Done when" — or it did not run, and the report names
 the step that stopped the package and the state the tree was left in — and the pointer is gone,
-unless a fleet dispatched the package.
+unless a fleet owns it.
 
 ## The fixer cap
 
