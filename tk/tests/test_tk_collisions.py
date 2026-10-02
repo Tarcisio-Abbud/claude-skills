@@ -251,6 +251,20 @@ class TestUnion(UnionTest):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("green     a × c", r.stdout)
 
+    def test_a_suite_written_for_bash_runs_under_bash(self):
+        """A gate's suite line is written for bash, and `/bin/sh` is dash on
+        Debian: under `shell=True` dash refuses `set -o pipefail` with exit 2,
+        which reads as a RED union that never ran the suite at all. The second
+        command fails under any shell that is not bash, so the proof does not
+        hang on whether this machine's dash has learnt `pipefail` yet."""
+        self.branch("a", {"tests/test_lock.py": LOCK_TEST})
+        self.branch("c", {"other.md": "y\n"})
+        for suite in ("set -o pipefail; true", 'test -n "$BASH_VERSION"'):
+            with self.subTest(suite=suite):
+                r = self.union("c", suite=suite)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn("green     a × c", r.stdout)
+
     def test_the_union_is_taken_over_the_base_and_not_between_the_pair(self):
         """`merge-tree a b` starts from `merge-base(a, b)` — the base as it
         was when the two branched. Once the base has moved, that tree is

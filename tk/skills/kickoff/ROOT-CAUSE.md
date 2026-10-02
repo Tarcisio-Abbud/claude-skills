@@ -32,7 +32,7 @@ tk-queue add "<the ticket's title in one line>" --dir "<queue dir>" --class AUTO
 
 Written in the lane's dependency ORDER, and with **no `--blocked-by` between siblings**: the
 lane is serial and runs in that order anyway, while `--blocked-by` would make `pack` leave every
-blocked sibling out of the package (`tk-queue add --help`; the ledger `blocked-by-na-fila`).
+blocked sibling out of the package (`tk-queue add --help`).
 `--spec` and `--ticket` take `<repo>#<n>` and refuse `owner/repo#n`. That half is the TRACKER's,
 not the code's, and a mismatch with the clone `--repo` names is refused (the same help).
 
@@ -99,7 +99,7 @@ already: T341 (PR #88, `fab0646`) put the step in `../wrap-up/SKILL.md` with
   only right once the other lanes have landed. It branches from the merge of that repository's
   other lanes, and that clean merge is the repository's collision test. `gh`'s own MERGEABLE
   cannot stand in: it is computed pair-by-pair against `main` and is blind between two open
-  pull requests (ledger `gh-mergeable-e-cego-entre-prs`).
+  pull requests.
 
 ## chain, parallelize, route
 

@@ -4,7 +4,9 @@ The **cold reviewer** of a lane reviews one pull request it did not write, and f
 confirms. It is not a second implementer and not a lens: it reads the whole lane against its
 items, triages every finding on the merits, repairs what belongs to the lane, and hands back a
 colour. `AFK.md` step 5 reaches this file for a lane that opened its own pull request under
-`LANE-CONTRACT.md` beside this one; the same file binds the reviewer's own commits.
+`LANE-CONTRACT.md` beside this one, and for a solo item's pull request once verify approved it.
+For a solo item, read "the lane" below as that one item: its branch, its worktree, its pull
+request. `LANE-CONTRACT.md` binds the reviewer's own commits either way.
 
 ## Inputs
 
@@ -13,9 +15,9 @@ colour. `AFK.md` step 5 reaches this file for a lane that opened its own pull re
    is `tk-contract --role cold-reviewer`: local, and on opus it therefore spends one of the
    machine's concurrent Opus slots (`../../reference/subagent-policy.md`, which also says when
    the role runs on sonnet).
-2. `<items file>`, the full text of the lane's items, and `<brief file>` where a
-   `/tk:second-opinion once` verdict decided a design: there the brief, not the item's
-   statement, is what the lane was asked to build.
+2. `<items file>`, the full text of the lane's items — one item for a solo item's pull
+   request — and `<brief file>` where a `/tk:second-opinion once` verdict decided a design:
+   there the brief, not the item's statement, is what the lane was asked to build.
 3. The pull request, body AND comments —
    `export GH_CONFIG_DIR="<the gh config dir>"`, then
    `gh pr view "<n>" -R "<owner>/<repo>" --comments`. The body says what the implementer left
@@ -76,8 +78,9 @@ the standard this line holds. The reviewer of the repair is never the agent that
 
 ## The collision check closes the package
 
-When every lane of the run has been reviewed, run **`tk-collisions`** over the run's OPEN pull
-requests, in TWO passes. The first pass merges every pair. The second pass runs once per
+When every lane and every solo pull request of the run has been reviewed, run
+**`tk-collisions`** over the run's OPEN pull requests, in TWO passes. The first pass merges
+every pair. The second pass runs once per
 repository, with `--against` naming the branch assumed to land first and `--suite` running that
 repository's whole suite inside each union. That second pass is what catches a merge landing RED
 on a repository whose branches were each green alone, which a pair-wise pass leaves open.

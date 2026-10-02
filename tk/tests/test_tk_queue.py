@@ -9894,8 +9894,8 @@ class TestMutationHarness(unittest.TestCase):
 
     def test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one(self):
         """The debt is a ceiling to lower, and this is what makes it bite in two
-        minutes instead of in the six the full harness takes: a tenth misnamed
-        entry reddens the suite the moment it is written."""
+        minutes instead of in the six the full harness takes: with the ceiling at zero,
+        the first misnamed entry reddens the suite the moment it is written."""
         import mutations_tk_contract
         real = mutations_tk_contract.misnamed(
             self.h.per_module(self.h.MUTATIONS, "test_tk_queue"), self.mod)

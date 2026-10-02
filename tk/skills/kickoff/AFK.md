@@ -254,21 +254,45 @@ re-runs the criterion and the whole suite on its tip merged with the fetched `or
 throwaway worktree nothing pushes — the tree its pull request merges. A conflict there is a
 finding this step reports, not a merge to resolve: the item ends as a DECISION naming both tips.
 An empty return is a failed attempt; the
-three attempts and four outcomes are verify's own. An approved solo item leaves the queue here —
-`tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>"` — and an item verify turned into a
-DECISION stays, carrying its handoff.
+three attempts and four outcomes are verify's own. An approved solo item goes on to its cold
+review below, and an item verify turned into a DECISION stays, carrying its handoff.
 
 **The package's handoff hangs on the item that closes LAST** — `done` deletes the briefing of
 the item it closes, so a head-item handoff dies at the first close. Before each `done`, run
 `ls "<queue dir>"/handoff-T*.md`; where the closing item holds the briefing, rewrite it on the
-item that now closes last.
+item that now closes last. **In the same move, re-point the package pointer's `handoff`**, or
+a compacted orchestrator is sent to the deleted file (`WINDOW.md`, *Three pieces*). This
+command rewrites it only where it names the closing item's file:
 
-A lane holding its own pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file.
+```sh
+python3 -c 'import json, os, sys; p = os.path.expanduser("~/.claude/state/tk-package.json"); r = lambda f: os.path.realpath(os.path.expanduser(f)); d = json.load(open(p)) if os.path.isfile(p) else {}
+if d.get("handoff") and r(d["handoff"]) == r(sys.argv[1]): d["handoff"] = r(sys.argv[2]); json.dump(d, open(p + ".tmp", "w")); os.replace(p + ".tmp", p)' "<closing item's handoff file>" "<new handoff file>"
+```
+
+Then run `CronList`. Where the `tk-tick` job's prompt names the closing item's file,
+`CronDelete` it and `CronCreate` it again with the new path, as `WINDOW.md`, *The tick*, arms
+it: a cron job has no edit.
+
+A solo item's pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file,
+as a lane holding its own pull request does.
 **Pick the reviewer's model from the diff before dispatching it.** Run
-`git -C "<the lane's repo address>" fetch origin` first, so neither tip is stale. Then read
-`git -C "<the lane's repo address>" diff origin/main...origin/spec/<m>-<slug>` against the
+`git -C "<the repo address>" fetch origin` first, so neither tip is stale. Then read
+`git -C "<the repo address>" diff origin/main...origin/<branch>` — the solo item's own branch,
+or the lane's `spec/<m>-<slug>` — against the
 `cold-reviewer` row of `../../reference/subagent-policy.md`. That row says when the diff puts the reviewer on sonnet,
 and a downgrade costs its deviation line.
+
+**A solo item's cold review runs after verify approves it and before its `done`.** Dispatch the
+reviewer into the item's worktree, on its pull request, with the item's full text in an
+`<items file>` outside the queue, as `LANE-CONTRACT.md` input 2 writes one. Where the reviewer
+pushed a fix, re-run the criterion and the whole suite over the new tip merged with
+`origin/main`, as above; red there turns the item into a DECISION naming the fix's sha. Once the
+reviewer's comment — the one opening "Review fria (Standards + Spec" — is on the pull request,
+what `../merge-gate/SKILL.md` verdict 2 reads, the item leaves the queue:
+`tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>"`, whatever its colour, since the
+colour decides the merge at the gate. With no comment, the item stays open as a DECISION naming
+its pull request. A finding run's pull request (`FINDINGS.md`) takes the same review after its
+verify step; it has no item, so nothing leaves the queue, and the gate reads the comment alone.
 
 A lane item is verified BEFORE it reaches the shared branch — one cycle per item, in order —
 while the orchestrator runs stages 1–5 itself. Stages 1–5 may run inside the workflow as one
@@ -350,7 +374,8 @@ Runs once per package, after the last item is verified and BEFORE step 6 measure
 beside this file carries it whole. It is FIXED, and a package with no accumulated lane runs it.
 
 **Done when:** every item carries one verify outcome with its evidence block, the solo ones
-proved over the merge with `origin/main`, every lane item reached the branch by a pushed
+proved over the merge with `origin/main` and closed only after the cold reviewer's comment
+reached their pull request, every lane item reached the branch by a pushed
 `T<id>` merge before its `done`, verdict 5 was asked of each while it was still open, the tip
 carried the whole suite and every merged item's criterion before the first `done`, and every
 red one is absent from it, the tail ran its three steps on the final tree and left the pull

@@ -66,8 +66,10 @@ from mutations_tk_contract import (  # noqa: E402 (path above)
 # itself as coverage, which is worse than an uncovered guard. Such entries are
 # excluded from the tally and reported apart, and this is the debt the list
 # carries: a ceiling to LOWER as entries are repaired, never to raise. Measured
-# 2026-09-05: nine entries name five tests renamed out from under them.
-KNOWN_MISNAMED = 9
+# 2026-09-05: nine entries named tests since renamed or moved to another class;
+# all nine were repaired and the ceiling is zero, so any new misnamed entry reddens
+# the suite.
+KNOWN_MISNAMED = 0
 
 # TESTS NO ENTRY NAMES. A run prints `N/N caught` and means it — but N counts
 # the mutants SOMEONE WROTE, so a test nobody mutated is invisible to that
@@ -1334,7 +1336,7 @@ MUTATIONS = [
      "        return CLASS_SHAPE_OFF_LINE",
      '    if not any(f.canonical == "Class" for f in field_chain(block)):\n'
      "        return CLASS_SHAPE_OFF_LINE",
-     ["TestClaim.test_the_refusal_names_the_field_that_BREAKS_the_chain_and_a_reachable_fix",
+     ["TestClaim.test_a_broken_chain_is_told_WHERE_it_stops_and_never_guesses_why",
       "TestPack.test_a_chain_that_never_reaches_the_class_is_named_as_that"]),
 
     ("T121 the refusal names where the chain STARTS instead of where it stops",
@@ -2321,7 +2323,7 @@ MUTATIONS = [
      "    item.insert_field(0, segment)\n    return render_item(item), promoted",
      "    item.append_field(segment)\n    return render_item(item), promoted",
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
-      "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written",
+      "TestTheClassLandsAheadOfTheChain.test_the_anchor_lands_where_add_puts_it_and_the_item_is_not_identical",
       "TestTheClassLandsAheadOfTheChain."
       "test_the_whole_trap_from_the_continuation_line_through_packs_own_remedy",
       "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair",
@@ -2332,7 +2334,7 @@ MUTATIONS = [
     ("T169 the class lands after the first field instead of ahead of the run",
      "    item.insert_field(0, segment)", "    item.insert_field(1, segment)",
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
-      "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written",
+      "TestTheClassLandsAheadOfTheChain.test_the_anchor_lands_where_add_puts_it_and_the_item_is_not_identical",
       "TestTheClassLandsAheadOfTheChain.test_a_field_already_on_the_line_is_WRITABLE_after_the_repair"]),
 
     # the period is what tells a field segment from prose, so a class written
@@ -2340,7 +2342,7 @@ MUTATIONS = [
     ("T169 the class segment is written without its period",
      '    segment = f"**Class:** {value}."', '    segment = f"**Class:** {value}"',
      ["TestTheClassLandsAheadOfTheChain.test_the_anchor_goes_ahead_of_the_fields_already_on_the_line",
-      "TestTheClassLandsAheadOfTheChain.test_the_repaired_item_is_what_add_would_have_written"]),
+      "TestTheClassLandsAheadOfTheChain.test_the_anchor_lands_where_add_puts_it_and_the_item_is_not_identical"]),
 
     # an item with nothing on the line has nothing to sit ahead of: the over-refusal
     # direction, and the population --class was written for
@@ -2599,14 +2601,14 @@ MUTATIONS = [
      "        elif False:\n"
      "            lanes[n] = LANE_SPEC % taken",
      ["TestPackLane.test_two_tickets_of_one_spec_share_the_accumulated_lane",
-      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     ("T172 a second spec keeps a lane of its own instead of leaving the package",
      "            pushed[n] = LANE_TAKEN % (taken, ref)",
      "            lanes[n] = LANE_SPEC % ref",
      ["TestPackLane.test_tickets_of_a_SECOND_spec_leave_with_the_exact_reason",
       "TestPackLane.test_a_TIE_on_ticket_count_is_broken_by_QUEUE_ORDER",
-      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     # The test this named before T271 stopped falling for it, and the entry was
     # VACUOUS for one run: with the lane going to the deepest spec, dropping the
@@ -2786,7 +2788,7 @@ MUTATIONS = [
      "            lanes[n] = LANE_SPEC % taken",
      '            lanes[n] = LANE_SPEC % ("#" + taken.rpartition("#")[2])',
      ["TestPackLane.test_two_specs_sharing_an_issue_number_are_told_APART",
-      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     ("T172 the exclusion reason drops this item's own spec",
      "            pushed[n] = LANE_TAKEN % (taken, ref)",
@@ -2798,7 +2800,7 @@ MUTATIONS = [
      "                            + pack_closes(text) + pack_repo(text) + mark)",
      '                            + "" + pack_repo(text) + mark)',
      ["TestPackLane.test_the_TICKET_the_PR_closes_comes_back_from_the_command",
-      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
 
     # the other direction: a Ticket the position rule may not read must stay
     # SILENT — it decides no lane, so it may not cost the item its place
@@ -2888,7 +2890,7 @@ MUTATIONS = [
      "            lanes[n] = LANE_SOLO if ref is None else LANE_SOLO_SPEC % ref",
      "            lanes[n] = LANE_SOLO",
      ["TestPackLane.test_a_below_floor_ticket_still_NAMES_its_spec",
-      "TestPackLane.test_the_documented_sample_IS_what_the_command_prints"]),
+      "TestPack.test_the_documented_sample_IS_what_the_command_prints"]),
     # --- T172, round 4: provenance is read at the writer's position ONLY -----
     ("T172 a provenance marker in prose excludes the item, demoting its spec's lane",
      '    for name in ("Risk", "Env", "Blocked-by"):',
@@ -3554,7 +3556,7 @@ MUTATIONS = [
      os.path.join("tests", "mutations.py")),
 
     ("T152 the recorded debt of misnamed entries stops being read",
-     "\nKNOWN_MISNAMED = 9", "\nKNOWN_MISNAMED = 0",
+     "\nKNOWN_MISNAMED = 0", "\nKNOWN_MISNAMED = -1",
      ["TestMutationHarness."
       "test_the_recorded_count_of_misnamed_entries_is_not_below_the_real_one"],
      os.path.join("tests", "mutations.py")),
