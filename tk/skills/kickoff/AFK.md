@@ -260,7 +260,17 @@ review below, and an item verify turned into a DECISION stays, carrying its hand
 **The package's handoff hangs on the item that closes LAST** — `done` deletes the briefing of
 the item it closes, so a head-item handoff dies at the first close. Before each `done`, run
 `ls "<queue dir>"/handoff-T*.md`; where the closing item holds the briefing, rewrite it on the
-item that now closes last.
+item that now closes last. **In the same move, re-point the package pointer's `handoff`**, or
+a compacted orchestrator is sent to the deleted file (`WINDOW.md`, *Three pieces*). This
+command rewrites it only where it names the closing item's file:
+
+```sh
+python3 -c 'import json, os, sys; p = os.path.expanduser("~/.claude/state/tk-package.json"); r = lambda f: os.path.realpath(os.path.expanduser(f)); d = json.load(open(p)) if os.path.isfile(p) else {}
+if d.get("handoff") and r(d["handoff"]) == r(sys.argv[1]): d["handoff"] = r(sys.argv[2]); json.dump(d, open(p + ".tmp", "w")); os.replace(p + ".tmp", p)' "<closing item's handoff file>" "<new handoff file>"
+```
+
+Where the tick's prompt names the closing item's file, `CronDelete` the tick and arm it again
+with the new path: a cron prompt cannot be edited (`WINDOW.md`, *The tick*).
 
 A solo item's pull request takes the cold review of `REVIEW-CONTRACT.md` beside this file,
 as a lane holding its own pull request does.
