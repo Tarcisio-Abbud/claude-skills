@@ -90,6 +90,9 @@ NO_SESSION = M + "test_a_pointer_that_names_no_session_vetoes_nothing"
 AT_LIMIT = M + "test_a_window_at_the_model_limit_vetoes_nothing"
 PROBE = M + "test_the_pointer_address_can_be_named_for_a_probe"
 DECIDE = M + "test_decide_refuses_every_input_that_is_not_a_veto"
+EXEMPT_KEPT = M + "test_a_fleet_project_run_listed_as_exempt_compacts"
+EXEMPT_OTHERS = M + "test_a_project_run_implementer_is_vetoed_beside_the_exempt_list"
+EXEMPT_BAD = M + "test_an_exempt_field_that_is_not_a_list_of_ids_vetoes_nothing"
 
 # (label, old, new, [tests that must fail], source relative to tk/)
 MUTATIONS = [
@@ -348,6 +351,26 @@ MUTATIONS = [
     ("a window nobody read is taken for a number",
      """  if (!Number.isFinite(compactWindow) || !Number.isFinite(modelWindow)) return null""",
      "",
+     [DECIDE], MOD),
+
+    ("the exempt list is never read, and a fleet's project runs lose their compaction",
+     """    if (exempt.includes(agentId)) return null""",
+     "",
+     [EXEMPT_KEPT, DECIDE], MOD),
+
+    ("the exempt list exempts every subagent, and a project run's implementers compact",
+     """    if (exempt.includes(agentId)) return null""",
+     """    if (exempt.length > 0) return null""",
+     [EXEMPT_OTHERS, DECIDE], MOD),
+
+    ("a malformed exempt field is read as no exemption, and the veto runs on it",
+     """    if (!Array.isArray(exempt) || !exempt.every((id) => typeof id === 'string')) return null""",
+     """    if (!Array.isArray(exempt)) return VETO""",
+     [EXEMPT_BAD, DECIDE], MOD),
+
+    ("a list with an id that is not a string is trusted",
+     """ || !exempt.every((id) => typeof id === 'string')) return null""",
+     """) return null""",
      [DECIDE], MOD),
 
     ("the probe's pointer address is ignored",

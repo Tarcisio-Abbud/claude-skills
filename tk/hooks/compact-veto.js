@@ -10,7 +10,7 @@
 // compaction carried `agentId`, no main one did, and after a skip the subagent
 // kept reading and the engine asked again at its next request.
 //
-// WHEN IT VETOES. All five, or it passes the event on untouched:
+// WHEN IT VETOES. All six, or it passes the event on untouched:
 //   1. the trigger is `auto`, by the hook's matcher (a person's `/compact` and a
 //      plugin's are theirs);
 //   2. the event names an `agentId` (the main conversation is never vetoed);
@@ -19,7 +19,14 @@
 //      machine, so without this gate every session's subagents would lose their
 //      compaction while any package ran. `$.session.id()` answers the main
 //      session's id inside a subagent's event too (measured on 2.1.287);
-//   5. the compaction window is a number below the model window. `auto`
+//   5. the pointer does not list the event's `agentId` under `exempt`. A fleet
+//      writes the pointer with its own session and lists there the id of each
+//      project run it dispatched: a project run is an orchestrator, and its own
+//      compaction is the one that must run, while its implementers' are vetoed.
+//      The id is the one the Agent tool returns at dispatch, the same string the
+//      run's `session.compact` carries (measured on 2.1.287). An `exempt` that is
+//      present and not a list of strings vetoes nothing, failing open as below;
+//   6. the compaction window is a number below the model window. `auto`
 //      folds the threshold and the recovery from a prompt that is too long into
 //      one trigger, and no field tells them apart; refusing the recovery fails
 //      the request. Under a compaction window below the model window, the subagent
@@ -49,6 +56,11 @@ export function decide({ agentId, sessionId, pointer, compactWindow, modelWindow
   if (pointer === null || typeof pointer !== 'object' || Array.isArray(pointer)) return null
   if (typeof pointer.session !== 'string' || pointer.session === '') return null
   if (pointer.session !== sessionId) return null
+  if ('exempt' in pointer) {
+    const exempt = pointer.exempt
+    if (!Array.isArray(exempt) || !exempt.every((id) => typeof id === 'string')) return null
+    if (exempt.includes(agentId)) return null
+  }
   if (!Number.isFinite(compactWindow) || !Number.isFinite(modelWindow)) return null
   if (compactWindow >= modelWindow) return null
   return VETO
