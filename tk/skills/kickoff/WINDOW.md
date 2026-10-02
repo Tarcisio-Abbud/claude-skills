@@ -516,8 +516,9 @@ Three pieces, and the tick is the first:
      `{ skip }` when all of these hold: the trigger is `auto`; the event names an `agentId`
      (a subagent's or a fork's own transcript, never the main conversation); the package
      pointer names this session's id; the pointer's `exempt` list does not hold that
-     `agentId`; and the compaction window is a number below the model window. This is why `AFK.md` gives each implementer run one item: a run the veto
-     keeps whole has no compaction to shed a second one.
+     `agentId`; and the compaction window is a number below the model window. This is why
+     `AFK.md` gives each implementer run one item: a run the veto keeps whole has no
+     compaction to shed a second one.
    - **The version floor is Claude Code 2.1.287**, the first with mods. On an older binary
      no mod loads, and every subagent compacts as before.
    - **What still compacts**: the orchestrator itself; a person's `/compact`; every session
@@ -569,10 +570,12 @@ mkdir -p ~/.claude/state && printf '%s\n' \
 ```
 
 After each dispatch of a project run, re-dispatches included, the fleet appends the `agentId`
-that dispatch returned, in the same turn:
+that dispatch returned, in the same turn. **One call carries every id the turn's dispatches
+returned**: the command reads, extends and replaces the file, so two calls in parallel can
+drop an id, and the run it named loses its exemption:
 
 ```sh
-python3 -c 'import json, os, sys; p = os.path.expanduser("~/.claude/state/tk-package.json"); d = json.load(open(p)); d.setdefault("exempt", []).append(sys.argv[1]); t = p + ".tmp"; json.dump(d, open(t, "w")); os.replace(t, p)' "<agentId>"
+python3 -c 'import json, os, sys; p = os.path.expanduser("~/.claude/state/tk-package.json"); d = json.load(open(p)); d.setdefault("exempt", []).extend(sys.argv[1:]); t = p + ".tmp"; json.dump(d, open(t, "w")); os.replace(t, p)' "<agentId>" ...
 ```
 
 That id is the one the run's `session.compact` carries (measured on 2.1.287): each listed run

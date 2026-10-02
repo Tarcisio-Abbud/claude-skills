@@ -42,6 +42,14 @@
 !/docs/probes/fleet-compact-veto/run.sh
 !/docs/probes/fleet-compact-veto/analyze.py
 !/docs/probes/fleet-compact-veto/logger
+/docs/probes/fleet-compact-veto/logger/*
+!/docs/probes/fleet-compact-veto/logger/.claude-plugin
+/docs/probes/fleet-compact-veto/logger/.claude-plugin/*
+!/docs/probes/fleet-compact-veto/logger/.claude-plugin/plugin.json
+!/docs/probes/fleet-compact-veto/logger/hooks
+/docs/probes/fleet-compact-veto/logger/hooks/*
+!/docs/probes/fleet-compact-veto/logger/hooks/hooks.json
+!/docs/probes/fleet-compact-veto/logger/hooks/log.js
 
 # Pruning baselines and the script that lays them out (T185). Named file by file
 # for the reason the block above is: a pruning report on a PRIVATE skill must not

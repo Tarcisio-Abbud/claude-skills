@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Summarise one probe run: spawns, Agent results, compaction outcomes per
 agent id (from the logger), and compact_boundary entries per transcript.
 

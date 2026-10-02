@@ -474,7 +474,7 @@ step 4. It stands outside the three above because it is the close's and not `vis
 A red gate does not hold the fleet, because the textual report is the close. Report the refusal
 in the state `vista.md` names, and end the run anyway.
 
-**Remove the package pointer last**: `rm -f ~/.claude/state/tk-package.json`. A run still in
+**Remove the package pointer last**, red gate or not: `rm -f ~/.claude/state/tk-package.json`. A run still in
 flight at the close loses the veto from then on.
 
 **Done when:**
