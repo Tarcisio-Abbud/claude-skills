@@ -42,8 +42,8 @@ STEP_HEADING = re.compile(r"^## 5\. Verify every delivery\s*$", re.M)
 TAIL_HEADING = re.compile(r"^### The lane's tail\s*$", re.M)
 BASE = "origin/main"
 SOLO_CLOSE = "tk-queue done"
-# The rule itself, not the paragraph carrying it: the rule and the close share one
-# paragraph, so anything anchored on the paragraph's opening places the wrong text.
+# The rule itself, not the paragraph carrying it: the rule and the close once shared one
+# paragraph, and the close may move again, so a paragraph's opening places the wrong text.
 RULE = re.compile(r"(?i)final tree is (?:the MERGE|its tip merged)")
 
 
@@ -175,10 +175,11 @@ class Step5Test(unittest.TestCase):
         """Its whole value is the ORDER: a merge proved after `done` proves nothing
         the queue can still act on.
 
-        Placed by the RULE and never by the paragraph that carries it. The rule and
-        the close live in ONE paragraph of step 5, so a comparison anchored on that
-        paragraph's first characters measures where the paragraph starts — true
-        whatever the order inside it, and the check asserts nothing.
+        Placed by the RULE and never by the paragraph that carries it. Where the rule
+        and the close share a paragraph, as they once did, a comparison anchored on
+        that paragraph's first characters measures where the paragraph starts — true
+        whatever the order inside it, and the check asserts nothing. The solo close
+        now follows the cold review (`test_afk_solo_review.py`).
         """
         head = flat(self.text)
         rule = RULE.search(head)

@@ -272,13 +272,16 @@ or the lane's `spec/<m>-<slug>` — against the
 and a downgrade costs its deviation line.
 
 **A solo item's cold review runs after verify approves it and before its `done`.** Dispatch the
-reviewer into the item's worktree, on its pull request. Where the reviewer pushed a fix, re-run
-the criterion and the whole suite over the new tip merged with `origin/main`, as above; red
-there turns the item into a DECISION naming the fix's sha. Once the reviewer's comment is on the
-pull request — what `../merge-gate/SKILL.md` verdict 2 reads — the item leaves the queue:
+reviewer into the item's worktree, on its pull request, with the item's full text in an
+`<items file>` outside the queue, as `LANE-CONTRACT.md` input 2 writes one. Where the reviewer
+pushed a fix, re-run the criterion and the whole suite over the new tip merged with
+`origin/main`, as above; red there turns the item into a DECISION naming the fix's sha. Once the
+reviewer's comment — the one opening "Review fria (Standards + Spec" — is on the pull request,
+what `../merge-gate/SKILL.md` verdict 2 reads, the item leaves the queue:
 `tk-queue done "<id>" --dir "<queue dir>" --how "<pointer>"`, whatever its colour, since the
 colour decides the merge at the gate. With no comment, the item stays open as a DECISION naming
-its pull request.
+its pull request. A finding run's pull request (`FINDINGS.md`) takes the same review after its
+verify step; it has no item, so nothing leaves the queue, and the gate reads the comment alone.
 
 A lane item is verified BEFORE it reaches the shared branch — one cycle per item, in order —
 while the orchestrator runs stages 1–5 itself. Stages 1–5 may run inside the workflow as one

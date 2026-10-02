@@ -125,6 +125,12 @@ class TheSoloPathTakesTheColdReview(unittest.TestCase):
         self.assertRegex(said, r"(?i)whole suite.*merged with `origin/main`",
                          "a reviewer's fix ships without the criterion and the suite "
                          "re-run over the merge")
+        self.assertIn("Review fria (Standards + Spec", said,
+                      "the close names no marker, so any comment would satisfy it")
+        self.assertRegex(said, r"`<items file>`",
+                         "the reviewer's Spec axis gets no items file for a solo item")
+        self.assertRegex(said, r"(?i)finding run's pull request .*takes the same review",
+                         "a finding run's pull request ships with no two-axis review")
 
     def test_done_when_asks_for_the_review(self):
         self.assertRegex(step5_done_when(), r"(?i)cold reviewer's comment",
@@ -140,7 +146,8 @@ class TheSiblingsAgree(unittest.TestCase):
     def test_the_gate_reads_the_comment_as_verdict_2(self):
         gate = flat(read(GATE))
         self.assertRegex(
-            gate, r"(?i)solo pull request, the review flow is the cold reviewer's comment"
+            gate, r"(?i)solo pull request, a finding run's included, verdict 2 reads the "
+                  r"cold reviewer's comment.*Review fria \(Standards \+ Spec.*recusado"
                   r".*no such comment, verdict 2 is red",
             "the strict form can merge a solo pull request no reviewer read")
 

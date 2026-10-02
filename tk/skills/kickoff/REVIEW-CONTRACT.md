@@ -15,9 +15,9 @@ request. `LANE-CONTRACT.md` binds the reviewer's own commits either way.
    is `tk-contract --role cold-reviewer`: local, and on opus it therefore spends one of the
    machine's concurrent Opus slots (`../../reference/subagent-policy.md`, which also says when
    the role runs on sonnet).
-2. `<items file>`, the full text of the lane's items — one item for a solo pull request — and `<brief file>` where a
-   `/tk:second-opinion once` verdict decided a design: there the brief, not the item's
-   statement, is what the lane was asked to build.
+2. `<items file>`, the full text of the lane's items — one item for a solo item's pull
+   request — and `<brief file>` where a `/tk:second-opinion once` verdict decided a design:
+   there the brief, not the item's statement, is what the lane was asked to build.
 3. The pull request, body AND comments —
    `export GH_CONFIG_DIR="<the gh config dir>"`, then
    `gh pr view "<n>" -R "<owner>/<repo>" --comments`. The body says what the implementer left
@@ -78,8 +78,9 @@ the standard this line holds. The reviewer of the repair is never the agent that
 
 ## The collision check closes the package
 
-When every lane of the run has been reviewed, run **`tk-collisions`** over the run's OPEN pull
-requests, in TWO passes. The first pass merges every pair. The second pass runs once per
+When every lane and every solo pull request of the run has been reviewed, run
+**`tk-collisions`** over the run's OPEN pull requests, in TWO passes. The first pass merges
+every pair. The second pass runs once per
 repository, with `--against` naming the branch assumed to land first and `--suite` running that
 repository's whole suite inside each union. That second pass is what catches a merge landing RED
 on a repository whose branches were each green alone, which a pair-wise pass leaves open.
